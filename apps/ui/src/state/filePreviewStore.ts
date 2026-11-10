@@ -45,6 +45,11 @@ export interface PreviewTarget {
   endLine?: number;
   /** The session it was opened from: its side panel shows it, and the dialog can go back there. Null outside a session. */
   sessionId: string | null;
+  /**
+   * The paired computer the file is on, for a session there: that computer reads it (`files.read` of the remote
+   * contract, with `sessionId`), and it opens in the dialog only.
+   */
+  computerId?: string;
   /** Goes up on every open, so opening the same file at the same line again scrolls back to it. */
   seq: number;
 }
@@ -52,6 +57,7 @@ export interface PreviewTarget {
 /** What opens a file: its path and, when the link named them, its lines. */
 export interface OpenRequest {
   sessionId?: string | null;
+  computerId?: string;
   line?: number;
   endLine?: number;
 }
@@ -82,10 +88,11 @@ interface FilePreviewState {
 }
 
 let seq = 0;
-const target = (path: string, { sessionId = null, line, endLine }: OpenRequest = {}): PreviewTarget => ({
+const target = (path: string, { sessionId = null, computerId, line, endLine }: OpenRequest = {}): PreviewTarget => ({
   path,
   sessionId,
   seq: ++seq,
+  ...(computerId ? { computerId } : {}),
   ...(line ? { line } : {}),
   ...(line && endLine && endLine > line ? { endLine } : {}),
 });
@@ -105,7 +112,7 @@ export const useFilePreview = create<FilePreviewState>()((set, get) => ({
   wrap: read(WRAP_KEY) !== 'off',
   open: (path, request = {}) => {
     const { sessionId } = request;
-    if (!sessionId || get().placement === 'dialog') return get().openDialog(path, request);
+    if (!sessionId || request.computerId || get().placement === 'dialog') return get().openDialog(path, request);
     set((s) => ({ panels: withPanel(s.panels, sessionId, target(path, request)) }));
     // Opened, it comes in front of the other tabs.
     useRightPanel.getState().setTab(sessionId, 'preview');

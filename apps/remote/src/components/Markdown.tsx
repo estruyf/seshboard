@@ -1,8 +1,9 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useContext, useMemo, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { parseMarkdown, type Block, type Inline } from '../lib/markdown.ts';
 import { healMarkdown, splitBlocks } from '../lib/streamingMarkdown.ts';
 import { withoutSkimMarks } from '@seshboard/protocol/remote-client';
+import { FileOpenerContext } from './fileOpener.ts';
 import { toast } from './Toasts.tsx';
 
 const PROSE = 'markdown flex min-w-0 flex-col gap-2 text-body break-words';
@@ -118,6 +119,8 @@ function InlineView({ node }: { node: Inline }) {
       return <code className="rounded bg-code px-1 py-px font-mono text-[0.88em] break-all">{node.text}</code>;
     case 'br':
       return <br />;
+    case 'file':
+      return <FileLink path={node.path} code={node.code} />;
     case 'link':
       return node.href ? (
         <a href={node.href} target="_blank" rel="noopener noreferrer" className="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">
@@ -127,6 +130,18 @@ function InlineView({ node }: { node: Inline }) {
         <>{inlines(node.children)}</>
       );
   }
+}
+
+/** A path to a file on the computer: it opens in a sheet where the computer reads its sessions' files, else it is text. */
+function FileLink({ path, code }: { path: string; code: boolean }) {
+  const open = useContext(FileOpenerContext);
+  const text = code ? <code className="rounded bg-code px-1 py-px font-mono text-[0.88em] break-all">{path}</code> : <span className="break-all">{path}</span>;
+  if (!open) return text;
+  return (
+    <button type="button" onClick={() => open(path)} className="inline text-left text-link underline decoration-link/40 underline-offset-2 hover:decoration-link" data-remote-file-link={path}>
+      {text}
+    </button>
+  );
 }
 
 /**

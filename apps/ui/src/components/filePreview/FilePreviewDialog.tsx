@@ -37,8 +37,8 @@ function PreviewDialog({ target }: { target: PreviewTarget }) {
   const home = useHomeFolder();
   const { name, kind, switcher, tools, body } = useFilePreviewContent(target);
   // A link in the file opens the next file here, still belonging to the session it came from.
-  const sessionId = target.sessionId;
-  const openHere = useCallback<OpenPreview>((path, line, endLine) => useFilePreview.getState().openDialog(path, { sessionId, line, endLine }), [sessionId]);
+  const { sessionId, computerId } = target;
+  const openHere = useCallback<OpenPreview>((path, line, endLine) => useFilePreview.getState().openDialog(path, { sessionId, computerId, line, endLine }), [sessionId, computerId]);
 
   return (
     <Dialog
@@ -54,7 +54,8 @@ function PreviewDialog({ target }: { target: PreviewTarget }) {
         <>
           {switcher && <span className="mr-1 flex">{switcher}</span>}
           {tools}
-          {sessionId && <Button variant="quiet" size="sm" iconOnly icon={<PanelRight size={14} aria-hidden />} aria-label="Dock to the side" data-file-preview-dock="" onClick={dock} />}
+          {/* A session on another computer has no side panel here for its files. */}
+          {sessionId && !computerId && <Button variant="quiet" size="sm" iconOnly icon={<PanelRight size={14} aria-hidden />} aria-label="Dock to the side" data-file-preview-dock="" onClick={dock} />}
         </>
       }
     >

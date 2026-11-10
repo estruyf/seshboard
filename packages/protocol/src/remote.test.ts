@@ -17,6 +17,8 @@ describe('the remote contracts', () => {
       'changes.diff',
       'changes.get',
       'device.visibility',
+      'files.image',
+      'files.read',
       'hello',
       'later.add',
       'limits.arm',

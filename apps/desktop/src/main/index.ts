@@ -24,7 +24,7 @@ import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -5500,6 +5500,17 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (why !== 'Terminal is on Smoke Mac. Not available from here.') return `the disabled terminal says "${why}"`;
   await shot(win, 'computers-session.png');
 
+  // 3a. A path in the reply to a file Claude wrote there opens in the preview, read by that computer (`files.read`),
+  // without Open in editor or Show in the file manager, which would act on this computer. Esc closes it.
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-session-file-link$=\"review.md\"]')", 5_000))) return 'the path of the file Claude wrote on the other computer is not a link';
+  await click('[data-remote-session] [data-session-file-link$="review.md"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-file-preview][data-file-preview-place=dialog] [data-file-preview-markdown]')?.innerText.includes('No changes needed')", 10_000))) {
+    return `the file did not open in the preview: ${await js("document.querySelector('[data-file-preview]')?.innerText.replace(/\\s+/g, ' ').slice(0, 200) ?? 'no preview'")}`;
+  }
+  if (await js("Boolean(document.querySelector('[data-file-preview] button[aria-label=\"Open in editor\"], [data-file-preview] [data-file-preview-dock]'))")) return 'the preview of a file on the other computer offers Open in editor or Dock to the side';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-file-preview]')", 3_000))) return 'Esc did not close the preview of the other computer’s file';
+
   // 3b. What a remote session runs in the background: its pill opens the list, and Stop stops the task there.
   const busy = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Move the login form'))`;
   if (!(await js(`Boolean(${busy})`))) return 'the working session of the other computer is not in the sidebar';
@@ -5620,7 +5631,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const removed = await waitInPage(win, "!document.querySelector('[data-computer]') && !document.querySelector('[data-remote-row]')", 5_000);
   pressKey(win, 'Escape');
   if (!removed) return 'the other computer and its rows did not go after Remove';
-  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, its run row opened and a pipeline run there, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
+  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, a file Claude wrote there previewed, its run row opened and a pipeline run there, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
 }
 
 /**
@@ -13996,6 +14007,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step("remote app on a phone: a finished session's catch-up shows the prompt's title without #", runPhoneCatchUpStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Quote under a reply, over a selection and in Read', runPhoneQuoteStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: a path to a file Claude wrote opens in a sheet', runPhoneFileStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: ⇧↵ continues a list, an image alone can be sent', runPhoneComposerStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, a model picked in Options shows in the accent colour', runPhoneOptionsStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, Start is dim while empty and ready with a task', runPhoneStartStep, { timeoutMs: 75_000 });

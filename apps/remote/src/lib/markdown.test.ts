@@ -32,6 +32,29 @@ describe('parseMarkdown', () => {
     ]);
   });
 
+  it('makes absolute paths to files that open into file nodes, not inside links or code with more in it', () => {
+    expect(parseMarkdown('The list is in /tmp/claude-501/p/s/scratchpad/review.md. See `/a/shot.png`, `cat /a/b.md` and [/a/c.md](https://x.dev).')).toEqual([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'text', text: 'The list is in ' },
+          { type: 'file', path: '/tmp/claude-501/p/s/scratchpad/review.md', code: false },
+          { type: 'text', text: '. See ' },
+          { type: 'file', path: '/a/shot.png', code: true },
+          { type: 'text', text: ', ' },
+          { type: 'code', text: 'cat /a/b.md' },
+          { type: 'text', text: ' and ' },
+          { type: 'link', href: 'https://x.dev/', children: [{ type: 'text', text: '/a/c.md' }] },
+          { type: 'text', text: '.' },
+        ],
+      },
+    ]);
+    expect(parseMarkdown('**In /a/b.md** and /a/report.pdf')[0]).toEqual({
+      type: 'paragraph',
+      children: [{ type: 'strong', children: [{ type: 'text', text: 'In ' }, { type: 'file', path: '/a/b.md', code: false }] }, { type: 'text', text: ' and /a/report.pdf' }],
+    });
+  });
+
   it('keeps raw HTML as text, inline and as a block', () => {
     expect(parseMarkdown('Hi <b>there</b> <script>alert(1)</script>')).toEqual([{ type: 'paragraph', children: [{ type: 'text', text: 'Hi <b>there</b> <script>alert(1)</script>' }] }]);
     expect(parseMarkdown('<div onclick="x()">block</div>')).toEqual([{ type: 'paragraph', children: [{ type: 'text', text: '<div onclick="x()">block</div>' }] }]);

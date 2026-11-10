@@ -109,7 +109,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean } = {}) {
+async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean; transcript?: TranscriptMessage[] } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -194,7 +194,9 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
       ],
       defaultId: options.codexProfile ? 'codex' : 'default',
     }),
-    readTranscript: async () => ['a', 'b', 'c'].map(message),
+    readTranscript: async () => options.transcript ?? ['a', 'b', 'c'].map(message),
+    // No scratchpads: the tests of `sessionFiles.ts` cover them.
+    scratchpadRoots: async () => [],
     watchTranscript: (sessionId) => (watching.add(sessionId), () => void watching.delete(sessionId)),
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
@@ -814,6 +816,37 @@ describe('Remote hub', () => {
     hub.askEvent({ sessionId: SESSION, threadId: 't2', id: 'from-the-computer', delta: 'Hi.' });
     await until(() => heard.length >= 3);
     expect(heard).toEqual([`${asked.id}:Two files.`, `${asked.id}:done`, 'from-the-computer:Hi.']);
+  });
+
+  it('reads only the files the session wrote, for a session the list shows', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-remote-files-')));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const report = join(dir, 'review.md');
+    const page = join(dir, 'page.html');
+    const shot = join(dir, 'shot.png');
+    const secret = join(dir, 'secret.md');
+    writeFileSync(report, '# Review');
+    writeFileSync(page, `<p>Hi</p><img src="${secret}">`);
+    writeFileSync(shot, Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
+    writeFileSync(secret, 'secret');
+    const wrote = (id: string, path: string): TranscriptMessage[] => [
+      { uuid: `${id}-call`, role: 'assistant', timestamp: 1, parentToolUseId: null, model: null, blocks: [{ type: 'tool_use', id, name: 'Write', input: { file_path: path, content: '' }, truncated: false }] },
+      { uuid: `${id}-done`, role: 'user', timestamp: 2, parentToolUseId: null, model: null, blocks: [{ type: 'tool_result', toolUseId: id, isError: false, text: '', truncated: false, images: [] }] },
+    ];
+    const named: TranscriptMessage = { uuid: 'named', role: 'assistant', timestamp: 3, parentToolUseId: null, model: null, blocks: [{ type: 'text', text: `Also see ${secret}` }] };
+    const { hub, port, on } = await setup({ transcript: [...wrote('t1', report), ...wrote('t2', page), ...wrote('t3', shot), named] });
+    await on();
+    const { remote } = await pair(hub, port);
+    expect(await remote.call('files.read', { sessionId: SESSION, path: report })).toMatchObject({ kind: 'markdown', content: '# Review' });
+    // A page comes without its images: it could name any image on the disk.
+    const html = await remote.call('files.read', { sessionId: SESSION, path: page });
+    expect(html.content).toContain(`<img src="${secret}">`);
+    expect((await remote.call('files.image', { sessionId: SESSION, path: shot })).mediaType).toBe('image/png');
+    // Named in a reply only, not a file, another session's.
+    await expect(remote.call('files.read', { sessionId: SESSION, path: secret })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('files.image', { sessionId: SESSION, path: secret })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('files.read', { sessionId: SESSION, path: '/etc/hosts' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('files.read', { sessionId: HIDDEN, path: report })).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'No such session' });
   });
 
   it('lists changes, diffs only listed files with a cap, and commits without a terminal', async () => {

@@ -1,11 +1,14 @@
 import { ImageOff } from 'lucide-react';
-import { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { memo, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { useFilePreview } from '../../state/filePreviewStore.ts';
+import { callComputer } from '../computers/callComputer.ts';
 import { fileUrl } from '../transcript/fileRefs.ts';
 import { markdownComponents, PROSE } from '../transcript/Markdown.tsx';
 import { useFileLinkActions } from '../transcript/useFileLinkActions.tsx';
 import { FILE_REHYPE_PLUGINS, FILE_REMARK_PLUGINS, fileUrlTransform } from './markdownPlugins.ts';
+import { RemoteFileContext, type RemoteFileSession } from './remotePreview.ts';
 import { resolveRelative } from './resolveRelative.ts';
 
 /** GitHub's alerts: a coloured bar and a title line, in the theme's tones. */
@@ -21,23 +24,29 @@ const ALERTS =
 /** The prose of a previewed file: the conversation's styles, plus what a README has (images, details, tables, alerts). */
 const FILE_PROSE = `select-text ${PROSE} ${ALERTS} [&_img]:inline-block [&_img]:max-w-full [&_details]:my-1.5 [&_summary]:cursor-pointer [&_hr]:my-4 [&_hr]:border-edge [&_pre]:my-2`;
 
-/** Images already read, by path, so Reload and scrolling back don't fetch them again; a small LRU. */
+/** Images already read, by path (and computer), so Reload and scrolling back don't fetch them again; a small LRU. */
 const images = new Map<string, Promise<string>>();
 const IMAGE_CACHE = 40;
 
-/** An image of the file, through the engine (the renderer never loads `file://`). Without it, or when it can't be read, the alt text shows. */
+/**
+ * An image of the file, through the engine (the renderer never loads `file://`), or through the other computer for a
+ * file there (which gives only images the session made). Without it, or when it can't be read, the alt text shows.
+ */
 function PreviewImage({ path, alt }: { path: string; alt: string }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
+  const remote = useContext(RemoteFileContext);
   const [state, setState] = useState<{ path: string; url: string | null; failed: boolean }>({ path, url: null, failed: false });
   useEffect(() => {
     if (!client) return;
     let cancelled = false;
-    let pending = images.get(path);
+    const key = remote ? `${remote.computerId}:${remote.sessionId}:${path}` : path;
+    let pending = images.get(key);
     if (!pending) {
-      pending = client.call('files.image', { path }).then(({ mediaType, data }) => `data:${mediaType};base64,${data}`);
-      pending.catch(() => images.delete(path));
-      images.set(path, pending);
+      const read = remote ? callComputer(client, remote.computerId, 'files.image', { sessionId: remote.sessionId, path }) : client.call('files.image', { path });
+      pending = read.then(({ mediaType, data }) => `data:${mediaType};base64,${data}`);
+      pending.catch(() => images.delete(key));
+      images.set(key, pending);
       if (images.size > IMAGE_CACHE) images.delete(images.keys().next().value!);
     }
     pending.then(
@@ -47,7 +56,7 @@ function PreviewImage({ path, alt }: { path: string; alt: string }) {
     return () => {
       cancelled = true;
     };
-  }, [client, path]);
+  }, [client, path, remote]);
   const own = state.path === path ? state : { url: null, failed: false };
   if (own.url) return <img src={own.url} alt={alt} data-file-preview-image="loaded" />;
   return <ImageFallback alt={alt} failed={own.failed} />;
@@ -83,6 +92,23 @@ function LocalLink({ path, children }: { path: string; children: ReactNode }) {
   );
 }
 
+/** A relative or `file:` link in a file on another computer: it opens that computer's file in this preview, if the session made it. */
+function RemoteLink({ path, remote, children }: { path: string; remote: RemoteFileSession; children: ReactNode }) {
+  return (
+    <a
+      href={fileUrl(path)}
+      className="text-link underline decoration-current/30 underline-offset-2 hover:decoration-current"
+      data-file-link={path}
+      onClick={(event) => {
+        event.preventDefault();
+        useFilePreview.getState().openDialog(path, remote);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 const LINK = 'text-link underline decoration-link/40 underline-offset-2';
 
 /** Scrolls to the element an `#anchor` names (raw HTML ids are prefixed by the sanitiser). */
@@ -98,6 +124,7 @@ function scrollToAnchor(id: string) {
  * links, so a Markdown file next to it previews in the same dialog. `baseDir` is the file's folder.
  */
 export const FileMarkdown = memo(function FileMarkdown({ text, baseDir }: { text: string; baseDir: string }) {
+  const remote = useContext(RemoteFileContext);
   const components = useMemo<Components>(
     () => ({
       ...markdownComponents,
@@ -117,6 +144,7 @@ export const FileMarkdown = memo(function FileMarkdown({ text, baseDir }: { text
           );
         }
         const path = resolveRelative(href, baseDir);
+        if (path && remote) return <RemoteLink path={path} remote={remote}>{children}</RemoteLink>;
         if (path) return <LocalLink path={path}>{children}</LocalLink>;
         // The main process opens http(s) links in the browser and blocks everything else.
         return (
@@ -131,7 +159,7 @@ export const FileMarkdown = memo(function FileMarkdown({ text, baseDir }: { text
         return path ? <PreviewImage path={path} alt={alt ?? ''} /> : <ImageFallback alt={alt ?? ''} failed />;
       },
     }),
-    [baseDir],
+    [baseDir, remote],
   );
   return (
     <div className={FILE_PROSE}>

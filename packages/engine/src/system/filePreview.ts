@@ -93,14 +93,15 @@ async function statFile(path: string) {
 
 /**
  * Reads a Markdown, HTML or code file for the preview. Only previewable extensions are read (this request must not become
- * a way to read any file). A file over `MAX_PREVIEW_BYTES` comes back without content, so the UI can say why.
+ * a way to read any file). A file over `maxBytes` (`MAX_PREVIEW_BYTES`) comes back without content, so the UI can say
+ * why. `inlineImages: false` leaves an HTML page's images out: for another device, a page could name any image on the disk.
  */
-export async function readPreview(path: string): Promise<FilePreview> {
+export async function readPreview(path: string, options: { maxBytes?: number; inlineImages?: boolean } = {}): Promise<FilePreview> {
   const info = await statFile(path);
   const kind = previewKind(path);
   if (!kind) throw new RpcError('UNSUPPORTED', `Only Markdown, HTML and code files can be previewed: ${path}`);
   const base = { kind, size: info.size, modified: Math.floor(info.mtimeMs) };
-  if (info.size > MAX_PREVIEW_BYTES) return { ...base, content: null };
+  if (info.size > (options.maxBytes ?? MAX_PREVIEW_BYTES)) return { ...base, content: null };
   let text: string;
   try {
     // A byte order mark would show as a stray character at the start of the page.
@@ -109,16 +110,16 @@ export async function readPreview(path: string): Promise<FilePreview> {
     throw fsError(error, path);
   }
   if (kind !== 'html') return { ...base, content: text };
-  return { ...base, content: withPreviewCsp(await inlineHtmlImages(text, dirname(path))) };
+  return { ...base, content: withPreviewCsp(options.inlineImages === false ? text : await inlineHtmlImages(text, dirname(path))) };
 }
 
 /**
  * Reads an image a previewed file points at. The type comes from the file's first bytes, never its extension, so a
- * text file called `x.png` is refused.
+ * text file called `x.png` is refused. TOO_LARGE over `maxBytes` (`MAX_PREVIEW_IMAGE_BYTES`).
  */
-export async function readPreviewImage(path: string): Promise<PreviewImage> {
+export async function readPreviewImage(path: string, maxBytes = MAX_PREVIEW_IMAGE_BYTES): Promise<PreviewImage> {
   const info = await statFile(path);
-  if (info.size > MAX_PREVIEW_IMAGE_BYTES) throw new RpcError('TOO_LARGE', `${path} is larger than ${MAX_PREVIEW_IMAGE_BYTES / 1024 / 1024} MB`);
+  if (info.size > maxBytes) throw new RpcError('TOO_LARGE', `${path} is larger than ${Math.round((maxBytes / 1024 / 1024) * 10) / 10} MB`);
   let bytes: Buffer;
   try {
     bytes = await readFile(path);

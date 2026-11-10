@@ -351,6 +351,29 @@ export function runPhoneQuoteStep(): Promise<string> {
   });
 }
 
+/**
+ * A path in a finished reply to a file Claude wrote on the computer (scripts/remote-demo.ts writes `review.md`) is a
+ * link: a tap opens the file in a sheet, read by the computer (`files.read`), and the back gesture closes it.
+ */
+export function runPhoneFileStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    const view = '[data-remote-session-view]';
+    await js(`document.querySelector('${view} [data-remote-unfold]')?.click()`);
+    const link = `[...document.querySelectorAll('${view} [data-remote-file-link]')].find((el) => el.dataset.remoteFileLink.endsWith('review.md'))`;
+    if (!(await waitInPage(win, `Boolean(${link})`, 5_000))) return 'the path of the file Claude wrote is not a link';
+    await js(`${link}.scrollIntoView({ block: 'center' }); ${link}.click()`);
+    const sheet = '[data-remote-sheet="file"]';
+    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-file="markdown"]')?.innerText.includes('No changes needed')`, 10_000))) {
+      return `the file did not open in a sheet: ${await js(`document.querySelector('${sheet}')?.innerText.replace(/\\s+/g, ' ').slice(0, 160) ?? 'no sheet'`)}`;
+    }
+    await js('history.back()');
+    if (!(await waitInPage(win, `!document.querySelector('${sheet}')`, 3_000))) return 'the back gesture did not close the file';
+    return 'ok: the path in the reply opened review.md in a sheet, read by the computer, and Back closed it';
+  });
+}
+
 /** In a session, the drawer's New session opens New session in the session's place: Back goes to the list, not the session. */
 export function runPhoneDrawerNewStep(): Promise<string> {
   return onPhone(async (js, win) => {

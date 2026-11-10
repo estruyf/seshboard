@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { agentName, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
+import { agentName, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
@@ -18,6 +18,8 @@ import { turnEnds, turnLine } from '../lib/turns.ts';
 import { answer } from './answer.ts';
 import { CatchUpCard } from './CatchUpCard.tsx';
 import { ChangesSheet, CommitSheet, type ChangesState } from './ChangesSheet.tsx';
+import { FileOpenerContext } from './fileOpener.ts';
+import { FileSheet } from './FileSheet.tsx';
 import { useNow } from './SessionList.tsx';
 import { AnchoredMenu, MenuButton, type MenuItem } from './Menu.tsx';
 import { EffortChip, ModeChip, ModelChip, ModelModeChip } from './OptionChips.tsx';
@@ -98,6 +100,9 @@ export function SessionView({
   const runs = runsOf(sessions, sessionId);
   const runState = runs.parent ?? runs.step?.state ?? null;
   const [runSheet, setRunSheet] = useState(false);
+  /** The file a path in Claude's text opened; paths are links only when the computer reads its sessions' files. */
+  const [file, setFile] = useState<string | null>(null);
+  const openFile = features.includes(REMOTE_FEATURE_FILES) ? setFile : null;
   const [pipelineSheet, setPipelineSheet] = useState(false);
   const listed = new Set(sessions.sessions.map((s) => s.id));
   const runParentId = runs.step && !runs.parent ? (runs.step.state.run.parentSessionId ?? runs.step.state.run.id) : null;
@@ -339,191 +344,194 @@ export function SessionView({
   const asked = card ? turnPrompt(messages, card.turnId) : null;
 
   return (
-    <div className="flex h-full bg-bg" style={frame ? { position: 'fixed', left: 0, right: 0, top: frame.top, height: frame.height, zIndex: 20 } : undefined} data-remote-session-view>
-      <div className="flex min-w-0 flex-1 flex-col">
-        {wide ? (
-          <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${lead ? 'px-2' : 'px-5'}`}>
-            {lead}
-            <div className="min-w-0 flex-1">{titleLine}</div>
-            {modelAndMode && (
-              <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-meta text-muted lg:inline-flex" title="Model and permission mode. Change them under the message box." data-remote-model-mode>
-                <span aria-hidden className={`size-1.5 rounded-full ${MODE_DOT[session!.permissionMode!]}`} />
-                {modelAndMode}
-              </span>
-            )}
-            {/* Ask forks the session in its own tool: another provider's when it can. */}
-            {canAsk && (
-            <Button
-              variant="quiet"
-              size="md"
-              onClick={toggleAsk}
-              aria-pressed={ask.open}
-              aria-label={ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session'}
-              title="Ask about this session"
-              className={`relative px-2! text-link! ${ask.open ? 'bg-link/15' : ''}`}
-              data-remote-ask
-            >
-              <MessageCircleQuestion className="size-4" aria-hidden />
-              <span>Ask</span>
-              {ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}
-            </Button>
-            )}
-            {(files > 0 || changes) && (
-              <Button variant="quiet" size="md" onClick={openChanges} aria-pressed={panelOpen || undefined} aria-label={`Changes, ${files} ${files === 1 ? 'file' : 'files'}`} className={`px-2! ${panelOpen ? 'bg-selected text-text!' : ''}`} data-remote-changes>
-                <FileDiff className="size-4" aria-hidden />
-                <span>Changes</span>
-                <span className="tabular-nums">{files}</span>
-              </Button>
-            )}
-            <MenuButton label="Session actions" items={menu} />
-          </header>
-        ) : (
-          // A phone: the menu button, the title and its line, and `⋯` with Ask, Changes and the rest.
-          <header className="safe-top flex items-center gap-1 bg-bg px-2 pb-2">
-            {lead}
-            <div className="min-w-0 flex-1 pl-1">{titleLine}</div>
-            <AnchoredMenu label="Session actions" items={phoneMenu} align="right">
-              {(trigger) => (
-                <RoundButton {...trigger} aria-label={ask.ready ? 'Session actions, an answer is ready' : 'Session actions'} data-remote-session-more badge={ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2.5 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}>
-                  <MoreHorizontal aria-hidden />
-                </RoundButton>
+    <FileOpenerContext.Provider value={openFile}>
+      <div className="flex h-full bg-bg" style={frame ? { position: 'fixed', left: 0, right: 0, top: frame.top, height: frame.height, zIndex: 20 } : undefined} data-remote-session-view>
+        <div className="flex min-w-0 flex-1 flex-col">
+          {wide ? (
+            <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${lead ? 'px-2' : 'px-5'}`}>
+              {lead}
+              <div className="min-w-0 flex-1">{titleLine}</div>
+              {modelAndMode && (
+                <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-meta text-muted lg:inline-flex" title="Model and permission mode. Change them under the message box." data-remote-model-mode>
+                  <span aria-hidden className={`size-1.5 rounded-full ${MODE_DOT[session!.permissionMode!]}`} />
+                  {modelAndMode}
+                </span>
               )}
-            </AnchoredMenu>
-          </header>
-        )}
-        <TriggerOrigin value={session?.trigger} now={Date.now()} />
-        {banner}
-        {runState && (
-          <RunBar
-            state={runState}
-            step={runs.parent ? null : runs.step && { index: runs.step.index, round: runs.step.round }}
-            client={client}
-            onSteps={() => setRunSheet(true)}
-            onParent={canOpenParent && onOpenSession ? () => onOpenSession(runParentId!) : null}
-          />
-        )}
-        <Transcript
-          messages={messages}
-          results={results}
-          streaming={streaming}
-          working={working}
-          background={background && !working ? backgroundLine(session?.background) : null}
-          hasMore={hasMore}
-          onOlder={() => void loadOlder()}
-          folded={Boolean(card) && !unfolded}
-          onUnfold={() => setUnfolded(true)}
-          onQuote={quote}
-          header={card && <CatchUpCard card={card} prompt={asked} now={now} wide={wide} committed={committed === card.turnId} onChanges={() => (panelFits ? showPanel(true) : setSheet('changes'))} onCommit={() => (panelFits ? showPanel(true) : setSheet('commit'))} canCommit={Boolean(client) && files > 0} />}
-        />
-        {error && (
-          <div className="px-3 pt-2 sm:px-6">
-            <p role="alert" className="mx-auto flex w-full max-w-3xl items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-ui text-error">
-              <span className="flex-1">{error}</span>
-              <Button variant="quiet" size="md" aria-label="Dismiss" onClick={() => setError(null)} className="-my-1 -mr-2 px-2! text-error!">
-                <X className="size-4" aria-hidden />
+              {/* Ask forks the session in its own tool: another provider's when it can. */}
+              {canAsk && (
+              <Button
+                variant="quiet"
+                size="md"
+                onClick={toggleAsk}
+                aria-pressed={ask.open}
+                aria-label={ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session'}
+                title="Ask about this session"
+                className={`relative px-2! text-link! ${ask.open ? 'bg-link/15' : ''}`}
+                data-remote-ask
+              >
+                <MessageCircleQuestion className="size-4" aria-hidden />
+                <span>Ask</span>
+                {ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}
               </Button>
-            </p>
-          </div>
-        )}
-        {client && (
-          <LimitNotice client={client} sessionId={sessionId} limit={limit} held={queue.length} busy={working || prompts.length > 0} now={now} />
-        )}
-        {queue.length > 0 && (
-          <UpNext
-            queue={queue}
-            onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))}
-            onSendNow={features.includes(REMOTE_FEATURE_QUEUE_SEND_NOW) ? (id) => void client?.call('session.queue.sendNow', { sessionId, id }).catch((e: Error) => setError(e.message)) : null}
+              )}
+              {(files > 0 || changes) && (
+                <Button variant="quiet" size="md" onClick={openChanges} aria-pressed={panelOpen || undefined} aria-label={`Changes, ${files} ${files === 1 ? 'file' : 'files'}`} className={`px-2! ${panelOpen ? 'bg-selected text-text!' : ''}`} data-remote-changes>
+                  <FileDiff className="size-4" aria-hidden />
+                  <span>Changes</span>
+                  <span className="tabular-nums">{files}</span>
+                </Button>
+              )}
+              <MenuButton label="Session actions" items={menu} />
+            </header>
+          ) : (
+            // A phone: the menu button, the title and its line, and `⋯` with Ask, Changes and the rest.
+            <header className="safe-top flex items-center gap-1 bg-bg px-2 pb-2">
+              {lead}
+              <div className="min-w-0 flex-1 pl-1">{titleLine}</div>
+              <AnchoredMenu label="Session actions" items={phoneMenu} align="right">
+                {(trigger) => (
+                  <RoundButton {...trigger} aria-label={ask.ready ? 'Session actions, an answer is ready' : 'Session actions'} data-remote-session-more badge={ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2.5 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}>
+                    <MoreHorizontal aria-hidden />
+                  </RoundButton>
+                )}
+              </AnchoredMenu>
+            </header>
+          )}
+          <TriggerOrigin value={session?.trigger} now={Date.now()} />
+          {banner}
+          {runState && (
+            <RunBar
+              state={runState}
+              step={runs.parent ? null : runs.step && { index: runs.step.index, round: runs.step.round }}
+              client={client}
+              onSteps={() => setRunSheet(true)}
+              onParent={canOpenParent && onOpenSession ? () => onOpenSession(runParentId!) : null}
+            />
+          )}
+          <Transcript
+            messages={messages}
+            results={results}
+            streaming={streaming}
+            working={working}
+            background={background && !working ? backgroundLine(session?.background) : null}
+            hasMore={hasMore}
+            onOlder={() => void loadOlder()}
+            folded={Boolean(card) && !unfolded}
+            onUnfold={() => setUnfolded(true)}
+            onQuote={quote}
+            header={card && <CatchUpCard card={card} prompt={asked} now={now} wide={wide} committed={committed === card.turnId} onChanges={() => (panelFits ? showPanel(true) : setSheet('changes'))} onCommit={() => (panelFits ? showPanel(true) : setSheet('commit'))} canCommit={Boolean(client) && files > 0} />}
+          />
+          {error && (
+            <div className="px-3 pt-2 sm:px-6">
+              <p role="alert" className="mx-auto flex w-full max-w-3xl items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-ui text-error">
+                <span className="flex-1">{error}</span>
+                <Button variant="quiet" size="md" aria-label="Dismiss" onClick={() => setError(null)} className="-my-1 -mr-2 px-2! text-error!">
+                  <X className="size-4" aria-hidden />
+                </Button>
+              </p>
+            </div>
+          )}
+          {client && (
+            <LimitNotice client={client} sessionId={sessionId} limit={limit} held={queue.length} busy={working || prompts.length > 0} now={now} />
+          )}
+          {queue.length > 0 && (
+            <UpNext
+              queue={queue}
+              onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))}
+              onSendNow={features.includes(REMOTE_FEATURE_QUEUE_SEND_NOW) ? (id) => void client?.call('session.queue.sendNow', { sessionId, id }).catch((e: Error) => setError(e.message)) : null}
+            />
+          )}
+          {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
+          <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} agent={agentName(session?.provider)} />
+          {session?.readOnly ? (
+            <ReadOnlyNote provider={(session.provider && PROVIDER_NAMES[session.provider]) || "its provider's"} command={session.readOnly.resumeCommand} />
+          ) : (
+            <Composer
+              computerId={computerId}
+              sessionId={sessionId}
+              fill={fill}
+              features={features}
+              wide={wide}
+              modelMode={
+                claudeChips && options && session ? (
+                  <ModelModeChip
+                    options={options}
+                    session={session}
+                    disabled={!client}
+                    onModel={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)}
+                    onEffort={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)}
+                    onMode={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)}
+                  />
+                ) : null
+              }
+              chips={
+                claudeChips && options && session ? (
+                  <>
+                    <ModelChip options={options} value={session.model} auto={session.auto} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
+                    {/* Only from a Seshboard that sends the effort, and for a model that takes one. */}
+                    {session.effort !== undefined && takesEffort(options.models, session.model) && (
+                      <EffortChip options={options} value={session.effort} placement="above" disabled={!client} onPick={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)} />
+                    )}
+                    <ModeChip options={options} value={session.permissionMode!} placement="above" disabled={!client} onPick={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)} />
+                  </>
+                ) : null
+              }
+              disabled={!client}
+              working={working}
+              answering={Boolean(open)}
+              idle={idlePlaceholder}
+              onStop={stop}
+              onSend={async (text, images, files, mode) => {
+                // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
+                if (open) {
+                  if (images.length || files.length) throw new Error("Attachments can't go with an answer. Remove them, or answer the prompt first.");
+                  const result = await answer(client!, open, { behavior: 'deny', message: text }, session?.title);
+                  if (result === 'gone') onRefresh();
+                  if (result === 'failed') throw new Error("The answer didn't reach your computer.");
+                  return;
+                }
+                await send(text, images, files, mode);
+              }}
+              onError={setError}
+              onFocusChange={setTyping}
+            />
+          )}
+        </div>
+        {runSheet && runState && <RunSheet state={runState} client={client} canOpen={(id) => listed.has(id) && id !== sessionId} onOpenStep={(id) => onOpenSession?.(id)} onClose={() => setRunSheet(false)} />}
+        {pipelineSheet && session && <RunPipelineSheet client={client} projectId={session.projectId} sessionId={sessionId} onClose={() => setPipelineSheet(false)} />}
+        {ask.open && !panelFits && <AskSheet client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
+        {askPanel && <AskPanel client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
+        {sheet === 'changes' && <ChangesSheet client={client} sessionId={sessionId} changes={changes} onClose={() => setSheet(null)} onAsk={askToFix} onCommit={() => setSheet('commit')} />}
+        {panelOpen && (
+          <ChangesPanel
+            client={client}
+            sessionId={sessionId}
+            changes={changes}
+            initialMessage={commitTitle(catchUp)}
+            onClose={() => showPanel(false)}
+            onAsk={askToFix}
+            onCommitted={() => {
+              setCommitted(catchUp?.turnId ?? null);
+              loadChanges();
+            }}
           />
         )}
-        {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
-        <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} agent={agentName(session?.provider)} />
-        {session?.readOnly ? (
-          <ReadOnlyNote provider={(session.provider && PROVIDER_NAMES[session.provider]) || "its provider's"} command={session.readOnly.resumeCommand} />
-        ) : (
-          <Composer
-            computerId={computerId}
+        {sheet === 'commit' && (
+          <CommitSheet
+            client={client}
             sessionId={sessionId}
-            fill={fill}
-            features={features}
-            wide={wide}
-            modelMode={
-              claudeChips && options && session ? (
-                <ModelModeChip
-                  options={options}
-                  session={session}
-                  disabled={!client}
-                  onModel={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)}
-                  onEffort={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)}
-                  onMode={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)}
-                />
-              ) : null
-            }
-            chips={
-              claudeChips && options && session ? (
-                <>
-                  <ModelChip options={options} value={session.model} auto={session.auto} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
-                  {/* Only from a Seshboard that sends the effort, and for a model that takes one. */}
-                  {session.effort !== undefined && takesEffort(options.models, session.model) && (
-                    <EffortChip options={options} value={session.effort} placement="above" disabled={!client} onPick={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)} />
-                  )}
-                  <ModeChip options={options} value={session.permissionMode!} placement="above" disabled={!client} onPick={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)} />
-                </>
-              ) : null
-            }
-            disabled={!client}
-            working={working}
-            answering={Boolean(open)}
-            idle={idlePlaceholder}
-            onStop={stop}
-            onSend={async (text, images, files, mode) => {
-              // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
-              if (open) {
-                if (images.length || files.length) throw new Error("Attachments can't go with an answer. Remove them, or answer the prompt first.");
-                const result = await answer(client!, open, { behavior: 'deny', message: text }, session?.title);
-                if (result === 'gone') onRefresh();
-                if (result === 'failed') throw new Error("The answer didn't reach your computer.");
-                return;
-              }
-              await send(text, images, files, mode);
+            initial={commitTitle(catchUp)}
+            files={files}
+            onClose={() => setSheet(null)}
+            onCommitted={() => {
+              setCommitted(catchUp?.turnId ?? null);
+              loadChanges();
             }}
-            onError={setError}
-            onFocusChange={setTyping}
           />
         )}
       </div>
-      {runSheet && runState && <RunSheet state={runState} client={client} canOpen={(id) => listed.has(id) && id !== sessionId} onOpenStep={(id) => onOpenSession?.(id)} onClose={() => setRunSheet(false)} />}
-      {pipelineSheet && session && <RunPipelineSheet client={client} projectId={session.projectId} sessionId={sessionId} onClose={() => setPipelineSheet(false)} />}
-      {ask.open && !panelFits && <AskSheet client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
-      {askPanel && <AskPanel client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
-      {sheet === 'changes' && <ChangesSheet client={client} sessionId={sessionId} changes={changes} onClose={() => setSheet(null)} onAsk={askToFix} onCommit={() => setSheet('commit')} />}
-      {panelOpen && (
-        <ChangesPanel
-          client={client}
-          sessionId={sessionId}
-          changes={changes}
-          initialMessage={commitTitle(catchUp)}
-          onClose={() => showPanel(false)}
-          onAsk={askToFix}
-          onCommitted={() => {
-            setCommitted(catchUp?.turnId ?? null);
-            loadChanges();
-          }}
-        />
-      )}
-      {sheet === 'commit' && (
-        <CommitSheet
-          client={client}
-          sessionId={sessionId}
-          initial={commitTitle(catchUp)}
-          files={files}
-          onClose={() => setSheet(null)}
-          onCommitted={() => {
-            setCommitted(catchUp?.turnId ?? null);
-            loadChanges();
-          }}
-        />
-      )}
-    </div>
+      {file && <FileSheet client={client} sessionId={sessionId} path={file} onOpen={setFile} onClose={() => setFile(null)} />}
+    </FileOpenerContext.Provider>
   );
 }
 

@@ -332,6 +332,8 @@ const BRIEF = '# Rate limits for the webhooks\n\nAdd rate limits to the webhook 
 
 function transcript(sessionId: string): TranscriptMessage[] {
   const p = sessionId.slice(-2);
+  // A file Claude wrote, by its absolute path: the reply names it, and the app previews it through `files.read`.
+  const review = join(dir, 'review.md');
   return [
     text(`${p}-1`, 'user', sessionId === CATCH_UP.sessionId ? BRIEF : 'Add rate limits to the webhook endpoints. 100 requests a minute per customer, and tell me what you changed.', 40),
     text(`${p}-2`, 'assistant', "I'll look at how the webhooks are routed first.", 39),
@@ -349,6 +351,8 @@ function transcript(sessionId: string): TranscriptMessage[] {
     result(`${p}-14`, `${p}-t6`, 'Tests  14 passed (14)', 35),
     tool(`${p}-15`, `${p}-t7`, 'Bash', { command: 'npm run typecheck' }, 35),
     result(`${p}-16`, `${p}-t7`, '', 35),
+    tool(`${p}-16a`, `${p}-t8`, 'Write', { file_path: review, content: '' }, 35),
+    result(`${p}-16b`, `${p}-t8`, 'ok', 35),
     text(
       `${p}-17`,
       'assistant',
@@ -375,6 +379,8 @@ function transcript(sessionId: string): TranscriptMessage[] {
         '```',
         '',
         'See [the RFC](https://www.rfc-editor.org/rfc/rfc6585#section-4) for `429`. <script>alert(1)</script> stays text.',
+        '',
+        `My review notes are in ${review}.`,
       ].join('\n'),
       34,
     ),
@@ -383,6 +389,7 @@ function transcript(sessionId: string): TranscriptMessage[] {
 
 const dir = process.env.SESHBOARD_DEMO_DIR ?? join(tmpdir(), 'seshboard-remote-demo');
 mkdirSync(dir, { recursive: true });
+writeFileSync(join(dir, 'review.md'), '# Review\n\nThe limit holds under load. **No changes needed.**\n');
 const keyFile = join(dir, 'identity.key');
 if (!existsSync(keyFile)) writeFileSync(keyFile, crypto.getRandomValues(new Uint8Array(32)));
 const cache = openCacheDatabase(join(dir, 'cache.sqlite'));

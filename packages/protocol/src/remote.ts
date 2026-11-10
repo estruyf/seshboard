@@ -592,6 +592,20 @@ export const remoteContract = {
     /** One changed file's unified diff, at most `REMOTE_DIFF_LINES` lines. Only files `changes.get` lists. */
     'changes.diff': { params: z.object({ sessionId: SessionId, path: z.string().min(1).max(4096) }), result: z.object({ diff: z.string(), truncated: z.boolean() }) },
     /**
+     * Reads a file the session made, to preview it: one Claude wrote with Write in this session, or one in the
+     * session's scratchpad. Any other path is NOT_FOUND, whether it exists or not. The shape of the app's `files.read`,
+     * with at most `REMOTE_FILE_TEXT_BYTES` of text and an HTML page's images left out. With `REMOTE_FEATURE_FILES`.
+     */
+    'files.read': {
+      params: z.object({ sessionId: SessionId, path: z.string().min(1).max(4096) }),
+      result: z.object({ kind: z.enum(['markdown', 'html', 'code']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+    },
+    /** An image the session made (as `files.read` decides), as base64, up to `REMOTE_FILE_IMAGE_BYTES`. With `REMOTE_FEATURE_FILES`. */
+    'files.image': {
+      params: z.object({ sessionId: SessionId, path: z.string().min(1).max(4096) }),
+      result: z.object({ mediaType: z.string(), data: z.string() }),
+    },
+    /**
      * Commits every change in the session's checkout, without a terminal. A failed commit (a hook said no) is not an
      * error: `output` has the last lines of what it printed. It never pushes.
      */

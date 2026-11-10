@@ -82,5 +82,18 @@ export const REMOTE_FEATURE_UPDATE = 'app.update';
 /** In `hello`'s `features`: `sessions.archived` answers, and `session.setFlags` reopens a session it lists. */
 export const REMOTE_FEATURE_ARCHIVED = 'sessions.archived';
 
+/**
+ * In `hello`'s `features`: `files.read` and `files.image` answer, so a file the session made (a Write of Claude's, or
+ * one in the session's scratchpad) opens on the phone or on another computer.
+ */
+export const REMOTE_FEATURE_FILES = 'files.read';
+
+/**
+ * The most text of a file `files.read` sends (1 MB) and the largest image `files.image` sends (2.5 MB, 3.4 MB as
+ * base64), so an answer stays under the channel's 4 MB line. A bigger text file comes with its size and no content.
+ */
+export const REMOTE_FILE_TEXT_BYTES = 1_000_000;
+export const REMOTE_FILE_IMAGE_BYTES = 2_500_000;
+
 /** The first version that can be updated from another computer (`REMOTE_FEATURE_UPDATE`), for "needs … or later". */
 export const REMOTE_UPDATE_SINCE = '1.3.0';

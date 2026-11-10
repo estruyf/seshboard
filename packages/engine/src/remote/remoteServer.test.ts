@@ -84,6 +84,12 @@ async function setup(options: { backoff?: Backoff; onBlocked?: () => void } = {}
       'changes.get': () => ({ branch: null, files: [], error: null }),
       'changes.diff': () => ({ diff: '', truncated: false }),
       'changes.commit': () => ({ ok: false, output: '' }),
+      'files.read': () => {
+        throw new RpcError('NOT_FOUND', 'That file is not one this session made');
+      },
+      'files.image': () => {
+        throw new RpcError('NOT_FOUND', 'That file is not one this session made');
+      },
       'projects.clonePlan': () => ({ state: 'off', repo: { owner: 'o', name: 'n', branch: null }, name: 'n', where: '' }),
       'projects.clone': () => ({}),
       'projects.cancelClone': () => ({}),
@@ -140,7 +146,7 @@ describe('Remote server', () => {
 
     const { frames, session } = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     const remote = client<RemoteContract>(frames, session!);
-    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens', 'activity.range', 'branches', 'session.markUnread', 'push.vapid', 'projects.clone', 'costs', 'limits', 'pipelines', 'session.queue.sendNow', 'session.send.attachmentsOnly', 'theme', 'sessions.startedBy', 'app.update', 'sessions.archived'], appIcon: 'graphite' });
+    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens', 'activity.range', 'branches', 'session.markUnread', 'push.vapid', 'projects.clone', 'costs', 'limits', 'pipelines', 'session.queue.sendNow', 'session.send.attachmentsOnly', 'theme', 'sessions.startedBy', 'app.update', 'sessions.archived', 'files.read'], appIcon: 'graphite' });
     expect((await remote.call('sessions.list', {})).prompts[0]!.input).toEqual({ command: "Elio's iPhone" });
     expect(env.server.list()).toMatchObject([{ deviceId, name: "Elio's iPhone" }]);
     await expect(remote.call('session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

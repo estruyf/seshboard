@@ -15,7 +15,7 @@ import { turnKey, useCatchUp } from '../../state/catchUpStore.ts';
 import { RemoteChangesPanel, type RemoteChanges } from './RemoteChangesPanel.tsx';
 import { RemoteRunCard } from './RemoteRunCard.tsx';
 import { useComputers } from '../../state/computersStore.ts';
-import { pipelineMeta, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, runIsActive, runOfParent, runOfStep, type RemotePipeline, type RemoteRunState } from '@seshboard/protocol/client';
+import { pipelineMeta, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, runIsActive, runOfParent, runOfStep, type RemotePipeline, type RemoteRunState } from '@seshboard/protocol/client';
 import { useRemoteCatchUpActions } from './useRemoteCatchUpActions.tsx';
 import type { CatchUp } from '@seshboard/protocol/client';
 import { useReadMode } from '../../state/readModeStore.ts';
@@ -67,6 +67,7 @@ import { LiveTurnParts, TurnMetaContext, TurnMetaLine, type LiveTurnInfo, type T
 import { MessageToolbar, REVEAL_IN_REPLY_ROW } from '../transcript/messageActions.tsx';
 import { readableTurns, readReply } from '../transcript/readReply.ts';
 import { ReadMode } from '../readMode/ReadMode.tsx';
+import { RemoteFileContext, type RemoteFileSession } from '../filePreview/remotePreview.ts';
 import { useRememberLayer } from '../memory/RememberLayer.tsx';
 import { appendQuote, applyEdit, editKey } from '../composer/editing.ts';
 import { RemoteToolList } from './RemoteToolList.tsx';
@@ -212,6 +213,9 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   const runState = ownRun ?? stepOf?.state ?? null;
   const runNow = useNow(!!runState && runIsActive(runState));
   const takesPipelines = computer.features.includes(REMOTE_FEATURE_PIPELINES);
+  // Paths in the conversation preview the file through that computer, which gives only files the session made.
+  const readsFiles = computer.features.includes(REMOTE_FEATURE_FILES);
+  const fileSession = useMemo<RemoteFileSession | null>(() => (readsFiles ? { computerId: id, sessionId: session.id } : null), [readsFiles, id, session.id]);
   const [pipelines, setPipelines] = useState<RemotePipeline[]>([]);
   useEffect(() => {
     if (!connected || !takesPipelines) return;
@@ -368,315 +372,317 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   const live = useMemo<LiveTurnInfo>(() => ({ turn: openTurn, waitingSince, mode: turnDetails }), [openTurn, waitingSince, turnDetails]);
 
   return (
-    <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
-      <header className={`${PANE_HEADER} ${remoteLine(pane)}`} data-scrolled={!edge.atTop || undefined} data-remote-header {...paneHeader(pane)}>
-        {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
-        {pane.leading && <SidebarToggle />}
-        <span className="flex shrink-0 @max-[400px]:hidden">
-          <ProjectIcon project={undefined} root={session.projectId} name={session.projectName} size={22} remote />
-        </span>
-        {/* With several panes this is the handle to drag the pane by (useTileDrag). */}
-        <div className={`min-w-24 flex-1 @max-[400px]:min-w-16 ${handle.className}`} data-pane-handle={handle['data-pane-handle']}>
-          <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={session.title}>
-            {session.title}
-          </h1>
-          <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
-            <span className={`flex shrink-0 items-center gap-1.5 ${TEXT_TONE[line.tone]}`} data-session-status>
-              <span className={`inline-block size-2 shrink-0 rounded-full ${DOT_TONE[line.tone]}`} aria-hidden />
-              <span className="@max-[860px]:sr-only">{line.text}</span>
-            </span>
-            <Sep />
-            <span className="min-w-0 shrink truncate @max-[860px]:hidden">{session.projectName}</span>
-            {session.branch && (
-              <>
-                <Sep />
-                <span className="flex min-w-0 items-center gap-1">
-                  <GitBranch size={11} className="shrink-0" aria-hidden />
-                  <span className="truncate">{session.branch}</span>
+    <RemoteFileContext.Provider value={fileSession}>
+      <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
+        <header className={`${PANE_HEADER} ${remoteLine(pane)}`} data-scrolled={!edge.atTop || undefined} data-remote-header {...paneHeader(pane)}>
+          {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
+          {pane.leading && <SidebarToggle />}
+          <span className="flex shrink-0 @max-[400px]:hidden">
+            <ProjectIcon project={undefined} root={session.projectId} name={session.projectName} size={22} remote />
+          </span>
+          {/* With several panes this is the handle to drag the pane by (useTileDrag). */}
+          <div className={`min-w-24 flex-1 @max-[400px]:min-w-16 ${handle.className}`} data-pane-handle={handle['data-pane-handle']}>
+            <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={session.title}>
+              {session.title}
+            </h1>
+            <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
+              <span className={`flex shrink-0 items-center gap-1.5 ${TEXT_TONE[line.tone]}`} data-session-status>
+                <span className={`inline-block size-2 shrink-0 rounded-full ${DOT_TONE[line.tone]}`} aria-hidden />
+                <span className="@max-[860px]:sr-only">{line.text}</span>
+              </span>
+              <Sep />
+              <span className="min-w-0 shrink truncate @max-[860px]:hidden">{session.projectName}</span>
+              {session.branch && (
+                <>
+                  <Sep />
+                  <span className="flex min-w-0 items-center gap-1">
+                    <GitBranch size={11} className="shrink-0" aria-hidden />
+                    <span className="truncate">{session.branch}</span>
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <ComputerChip name={name} size="header" offline={!connected} className="no-drag @max-[420px]:hidden" data-remote-chip data-tooltip={`Claude runs on ${name}. You follow it from here.`}>
+            on {name}
+          </ComputerChip>
+          {/* Changes | Terminal stay where they are in a local session, disabled: they only work on that computer. */}
+          <div className="no-drag flex shrink-0 items-center gap-0.5" role="group" aria-label="Panels">
+            <Button
+              variant="quiet"
+              size="sm"
+              iconOnly
+              icon={<FileDiff size={14} aria-hidden />}
+              aria-label={changesOpen ? 'Hide changed files' : `Show changed files on ${name}`}
+              aria-pressed={changesOpen}
+              selected={changesOpen}
+              data-tooltip={changesOpen ? 'Hide changed files' : `Show changed files on ${name}`}
+              onClick={() => showChanges(!changesOpen)}
+              data-remote-changes
+            />
+            <Button
+              variant="quiet"
+              size="sm"
+              iconOnly
+              icon={<MessageCircleQuestion size={14} aria-hidden />}
+              aria-label={ask.open ? 'Hide Ask' : `Ask about this session${ask.ready ? ', an answer is ready' : ''}`}
+              aria-pressed={ask.open}
+              selected={ask.open}
+              data-tooltip={ask.open ? 'Hide Ask' : `Ask about this session${ask.ready ? ' · An answer is ready' : ''}`}
+              onClick={() => (ask.open ? closeAsk(rowId) : void openAskThrough(connected ? askBackend : null, rowId))}
+              data-toggle-ask
+            />
+            <OnlyThere feature="Terminal" name={name}>
+              <Button variant="quiet" size="sm" iconOnly disabled icon={<SquareTerminal size={14} aria-hidden />} aria-label={onlyThereLine('Terminal', name)} data-remote-terminal />
+            </OnlyThere>
+          </div>
+          <Button
+            variant="quiet"
+            iconOnly
+            icon={<Ellipsis size={15} aria-hidden />}
+            aria-label="More"
+            aria-haspopup="menu"
+            className="no-drag shrink-0"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              openMenu({ x: rect.right - 240, y: rect.bottom + 4 });
+            }}
+            data-remote-more
+          />
+          <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip={`Close session and go Home (it keeps running on ${name})`} />
+        </header>
+        {/* A trigger there started it: which, and the link to the CI run or the issue. */}
+        <RemoteTriggerOriginBar origin={triggerOriginOf(session.trigger)} />
+
+        {/* The conversation and the message box, with Ask (or Changes) on the right. */}
+        <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+        {/* The conversation, with Find over its top right corner. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+        {!(catchUp && show) && <CatchUpPassBar rowId={rowId} active={pane.active} />}
+        {catchUp && show && <CatchUpSlot card={catchUp} show={show} cwd={null} changes={null} active={pane.active} changesOpen={changesOpen} remote={{ actions: catchUpActions, rowId }} />}
+        {find.query !== null && <FindBar query={find.query} onQuery={find.setQuery} count={find.count} current={find.current} onStep={find.step} onClose={find.close} focusNonce={find.focusNonce} />}
+        <div
+          ref={scroller}
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            setScrolledUp(!atBottom.current);
+            remember.handlers.onScroll();
+          }}
+          onContextMenu={remember.handlers.onContextMenu}
+          role="region"
+          aria-label="Conversation"
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+          data-transcript
+        >
+          <TurnMetaContext.Provider value={turnMeta}>
+          <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-3 px-6 pt-3 pb-6">
+            {error && <Notice tone="error">{error}</Notice>}
+            {!loaded && !error && (
+              <p className="p-8 text-center text-ui text-muted" role="status">
+                {connected ? 'Loading the conversation…' : `The conversation loads once ${name} is back.`}
+              </p>
+            )}
+            {hasMore && (
+              <Button variant="quiet" size="sm" className="justify-self-center" onClick={loadEarlier}>
+                Show earlier messages
+              </Button>
+            )}
+            {items.map((item) =>
+              item.kind === 'user' ? (
+                <div key={item.key} className="flex justify-end">
+                  <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-prompt-bubble data-remember-from="user" data-message-key={item.key} data-tooltip={item.at !== null ? sentLine(item.at, item.device) : undefined}>
+                    <ClampedPrompt itemKey={item.key} className="text-body whitespace-pre-wrap select-text [overflow-wrap:anywhere]">
+                      {item.text}
+                    </ClampedPrompt>
+                    {item.device && <p className="mt-1 text-meta text-faint">from {item.device}</p>}
+                    <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly />
+                  </div>
+                </div>
+              ) : item.kind === 'notice' ? (
+                <p key={item.key} className="text-center text-meta whitespace-pre-wrap text-muted [overflow-wrap:anywhere]">
+                  {item.text}
+                </p>
+              ) : item.kind === 'text' ? (
+                <div key={item.key} className="group/message relative text-body">
+                  {/* The text only, so a right-click on the row of actions under it is not a right-click on the message. */}
+                  <div data-remember-from="claude" data-message-key={item.key}>
+                    <RemoteText text={item.text} />
+                  </div>
+                  {/* As on this computer: the actions, then the turn's line under a turn's last reply, shown on hover or focus. */}
+                  <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
+                    <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly />
+                    {turnMeta.byReply.has(item.key) && (
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        icon={<BookOpen size={13} />}
+                        aria-keyshortcuts={ariaKeysFor('read.toggle')}
+                        data-tooltip={`Read this reply (${shortcutGlyphs(keysFor('read.toggle'))})`}
+                        className={`h-6 shrink-0 ${REVEAL_IN_REPLY_ROW}`}
+                        onClick={() => useReadMode.getState().openReply(rowId, turnMeta.byReply.get(item.key)!.key)}
+                        data-remote-read
+                        data-turn-key={turnMeta.byReply.get(item.key)!.key}
+                      >
+                        Read
+                      </Button>
+                    )}
+                    <TurnMetaLine itemKey={item.key} className={REVEAL_IN_REPLY_ROW} />
+                  </div>
+                </div>
+              ) : (
+                <ToolRun key={item.key} tools={item.tools} />
+              ),
+            )}
+            {streaming.kind === 'text' && streaming.text && (
+              <div className="text-body">
+                <RemoteText text={streaming.text} />
+              </div>
+            )}
+            {working && connected && (
+              <p className="flex h-6.5 items-center gap-2 text-ui text-text/85" role="status" data-computer-working>
+                <span className="flex w-4 shrink-0 justify-center">
+                  <WorkingPanel state={prompts.length ? 'waiting' : 'working'} />
                 </span>
-              </>
+                <span className="min-w-0 truncate">{prompts.length ? 'Waiting for you' : streaming.kind === 'tool' ? `Using ${streaming.text}…` : streaming.kind === 'thinking' ? 'Thinking…' : 'Working…'}</span>
+                <LiveTurnParts live={live} startedAt={null} />
+              </p>
+            )}
+            {!working && background && connected && (
+              <p className="flex h-6.5 items-center gap-2 text-ui text-ok" role="status" data-computer-background>
+                <span className="flex w-4 shrink-0 justify-center" aria-hidden>
+                  <LoaderCircle size={13} className="animate-[spin_2s_linear_infinite]" />
+                </span>
+                <span className="min-w-0 truncate">{tasks.length ? `${backgroundSummary(tasks.map((t) => t.type))} running` : 'Running in the background'}</span>
+              </p>
             )}
           </div>
-        </div>
-        <ComputerChip name={name} size="header" offline={!connected} className="no-drag @max-[420px]:hidden" data-remote-chip data-tooltip={`Claude runs on ${name}. You follow it from here.`}>
-          on {name}
-        </ComputerChip>
-        {/* Changes | Terminal stay where they are in a local session, disabled: they only work on that computer. */}
-        <div className="no-drag flex shrink-0 items-center gap-0.5" role="group" aria-label="Panels">
-          <Button
-            variant="quiet"
-            size="sm"
-            iconOnly
-            icon={<FileDiff size={14} aria-hidden />}
-            aria-label={changesOpen ? 'Hide changed files' : `Show changed files on ${name}`}
-            aria-pressed={changesOpen}
-            selected={changesOpen}
-            data-tooltip={changesOpen ? 'Hide changed files' : `Show changed files on ${name}`}
-            onClick={() => showChanges(!changesOpen)}
-            data-remote-changes
-          />
-          <Button
-            variant="quiet"
-            size="sm"
-            iconOnly
-            icon={<MessageCircleQuestion size={14} aria-hidden />}
-            aria-label={ask.open ? 'Hide Ask' : `Ask about this session${ask.ready ? ', an answer is ready' : ''}`}
-            aria-pressed={ask.open}
-            selected={ask.open}
-            data-tooltip={ask.open ? 'Hide Ask' : `Ask about this session${ask.ready ? ' · An answer is ready' : ''}`}
-            onClick={() => (ask.open ? closeAsk(rowId) : void openAskThrough(connected ? askBackend : null, rowId))}
-            data-toggle-ask
-          />
-          <OnlyThere feature="Terminal" name={name}>
-            <Button variant="quiet" size="sm" iconOnly disabled icon={<SquareTerminal size={14} aria-hidden />} aria-label={onlyThereLine('Terminal', name)} data-remote-terminal />
-          </OnlyThere>
-        </div>
-        <Button
-          variant="quiet"
-          iconOnly
-          icon={<Ellipsis size={15} aria-hidden />}
-          aria-label="More"
-          aria-haspopup="menu"
-          className="no-drag shrink-0"
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect();
-            openMenu({ x: rect.right - 240, y: rect.bottom + 4 });
-          }}
-          data-remote-more
-        />
-        <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip={`Close session and go Home (it keeps running on ${name})`} />
-      </header>
-      {/* A trigger there started it: which, and the link to the CI run or the issue. */}
-      <RemoteTriggerOriginBar origin={triggerOriginOf(session.trigger)} />
-
-      {/* The conversation and the message box, with Ask (or Changes) on the right. */}
-      <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
-      {/* The conversation, with Find over its top right corner. */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-      {!(catchUp && show) && <CatchUpPassBar rowId={rowId} active={pane.active} />}
-      {catchUp && show && <CatchUpSlot card={catchUp} show={show} cwd={null} changes={null} active={pane.active} changesOpen={changesOpen} remote={{ actions: catchUpActions, rowId }} />}
-      {find.query !== null && <FindBar query={find.query} onQuery={find.setQuery} count={find.count} current={find.current} onStep={find.step} onClose={find.close} focusNonce={find.focusNonce} />}
-      <div
-        ref={scroller}
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-          setScrolledUp(!atBottom.current);
-          remember.handlers.onScroll();
-        }}
-        onContextMenu={remember.handlers.onContextMenu}
-        role="region"
-        aria-label="Conversation"
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
-        data-transcript
-      >
-        <TurnMetaContext.Provider value={turnMeta}>
-        <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-3 px-6 pt-3 pb-6">
-          {error && <Notice tone="error">{error}</Notice>}
-          {!loaded && !error && (
-            <p className="p-8 text-center text-ui text-muted" role="status">
-              {connected ? 'Loading the conversation…' : `The conversation loads once ${name} is back.`}
-            </p>
-          )}
-          {hasMore && (
-            <Button variant="quiet" size="sm" className="justify-self-center" onClick={loadEarlier}>
-              Show earlier messages
-            </Button>
-          )}
-          {items.map((item) =>
-            item.kind === 'user' ? (
-              <div key={item.key} className="flex justify-end">
-                <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-prompt-bubble data-remember-from="user" data-message-key={item.key} data-tooltip={item.at !== null ? sentLine(item.at, item.device) : undefined}>
-                  <ClampedPrompt itemKey={item.key} className="text-body whitespace-pre-wrap select-text [overflow-wrap:anywhere]">
-                    {item.text}
-                  </ClampedPrompt>
-                  {item.device && <p className="mt-1 text-meta text-faint">from {item.device}</p>}
-                  <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly />
-                </div>
+          {/* Sticks to the bottom of the view while you read further up; takes no room at the end. */}
+          {scrolledUp && (
+            <div className="pointer-events-none sticky bottom-3 z-10 h-0">
+              <div className="absolute inset-x-0 bottom-0 flex justify-center">
+                <span className="overlay pointer-events-auto rounded-md">
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    icon={<ArrowDown size={13} aria-hidden />}
+                    onClick={() => {
+                      const el = scroller.current;
+                      if (el) el.scrollTo({ top: el.scrollHeight, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+                    }}
+                    data-jump-to-latest
+                  >
+                    {working ? 'New output below' : 'Jump to latest'}
+                  </Button>
+                </span>
               </div>
-            ) : item.kind === 'notice' ? (
-              <p key={item.key} className="text-center text-meta whitespace-pre-wrap text-muted [overflow-wrap:anywhere]">
-                {item.text}
-              </p>
-            ) : item.kind === 'text' ? (
-              <div key={item.key} className="group/message relative text-body">
-                {/* The text only, so a right-click on the row of actions under it is not a right-click on the message. */}
-                <div data-remember-from="claude" data-message-key={item.key}>
-                  <RemoteText text={item.text} />
-                </div>
-                {/* As on this computer: the actions, then the turn's line under a turn's last reply, shown on hover or focus. */}
-                <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
-                  <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly />
-                  {turnMeta.byReply.has(item.key) && (
-                    <Button
-                      variant="quiet"
-                      size="sm"
-                      icon={<BookOpen size={13} />}
-                      aria-keyshortcuts={ariaKeysFor('read.toggle')}
-                      data-tooltip={`Read this reply (${shortcutGlyphs(keysFor('read.toggle'))})`}
-                      className={`h-6 shrink-0 ${REVEAL_IN_REPLY_ROW}`}
-                      onClick={() => useReadMode.getState().openReply(rowId, turnMeta.byReply.get(item.key)!.key)}
-                      data-remote-read
-                      data-turn-key={turnMeta.byReply.get(item.key)!.key}
-                    >
-                      Read
-                    </Button>
-                  )}
-                  <TurnMetaLine itemKey={item.key} className={REVEAL_IN_REPLY_ROW} />
-                </div>
-              </div>
-            ) : (
-              <ToolRun key={item.key} tools={item.tools} />
-            ),
-          )}
-          {streaming.kind === 'text' && streaming.text && (
-            <div className="text-body">
-              <RemoteText text={streaming.text} />
             </div>
           )}
-          {working && connected && (
-            <p className="flex h-6.5 items-center gap-2 text-ui text-text/85" role="status" data-computer-working>
-              <span className="flex w-4 shrink-0 justify-center">
-                <WorkingPanel state={prompts.length ? 'waiting' : 'working'} />
-              </span>
-              <span className="min-w-0 truncate">{prompts.length ? 'Waiting for you' : streaming.kind === 'tool' ? `Using ${streaming.text}…` : streaming.kind === 'thinking' ? 'Thinking…' : 'Working…'}</span>
-              <LiveTurnParts live={live} startedAt={null} />
-            </p>
-          )}
-          {!working && background && connected && (
-            <p className="flex h-6.5 items-center gap-2 text-ui text-ok" role="status" data-computer-background>
-              <span className="flex w-4 shrink-0 justify-center" aria-hidden>
-                <LoaderCircle size={13} className="animate-[spin_2s_linear_infinite]" />
-              </span>
-              <span className="min-w-0 truncate">{tasks.length ? `${backgroundSummary(tasks.map((t) => t.type))} running` : 'Running in the background'}</span>
-            </p>
-          )}
+          {/* Room for the fade over the composer, so the Working line and a reply's end aren't under it. */}
+          <div className="composer-fade-room" aria-hidden />
+          </TurnMetaContext.Provider>
         </div>
-        {/* Sticks to the bottom of the view while you read further up; takes no room at the end. */}
-        {scrolledUp && (
-          <div className="pointer-events-none sticky bottom-3 z-10 h-0">
-            <div className="absolute inset-x-0 bottom-0 flex justify-center">
-              <span className="overlay pointer-events-auto rounded-md">
-                <Button
-                  variant="quiet"
-                  size="sm"
-                  icon={<ArrowDown size={13} aria-hidden />}
-                  onClick={() => {
-                    const el = scroller.current;
-                    if (el) el.scrollTo({ top: el.scrollHeight, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-                  }}
-                  data-jump-to-latest
-                >
-                  {working ? 'New output below' : 'Jump to latest'}
-                </Button>
-              </span>
-            </div>
-          </div>
-        )}
-        {/* Room for the fade over the composer, so the Working line and a reply's end aren't under it. */}
-        <div className="composer-fade-room" aria-hidden />
-        </TurnMetaContext.Provider>
-      </div>
-      </div>
-      {remember.overlay}
-      {readingReply && createPortal(<ReadMode sessionId={rowId} title={session.title} live={null} cwd={null} reply={readingReply} remote={{ draftKey, ask: connected ? askBackend : null }} />, document.body)}
+        </div>
+        {remember.overlay}
+        {readingReply && createPortal(<ReadMode sessionId={rowId} title={session.title} live={null} cwd={null} reply={readingReply} remote={{ draftKey, ask: connected ? askBackend : null }} />, document.body)}
 
-      <div className="relative mx-auto grid w-full max-w-4xl shrink-0 grid-cols-[minmax(0,1fr)] gap-2 px-6 pb-3 @max-[860px]:px-4" data-composer-area>
-        <div className="composer-fade absolute inset-x-0 bottom-full" aria-hidden data-composer-fade />
-        {away && (
-          <Notice
-            tone="caution"
-            data-remote-away={computer.state}
-            actions={
-              computer.state === 'offline' ? (
-                <Button size="sm" icon={<RefreshCw size={12} aria-hidden />} onClick={() => void client.call('computers.retry', { id })}>
-                  Try again
-                </Button>
-              ) : computer.state === 'unpaired' ? (
-                <Button size="sm" onClick={() => useSessions.getState().openSettings('remote')}>
-                  Pair again
-                </Button>
-              ) : undefined
-            }
-          >
-            {away}
-          </Notice>
-        )}
-        {connected && tasks.length > 0 && (
-          <div className="grid gap-1.5">
-            <Pill
-              tone="ok"
-              shrink
-              selected={tasksOpen}
-              className="justify-self-end"
-              icon={<LoaderCircle size={11} className="shrink-0 animate-[spin_2s_linear_infinite]" aria-hidden />}
-              onClick={() => useTaskStrip.getState().toggle(rowId, 'background')}
-              aria-expanded={tasksOpen}
-              aria-controls={tasksOpen ? tasksId : undefined}
-              data-tooltip={tasksOpen ? 'Hide what runs in the background' : `Show what runs in the background on ${name}`}
-              data-status-background
+        <div className="relative mx-auto grid w-full max-w-4xl shrink-0 grid-cols-[minmax(0,1fr)] gap-2 px-6 pb-3 @max-[860px]:px-4" data-composer-area>
+          <div className="composer-fade absolute inset-x-0 bottom-full" aria-hidden data-composer-fade />
+          {away && (
+            <Notice
+              tone="caution"
+              data-remote-away={computer.state}
+              actions={
+                computer.state === 'offline' ? (
+                  <Button size="sm" icon={<RefreshCw size={12} aria-hidden />} onClick={() => void client.call('computers.retry', { id })}>
+                    Try again
+                  </Button>
+                ) : computer.state === 'unpaired' ? (
+                  <Button size="sm" onClick={() => useSessions.getState().openSettings('remote')}>
+                    Pair again
+                  </Button>
+                ) : undefined
+              }
             >
-              <span className="truncate">{backgroundSummary(tasks.map((t) => t.type))}</span>
-              <ChevronDown size={11} className={`shrink-0 transition-transform ${tasksOpen ? 'rotate-180' : ''}`} aria-hidden />
-            </Pill>
-            {tasksOpen && <BackgroundTaskList id={tasksId} tasks={tasks} onStop={stopTask} />}
-          </div>
+              {away}
+            </Notice>
+          )}
+          {connected && tasks.length > 0 && (
+            <div className="grid gap-1.5">
+              <Pill
+                tone="ok"
+                shrink
+                selected={tasksOpen}
+                className="justify-self-end"
+                icon={<LoaderCircle size={11} className="shrink-0 animate-[spin_2s_linear_infinite]" aria-hidden />}
+                onClick={() => useTaskStrip.getState().toggle(rowId, 'background')}
+                aria-expanded={tasksOpen}
+                aria-controls={tasksOpen ? tasksId : undefined}
+                data-tooltip={tasksOpen ? 'Hide what runs in the background' : `Show what runs in the background on ${name}`}
+                data-status-background
+              >
+                <span className="truncate">{backgroundSummary(tasks.map((t) => t.type))}</span>
+                <ChevronDown size={11} className={`shrink-0 transition-transform ${tasksOpen ? 'rotate-180' : ''}`} aria-hidden />
+              </Pill>
+              {tasksOpen && <BackgroundTaskList id={tasksId} tasks={tasks} onStop={stopTask} />}
+            </div>
+          )}
+          {runState && <RemoteRunCard client={client} computer={computer} state={runState} now={runNow} />}
+          {connected && prompts.length > 0 && (
+            <div className="-m-1 grid max-h-[55vh] gap-2 overflow-y-auto p-1" data-permissions>
+              {prompts.map((prompt) => (
+                <ComputerPrompt key={prompt.requestId} prompt={prompt} respond={(decision) => respond(prompt, decision)} agent={agentName(session.provider)} />
+              ))}
+            </div>
+          )}
+          {connected && <RemoteLimitNotice client={client} computer={computer} sessionId={session.id} limit={limit} held={queue.length} busy={working || prompts.length > 0} />}
+          {connected && <RemoteUpNext client={client} computer={computer} sessionId={session.id} queue={queue} limited={limit?.stopped === true} />}
+          {session.readOnly ? (
+            // Its provider can't continue it there (a read-only provider): that computer's command to continue it in its CLI.
+            <ReadOnlyNotice provider={session.provider ?? null} sessionId={session.id} command={session.readOnly.resumeCommand} />
+          ) : (
+            <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
+          )}
+        </div>
+        </div>
+        {panel === 'changes' && (
+          <RemoteChangesPanel
+            client={client}
+            computer={computer}
+            sessionId={session.id}
+            changes={changes}
+            onRefresh={refreshChanges}
+            onCommitted={() => {
+              refreshChanges();
+              if (catchUp) useCatchUp.getState().markCommitted(catchUp);
+              toast(`Committed on ${name}`);
+            }}
+            onClose={() => setChangesOpen(false)}
+            width={rightWidth}
+            onWidth={setRightWidth}
+          />
         )}
-        {runState && <RemoteRunCard client={client} computer={computer} state={runState} now={runNow} />}
-        {connected && prompts.length > 0 && (
-          <div className="-m-1 grid max-h-[55vh] gap-2 overflow-y-auto p-1" data-permissions>
-            {prompts.map((prompt) => (
-              <ComputerPrompt key={prompt.requestId} prompt={prompt} respond={(decision) => respond(prompt, decision)} agent={agentName(session.provider)} />
-            ))}
-          </div>
+        {panel === 'ask' && (
+          <AskPanel
+            sessionId={rowId}
+            state={ask}
+            working={working}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            onAsk={(question) => askThrough(askBackend, rowId, question)}
+            onRetry={(threadId, item) => void retryAskThrough(askBackend, rowId, threadId, item.id, item.question).catch((e: Error) => toast(`Could not ask: ${e.message}`))}
+            onQuote={(answer) => useDrafts.getState().requestQuote(draftKey, answer)}
+            onNewThread={() => newAskThread(rowId)}
+            onPickThread={(threadId) => pickAskThread(rowId, threadId)}
+            onClose={() => closeAsk(rowId)}
+            disabledReason={connected ? null : `${name} is not connected`}
+          />
         )}
-        {connected && <RemoteLimitNotice client={client} computer={computer} sessionId={session.id} limit={limit} held={queue.length} busy={working || prompts.length > 0} />}
-        {connected && <RemoteUpNext client={client} computer={computer} sessionId={session.id} queue={queue} limited={limit?.stopped === true} />}
-        {session.readOnly ? (
-          // Its provider can't continue it there (a read-only provider): that computer's command to continue it in its CLI.
-          <ReadOnlyNotice provider={session.provider ?? null} sessionId={session.id} command={session.readOnly.resumeCommand} />
-        ) : (
-          <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
-        )}
+        </div>
+        {menu && <Menu x={menu.x} y={menu.y} entries={menu.entries} width={240} label={`Session “${session.title}”`} onClose={() => setMenu(null)} />}
       </div>
-      </div>
-      {panel === 'changes' && (
-        <RemoteChangesPanel
-          client={client}
-          computer={computer}
-          sessionId={session.id}
-          changes={changes}
-          onRefresh={refreshChanges}
-          onCommitted={() => {
-            refreshChanges();
-            if (catchUp) useCatchUp.getState().markCommitted(catchUp);
-            toast(`Committed on ${name}`);
-          }}
-          onClose={() => setChangesOpen(false)}
-          width={rightWidth}
-          onWidth={setRightWidth}
-        />
-      )}
-      {panel === 'ask' && (
-        <AskPanel
-          sessionId={rowId}
-          state={ask}
-          working={working}
-          width={rightWidth}
-          onWidth={setRightWidth}
-          onAsk={(question) => askThrough(askBackend, rowId, question)}
-          onRetry={(threadId, item) => void retryAskThrough(askBackend, rowId, threadId, item.id, item.question).catch((e: Error) => toast(`Could not ask: ${e.message}`))}
-          onQuote={(answer) => useDrafts.getState().requestQuote(draftKey, answer)}
-          onNewThread={() => newAskThread(rowId)}
-          onPickThread={(threadId) => pickAskThread(rowId, threadId)}
-          onClose={() => closeAsk(rowId)}
-          disabledReason={connected ? null : `${name} is not connected`}
-        />
-      )}
-      </div>
-      {menu && <Menu x={menu.x} y={menu.y} entries={menu.entries} width={240} label={`Session “${session.title}”`} onClose={() => setMenu(null)} />}
-    </div>
+    </RemoteFileContext.Provider>
   );
 }
 

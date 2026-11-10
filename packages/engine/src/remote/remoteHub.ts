@@ -62,6 +62,8 @@ import {
   runOfParent,
   withRunStub,
   REMOTE_DIFF_LINES,
+  REMOTE_FILE_IMAGE_BYTES,
+  REMOTE_FILE_TEXT_BYTES,
   REMOTE_DESKTOP_ORIGIN,
   type RemoteProfile,
   type TriggerSession,
@@ -70,6 +72,8 @@ import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
 import { DeviceStore, type RemoteDevice } from './devices.ts';
 import { checkAttachments, promptWithFiles, pruneRemoteFiles, saveRemoteFiles } from './remoteFiles.ts';
+import { scratchpadRoots, sessionFile } from './sessionFiles.ts';
+import { readPreview, readPreviewImage } from '../system/filePreview.ts';
 import { Pairing } from './pairing.ts';
 import { RemoteServer } from './remoteServer.ts';
 import { nextFreePort } from './freePort.ts';
@@ -177,6 +181,8 @@ export interface RemoteHubOptions {
   previewApp?: boolean;
   /** Where files sent with a message are kept (`remoteFiles.ts`). */
   filesDir: string;
+  /** The temp folders that hold Claude Code's scratchpads (`sessionFiles.ts`); tests pass their own. */
+  scratchpadRoots?(): Promise<string[]>;
   /** Remote's log on disk (`remoteLog.ts`), next to the windows' log; none without it (tests). */
   logFile?: string;
   /**
@@ -942,6 +948,12 @@ export class RemoteHub {
     if (!this.list().sessions.some((s) => s.id === sessionId)) throw new RpcError('NOT_FOUND', 'No such session');
   }
 
+  /** `path` if the session made it (`sessionFiles.ts`), else NOT_FOUND. */
+  private async sharedFile(sessionId: string, path: string): Promise<string> {
+    const roots = await (this.options.scratchpadRoots ?? scratchpadRoots)();
+    return sessionFile(path, sessionId, await this.options.readTranscript(sessionId), roots);
+  }
+
   /** The `app.update.*` methods are for Seshboard on another computer only: a phone or a browser is refused. */
   private mayUpdate(device: RemoteDevice): void {
     if (device.kind !== 'computer') throw new RpcError('FORBIDDEN', 'Only Seshboard on another computer can update this one');
@@ -1288,6 +1300,16 @@ export class RemoteHub {
         const listed = (await this.options.changes(sessionId))?.files.some((f) => f.path === path);
         if (!listed) throw new RpcError('NOT_FOUND', 'That file has no changes');
         return capDiff(await this.options.diff(sessionId, path), REMOTE_DIFF_LINES);
+      },
+      'files.read': async ({ sessionId, path }) => {
+        this.checkSession(sessionId);
+        // Only a file the session made: the path comes from the device, so it may not name anything else.
+        const file = await this.sharedFile(sessionId, path);
+        return readPreview(file, { maxBytes: REMOTE_FILE_TEXT_BYTES, inlineImages: false });
+      },
+      'files.image': async ({ sessionId, path }) => {
+        this.checkSession(sessionId);
+        return readPreviewImage(await this.sharedFile(sessionId, path), REMOTE_FILE_IMAGE_BYTES);
       },
       'push.key': () => ({ publicKey: this.vapid().publicKey }),
       'push.subscribe': ({ subscription, needsYou, finished, reminders, vapid, label }) => {
