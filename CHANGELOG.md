@@ -32,6 +32,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 - **Remote: an edit's diff stays coloured when you scroll it sideways.** On the phone, the green and red lines of an Edit in the conversation stopped at the edge of the box once you scrolled to a long line.
 - **Compacting no longer looks stuck.** The patch panel next to **Compacting the conversation** now pulses, so a long compact shows it is still going.
+- **New session's project list stays together when you search.** With the search field open and only a few projects, **Add project…** and **Quick question** now stay right under the list instead of dropping to the bottom of the window.
+- **Clone from GitHub… says what it is again.** Under New session's projects it shows its name next to **Add project…**, not only an icon. In the clone form, a long folder path is cut at its start, so the folder's name stays in view and the path no longer runs over the message box.
 - **`file:///` links in Claude's replies work.** Clicking one did nothing. It now opens the file as any file link does, as **Settings › Conversation › Clicking a file link** says. On Windows, links to a path such as `E:/repos/notes.md` work too.
 
 ## [1.3.0] - 2026-11-05
