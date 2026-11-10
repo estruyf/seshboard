@@ -38,6 +38,7 @@ export const COMPUTER_NAME_MAX = 60;
  */
 export const COMPUTER_METHODS = [
   'sessions.list',
+  'sessions.archived',
   'projects.list',
   'projects.branches',
   'transcript.get',

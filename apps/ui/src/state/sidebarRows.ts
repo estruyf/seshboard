@@ -74,14 +74,14 @@ export function rowListing(row: SessionRowData): ListingState {
  * then the days count from there.
  */
 export function isActive(row: SessionRowData, now: number, archiveAfterDays: number): boolean {
-  // Another computer only lists what its own sidebar does, outside Archived. A pipeline's run row follows the same rule
-  // as a session, with its tree's newest activity (`sidebarForest`).
-  if (row.remote) return true;
+  // Another computer lists what its own sidebar does outside Done, and its Done apart (`remote.done`). A pipeline's run
+  // row follows the same rule as a session, with its tree's newest activity (`sidebarForest`).
+  if (row.remote) return !row.remote.done;
   return listedInMainList(rowListing(row), now, archiveAfterDays);
 }
 
 /** When an archived row went to Archived (by hand, or its last activity plus the archive days); null while it is listed. */
-export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays: number): number | null => archivedSinceOf(rowListing(row), now, archiveAfterDays);
+export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays: number): number | null => (row.remote ? (row.remote.done ? row.archivedAt : null) : archivedSinceOf(rowListing(row), now, archiveAfterDays));
 
 /**
  * Why a session is in Done, for its row: you marked it done, or it was inactive for the days set in Settings › Sessions.
@@ -93,8 +93,10 @@ const DAY = 24 * 60 * 60 * 1000;
 
 /** The reason a row is in Done, or null while it is listed. */
 export function doneReason(row: SessionRowData, now: number, archiveAfterDays: number): DoneReason | null {
+  // Another computer says why: marked done there, or inactive for its own archive days.
+  if (row.remote) return row.remote.done ? (row.remote.done.inactive ? { kind: 'inactive', days: Math.max(1, Math.floor((now - row.updatedAt) / DAY)) } : { kind: 'done' }) : null;
   const listing = rowListing(row);
-  if (row.remote || archivedSinceOf(listing, now, archiveAfterDays) === null) return null;
+  if (archivedSinceOf(listing, now, archiveAfterDays) === null) return null;
   // The same test as the archive rule: marked done after its last activity, or while it was still working.
   if (listing.archivedAt !== null && (listing.archivedAt >= listing.updatedAt || listing.working)) {
     // Moved by its merged pull request (the engine, `mergedDone.ts`): the number says which.

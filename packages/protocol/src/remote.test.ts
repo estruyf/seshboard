@@ -57,6 +57,7 @@ describe('the remote contracts', () => {
       'session.setModel',
       'session.setPermissionMode',
       'session.stopTask',
+      'sessions.archived',
       'sessions.list',
       'theme.get',
       'transcript.get',

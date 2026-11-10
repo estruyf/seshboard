@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ComputersStatus, RemoteSessions } from '@seshboard/protocol/client';
+import type { ComputersStatus, RemoteArchivedSession, RemoteSessions } from '@seshboard/protocol/client';
 import type { RowAsk } from '../components/computers/computerUpdate.ts';
 import type { ComputerScope } from './remoteRows.ts';
 import { parseRemoteRowId, remoteRowId, type RemoteRef } from './remoteSelection.ts';
@@ -51,6 +51,8 @@ interface ComputersState {
   status: ComputersStatus | null;
   /** Each computer's last session list, by computer id. An offline computer keeps its last one. */
   lists: ReadonlyMap<string, RemoteSessions>;
+  /** Each computer's sessions in Done (`sessions.archived`), read while the sidebar's Done is open (`useRemoteDone`). */
+  done: ReadonlyMap<string, readonly RemoteArchivedSession[]>;
   /** The computer whose page the main area shows (view `remote`): no sessions there, or pair it again. */
   pageId: string | null;
   /** A session New session just started there, until its list has it: its pane says it is starting. */
@@ -73,6 +75,7 @@ interface ComputersState {
   updatedTo: ReadonlyMap<string, string>;
   setStatus(status: ComputersStatus): void;
   setList(computerId: string, list: RemoteSessions): void;
+  setDone(computerId: string, sessions: readonly RemoteArchivedSession[] | null): void;
   /**
    * Opens a session on another computer in a pane, as a local one opens: in the active pane, or with `beside` in a
    * new one next to it. `starting` for one New session just started there.
@@ -101,6 +104,7 @@ const withEntry = <V>(map: ReadonlyMap<string, V>, key: string, value: V | null)
 export const useComputers = create<ComputersState>()((set) => ({
   status: null,
   lists: new Map(),
+  done: new Map(),
   pageId: null,
   starting: null,
   hidden: readHidden(),
@@ -114,6 +118,7 @@ export const useComputers = create<ComputersState>()((set) => ({
     set((s) => ({
       status,
       lists: [...s.lists.keys()].every((id) => ids.has(id)) ? s.lists : new Map([...s.lists].filter(([id]) => ids.has(id))),
+      done: [...s.done.keys()].every((id) => ids.has(id)) ? s.done : new Map([...s.done].filter(([id]) => ids.has(id))),
       ...(s.pageId && !ids.has(s.pageId) ? { pageId: null } : {}),
     }));
     const sessions = useSessions.getState();
@@ -124,6 +129,7 @@ export const useComputers = create<ComputersState>()((set) => ({
     if (gone.length) sessions.closeSessions(gone);
   },
   setList: (computerId, list) => set((s) => ({ lists: new Map(s.lists).set(computerId, list) })),
+  setDone: (computerId, sessions) => set((s) => ({ done: withEntry(s.done, computerId, sessions) })),
   openSession: (ref, options) => {
     const id = remoteRowId(ref);
     set({ pageId: null, starting: options?.starting ? { computerId: ref.computerId, sessionId: ref.sessionId } : null });

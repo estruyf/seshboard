@@ -176,8 +176,8 @@ const summaries = (): SessionSummary[] =>
         fileSize: 1000,
         tag: null,
         pinned: false,
-        archivedAt: archived.has(s.id) ? now : null,
-        restoredAt: null,
+        archivedAt: archived.get(s.id) ?? null,
+        restoredAt: restored.get(s.id) ?? null,
         viewedAt: null,
         unread: !read.has(s.id) && (s.unread ?? false),
         inApp: true,
@@ -246,7 +246,13 @@ let permissions: PermissionRequest[] = [
   }),
 ];
 
-const archived = new Set<string>();
+/** Archived sessions and when; reopened ones and when, so they stay listed however old (as the engine's flags). */
+const archived = new Map<string, number>();
+const restored = new Map<string, number>();
+const setArchived = (id: string, on: boolean) => {
+  if (on) archived.set(id, Date.now());
+  else if (archived.delete(id)) restored.set(id, Date.now());
+};
 const models = new Map<string, string | null>();
 const modes = new Map<string, string>();
 const efforts = new Map<string, SessionHostInfo['effort']>();
@@ -595,8 +601,7 @@ const demoPipelines: RemotePipelines = {
     const state = runById(runId);
     if (on && (state.run.status === 'running' || state.run.status === 'waiting')) throw new Error('The run is still going. Stop it first.');
     const tree = [state.run.parentSessionId, ...state.steps.map((s) => s.sessionId)].filter((id): id is string => Boolean(id));
-    for (const id of tree) if (on) archived.add(id);
-    else archived.delete(id);
+    for (const id of tree) setArchived(id, on);
     if (on) state.run.archivedAt = Date.now();
     else state.run.restoredAt = Date.now();
     runChanged(state);
@@ -656,7 +661,7 @@ const hub: RemoteHub = new RemoteHub({
   filesDir: join(dir, 'remote-files'),
   computerName: () => process.env.SESHBOARD_DEMO_NAME ?? "Elio's iMac",
   identity: async () => new Uint8Array(readFileSync(keyFile)),
-  sources: () => ({ summaries: summaries().filter((s) => !archived.has(s.id)), live: [], hosts: hosts(), permissions }),
+  sources: () => ({ summaries: summaries(), live: [], hosts: hosts(), permissions }),
   archiveAfterDays: () => 30,
   scope: () => 'switchboard',
   projects: () => PROJECTS.map((p, order) => ({ ...p, exists: true, added: true, order, defaults: { ...NO_DEFAULTS, branch: null } })),
@@ -738,8 +743,7 @@ const hub: RemoteHub = new RemoteHub({
   markRead: (sessionId) => void read.add(sessionId),
   markUnread: (sessionId) => void read.delete(sessionId),
   setFlags: (sessionId, flags) => {
-    if (flags.archived) archived.add(sessionId);
-    else if (flags.archived === false) archived.delete(sessionId);
+    if (flags.archived !== undefined) setArchived(sessionId, flags.archived);
   },
   setModel: async (sessionId, model) => void models.set(sessionId, model),
   setEffort: async (sessionId, effort) => void efforts.set(sessionId, effort),

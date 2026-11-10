@@ -54,13 +54,13 @@ async function onPhone(run: (js: (code: string) => Promise<unknown>, win: Browse
   const win = await remotePhone();
   if (typeof win === 'string') return win;
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  await js("document.querySelector('[data-remote-drawer-close]')?.click(); document.querySelector('[data-remote-settings-back]')?.click()");
+  await js("document.querySelector('[data-remote-drawer-close]')?.click(); document.querySelector('[data-remote-settings-back]')?.click(); document.querySelector('[data-remote-done-back]')?.click()");
   // A session, a run or New session (with a sheet over it, maybe): the list again, from a reload on its history entry.
   if (await js("Boolean(document.querySelector('[data-remote-session-view], [data-remote-run-view], [data-remote-new-session]'))")) {
     await js("history.replaceState({ kind: 'list' }, ''); location.reload()");
     if (!(await waitInPage(win, "document.querySelector('[data-remote-computer-title][data-remote-connection=\"connected\"]')", 15_000))) return 'the phone did not come back to Home';
   }
-  if (!(await waitInPage(win, "document.querySelector('[data-remote-menu-button]') && !document.querySelector('[data-remote-drawer]') && !document.querySelector('[data-remote-settings]')", 5_000))) return 'the phone is not back on Home';
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-menu-button]') && !document.querySelector('[data-remote-drawer]') && !document.querySelector('[data-remote-settings]') && !document.querySelector('[data-remote-done]')", 5_000))) return 'the phone is not back on Home';
   return run(js, win);
 }
 
@@ -138,13 +138,42 @@ export function runPhoneMoreStep(): Promise<string> {
     await js("document.querySelector('[data-remote-more]').click()");
     if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remote-menu-item=\"settings\"]')", 3_000))) return '⋯ has no All settings';
     const items = (await js("[...document.querySelectorAll('[role=menu] [data-remote-menu-item]')].map((el) => el.dataset.remoteMenuItem).join(',')")) as string;
-    if (items !== 'theme,notifications,refresh,settings') return `⋯ has ${items}`;
+    if (items !== 'theme,notifications,refresh,done,settings') return `⋯ has ${items}`;
     if ((await js("document.querySelectorAll('[role=menu] [data-remote-menu-item=\"theme\"] [role=menuitemradio]').length")) !== 3) return 'Theme in ⋯ has no Auto, Dark and Light';
     await js("document.querySelector('[data-remote-menu-item=\"settings\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-remote-settings]')", 3_000))) return 'All settings did not open Settings';
     await js('history.back()');
     if (!(await waitInPage(win, "!document.querySelector('[data-remote-settings]')", 3_000))) return 'Back did not leave Settings';
     return `ok: ⋯ has ${items.replaceAll(',', ', ')}; All settings opened Settings`;
+  });
+}
+
+/**
+ * Done from a row's menu takes a session out of the list ("Upgrade to Node 24", which no other step uses); ⋯ › Done
+ * sessions lists it, and Reopen puts it back in the list and off the page.
+ */
+export function runPhoneDoneStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const title = 'Upgrade to Node 24';
+    const row = `[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((r) => r.innerText.includes(${JSON.stringify(title)}))`;
+    if (!(await waitInPage(win, `Boolean(${row})`, 5_000))) return `"${title}" is not in the list`;
+    await js(`${row}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 300 }))`);
+    const done = "[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((item) => item.innerText.trim() === 'Done')";
+    if (!(await waitInPage(win, `Boolean(${done})`, 3_000))) return "the row's menu has no Done";
+    await js(`${done}.click()`);
+    if (!(await waitInPage(win, `!${row}`, 5_000))) return `Done did not take "${title}" out of the list`;
+    await js("document.querySelector('[data-remote-more]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remote-menu-item=\"done\"]')", 3_000))) return '⋯ has no Done sessions';
+    await js("document.querySelector('[data-remote-menu-item=\"done\"]').click()");
+    const listed = `[...document.querySelectorAll('[data-remote-done-session]')].find((r) => r.innerText.includes(${JSON.stringify(title)}))`;
+    if (!(await waitInPage(win, `Boolean(${listed})`, 5_000))) return `the Done page does not list "${title}": ${(await js("document.querySelector('[data-remote-done]')?.innerText.replace(/\\s+/g, ' ').slice(0, 160)")) as string}`;
+    const line = (await js(`${listed}.innerText.replace(/\\s+/g, ' ')`)) as string;
+    if (!line.includes('done just now')) return `its row says "${line}"`;
+    await js(`${listed}.querySelector('[data-remote-reopen]').click()`);
+    if (!(await waitInPage(win, `!${listed}`, 5_000))) return 'Reopen left it on the Done page';
+    await js('history.back()');
+    if (!(await waitInPage(win, `Boolean(${row})`, 5_000))) return `Reopen did not put "${title}" back in the list`;
+    return `ok: Done took "${title}" out of the list, the Done page listed it ("${line}"), Reopen put it back`;
   });
 }
 

@@ -619,19 +619,38 @@ describe('Remote hub', () => {
     await remote.call('session.setFlags', { sessionId: SESSION, archived: true });
     archived.add(SESSION);
     expect((await remote.call('sessions.list', {})).sessions.map((s) => s.id)).not.toContain(SESSION);
-    // Gone from the list: nothing but Undo may touch it.
+    // Gone from the list: nothing but Undo and Reopen may touch it.
     await expect(remote.call('session.markRead', { sessionId: SESSION })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(remote.call('session.setFlags', { sessionId: SESSION, archived: false, pinned: true })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    // Only the phone that archived it: another paired phone may not bring it back.
-    const other = await pair(hub, port);
-    await expect(other.remote.call('session.setFlags', { sessionId: SESSION, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
     expect(calls.at(-1)).toBe(`flags ${SESSION} {"archived":false}`);
-    // Once only.
-    await expect(remote.call('session.setFlags', { sessionId: SESSION, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    // A session the phone never archived stays out of reach.
+    // A session out of the sidebar's scope stays out of reach, in Done or not.
     archived.add(HIDDEN);
     await expect(remote.call('session.setFlags', { sessionId: HIDDEN, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('lists the sessions in Done and reopens one, from any paired phone, but reads none of them', async () => {
+    const archived = new Set([SESSION, HIDDEN]);
+    const { hub, port, on, calls } = await setup({ archived });
+    await on();
+    const { remote } = await pair(hub, port);
+    // Only what the sidebar's scope has (HIDDEN wasn't started in Seshboard), and no folder.
+    const done = (await remote.call('sessions.archived', {})).sessions;
+    expect(done).toEqual([expect.objectContaining({ id: SESSION, title: 'Fix the login form', projectId: projectIdOf(ROOT), projectName: 'Web', branch: 'main', inactive: false, steps: 0 })]);
+    expect(JSON.stringify(done)).not.toContain(ROOT);
+    // In Done, it can't be read, only reopened.
+    await expect(remote.call('transcript.get', { sessionId: SESSION, limit: 10 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
+    expect(calls.at(-1)).toBe(`flags ${SESSION} {"archived":false}`);
+  });
+
+  it('reopens a session a pipeline ran from with its run\'s tree', async () => {
+    const { hub, port, on, calls } = await setup({ archived: new Set([SESSION]), runs: [runOf('run-1', SESSION)] });
+    await on();
+    const { remote } = await pair(hub, port);
+    expect((await remote.call('sessions.archived', {})).sessions).toEqual([expect.objectContaining({ id: SESSION, steps: 1 })]);
+    await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
+    expect(calls.at(-1)).toBe('archive run-1 false');
   });
 
   it('stops following a session once it leaves the list, so nothing more of it reaches the phone', async () => {

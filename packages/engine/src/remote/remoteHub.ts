@@ -28,6 +28,7 @@ import {
   type RemoteSessionOptions,
   type RemoteSession,
   type RemoteSessions,
+  type RemoteArchivedSession,
   type RemoteStatus,
   type RemoteContract,
   type SendMode,
@@ -78,7 +79,7 @@ import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type 
 import { IdleUpdate } from './idleUpdate.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
 import { SessionOrigins } from './sessionOrigins.ts';
-import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, NO_GLOBAL_MODEL, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
+import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteArchived, remoteSessions, NO_GLOBAL_MODEL, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The app's theme, kept so a phone that connects before a window opened gets it too. */
@@ -846,6 +847,23 @@ export class RemoteHub {
     return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
   }
 
+  /** The sessions in Done, which a phone may list and reopen (nothing else). */
+  private archived(): RemoteArchivedSession[] {
+    const projectNames = new Map(this.options.projects().map((p) => [p.root, p.name]));
+    const runs = this.options.pipelines?.runs();
+    return remoteArchived(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, ...(runs ? { runs } : {}) });
+  }
+
+  /**
+   * Reopens a session in Done, as Reopen on the computer: a session a pipeline ran from comes back with its runs'
+   * sessions (the run's tree), any other on its own.
+   */
+  private async reopen(sessionId: string): Promise<void> {
+    const run = this.options.pipelines?.runs().find((r) => r.run.parentSessionId === sessionId);
+    if (run) await this.requirePipelines().archive(run.run.id, false);
+    else this.options.setFlags(sessionId, { archived: false });
+  }
+
   private projectName(root: string): string {
     return this.options.projects().find((p) => p.root === root)?.name ?? lastSegment(root);
   }
@@ -951,6 +969,7 @@ export class RemoteHub {
     };
     return {
       'sessions.list': () => this.list(),
+      'sessions.archived': () => ({ sessions: this.archived() }),
       'projects.list': () => ({ projects: this.yourProjects().map((p) => ({ id: projectIdOf(p.root), name: p.name })) }),
       'projects.branches': ({ projectId }) => this.options.branches(this.project(projectId).root),
       'transcript.get': async ({ sessionId, before, after, limit }) => {
@@ -1136,8 +1155,15 @@ export class RemoteHub {
         this.sessionsChanged();
         return {};
       },
-      'session.setFlags': ({ sessionId, pinned, archived }) => {
+      'session.setFlags': async ({ sessionId, pinned, archived }) => {
         const undo = archived === false && pinned === undefined && this.mayUndoArchive(sessionId, device);
+        // Reopen from Done: the only thing a phone may do with a session that left its list.
+        if (!undo && archived === false && pinned === undefined && this.archived().some((s) => s.id === sessionId)) {
+          this.archivedFromPhone.delete(sessionId);
+          await this.reopen(sessionId);
+          this.sessionsChanged();
+          return {};
+        }
         if (!undo) this.checkSession(sessionId);
         if (archived === true) this.archivedFromPhone.set(sessionId, { deviceId: device.id, at: Date.now() });
         else if (archived === false) this.archivedFromPhone.delete(sessionId);

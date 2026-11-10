@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Bell, Moon, MoreHorizontal, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings } from 'lucide-react';
-import { checkRemoteSessions, type RemoteContract, type RpcClient } from '@seshboard/protocol/remote-client';
+import { Archive, Bell, Moon, MoreHorizontal, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings } from 'lucide-react';
+import { checkRemoteSessions, REMOTE_FEATURE_ARCHIVED, type RemoteContract, type RpcClient } from '@seshboard/protocol/remote-client';
 import { keepDisconnected, nameOf, needsYouOf, pushComputers, type Computer } from '../lib/computers.ts';
 import { fromKey, listKey, mergeSessions, mergeUsage, runOnDefault } from '../lib/everywhere.ts';
 import { setFaviconDot } from '../lib/favicon.ts';
@@ -27,6 +27,7 @@ import { SessionView } from './SessionView.tsx';
 import { ComputerChip, ComputerRow, ComputerTitle, ConnectionBanner, OfflineHelp, UnpairedBanner, UnreadableBanner, type ComputerProps } from './ConnectionStatus.tsx';
 import { connectionOf } from './connectionOf.ts';
 import { afterOverlays } from './overlayHistory.ts';
+import { DoneView, type DoneComputer } from './DoneView.tsx';
 import { DrawerButton, SessionsDrawer, useEdgeSwipe } from './SessionsDrawer.tsx';
 import { AnchoredMenu, type MenuItem } from './Menu.tsx';
 import { SettingsView } from './SettingsView.tsx';
@@ -42,9 +43,10 @@ import { Button, Message, RoundButton } from './ui.tsx';
 
 /**
  * `list` and `home` are the roots of a wide screen, both the view next to the sidebar. A phone has one: the first
- * screen (the sessions, where the app opens), and a `home` entry shows it too. `settings` is the Settings page.
+ * screen (the sessions, where the app opens), and a `home` entry shows it too. `settings` is the Settings page, `done`
+ * the sessions in Done.
  */
-export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean; computer?: string } | { kind: 'new'; projectId?: string; computer?: string } | { kind: 'settings' };
+export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean; computer?: string } | { kind: 'new'; projectId?: string; computer?: string } | { kind: 'settings' } | { kind: 'done' };
 
 /** An answer from a notification's Deny or Allow (public/sw.js), sent once connected if the prompt is still open. */
 export interface NotificationAnswer {
@@ -287,17 +289,27 @@ export function Connected({
     if (wide) swap({ kind: 'settings' });
     else go({ kind: 'settings' });
   };
+  /** The Done page, as Settings: a step of its own on a phone, in the main view's place on a wide screen. */
+  const openDone = () => {
+    if (route.kind === 'done') return;
+    if (wide) swap({ kind: 'done' });
+    else go({ kind: 'done' });
+  };
+  /** Some connected computer can list its sessions in Done (`REMOTE_FEATURE_ARCHIVED`). */
+  const doneHere = computers.some((c) => clientOf(c) && featuresOf(c).includes(REMOTE_FEATURE_ARCHIVED));
   /** Another computer is the one on screen: what is open on this one goes, back to Home. */
   const switchTo = (target: string) => {
     onFocus(target);
     if (routeComputer && routeComputer !== target) goHome();
   };
+  const doneItem: MenuItem[] = doneHere ? [{ label: 'Done sessions', onSelect: openDone, hook: 'done' }] : [];
   /** The wide sidebar's `⋯`: the sheets, Settings and pairing. A phone has Home's `⋯` and the Settings page instead. */
   const menu: MenuItem[] = multi
-    ? [{ label: 'Notifications', onSelect: () => setNotifications(true) }, { label: 'Theme', onSelect: () => setThemeOpen(true) }, { label: 'Settings', onSelect: openSettings, hook: 'settings' }, { kind: 'separator' }, { label: 'Pair another computer…', onSelect: onAdd }]
+    ? [{ label: 'Notifications', onSelect: () => setNotifications(true) }, { label: 'Theme', onSelect: () => setThemeOpen(true) }, ...doneItem, { label: 'Settings', onSelect: openSettings, hook: 'settings' }, { kind: 'separator' }, { label: 'Pair another computer…', onSelect: onAdd }]
     : [
         { label: 'Notifications', onSelect: () => setNotifications(true) },
         { label: 'Theme', onSelect: () => setThemeOpen(true) },
+        ...doneItem,
         { label: 'Settings', onSelect: openSettings, hook: 'settings' },
         { kind: 'separator' },
         { kind: 'note', label: `Paired as ${paired.name}` },
@@ -318,7 +330,7 @@ export function Connected({
     );
   };
   /** Home's `⋯` on a phone (`lib/more.ts`). */
-  const moreMenu: MenuItem[] = moreItems({ notifications: notifyState, archived: false }).flatMap((item): MenuItem[] => {
+  const moreMenu: MenuItem[] = moreItems({ notifications: notifyState, archived: doneHere }).flatMap((item): MenuItem[] => {
     switch (item.id) {
       case 'theme':
         return [{ kind: 'segmented', label: 'Theme', icon: <Moon aria-hidden />, options: SHORT_MODES, value: themeMode, onChange: (value) => chooseMode(value as ModeChoice), hook: 'theme' }];
@@ -326,9 +338,8 @@ export function Connected({
         return [{ label: 'Notifications', icon: <Bell aria-hidden />, hint: item.state, onSelect: toggleNotifications, hook: 'notifications' }];
       case 'refresh':
         return [{ label: 'Refresh', icon: <RefreshCw aria-hidden />, onSelect: () => void pullRefresh().catch(() => toast("The list didn't come.", { tone: 'error' })), hook: 'refresh' }];
-      // The list can't show archived sessions yet (`archived: false` above): they leave the phone's list.
       case 'archived':
-        return [];
+        return [{ label: 'Done sessions', icon: <Archive aria-hidden />, onSelect: openDone, hook: 'done' }];
       case 'settings':
         return [{ label: 'All settings', icon: <Settings aria-hidden />, onSelect: openSettings, hook: 'settings' }];
       case 'separator':
@@ -415,6 +426,7 @@ export function Connected({
   /** The drawer's Home row: Home on a wide screen, the first screen on a phone (its only home). */
   const pickHome = () => fromDrawer(() => swap(homeRoute(wide)));
   const pickSettings = () => fromDrawer(openSettings);
+  const pickDone = () => fromDrawer(openDone);
   /**
    * The drawer's New session row: in place of the open session or page, as a picked session is, so Back goes to the
    * list; from the list or Home it is a step of its own. Already on New session, the drawer only closes.
@@ -505,6 +517,7 @@ export function Connected({
     ...(currentSupport() === 'ready' && !loadPrefs().on ? [{ id: 'notify', title: 'Turn on notifications' }] : []),
     ...(unread.length ? [{ id: 'read-all', title: 'Mark all as read' }] : []),
     { id: 'theme', title: 'Theme' },
+    ...(doneHere ? [{ id: 'done', title: 'Done sessions' }] : []),
     { id: 'settings', title: 'Settings' },
     { id: 'add', title: 'Pair another computer' },
     ...(multi ? [] : [{ id: 'forget', title: 'Forget this computer' }]),
@@ -536,6 +549,8 @@ export function Connected({
         return;
       case 'action:theme':
         return setThemeOpen(true);
+      case 'action:done':
+        return openDone();
       case 'action:settings':
         return openSettings();
       case 'action:add':
@@ -571,6 +586,7 @@ export function Connected({
   const viewLead = wide && drawerMode ? drawerButton : null;
   const started = (on: string, sessionId: string) => swap({ kind: 'session', sessionId, computer: on });
   const runOn: RunOnComputer[] = computers.map((c) => ({ id: c.id, name: nameOf(c), state: c.state, client: clientOf(c), features: featuresOf(c), sessions: c.sessions.sessions }));
+  const doneComputers: DoneComputer[] = computers.map((c) => ({ id: c.id, name: nameOf(c), client: clientOf(c), features: featuresOf(c), list: c.sessions }));
   // A pipeline run (#179) has the session route too: a run row's id (from the list or a notification) opens the run.
   const openRun = route.kind === 'session' && sessions.runs?.some((r) => r.run.id === route.sessionId);
   const main =
@@ -620,6 +636,8 @@ export function Connected({
         onBack={wide ? () => root('home') : back}
         banner={wide ? null : banner}
       />
+    ) : route.kind === 'done' ? (
+      <DoneView computers={doneComputers} labels={multi} onOpen={(on, sessionId) => openSession(on, sessionId)} onBack={wide ? () => root('home') : back} banner={wide ? null : listTopBanner} />
     ) : route.kind === 'new' ? (
       <NewSession
         key={route.projectId ?? ''}
@@ -700,6 +718,18 @@ export function Connected({
         onClose={closeDrawer}
         footer={
           <div className="safe-bottom flex shrink-0 flex-col gap-0.5 border-t border-border pt-1">
+            {doneHere && (
+              <button
+                type="button"
+                onClick={pickDone}
+                aria-current={route.kind === 'done' ? 'page' : undefined}
+                className="mx-2 flex min-h-[46px] items-center gap-2.5 rounded-lg px-3 text-left hover:bg-border/45 active:bg-selected aria-[current=page]:bg-accent/15 aria-[current=page]:font-semibold"
+                data-remote-drawer-done
+              >
+                <Archive className="size-4 shrink-0 text-muted" aria-hidden />
+                <span className="text-body">Done sessions</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={pickSettings}
@@ -783,7 +813,7 @@ const NOWHERE: ListComputer = { client: null, features: [], name: '', online: fa
 function routeOf(state: unknown, computers: readonly Computer[]): Route {
   const route = state as Route | null;
   if (route && (route.kind === 'session' || route.kind === 'new') && route.computer && !computers.some((c) => c.id === route.computer)) return { kind: 'list' };
-  return route && (route.kind === 'session' || route.kind === 'new' || route.kind === 'home' || route.kind === 'settings') ? route : { kind: 'list' };
+  return route && (route.kind === 'session' || route.kind === 'new' || route.kind === 'home' || route.kind === 'settings' || route.kind === 'done') ? route : { kind: 'list' };
 }
 
 /** The sidebar folded away where it can (an iPad in portrait), kept in this browser. */

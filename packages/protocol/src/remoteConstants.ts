@@ -79,5 +79,8 @@ export const REMOTE_FEATURE_STARTED_BY = 'sessions.startedBy';
  */
 export const REMOTE_FEATURE_UPDATE = 'app.update';
 
+/** In `hello`'s `features`: `sessions.archived` answers, and `session.setFlags` reopens a session it lists. */
+export const REMOTE_FEATURE_ARCHIVED = 'sessions.archived';
+
 /** The first version that can be updated from another computer (`REMOTE_FEATURE_UPDATE`), for "needs … or later". */
 export const REMOTE_UPDATE_SINCE = '1.3.0';

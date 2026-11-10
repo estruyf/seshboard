@@ -26,7 +26,7 @@ import { reminderWhen } from '../../state/reminders.ts';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
-import { archiveRemote, remoteSessionEntries, setRemoteFlags, stopRemote } from '../computers/remoteActions.ts';
+import { archiveRemote, remoteSessionEntries, reopenRemote, setRemoteFlags, stopRemote } from '../computers/remoteActions.ts';
 import { stopRun, usePipelines } from '../../state/pipelinesStore.ts';
 import { isRunRowId } from '../../state/runSelection.ts';
 import { archiveTreeLabel, runGoesOn, runRowMenu, treeRunsOf, unarchiveTreeLabel } from '../../state/runTree.ts';
@@ -57,6 +57,8 @@ export interface SessionMenus {
    * then shows a toast with Undo. Stop has no toast.
    */
   quickAction(method: QuickActionMethod, data: SessionRowData): void;
+  /** Opens a row in Done on another computer: reopens it there first, since that computer doesn't let it be read in Done. */
+  openRemoteDone(data: SessionRowData, options?: { beside?: boolean }): void;
   /** Asks before moving sessions to the Trash. */
   requestDelete(targets: SessionRowData[]): void;
   requestRename(data: SessionRowData): void;
@@ -211,10 +213,10 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const openSessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
     // A session on another computer: only what its remote contract offers (no rename, delete or folder here).
     if (data.remote) {
-      const { computerId, computerName, offline, sessionId, projectId, projectName, runRow, treeRunId } = data.remote;
+      const { computerId, computerName, offline, sessionId, projectId, projectName, runRow, treeRunId, done } = data.remote;
       const features = useComputers.getState().status?.computers.find((c) => c.id === computerId)?.features ?? [];
       const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const), features };
-      const session = { id: sessionId, title: data.title, pinned: data.pinned, unread: data.unread, projectId, projectName, runRow: runRow ?? false, treeRunId: treeRunId ?? null };
+      const session = { id: sessionId, title: data.title, pinned: data.pinned, unread: data.unread, projectId, projectName, runRow: runRow ?? false, treeRunId: treeRunId ?? null, done: done ?? null };
       setMenu({ ...at, label: `${runRow ? 'Pipeline run' : 'Session'} “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
       return;
     }
@@ -354,7 +356,12 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     </>
   );
 
-  return { showMenu: setMenu, openSessionMenu, flagAll, middleClick, quickAction, requestDelete: setDeleting, requestRename: setRenaming, overlays };
+  const openRemoteDone = (data: SessionRowData, options: { beside?: boolean } = {}) => {
+    if (!data.remote || data.remote.offline) return;
+    void reopenRemote(client, data.remote, { open: options }).then((reopened) => reopened && toast(`Reopened on ${data.remote!.computerName}`, { body: data.title, data: { 'data-remote-reopened-toast': true } }));
+  };
+
+  return { showMenu: setMenu, openSessionMenu, flagAll, middleClick, quickAction, openRemoteDone, requestDelete: setDeleting, requestRename: setRenaming, overlays };
 }
 
 /** The one agent of the sessions to delete (Claude, GitHub Copilot), or null for a mix. */
