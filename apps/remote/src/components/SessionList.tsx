@@ -228,6 +228,17 @@ export function SessionList({
       .then(() => toast('Marked as read', { detail: session.title, ...(features.includes(REMOTE_FEATURE_MARK_UNREAD) ? { action: { label: 'Undo', run: () => void client.call('session.markUnread', { sessionId }).catch(failed) } } : {}) }))
       .catch(failed);
   };
+  /** Mark as unread, to read it again later. With Undo, which marks it read. */
+  const markUnread = (session: ListedSession) => {
+    const client = clientOf(session);
+    const sessionId = session.sessionId;
+    void client
+      ?.call('session.markUnread', { sessionId })
+      .then(() => toast('Marked as unread', { detail: session.title, action: { label: 'Undo', run: () => void client.call('session.markRead', { sessionId }).catch(failed) } }))
+      .catch(failed);
+  };
+  /** A computer that can mark a session unread again (`REMOTE_FEATURE_MARK_UNREAD`). */
+  const canMarkUnread = (session: ListedSession) => Boolean(clientOf(session)) && computerOf(session.computer).features.includes(REMOTE_FEATURE_MARK_UNREAD);
   /** The run a row's Archive takes along: a run row's own, or the one started from that session (its tree goes as one). */
   const treeRun = (session: ListedSession): ListedRun | null => (computerOf(session.computer).features.includes(REMOTE_FEATURE_PIPELINES) ? runOfRow(sessions.runs, session) : null);
   /** Archive, with Undo. A run's parent or run row goes with its sub-sessions, as on the computer. */
@@ -250,10 +261,14 @@ export function SessionList({
     return treeRun(session) && steps ? `Done, with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Done';
   };
   const rowItems = (session: ListedSession): MenuItem[] => [
-    ...(session.runRow ? [] : [{ label: 'Mark as read', disabled: !clientOf(session) || !session.unread, onSelect: () => markRead(session) }]),
+    ...(session.runRow
+      ? []
+      : session.unread || !canMarkUnread(session)
+        ? [{ label: 'Mark as read', disabled: !clientOf(session) || !session.unread, onSelect: () => markRead(session) }]
+        : [{ label: 'Mark as unread', onSelect: () => markUnread(session) }]),
     { label: archiveLabel(session), disabled: !clientOf(session), onSelect: () => archive(session) },
   ];
-  const onSwipe = (session: ListedSession) => (action: SwipeAction) => (action === 'read' ? markRead(session) : archive(session));
+  const onSwipe = (session: ListedSession) => (action: SwipeAction) => (action === 'archive' ? archive(session) : session.unread ? markRead(session) : markUnread(session));
   /** What the line under the title counts: not what a computer that is away said last. */
   const live = labels ? tree.roots.filter((s) => computerOf(s.computer).online) : tree.roots;
   /** A row or card of a computer that is away, while another is connected: dimmed. */
@@ -379,7 +394,7 @@ export function SessionList({
       <li key={session.id} className={away ? 'opacity-60' : undefined} data-remote-away={away || undefined}>
         {/* A session that waits on you never swipes away: a prompt can't be dismissed by accident. */}
         {mode === 'phone' && session.status !== 'needs-you' ? (
-          <SwipeRow allowed={{ read: Boolean(clientOf(session)) && session.unread, archive: Boolean(clientOf(session)) }} onAction={onSwipe(session)}>
+          <SwipeRow allowed={{ read: session.unread ? Boolean(clientOf(session)) : !session.runRow && canMarkUnread(session), archive: Boolean(clientOf(session)) }} unread={session.unread} onAction={onSwipe(session)}>
             {row}
           </SwipeRow>
         ) : (

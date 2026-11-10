@@ -29,6 +29,7 @@ import { startState } from '../lib/newOptions.ts';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { WorkingPanel } from './WorkingPanel.tsx';
 import { toast } from './Toasts.tsx';
+import { stopSpeaking } from './ReadAloud.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
 import { useVisualViewport } from './useVisualViewport.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
@@ -265,6 +266,8 @@ export function SessionView({
   const toggleAsk = () => (ask.open ? closeAsk(sessionId) : openAsk(client, sessionId));
   // Ask belongs to the session on screen: leaving it closes the sheet or panel (an answer still coming keeps coming).
   useEffect(() => () => closeAsk(sessionId), [sessionId]);
+  // A reply read aloud stops when you leave its session.
+  useEffect(() => () => stopSpeaking(), [sessionId]);
   const quote = (answer: string) => {
     // On a phone the sheet covers the message box: it goes, so you see the quote land.
     if (!panelFits) closeAsk(sessionId);

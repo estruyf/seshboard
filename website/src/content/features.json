@@ -1973,7 +1973,12 @@
     },
     {
       "id": "feature:remote-swipe-actions",
-      "name": "Remote: swipe to mark as read or done, with Undo",
+      "name": "Remote: swipe to mark as read or unread, or done, with Undo",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-read-aloud",
+      "name": "Remote: Listen under a reply reads it aloud with the phone's own voice",
       "page": "remote-access"
     },
     {

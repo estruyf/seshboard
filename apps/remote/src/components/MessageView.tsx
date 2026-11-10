@@ -4,6 +4,7 @@ import { parseBriefs, parseGithubBlocks, withoutContext, type RemoteMessage } fr
 import { runLabel, stepText, type ToolUse, type TranscriptItem } from '../lib/steps.ts';
 import { editLines, type resultsByCall } from '../lib/transcript.ts';
 import { Markdown } from './Markdown.tsx';
+import { ReadAloudButton } from './ReadAloud.tsx';
 import { toast } from './Toasts.tsx';
 
 /**
@@ -11,7 +12,7 @@ import { toast } from './Toasts.tsx';
  * and tool runs are a quiet timeline (AGENTS.md, Surfaces). A run of calls is one line until you open it; the run
  * Claude is working on stays open. `onRead`: the reply ends a finished turn, so it can be read in full. `onQuote`: Quote
  * under a finished reply puts all of it in the message box; your messages and Claude's replies are `data-quote-source`,
- * so a selection in them can be quoted too (`SelectionQuote`).
+ * so a selection in them can be quoted too (`SelectionQuote`). Listen reads a finished reply aloud (`ReadAloud`).
  */
 export function ItemView({ item, results, live, onRead, onQuote }: { item: TranscriptItem; results: ReturnType<typeof resultsByCall>; live: boolean; onRead?: () => void; onQuote?: (text: string) => void }) {
   switch (item.kind) {
@@ -30,6 +31,7 @@ export function ItemView({ item, results, live, onRead, onQuote }: { item: Trans
               <CopyButton text={item.text} label="Copy as Markdown" kind="reply" />
               {onQuote && <QuoteButton onClick={() => onQuote(item.text)} />}
               {onRead && <ReadButton onClick={onRead} />}
+              <ReadAloudButton id={item.key} text={item.text} />
             </div>
           )}
         </div>

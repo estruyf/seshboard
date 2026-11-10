@@ -25,6 +25,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Go through all of a reply's images, and copy them.** Full size, ← and → and the strip below now go through every image Claude returned in the reply, not only those from one tool call. Press ⌘C, click **Copy** or right-click an image to copy it, in the conversation too.
 - **Find and reopen done sessions from your other computers and your phone.** A session marked done on another computer, or one that went quiet there, now shows under **Done** in the sidebar, with that computer's chip. Click it to reopen it there and open it, or pick **Reopen** in its menu. On your phone, **Done sessions** (in the ⋯ menu, the drawer and the command palette) lists them on every paired computer, with a search, and **Reopen** puts one back in your list. A pipeline's session comes back with its steps. This needs this version of Seshboard on the other computer too.
 - **Pick the branch a new worktree starts from on another computer or your phone.** In New session with **New worktree**, **Branch from** lists the remote's default branch, the branch checked out there, and the other local and remote branches. It starts from the project's default until you pick another. Both computers need this version.
+- **Mark a session as unread on your phone, to read it later.** Swipe a read session to the right, or pick **Mark as unread** in its menu. **Undo** marks it read again.
+- **Listen to a reply on your phone.** Tap **Listen** under a reply and your phone reads it aloud with its own voice: nothing goes to a server. Code blocks and tables are skipped. Tap **Stop** to end it, and it stops when you leave the session.
 
 ### Changed
 
