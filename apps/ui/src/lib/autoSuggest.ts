@@ -1,4 +1,4 @@
-import { AUTO_TIERS, type AutoPick, type AutoTier } from '@seshboard/protocol/client';
+import { AUTO_TIERS, type AutoPick, type AutoTier, type Effort } from '@seshboard/protocol/client';
 import type { DisplayItem } from '../components/transcript/displayItems.ts';
 
 /** What a session shows of its size, read from the transcript alone (no model call). */
@@ -53,20 +53,39 @@ export function suggestReason(signals: SuggestSignals): SuggestReason | null {
   return null;
 }
 
-/** The strongest allowed model above the one Auto picked, or null when there is none. */
+/** The next allowed model above the one Auto picked (one step, not the strongest), or null when there is none. */
 export function strongerTier(pick: AutoPick): AutoTier | null {
   if (!pick.model) return null;
-  const above = AUTO_TIERS.slice(AUTO_TIERS.indexOf(pick.model) + 1).filter((t) => pick.allowed.includes(t));
-  return above.at(-1) ?? null;
+  return AUTO_TIERS.slice(AUTO_TIERS.indexOf(pick.model) + 1).find((t) => pick.allowed.includes(t)) ?? null;
+}
+
+/** What Auto suggests: more effort on the same model, or the next model up at `effort`. */
+export type SuggestStep = { kind: 'effort'; effort: Effort } | { kind: 'model'; tier: AutoTier; effort: Effort };
+
+/** The efforts a suggestion steps through. Past `high` the next model up often costs less, so it moves up a model instead. */
+const EFFORT_STEPS: readonly Effort[] = ['low', 'medium', 'high'];
+
+/**
+ * The next step up, in the model guide's order: raise effort one level first, then move one model up, starting
+ * again at `medium` (lower than the `high` it left). A new big ask goes straight to the next model: more thinking
+ * won't give a model a skill it lacks. `effort` is the session's now; null is the model's default, `medium`.
+ */
+export function nextStep(pick: AutoPick, effort: Effort | null, reason: SuggestReason): SuggestStep | null {
+  const at = EFFORT_STEPS.indexOf(effort ?? 'medium');
+  const raise = at >= 0 && at < EFFORT_STEPS.length - 1 ? EFFORT_STEPS[at + 1]! : null;
+  const tier = strongerTier(pick);
+  if (raise && (reason !== 'ask' || !tier)) return { kind: 'effort', effort: raise };
+  return tier ? { kind: 'model', tier, effort: 'medium' } : null;
 }
 
 /**
- * Whether to suggest a stronger model now: the setting is on, the session still runs on what Auto picked, a
- * stronger allowed model exists, it wasn't suggested in this session before, and the session has grown.
+ * Whether to suggest a step up now: the setting is on, the session still runs on what Auto picked, it wasn't
+ * suggested in this session before, the session has grown, and there is a step left (more effort or a stronger
+ * allowed model).
  */
-export function shouldSuggest(input: { enabled: boolean; pick: AutoPick | null; seen: boolean; signals: SuggestSignals }): AutoTier | null {
+export function shouldSuggest(input: { enabled: boolean; pick: AutoPick | null; seen: boolean; signals: SuggestSignals; effort: Effort | null }): SuggestStep | null {
   const { pick } = input;
-  if (!input.enabled || !pick || pick.left || input.seen) return null;
-  const stronger = strongerTier(pick);
-  return stronger && suggestReason(input.signals) ? stronger : null;
+  if (!input.enabled || !pick?.model || pick.left || input.seen) return null;
+  const reason = suggestReason(input.signals);
+  return reason ? nextStep(pick, input.effort, reason) : null;
 }

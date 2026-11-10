@@ -615,7 +615,8 @@ describe('engine over a MessagePort', () => {
     // Only the text went to Haiku.
     expect(routed).toEqual(['<request>\nMake the update check a setting\n</request>']);
     const { autoPick } = await client.call('session.autoPick', { sessionId });
-    expect(autoPick).toMatchObject({ model: 'sonnet', reason: 'A small, local change.', tokens: 1_040, allowed: ['haiku', 'sonnet', 'opus'] });
+    // Haiku named no effort and the queued prompt set none: Auto starts it at medium.
+    expect(autoPick).toMatchObject({ model: 'sonnet', effort: 'medium', reason: 'A small, local change.', tokens: 1_040, allowed: ['haiku', 'sonnet', 'opus'] });
     const usage = await client.call('usage.breakdown', { period: 'day', groupBy: 'model' });
     expect(usage.rows).toContainEqual(expect.objectContaining({ key: 'auto-routing', label: 'Auto routing', model: 'claude-haiku-4-5', autoRouting: { picks: 1 } }));
     expect(usage.totals.tokens.input).toBe(1_000);

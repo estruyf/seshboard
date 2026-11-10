@@ -17,7 +17,7 @@ import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createDemoWorld, linkClaude, type DemoWorld } from './screenshot-demo.ts';
+import { createDemoWorld, linkClaude, writeAutoSuggestDemo, type DemoWorld } from './screenshot-demo.ts';
 
 interface StepResult {
   label: string;
@@ -76,6 +76,11 @@ if (process.argv.includes('--demo')) {
   // Claude Code sees the real one.
   Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), COPILOT_HOME: join(world.home, '.copilot'), CODEX_HOME: join(world.home, '.codex'), SESHBOARD_SMOKE_DEMO: '1', SESHBOARD_STUB_COPILOT: '1', SESHBOARD_STUB_CODEX: '1' });
   console.log(`demo home: ${world.home}`);
+  // Two sessions Auto started that grew past their first prompt, with their picks, for the step-up note's step.
+  const autoSuggest = writeAutoSuggestDemo(world.home);
+  const demoUsage = join(world.home, 'smoke-demo-usage.json');
+  writeFileSync(demoUsage, JSON.stringify({ profiles: [], autoPicks: autoSuggest.autoPicks }));
+  Object.assign(childEnv, { SESHBOARD_DEMO_USAGE: demoUsage, SESHBOARD_SMOKE_AUTO_SUGGEST: JSON.stringify({ effort: autoSuggest.effort, model: autoSuggest.model }) });
 }
 
 // A fake gh (tests/fixtures/fake-gh.cjs), so nothing reaches GitHub: it says it is signed in, answers the # list's

@@ -305,8 +305,8 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
             <span className="flex items-center gap-1.5 font-medium">
               {modelName(r.model)}
               {r.byAuto ? (
-                <span className="shrink-0 text-meta font-normal text-muted" data-tooltip="Sessions Auto started on this model" data-usage-by-auto>
-                  · {num(r.byAuto)} by Auto
+                <span className="shrink-0 text-meta font-normal text-muted" data-tooltip={r.autoChanged ? 'Sessions Auto started on this model, and how many you moved to another model' : 'Sessions Auto started on this model'} data-usage-by-auto>
+                  · {num(r.byAuto)} by Auto{r.autoChanged ? `, ${num(r.autoChanged)} changed` : ''}
                 </span>
               ) : null}
               <span className="truncate font-mono text-meta font-normal text-faint">{r.model}</span>

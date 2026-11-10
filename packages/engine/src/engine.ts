@@ -990,8 +990,9 @@ export function createEngine(options: EngineOptions): Engine {
     }
   }
   /** A pick as kept with the session. */
-  const autoPickOf = (pick: { model: AutoPick['model']; reason: string; tokens: number; allowed: AutoPick['allowed'] }): AutoPick => ({
+  const autoPickOf = (pick: { model: AutoPick['model']; effort: AutoPick['effort']; reason: string; tokens: number; allowed: AutoPick['allowed'] }): AutoPick => ({
     model: pick.model,
+    effort: pick.effort ?? null,
     reason: pick.reason,
     tokens: pick.tokens,
     allowed: pick.allowed,
@@ -2496,7 +2497,9 @@ export function createEngine(options: EngineOptions): Engine {
       const pickModel = async (id: string) => {
         const route = await router.route({ profileId, prompt: params.prompt, imageCount: params.attachments.length });
         if (route.routeId) routing.attach(route.routeId, id);
-        return { model: route.ok ? route.model : null, autoPick: autoPickOf(route.ok ? route : { ...route, model: null }) };
+        // Auto sets the effort only when you didn't: one from New session, the project or Settings stays.
+        const effort = route.ok && !create.effort ? route.effort : null;
+        return { model: route.ok ? route.model : null, effort, autoPick: autoPickOf(route.ok ? { ...route, effort } : { ...route, model: null, effort: null }) };
       };
       sessionId = await hosts.create({ ...create, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
     }

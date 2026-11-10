@@ -1737,7 +1737,7 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-open-settings]').click()");
     await waitInPage(win, "document.querySelector('[data-settings]')", 3_000);
     await js("document.querySelector('[data-settings-section=\"conversation\"]').click()");
-    if (!(await waitInPage(win, "document.querySelectorAll('[data-auto-model-settings] [data-auto-model-allowed]').length === 3", 3_000))) return 'Settings › Conversation has no Auto model block';
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-auto-model-settings] [data-auto-model-allowed]').length === 4", 3_000))) return 'Settings › Conversation has no Auto model block with Haiku, Sonnet, Opus and Fable';
     updatePreferences({ autoModel: { ...before, enabled: true, allowed: ['sonnet'] } });
     if (!(await waitInPage(win, "document.querySelector('[data-auto-model-allowed=\"sonnet\"]')?.disabled === true", 2_000))) return 'the last model to pick could be unchecked';
     await js("document.querySelector('[data-auto-model-allowed=\"opus\"]').click()");
@@ -11292,6 +11292,75 @@ async function runUsageViewStep(win: BrowserWindow): Promise<string> {
   return `ok: opened from ${opened[0]} for ${profile}, ${limits} limit card(s), every period, ${openedSession}, Esc went back`;
 }
 
+/**
+ * Auto's step-up note on the demo's two grown sessions (smoke-only, `writeAutoSuggestDemo`), both on Sonnet as Auto
+ * picked. Ten edited files: the note offers more effort first, and Use high effort saves it. A later ask to plan a
+ * refactor across all modules: the note offers the next model, Opus, at medium effort, and Use Opus saves both. Usage
+ * then counts that session as changed on the Sonnet row. Only the demo's own sessions change.
+ */
+async function runAutoStepUpStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const raw = process.env.SESHBOARD_SMOKE_AUTO_SUGGEST;
+  if (!process.env.SESHBOARD_SMOKE_DEMO || !raw) return 'ok: skipped, needs the demo home with its grown Auto sessions (npm run smoke:demo)';
+  const ids = JSON.parse(raw) as { effort: string; model: string };
+  const view = '[data-current-session]';
+  const back = smokeSessionId;
+  const open = async (id: string) => {
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    return waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000);
+  };
+  const chipLabel = (name: string) => js(`document.querySelector('${view} [data-${name}-select]')?.getAttribute('aria-label') ?? ''`) as Promise<string>;
+  try {
+    if (!(await open(ids.effort))) return 'the grown session with ten edited files did not open';
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-auto-suggest="effort-high"]')`, 5_000))) {
+      const shown = (await js(`document.querySelector('${view} [data-auto-suggest]')?.dataset.autoSuggest ?? 'nothing'`)) as string;
+      return `ten edited files on medium effort suggested ${shown}, not high effort`;
+    }
+    const effortText = (await js(`document.querySelector('${view} [data-auto-suggest]').textContent`)) as string;
+    if (!effortText.includes('more time to think')) return `the effort note reads ${JSON.stringify(effortText)}`;
+    await shot(win, 'auto-step-up-effort.png');
+    await js(`document.querySelector('${view} [data-auto-suggest-use]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${view} [data-auto-suggest]')`, 3_000))) return 'the effort note stayed after Use high effort';
+    if (!(await waitInPage(win, `(document.querySelector('${view} [data-effort-select]')?.getAttribute('aria-label') ?? '').includes('High')`, 3_000))) return `Use high effort left the effort chip at ${JSON.stringify(await chipLabel('effort'))}`;
+
+    if (!(await open(ids.model))) return 'the grown session with a later big ask did not open';
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-auto-suggest="opus"]')`, 5_000))) {
+      const shown = (await js(`document.querySelector('${view} [data-auto-suggest]')?.dataset.autoSuggest ?? 'nothing'`)) as string;
+      return `a later ask to plan a refactor suggested ${shown}, not Opus`;
+    }
+    const modelText = (await js(`document.querySelector('${view} [data-auto-suggest]').textContent`)) as string;
+    if (!modelText.includes('Use Opus at medium effort')) return `the model note reads ${JSON.stringify(modelText)}`;
+    // Not running here, so no context to compact: only Use Opus.
+    if (await js(`!!document.querySelector('${view} [data-auto-suggest-compact]')`)) return 'Compact first showed for a session that is not running';
+    await shot(win, 'auto-step-up-model.png');
+    await js(`document.querySelector('${view} [data-auto-suggest-use]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${view} [data-auto-suggest]')`, 3_000))) return 'the model note stayed after Use Opus';
+    if (!(await waitInPage(win, `/opus/i.test(document.querySelector('${view} [data-session-model-select]')?.textContent ?? '') && (document.querySelector('${view} [data-effort-select]')?.getAttribute('aria-label') ?? '').includes('Medium')`, 3_000))) {
+      return `Use Opus left the chips at ${JSON.stringify(await js(`document.querySelector('${view} [data-session-model-select]')?.textContent ?? ''`))} and ${JSON.stringify(await chipLabel('effort'))}`;
+    }
+
+    // Usage › Tokens › Today › Model: the Sonnet row counts both of Auto's picks, and the one you changed.
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return '⌘K did not open the commands';
+    await setFieldValue(win, '[data-palette-input]', 'Open usage');
+    if (!(await waitInPage(win, "[...document.querySelectorAll('[data-command-palette] [role=option]')].some((el) => el.innerText.includes('Open usage'))", 3_000))) return 'the palette has no Open usage';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, "document.querySelector('[data-usage-view]')", 5_000))) return 'the Usage view did not open';
+    await js("document.querySelector('[data-usage-tab=\"tokens\"]').click()");
+    await waitInPage(win, "document.querySelector('[data-usage-period=\"day\"]')", 5_000);
+    await js("document.querySelector('[data-usage-period=\"day\"]').click()");
+    await waitInPage(win, "document.querySelector('[data-usage-group=\"model\"]')", 5_000);
+    await js("document.querySelector('[data-usage-group=\"model\"]').click()");
+    const counted = await waitInPage(win, "[...document.querySelectorAll('[data-usage-by-auto]')].some((el) => /2 by Auto, 1 changed/.test(el.textContent))", 15_000);
+    const labels = (await js("[...document.querySelectorAll('[data-usage-by-auto]')].map((el) => el.textContent.trim())")) as string[];
+    pressKey(win, 'Escape');
+    await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
+    if (!counted) return `Usage did not count the changed pick on the Sonnet row (it shows ${JSON.stringify(labels)})`;
+    return 'ok: ten edited files suggested high effort and saved it; a later big ask suggested Opus at medium effort and saved both; Usage reads "2 by Auto, 1 changed"';
+  } finally {
+    if (back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
 /** Home, from wherever the app is: ⌘⇧H, then its page. */
 async function goHome(win: BrowserWindow): Promise<boolean> {
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
@@ -13968,6 +14037,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     return `ok: ${await js("document.querySelector('[data-usage-band]').innerText.replace(/\\s+/g, ' ')")}`;
   });
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
+  await step('auto model: step-up note, more effort then the next model, Usage counts the change', () => runAutoStepUpStep(win), { timeoutMs: 45_000 });
   await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
   await step('settings: theme, sidebar style, session scope, tool activity, open at login, keep awake, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));

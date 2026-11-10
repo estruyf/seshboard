@@ -2253,17 +2253,17 @@
     },
     {
       "id": "feature:auto-model",
-      "name": "Auto model: Haiku picks the model a new session starts on",
+      "name": "Auto model: Haiku picks the model (Haiku, Sonnet, Opus or Fable) and the effort a new session starts on",
       "page": "new-session/auto-model"
     },
     {
       "id": "feature:auto-model-pick",
-      "name": "Auto picked line, Why popover, Run again with another model",
+      "name": "Auto picked line, Why popover with the effort and estimate, Run again with another model; the step-up note (more effort, then the next model, Compact first); Usage counts picks you changed",
       "page": "new-session/auto-model"
     },
     {
       "id": "feature:auto-model-settings",
-      "name": "Settings › Conversation › Auto model",
+      "name": "Settings › Conversation › Auto model: the models it can pick (Fable off by default), when in doubt, suggest a step up",
       "page": "new-session/auto-model"
     },
     {

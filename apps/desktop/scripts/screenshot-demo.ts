@@ -897,3 +897,46 @@ export function linkClaude(home: string): void {
     return;
   }
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// Two sessions Auto started on Sonnet that grew past their first prompt, for the smoke test's step-up note.
+
+/** What `writeAutoSuggestDemo` wrote: the session ids and the picks to seed (`DemoUsage.autoPicks`). */
+export interface AutoSuggestDemo {
+  /** Ten files edited: the note suggests more effort first. */
+  effort: string;
+  /** A later message asks to plan a refactor across all modules: the note suggests the next model. */
+  model: string;
+  autoPicks: Array<{ configDir: string; sessionId: string; pick: { model: 'sonnet'; reason: string; at: number; tokens: number; allowed: Array<'haiku' | 'sonnet' | 'opus'> }; routingModel: string; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number } }>;
+}
+
+/**
+ * Finished sessions on acme-store from a few hours ago, on Sonnet as Auto picked. Written only for the smoke run, so
+ * no website picture shows them.
+ */
+export function writeAutoSuggestDemo(home: string, now = Date.now()): AutoSuggestDemo {
+  const configDir = join(home, '.claude');
+  const acme = join(home, 'Developer', 'acme-store');
+  const usage = { model: 'claude-sonnet-5-5' };
+  const effort = new Transcript(acme, 'main', now - 3 * HOUR, usage).user('Add a bulk order discount to each price rule.');
+  for (let i = 1; i <= 10; i++) {
+    const file = `${acme}/src/pricing/rule${i}.ts`;
+    effort.tool('Edit', { file_path: file, old_string: 'discount: 0', new_string: 'discount: bulkDiscount(quantity)' }, `The file ${file} has been updated.`);
+  }
+  effort.say('Each of the ten price rules now takes the bulk discount.').write(configDir, 'Add a bulk discount to the price rules');
+  const model = new Transcript(acme, 'main', now - 4 * HOUR, usage)
+    .user('Fix the typo in the cart button label.')
+    .tool('Edit', { file_path: `${acme}/src/cart/CartButton.tsx`, old_string: 'Chekout', new_string: 'Checkout' }, `The file ${acme}/src/cart/CartButton.tsx has been updated.`)
+    .say('Fixed: the button reads Checkout.')
+    .user('Now plan a refactor of the pricing code across all modules.')
+    .say('Here is a first outline: one pricing module, rules as data, and the cart and checkout reading from it.');
+  model.write(configDir, 'Fix the cart button typo');
+  const pick = (sessionId: string, at: number) => ({
+    configDir,
+    sessionId,
+    pick: { model: 'sonnet' as const, reason: 'A small, local change.', at, tokens: 1_000, allowed: ['haiku' as const, 'sonnet' as const, 'opus' as const] },
+    routingModel: 'claude-haiku-5-5',
+    tokens: { input: 960, output: 40, cacheRead: 0, cacheWrite: 0 },
+  });
+  return { effort: effort.id, model: model.id, autoPicks: [pick(effort.id, now - 3 * HOUR), pick(model.id, now - 4 * HOUR)] };
+}

@@ -12,7 +12,10 @@ export const Effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export type Effort = z.infer<typeof Effort>;
 
 /** One of the models Auto can pick. */
-export const AutoTierSchema = z.enum(['haiku', 'sonnet', 'opus']);
+export const AutoTierSchema = z.enum(['haiku', 'sonnet', 'opus', 'fable']);
+
+/** The efforts Auto sets with its pick: never past `high`, where a bigger model is often cheaper. */
+export const AutoEffortSchema = z.enum(['low', 'medium', 'high']);
 
 /** What Auto decided for a session (see `AutoPickInfo`): kept with the session, so it survives a restart. */
 export const AutoPick = z.object({
@@ -21,7 +24,9 @@ export const AutoPick = z.object({
   reason: z.string().max(500),
   at: z.number(),
   tokens: z.number().int().min(0),
-  allowed: z.array(AutoTierSchema).max(3),
+  allowed: z.array(AutoTierSchema).max(4),
+  /** The effort Auto started it with; null or missing when your own effort was kept (or for an older pick). */
+  effort: AutoEffortSchema.nullable().optional(),
   /** You changed the model since. */
   left: z.boolean().optional(),
 });

@@ -124,7 +124,7 @@ export function modelLabel(models: RemoteOptions['models'], value: string | null
   if (!value) return models.find((m) => m.value === 'default')?.displayName ?? 'Default model';
   const known = models.find((m) => m.value === value);
   if (known) return known.displayName;
-  const family = /claude-(opus|sonnet|haiku)/i.exec(value)?.[1];
+  const family = /claude-(fable|opus|sonnet|haiku)/i.exec(value)?.[1];
   return family ? family[0]!.toUpperCase() + family.slice(1).toLowerCase() : value;
 }
 

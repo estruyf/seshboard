@@ -23,14 +23,16 @@ const price = (input: number, output: number, cacheRead = input / 10): ModelPric
 /**
  * List prices by model id, first match wins: newer versions before the family's older ones. Model ids come from the
  * transcripts as the API wrote them (`claude-opus-4-1-20250805`, `claude-sonnet-5-5`), so a pattern matches a prefix
- * of the version. Checked against Anthropic's pricing in October 2026.
+ * of the version. Checked against Anthropic's pricing in November 2026 (Fable 5.2 and Sonnet 5.5's cache reads are new).
  */
 const PRICES: ReadonlyArray<readonly [RegExp, ModelPrice]> = [
+  [/fable-5-2/, price(8, 40, 0.2)],
   [/(fable|mythos)-5-1/, price(10, 50, 0.25)],
   [/fable|mythos/, price(10, 50)],
   [/opus-5-5/, price(4, 20, 0.2)],
   [/opus-(5|4-[5-9])/, price(5, 25)],
   [/opus-4|3-opus/, price(15, 75)],
+  [/sonnet-5-5/, price(2, 10, 0.1)],
   [/sonnet-5/, price(2, 10, 0.2)],
   [/sonnet-4|3-[57]-sonnet/, price(3, 15)],
   [/haiku-5/, price(0.1, 0.5)],
@@ -39,7 +41,7 @@ const PRICES: ReadonlyArray<readonly [RegExp, ModelPrice]> = [
   [/3-haiku/, price(0.25, 1.25)],
   // A family's newer model than this table knows: priced like its latest.
   [/opus/, price(4, 20, 0.2)],
-  [/sonnet/, price(2, 10, 0.2)],
+  [/sonnet/, price(2, 10, 0.1)],
   [/haiku/, price(0.1, 0.5)],
 ];
 

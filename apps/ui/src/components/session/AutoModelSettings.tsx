@@ -26,7 +26,7 @@ export function AutoModelSettings() {
         <div className="flex items-center justify-between gap-4" data-setting-row>
           <span>
             <span className="block text-ui">Models it can pick</span>
-            <span className="block text-meta text-muted">At least one.</span>
+            <span className="block text-meta text-muted">At least one. Fable is for the hardest work and uses about twice what Opus does.</span>
           </span>
           <div role="group" aria-label="Models it can pick" className="flex shrink-0 items-center gap-4">
             {AUTO_TIERS.map((tier) => {
@@ -67,7 +67,7 @@ export function AutoModelSettings() {
         </div>
         <Toggle
           label="Suggest a stronger model later"
-          detail="When a session grows past its first prompt. Never switches by itself."
+          detail="More effort first, then the next model, when a session grows past its first prompt. Never switches by itself."
           checked={prefs.suggest}
           attr="data-auto-model-suggest"
           onChange={(suggest) => update({ suggest })}

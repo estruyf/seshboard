@@ -232,15 +232,21 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   // One question can use more than one model: a row per model, `<question id>:<model>`.
   for (const row of asked) addApart(row, SIDE_QUESTIONS_KEY, (group) => group.asked.add(row.id.slice(0, row.id.lastIndexOf(':'))));
   for (const row of spoken) addApart(row, CATCHUP_KEY, (group) => (group.picks += 1));
-  /** The model Auto picked for each session, for "· 4 by Auto" on the model rows. */
-  const autoPicked =
+  /**
+   * The model Auto picked for each session, for "· 4 by Auto" on the model rows, and whether you changed it since
+   * ("1 changed"): a pick you moved away from is the clearest sign Auto picked wrong.
+   */
+  const autoRows =
     groupBy === 'model'
-      ? new Map(
-          (db.prepare('SELECT session_id AS sessionId, picked FROM auto_routing WHERE scope = ? AND session_id IS NOT NULL AND picked IS NOT NULL').all(scope) as Array<{ sessionId: string; picked: string }>).map(
-            (r) => [r.sessionId, r.picked],
-          ),
-        )
-      : new Map<string, string>();
+      ? (db
+          .prepare(
+            `SELECT r.session_id AS sessionId, r.picked, s.auto_pick_json AS pickJson FROM auto_routing r LEFT JOIN session_settings s ON s.id = r.session_id
+             WHERE r.scope = ? AND r.session_id IS NOT NULL AND r.picked IS NOT NULL`,
+          )
+          .all(scope) as Array<{ sessionId: string; picked: string; pickJson: string | null }>)
+      : [];
+  const autoPicked = new Map(autoRows.map((r) => [r.sessionId, r.picked]));
+  const autoLeft = new Set(autoRows.filter((r) => pickWasLeft(r.pickJson)).map((r) => r.sessionId));
 
   // Measured shares only mean something per session, in the current window, for everything that ran in it.
   let measured = new Map<string, number>();
@@ -277,8 +283,9 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     if (groupBy === 'project') return { ...base, label: g.key ? lookup.projectName(g.key) : 'Unknown folder', sessionId: null, projectRoot: g.key || null, model: mainModel };
     if (groupBy === 'model') {
       const tier = tierOf(g.key);
-      const byAuto = tier ? [...g.sessions].filter((id) => autoPicked.get(id) === tier).length : 0;
-      return { ...base, label: g.key, sessionId: null, projectRoot: null, model: g.key, ...(byAuto ? { byAuto } : {}) };
+      const picked = tier ? [...g.sessions].filter((id) => autoPicked.get(id) === tier) : [];
+      const changed = picked.filter((id) => autoLeft.has(id)).length;
+      return { ...base, label: g.key, sessionId: null, projectRoot: null, model: g.key, ...(picked.length ? { byAuto: picked.length } : {}), ...(changed ? { autoChanged: changed } : {}) };
     }
     return { ...base, label: g.key, sessionId: null, projectRoot: null, model: mainModel };
   });
@@ -294,6 +301,16 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     rows: result,
     buckets: [...buckets.values()],
   };
+}
+
+/** Whether a stored pick (`session_settings.auto_pick_json`) says you changed the model since. */
+export function pickWasLeft(json: string | null): boolean {
+  if (!json) return false;
+  try {
+    return (JSON.parse(json) as { left?: unknown }).left === true;
+  } catch {
+    return false;
+  }
 }
 
 /** How long each plan window runs, by its meter's kind: the 5-hour session and the weekly ones. */

@@ -98,6 +98,8 @@ export const UsageRow = z.object({
   catchUpSummaries: z.object({ calls: z.number() }).optional(),
   /** A model row: how many of its sessions Auto picked it for. */
   byAuto: z.number().optional(),
+  /** Of those, how many you moved to another model afterwards. */
+  autoChanged: z.number().optional(),
 });
 export type UsageRow = z.infer<typeof UsageRow>;
 
