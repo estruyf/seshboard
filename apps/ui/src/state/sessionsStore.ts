@@ -16,7 +16,7 @@ import { toast } from './toastStore.ts';
  * on another computer, or that computer's page (`useComputers` says which). `activity` is what you did per day, `upcoming` is everything queued and
  * scheduled (`useUpcoming` has its filters).
  */
-export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote' | 'upcoming' | 'activity';
+export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote' | 'upcoming' | 'activity' | 'browser';
 /** The pages of Settings, listed in its own sidebar. */
 export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'usage' | 'memory' | 'prompts' | 'pipelines' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { BROWSER_PARTITION, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { acceptsLocalCertificate, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
 
 const key = (k: string, mods: Partial<PreviewKeyInput> = {}): PreviewKeyInput => ({ type: 'keyDown', key: k, meta: false, control: false, alt: false, shift: false, ...mods });
@@ -35,6 +35,13 @@ describe('webviewAllowed', () => {
     expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'https://example.com/' })).toBe(false);
     expect(webviewAllowed({ partition: 'persist:other', src: 'http://localhost:5173/' })).toBe(false);
     expect(webviewAllowed({ src: 'http://localhost:5173/' })).toBe(false);
+  });
+
+  it('lets the browser partition attach on any web or blank address', () => {
+    expect(webviewAllowed({ partition: BROWSER_PARTITION, src: 'https://github.com/' })).toBe(true);
+    expect(webviewAllowed({ partition: BROWSER_PARTITION, src: 'http://localhost:5173/' })).toBe(true);
+    expect(webviewAllowed({ partition: BROWSER_PARTITION })).toBe(true);
+    expect(webviewAllowed({ partition: BROWSER_PARTITION, src: 'file:///etc/hosts' })).toBe(false);
   });
 });
 

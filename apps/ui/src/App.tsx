@@ -38,6 +38,8 @@ import { EngineStalledNotice } from './components/EngineStalledNotice.tsx';
 import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { WebPreviewHost } from './components/webPreview/WebPreviewHost.tsx';
+import { BrowserView } from './components/browser/BrowserView.tsx';
+import { openBrowser } from './state/browserStore.ts';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
@@ -148,6 +150,9 @@ function useShortcuts() {
       } else if (matches(event, 'activity')) {
         event.preventDefault();
         openActivity();
+      } else if (matches(event, 'browser')) {
+        event.preventDefault();
+        openBrowser();
       } else if (matches(event, 'search')) {
         if (otherModalOpen()) return;
         event.preventDefault();
@@ -294,6 +299,8 @@ export function App() {
           <UpcomingView />
         ) : behind === 'activity' ? (
           <ActivityView />
+        ) : behind === 'browser' ? (
+          <BrowserView />
         ) : hasPanes ? (
           <SplitPanes />
         ) : (

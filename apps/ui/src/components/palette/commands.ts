@@ -141,6 +141,10 @@ export interface PaletteApi {
   openUpcoming(kind?: 'all' | 'queue' | 'schedules'): void;
   /** Activity, on today. */
   openActivity(): void;
+  /** The browser, on the page it was left on (GitHub the first time). */
+  openBrowser(): void;
+  /** Closes the browser's page. */
+  closeBrowser(): void;
   /** The Usage view, for the default profile. */
   openUsage(): void;
   showSearch(): void;
@@ -428,6 +432,8 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: House, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
   { id: 'upcoming', title: 'Go to Upcoming', group: 'general', shortcut: keysFor('upcoming'), icon: CalendarClock, keywords: 'queue queued schedules scheduled runs planned later timeline week', when: (ctx) => ctx.view !== 'upcoming', run: (api) => api.openUpcoming('all') },
   { id: 'activity', title: 'Go to Activity', group: 'general', shortcut: keysFor('activity'), icon: Clock, keywords: 'what did i do today yesterday week history standup timesheet export summary day', when: (ctx) => ctx.view !== 'activity', run: (api) => api.openActivity() },
+  { id: 'browser', title: 'Open browser', group: 'general', shortcut: keysFor('browser'), icon: Globe, keywords: 'web page github pull request ci website url internet', when: (ctx) => ctx.view !== 'browser', run: (api) => api.openBrowser() },
+  { id: 'browser.close', title: 'Close browser', group: 'general', icon: Globe, keywords: 'web page github', when: (ctx) => ctx.view === 'browser', run: (api) => api.closeBrowser() },
   { id: 'open-usage', title: 'Open usage', group: 'general', icon: Gauge, keywords: 'plan limits tokens usage insights session weekly cache', when: (ctx) => ctx.view !== 'usage', run: (api) => api.openUsage() },
   { id: 'search-memory', title: 'Search memory…', group: 'general', icon: Brain, keywords: 'find memories knowledge notes', when: (ctx) => ctx.connected, run: (api) => api.showMemorySearch() },
   { id: 'search', title: 'Search conversations', group: 'general', shortcut: keysFor('search'), icon: TextSearch, keywords: 'find text', when: always, run: (api) => api.showSearch() },

@@ -3,7 +3,7 @@ import { shownElsewhere, usePopouts } from '../../state/popoutsStore.ts';
 import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
-import { keepPages, placePages, previewPage } from './webPreviewPages.ts';
+import { keepPages, openBrowserPage, placePages, previewPage } from './webPreviewPages.ts';
 
 /** How many frames a page follows its slot after something moved, to keep up with an animation (the sidebar folding). */
 const FOLLOW_FRAMES = 20;
@@ -43,7 +43,8 @@ export function WebPreviewHost() {
     () =>
       window.seshboard?.onWebPreviewKeys(({ contentsId, keys }) => {
         const id = [...useWebPreview.getState().sessions.keys()].find((sessionId) => previewPage(sessionId)?.contentsId() === contentsId);
-        const page = id ? previewPage(id) : undefined;
+        const browser = openBrowserPage();
+        const page = id ? previewPage(id) : browser?.contentsId() === contentsId ? browser : undefined;
         page?.element.dispatchEvent(new KeyboardEvent('keydown', { ...keys, bubbles: true, cancelable: true }));
       }),
     [],

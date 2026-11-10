@@ -1,4 +1,4 @@
-import { localPreviewUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { BROWSER_PARTITION, browserPageUrl, localPreviewUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 
 /** What main does with a key typed in the web preview's page. */
 export type PreviewKeyAction = 'forward' | 'reload' | null;
@@ -39,12 +39,14 @@ export interface WebviewAttach {
 }
 
 /**
- * Whether a `<webview>` may attach: only the web preview's, in its own partition, on a local address (or still
- * blank, before its first load). Main forces the rest of its preferences itself.
+ * Whether a `<webview>` may attach: the web preview's, in its own partition, on a local address, or the browser's, in
+ * its own, on any web address (either still blank, before its first load). Main forces the rest of its preferences itself.
  */
 export function webviewAllowed(params: WebviewAttach): boolean {
-  if (params.partition !== WEB_PREVIEW_PARTITION) return false;
-  return !params.src || params.src === 'about:blank' || localPreviewUrl(params.src) !== null;
+  const blank = !params.src || params.src === 'about:blank';
+  if (params.partition === WEB_PREVIEW_PARTITION) return blank || localPreviewUrl(params.src!) !== null;
+  if (params.partition === BROWSER_PARTITION) return blank || browserPageUrl(params.src!) !== null;
+  return false;
 }
 
 /**

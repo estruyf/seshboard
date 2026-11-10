@@ -188,7 +188,8 @@ export type MainWindowRequest =
   | { kind: "search"; memory: boolean }
   | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
   | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null }
-  | { kind: "activity"; day: string | null };
+  | { kind: "activity"; day: string | null }
+  | { kind: "browser"; url: string | null };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";

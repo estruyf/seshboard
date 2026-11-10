@@ -4,6 +4,7 @@ import { useOverlay } from './overlayStore.ts';
 import { openUsage } from './usageViewStore.ts';
 import { openUpcoming } from './upcomingStore.ts';
 import { openActivity } from './activityStore.ts';
+import { openBrowser } from './browserStore.ts';
 import { PROJECT_TABS, openProject, type ProjectTab } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from './sessionNav.ts';
@@ -45,6 +46,9 @@ export function runMainRequest(request: MainWindowRequest): void {
       return;
     case 'activity':
       openActivity(request.day);
+      return;
+    case 'browser':
+      openBrowser(request.url ?? undefined);
       return;
     case 'navigate':
       if (request.to === 'needs-you') goToNextNeedsYou();

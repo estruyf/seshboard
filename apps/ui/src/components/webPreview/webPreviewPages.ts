@@ -1,12 +1,13 @@
 import { create } from 'zustand';
-import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { BROWSER_PARTITION, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 
 /*
  * The web previews' pages, one `<webview>` per session, kept at the end of the window's body rather than in the
  * session's panel: the session view unmounts when you switch to another session, and Electron drops a `<webview>`'s
  * page when it is removed or moved. Each page is drawn over its panel's slot (`registerSlot`), in fixed position, and
- * parked off screen while the slot isn't on show (another tab in front, another session, a hidden pane).
+ * parked off screen while the slot isn't on show (another tab in front, another session, a hidden pane). The browser
+ * view's page (`browserPage`) lives here too, for the same reason: it keeps its page while a session is on screen.
  */
 
 /** The slice of Electron's `<webview>` element the pages use. Its methods throw until the page is attached. */
@@ -53,6 +54,16 @@ export function usePageState(sessionId: string): PageState {
 const setState = (sessionId: string, change: Partial<PageState>) =>
   usePreviewPages.setState((s) => ({ pages: new Map(s.pages).set(sessionId, { ...(s.pages.get(sessionId) ?? IDLE), ...change }) }));
 
+/** What sets a page apart: its storage, the hook it carries, and who hears where it went. */
+interface PageKind {
+  partition: string;
+  /** The `data-*` attribute it carries, with the page's id as its value. */
+  hook: string;
+  navigated(id: string, url: string): void;
+}
+
+const SESSION_PAGE: PageKind = { partition: WEB_PREVIEW_PARTITION, hook: 'data-web-preview-page', navigated: (id, url) => useWebPreview.getState().shown(id, url) };
+
 class PreviewPage {
   readonly element: WebviewElement;
   ready = false;
@@ -63,13 +74,14 @@ class PreviewPage {
   constructor(
     private readonly sessionId: string,
     host: HTMLElement,
+    kind: PageKind = SESSION_PAGE,
   ) {
     const element = document.createElement('webview') as WebviewElement;
     // The partition and popups before the first address, which attaches it. Main's handler decides where a new window
     // goes (here or the browser); without `allowpopups` the page's links that open one would do nothing.
-    element.setAttribute('partition', WEB_PREVIEW_PARTITION);
+    element.setAttribute('partition', kind.partition);
     element.setAttribute('allowpopups', '');
-    element.dataset.webPreviewPage = sessionId;
+    element.setAttribute(kind.hook, sessionId);
     // White under the page whatever the theme, as a browser draws it: a page without a background of its own expects that.
     Object.assign(element.style, { position: 'fixed', background: 'white', ...PARKED });
     const on = (name: string, listener: (event: Event & Record<string, unknown>) => void) => {
@@ -78,7 +90,7 @@ class PreviewPage {
     };
     const navigated = (event: Event & Record<string, unknown>) => {
       if (event.isMainFrame === false) return;
-      useWebPreview.getState().shown(sessionId, event.url as string);
+      kind.navigated(sessionId, event.url as string);
       this.sync();
     };
     on('dom-ready', () => {
@@ -172,6 +184,17 @@ class PreviewPage {
 const pages = new Map<string, PreviewPage>();
 const slots = new Map<string, HTMLElement>();
 let host: HTMLElement | null = null;
+/** The browser view's page, once it was opened; it lives until the browser is closed. */
+let browser: PreviewPage | null = null;
+
+function pagesHost(): HTMLElement {
+  if (!host) {
+    host = document.createElement('div');
+    host.dataset.webPreviewHost = '';
+    document.body.appendChild(host);
+  }
+  return host;
+}
 /** A slot or its session view changing size (a drag, the sidebar folding) moves the page with it. */
 let resized: ResizeObserver | null = null;
 /** A look now and then, for a move nothing reports (a pane swapped, a view scrolled): only while there are pages. */
@@ -183,23 +206,45 @@ export const previewPage = (sessionId: string): PreviewPage | undefined => pages
 
 /** Makes or drops pages so there is one per session in `wanted`. */
 export function keepPages(wanted: ReadonlySet<string>): void {
-  if (!host) {
-    host = document.createElement('div');
-    host.dataset.webPreviewHost = '';
-    document.body.appendChild(host);
-  }
   for (const [sessionId, page] of pages) {
     if (wanted.has(sessionId)) continue;
     page.destroy();
     pages.delete(sessionId);
   }
-  for (const sessionId of wanted) if (!pages.has(sessionId)) pages.set(sessionId, new PreviewPage(sessionId, host));
-  if (pages.size > 0) fallback ??= setInterval(placePages, FALLBACK_MS);
+  for (const sessionId of wanted) if (!pages.has(sessionId)) pages.set(sessionId, new PreviewPage(sessionId, pagesHost()));
+  watchPlaces();
+}
+
+/** The look now and then runs while there is a page to place. */
+function watchPlaces() {
+  if (pages.size > 0 || browser) fallback ??= setInterval(placePages, FALLBACK_MS);
   else {
     clearInterval(fallback);
     fallback = undefined;
   }
   placePages();
+}
+
+/** The id the browser's page goes by: its slot and its toolbar's state are keyed by it, as a session's are. */
+export const BROWSER_PAGE = '@browser';
+
+/** The browser view's page, made on first use. `navigated` hears every address it lands on. */
+export function browserPage(navigated: (url: string) => void): PreviewPage {
+  if (!browser) {
+    browser = new PreviewPage(BROWSER_PAGE, pagesHost(), { partition: BROWSER_PARTITION, hook: 'data-browser-page', navigated: (_id, url) => navigated(url) });
+    watchPlaces();
+  }
+  return browser;
+}
+
+/** The browser's page, if it is open. */
+export const openBrowserPage = (): PreviewPage | null => browser;
+
+/** Closes the browser's page: the next open starts afresh (sign-ins stay, in its partition). */
+export function dropBrowserPage(): void {
+  browser?.destroy();
+  browser = null;
+  watchPlaces();
 }
 
 /** The panel's slot for a session's page; null as it goes. The page is drawn over it while it is on show. */
@@ -230,4 +275,5 @@ function slotRect(slot: HTMLElement | undefined): DOMRect | null {
 /** Puts every page over its slot, or parks it. */
 export function placePages(): void {
   for (const [sessionId, page] of pages) page.place(slotRect(slots.get(sessionId)));
+  browser?.place(slotRect(slots.get(BROWSER_PAGE)));
 }

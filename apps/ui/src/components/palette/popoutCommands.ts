@@ -70,11 +70,14 @@ const PLANS: Record<string, Plan> = {
   pipelines: 'hide',
   'open-in-new-window': 'hide',
 
-  // Settings, Usage, Upcoming, Activity and project pages: their stores send them to the main window.
+  // Settings, Usage, Upcoming, Activity, the browser and project pages: their stores send them to the main window.
   settings: 'main',
   'open-usage': 'main',
   upcoming: 'main',
   activity: 'main',
+  browser: 'main',
+  // Only on the browser's view, which a pop-out doesn't have.
+  'browser.close': 'hide',
   'queue-view': 'main',
   'schedules-view': 'main',
   'worktrees-here': 'main',

@@ -31,6 +31,7 @@ import { ReloadLimiter } from './reloadLimiter.ts';
 import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
 import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
+import { runBrowserStep } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -1413,7 +1414,7 @@ ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
 });
 // A view a pop-out doesn't have (Settings, Usage, a project, New session, Go to, Search) opens in the main window, which comes to the front.
-const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming', 'activity']);
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming', 'activity', 'browser']);
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
@@ -14056,6 +14057,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
   await step("web preview: an action's server offered on its run strip and pill, its page beside the conversation, outside links to the browser", () => runWebPreviewStep(win, { shot: (name) => shot(win, name), addAction: (name, command) => addAction(win, name, command), outside: webPreviewOutside, popoutOf: (id) => popouts.get(id) }));
+  // After the web preview, whose step counts every page in the window: this one closes its page at the end.
+  await step('browser: a web page beside the sessions, kept while a session is on screen, closed', () => runBrowserStep(win, (name) => shot(win, name)));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));

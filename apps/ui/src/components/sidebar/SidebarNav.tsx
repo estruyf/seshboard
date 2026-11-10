@@ -1,8 +1,10 @@
-import { CalendarClock, Clock, House } from 'lucide-react';
+import { CalendarClock, Clock, Globe, House } from 'lucide-react';
+import { shortUrl } from '@seshboard/protocol/client';
 import type { ReactNode } from 'react';
 import { ariaShortcut, keysFor } from '../../lib/shortcuts.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { openActivity } from '../../state/activityStore.ts';
+import { openBrowser, useBrowser } from '../../state/browserStore.ts';
 import { openUpcoming } from '../../state/upcomingStore.ts';
 import { useSessionsToday } from '../../state/useSessionsToday.ts';
 import { useUpcomingSummary } from '../../state/useUpcomingSummary.ts';
@@ -29,15 +31,17 @@ function NavRow({ icon, label, selected, onClick, ariaLabel, shortcut, children,
 }
 
 /**
- * Home, Upcoming and Activity, under the search row. Upcoming says what matters most before its count (queued items plus
- * active schedules): an item that is ready, else the next run; "nothing planned" with nothing at all. Activity says how
- * many sessions you had today.
+ * Home, Upcoming, Activity and Browser, under the search row. Upcoming says what matters most before its count (queued
+ * items plus active schedules): an item that is ready, else the next run; "nothing planned" with nothing at all. Activity
+ * says how many sessions you had today, Browser the site its page is on.
  */
 export function SidebarNav({ now }: { now: number }) {
   // Home is the main area with no session open; both stay selected behind Settings opened from them.
   const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   const atUpcoming = useSessions((s) => s.view === 'upcoming' || (s.view === 'settings' && s.settingsFrom === 'upcoming'));
   const atActivity = useSessions((s) => s.view === 'activity' || (s.view === 'settings' && s.settingsFrom === 'activity'));
+  const atBrowser = useSessions((s) => s.view === 'browser' || (s.view === 'settings' && s.settingsFrom === 'browser'));
+  const browserUrl = useBrowser((s) => s.url);
   const summary = useUpcomingSummary(now);
   const today = useSessionsToday(now);
   return (
@@ -71,6 +75,13 @@ export function SidebarNav({ now }: { now: number }) {
         {today > 0 && (
           <span className="shrink-0 text-meta text-muted tabular-nums" data-activity-nav-hint>
             {today} today
+          </span>
+        )}
+      </NavRow>
+      <NavRow icon={<Globe size={15} aria-hidden />} label="Browser" selected={atBrowser} onClick={() => openBrowser()} shortcut={ariaShortcut(keysFor('browser'))} data={{ 'data-browser-nav': true }}>
+        {browserUrl && (
+          <span className="max-w-28 shrink truncate text-meta text-muted" data-browser-nav-hint>
+            {shortUrl(browserUrl).split('/')[0]}
           </span>
         )}
       </NavRow>

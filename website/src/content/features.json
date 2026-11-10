@@ -4627,6 +4627,26 @@
       "page": "sessions/upcoming"
     },
     {
+      "id": "shortcut:browser",
+      "name": "Browser: a web page beside your sessions",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser",
+      "name": "Open browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser.close",
+      "name": "Close browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser",
+      "name": "Browser: any web page (GitHub, CI) in a view beside the sessions, kept while you switch, with its own sign-ins",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "feature:activity",
       "name": "Activity: what you did per day, with a week strip, the numbers, the hours and your sessions per project",
       "page": "sessions/upcoming"

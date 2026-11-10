@@ -129,7 +129,7 @@ export function usePaletteContext(): PaletteContext {
   const comments = useDiffComments((s) => s.comments);
 
   const pageRoot = useProjectPage((s) => s.root);
-  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'activity' ? 'activity' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
+  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'activity' ? 'activity' : mainView === 'browser' ? 'browser' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
   // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
   const id = view === 'session' ? localSessionId(selectedId) : null;
   const webOpen = useWebPreview((s) => (id ? s.sessions.has(id) : false));

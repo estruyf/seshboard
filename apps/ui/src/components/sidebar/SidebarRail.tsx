@@ -1,6 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { CalendarClock, Clock, EyeOff, House, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
+import { CalendarClock, Clock, EyeOff, Globe, House, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
 import { openActivity } from '../../state/activityStore.ts';
+import { openBrowser } from '../../state/browserStore.ts';
 import { openUpcoming } from '../../state/upcomingStore.ts';
 import { useSessionsToday } from '../../state/useSessionsToday.ts';
 import { useUpcomingSummary } from '../../state/useUpcomingSummary.ts';
@@ -287,6 +288,7 @@ export function SidebarRail() {
   const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   const atUpcoming = useSessions((s) => s.view === 'upcoming' || (s.view === 'settings' && s.settingsFrom === 'upcoming'));
   const atActivity = useSessions((s) => s.view === 'activity' || (s.view === 'settings' && s.settingsFrom === 'activity'));
+  const atBrowser = useSessions((s) => s.view === 'browser' || (s.view === 'settings' && s.settingsFrom === 'browser'));
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const now = useNow();
@@ -445,6 +447,20 @@ export function SidebarRail() {
         />
         <UpcomingButton now={now} selected={atUpcoming} />
         <ActivityButton now={now} selected={atActivity} />
+        <Button
+          variant="quiet"
+          size="lg"
+          iconOnly
+          icon={<Globe size={15} aria-hidden />}
+          aria-label="Browser"
+          shortcut="browser"
+          selected={atBrowser}
+          aria-current={atBrowser ? 'page' : undefined}
+          data-tooltip-placement="right"
+          data-browser-nav
+          onClick={() => openBrowser()}
+          className="no-drag w-9! rounded-lg!"
+        />
       </div>
       <div aria-hidden className="mx-3 h-px shrink-0 bg-border" />
 

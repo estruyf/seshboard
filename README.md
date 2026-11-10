@@ -216,6 +216,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘1 to ⌘9 | Start in a project (on Home; with what you typed in the start box as the prompt) |
 | ⌘⇧Y | Upcoming: queued and scheduled |
 | ⌘⇧T | Activity: what you did per day |
+| ⌘⌥B | Browser: a web page beside your sessions |
 |  | Open usage (No key by default: use the command palette, or click a usage bar) |
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
