@@ -54,6 +54,10 @@ describe('Start', () => {
     expect(startState({ ...ready, text: '   \n' })).toEqual({ ready: false, reason: 'Type a message first' });
   });
 
+  it('is ready with only an attachment, where the computer takes one alone', () => {
+    expect(startState({ ...ready, text: '', attached: true })).toEqual({ ready: true, reason: null });
+  });
+
   it('is ready once there is text', () => {
     expect(startState(ready)).toEqual({ ready: true, reason: null });
   });

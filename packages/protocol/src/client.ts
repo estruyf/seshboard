@@ -34,6 +34,7 @@ export { OPTIONAL_PROVIDERS, PROVIDER_FEATURES, PROVIDER_NAMES, PROVIDER_SHORT_N
 export { PROJECT_NAME_MAX } from './projectConstants.ts';
 export { cleanNote, SESSION_NOTE_MAX } from './sessionNote.ts';
 export { looseEndText, sameLooseEnds, type GitLooseEnd, type LooseEnd } from './looseEnds.ts';
+export { continueList, type TextEdit } from './listContinue.ts';
 export { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 export { PR_BODY_LIMIT } from './pullRequestConstants.ts';
 export { randomWorktreeName } from './worktreeName.ts';

@@ -24,7 +24,7 @@ import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -5022,6 +5022,39 @@ async function remoteQuoteAndRead(win: BrowserWindow, row: string): Promise<stri
 }
 
 /**
+ * Another computer's message box (part of `runOtherComputerStep`, on its finished session, after `remoteQuoteAndRead`):
+ * ⇧↵ on a list item starts the next one, as in a session here, and a pasted image alone makes Send ready. Nothing is
+ * sent: the image is removed and the box emptied after. Returns what went wrong, or null.
+ */
+async function remoteComposerEdits(win: BrowserWindow): Promise<string | null> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-remote-session="a0000000-0000-4000-8000-000000000005"]';
+  const box = `${view} [data-computer-composer]`;
+  const remove = `${view} [data-remote-attachments] [data-attachments] button[aria-label^="Remove"]`;
+  try {
+    await setFieldValue(win, box, '- one');
+    await js(`(() => { const box = document.querySelector('${box}'); box.focus(); box.setSelectionRange(box.value.length, box.value.length); })()`);
+    pressKey(win, 'Enter', ['shift']);
+    if (!(await waitInPage(win, `document.querySelector('${box}').value === '- one\\n- '`, 3_000))) return `⇧↵ after "- one" in the remote message box left ${JSON.stringify(await js(`document.querySelector('${box}').value`))}`;
+    await setFieldValue(win, box, '');
+    if (!(await js("document.querySelector('[data-computer-send]')?.disabled"))) return 'Send is ready with an empty remote message box';
+    // A 1×1 PNG pasted the way a screenshot is.
+    await js(`(() => {
+      const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
+      const data = new DataTransfer();
+      data.items.add(new File([bytes], 'screen.png', { type: 'image/png' }));
+      document.querySelector('${box}').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    })()`);
+    if (!(await waitInPage(win, `document.querySelector('${remove}')`, 5_000))) return 'the image pasted in the remote message box did not show';
+    if (!(await waitInPage(win, "document.querySelector('[data-computer-send]')?.disabled === false", 3_000))) return 'Send stayed disabled with only an image in the remote message box';
+    return null;
+  } finally {
+    await js(`document.querySelectorAll('${remove}').forEach((b) => b.click())`);
+    await setFieldValue(win, box, '');
+  }
+}
+
+/**
  * What another computer's finished session offers here (part of `runOtherComputerStep`, after `remoteQuoteAndRead`,
  * which leaves it open): its catch-up, Changes with a file's diff and a commit its hook turns down (the demo refuses a
  * message with "fail", so nothing is committed), Ask with an answer from there, a tool call opened, Find (⌘F), Jump
@@ -5411,6 +5444,8 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   // 3c. Quote and Read, on its finished session: nothing is sent, and the message box is emptied again each time.
   const quoted = await remoteQuoteAndRead(win, row);
   if (quoted) return quoted;
+  const edits = await remoteComposerEdits(win);
+  if (edits) return edits;
   const extras = await remoteSessionExtras(win, row);
   if (extras) return extras;
   const pipelines = await remoteRunRows(win, row, computerId);
@@ -13881,6 +13916,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step("remote app on a phone: a finished session's catch-up shows the prompt's title without #", runPhoneCatchUpStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Quote under a reply, over a selection and in Read', runPhoneQuoteStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: ⇧↵ continues a list, an image alone can be sent', runPhoneComposerStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, a model picked in Options shows in the accent colour', runPhoneOptionsStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, Start is dim while empty and ready with a task', runPhoneStartStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session with a Copilot or Codex profile, in its own models and modes', runPhoneProviderStep, { timeoutMs: 75_000 });

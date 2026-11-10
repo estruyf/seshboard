@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { agentName, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
+import { agentName, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
@@ -22,6 +22,7 @@ import { useNow } from './SessionList.tsx';
 import { AnchoredMenu, MenuButton, type MenuItem } from './Menu.tsx';
 import { EffortChip, ModeChip, ModelChip, ModelModeChip } from './OptionChips.tsx';
 import { lastReply, turnPrompt } from '../lib/promptTitle.ts';
+import { continueListKey } from '../lib/listEdit.ts';
 import { startState } from '../lib/newOptions.ts';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { WorkingPanel } from './WorkingPanel.tsx';
@@ -861,13 +862,15 @@ function Composer({
       if (el) el.scrollTop = el.scrollHeight;
     });
   }, [fill]);
-  const cantSend = disabled || busy || reading || !text.trim();
-  const sendState = startState({ connected: !disabled, project: true, text, busy, reading });
+  // Images or files alone are a message too, as on the computer, where that computer takes them without text.
+  const attached = features.includes(REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY) && attachments.items.length > 0;
+  const cantSend = disabled || busy || reading || (!text.trim() && !attached);
+  const sendState = startState({ connected: !disabled, project: true, text, attached, busy, reading });
   /** While Claude works, Send queues; its menu can steer or send now instead. An answer to a prompt has one way. */
   const modes = working && !answering;
   const send = async (mode: SendMode = 'queue') => {
     const message = text.trim();
-    if (!message || busy || reading || disabled) return;
+    if ((!message && !attached) || busy || reading || disabled) return;
     setBusy(true);
     try {
       await onSend(message, attachments.images, attachments.files, mode);
@@ -892,6 +895,8 @@ function Composer({
       onFocus={() => onFocusChange(true)}
       onBlur={() => onFocusChange(false)}
       onKeyDown={(event) => {
+        // A new line on a list item starts the next one: Shift+Enter with a keyboard, Return on a phone's.
+        if (continueListKey(event, fine, setText)) return;
         // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer; ⌥↵ steers, ⌘⇧↵ sends now.
         const mode = fine ? sendKey({ key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing }, MAC) : null;
         if (mode) {

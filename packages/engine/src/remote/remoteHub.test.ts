@@ -422,6 +422,13 @@ describe('Remote hub', () => {
     await expect(remote.call('session.send', { sessionId: SESSION, text: 'look', images: Array(REMOTE_MAX_IMAGES + 1).fill(image) })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     await expect(remote.call('session.send', { sessionId: SESSION, text: 'look', images: [{ ...image, data: 'a'.repeat(REMOTE_IMAGE_BYTES + 1) }] })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(sentImages).toHaveLength(2);
+    // An image alone is a message too; nothing at all is refused.
+    await remote.call('session.send', { sessionId: SESSION, text: '', images: [image] });
+    expect(sent.at(-1)).toBe('');
+    expect(sentImages.at(-1)).toEqual([image]);
+    await expect(remote.call('session.send', { sessionId: SESSION, text: ' ' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    sent.pop();
+    sentImages.pop();
     // Files are kept on this computer and mentioned by path; together with the images they must fit one message.
     await remote.call('session.send', { sessionId: SESSION, text: 'read these', files: [{ name: 'notes.txt', data: 'aGVsbG8=' }, { name: 'notes.txt', data: 'd29ybGQ=' }] });
     const mentions = [...sent.at(-1)!.matchAll(/@"([^"]+)"|@(\S+)/g)].map((m) => m[1] ?? m[2]!);

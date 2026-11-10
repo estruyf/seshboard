@@ -26,3 +26,12 @@ export function sendKey(event: KeyEventLike, mac: boolean): SendMode | null {
   if (event.shiftKey) return modKey(event, mac) && !event.altKey ? 'now' : null;
   return event.altKey ? 'steer' : 'queue';
 }
+
+/**
+ * Whether a key in the message box is a new line, which goes on with a list there: Shift+Enter where Enter sends (with
+ * a keyboard), and Return where it doesn't (a phone's keyboard, New session). Not with ⌘, Ctrl or ⌥, which send.
+ */
+export function newLineKey(event: KeyEventLike, enterSends: boolean): boolean {
+  if (event.key !== 'Enter' || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return false;
+  return !enterSends || event.shiftKey;
+}

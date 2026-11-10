@@ -12,6 +12,7 @@ export type { UsageLimit, UsageSnapshot } from './usage.ts';
 export type { RemoteLimitStanding } from './usageLimit.ts';
 export { clockTime, limitKindName } from './queueStates.ts';
 export { safeLocale } from './locale.ts';
+export { continueList, type TextEdit } from './listContinue.ts';
 export type { AskEvent, AskItem, AskThread, AskThreadList } from './sideQuestions.ts';
 export { MAX_SIDE_QUESTION_LENGTH, threadTitle } from './sideQuestionConstants.ts';
 export { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier } from './autoModel.ts';

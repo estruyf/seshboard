@@ -80,6 +80,8 @@ describe('the remote contracts', () => {
     const send = remoteContract.requests['session.send'].params;
     expect(send.safeParse({ sessionId: 's', text: 'run the tests' }).success).toBe(true);
     expect(send.safeParse({ sessionId: 's', text: '   ' }).success).toBe(false);
+    // An image alone is a message, as on the computer.
+    expect(send.safeParse({ sessionId: 's', text: ' ', images: [{ type: 'image', mediaType: 'image/png', data: 'aGk=' }] }).data?.text).toBe('');
     expect(send.safeParse({ sessionId: 's', text: 'hi', attachments: [] }).data).not.toHaveProperty('attachments');
     const create = remoteContract.requests['session.create'].params;
     expect(create.safeParse({ projectId: '0123456789abcdef', prompt: 'hi' }).success).toBe(true);

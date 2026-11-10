@@ -430,15 +430,19 @@ export const remoteContract = {
     /**
      * Sends a prompt, or queues it while Claude is working (`mode`, as on the Mac), with images pasted, dropped or
      * photographed, and files (`REMOTE_FEATURE_ATTACHMENTS`), which the prompt mentions by their path on the computer.
+     * The text may be empty when images or files go with it (`REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY`).
      */
     'session.send': {
-      params: z.object({
-        sessionId: SessionId,
-        text: Prompt,
-        mode: SendMode.default('queue'),
-        images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
-        files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
-      }),
+      params: z
+        .object({
+          sessionId: SessionId,
+          text: z.string().trim().max(MAX_PROMPT_LENGTH),
+          mode: SendMode.default('queue'),
+          images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
+          files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
+        })
+        // Images or files alone are a message too (`REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY`); an older computer wants text.
+        .refine((p) => p.text || p.images.length || p.files.length, { message: 'Type a message or attach something', path: ['text'] }),
       result: z.object({ queued: z.boolean() }),
     },
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },

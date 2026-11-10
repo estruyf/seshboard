@@ -15,7 +15,7 @@ import { turnKey, useCatchUp } from '../../state/catchUpStore.ts';
 import { RemoteChangesPanel, type RemoteChanges } from './RemoteChangesPanel.tsx';
 import { RemoteRunCard } from './RemoteRunCard.tsx';
 import { useComputers } from '../../state/computersStore.ts';
-import { pipelineMeta, REMOTE_FEATURE_PIPELINES, runIsActive, runOfParent, runOfStep, type RemotePipeline, type RemoteRunState } from '@seshboard/protocol/client';
+import { pipelineMeta, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, runIsActive, runOfParent, runOfStep, type RemotePipeline, type RemoteRunState } from '@seshboard/protocol/client';
 import { useRemoteCatchUpActions } from './useRemoteCatchUpActions.tsx';
 import type { CatchUp } from '@seshboard/protocol/client';
 import { useReadMode } from '../../state/readModeStore.ts';
@@ -68,7 +68,7 @@ import { MessageToolbar, REVEAL_IN_REPLY_ROW } from '../transcript/messageAction
 import { readableTurns, readReply } from '../transcript/readReply.ts';
 import { ReadMode } from '../readMode/ReadMode.tsx';
 import { useRememberLayer } from '../memory/RememberLayer.tsx';
-import { appendQuote, applyEdit } from '../composer/editing.ts';
+import { appendQuote, applyEdit, editKey } from '../composer/editing.ts';
 import { RemoteToolList } from './RemoteToolList.tsx';
 import { useRemoteFind } from './useRemoteFind.ts';
 import { FindBar } from '../transcript/FindBar.tsx';
@@ -777,8 +777,9 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   // Only a session that runs in Seshboard there has a mode, and only then can its model, effort and mode change.
   const running = session.permissionMode != null;
   const fail = (e: Error) => toast(e.message, { body: `It didn’t change on ${name}.` });
-  // A prompt is always needed, as on the phone: images and files go with it.
-  const hasMessage = !!draft.trim() || !!fillState;
+  // Images or files alone are a message too, as for a local session, where that computer takes them without text.
+  const attachedOnly = computer.features.includes(REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY) && attachments.items.length > 0;
+  const hasMessage = !!draft.trim() || !!fillState || attachedOnly;
   // While Claude works there, Enter queues or steers (Settings › Conversation, this computer's), as for a local session.
   const whileWorking = usePreferences((p) => p.prefs.whileWorking);
   const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
@@ -786,7 +787,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     const sentFill = fillState;
     const text = savedPrompts.message();
     if (text === null) return;
-    if (!text || sending || attachments.reading || !connected) return;
+    if ((!text && !attachedOnly) || sending || attachments.reading || !connected) return;
     setSending(true);
     onSent();
     const { images, files } = attachments;
@@ -806,6 +807,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (savedPrompts.onMenuKey(event)) return;
+    if (editKey(event, setDraft)) return;
     const mode = event.nativeEvent.isComposing ? null : sendKeyMode(event.nativeEvent, working, whileWorking);
     if (mode) {
       event.preventDefault();

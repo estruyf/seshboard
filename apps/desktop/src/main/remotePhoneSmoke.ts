@@ -191,6 +191,53 @@ async function openFinished(js: (code: string) => Promise<unknown>, win: Browser
   return null;
 }
 
+/**
+ * A session's message box: ⇧↵ on a list item starts the next one (and on an empty one ends the list), and a pasted
+ * image alone makes Send ready, as on the computer. Nothing is sent: the image is removed and the box emptied after.
+ */
+export function runPhoneComposerStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    const box = '[data-remote-session-view] [data-remote-message]';
+    const set = (text: string) => js(`(() => {
+      const box = document.querySelector('${box}');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    })()`);
+    const newLine = `document.querySelector('${box}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))`;
+    const value = () => js(`document.querySelector('${box}').value`) as Promise<string>;
+    try {
+      await set('- one');
+      await js(newLine);
+      if (!(await waitInPage(win, `document.querySelector('${box}').value === '- one\\n- '`, 2_000))) return `⇧↵ after "- one" left ${JSON.stringify(await value())}`;
+      await js(newLine);
+      if (!(await waitInPage(win, `document.querySelector('${box}').value === '- one\\n'`, 2_000))) return `⇧↵ on an empty item left ${JSON.stringify(await value())}`;
+      await set('1. one');
+      await js(newLine);
+      if (!(await waitInPage(win, `document.querySelector('${box}').value === '1. one\\n2. '`, 2_000))) return `⇧↵ after "1. one" left ${JSON.stringify(await value())}`;
+      await set('');
+      if ((await js("document.querySelector('[data-remote-session-view] [data-remote-send]')?.dataset.remoteSend")) !== 'empty') return 'Send is ready with an empty box';
+      // A 1×1 PNG pasted the way a screenshot is.
+      await js(`(() => {
+        const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
+        const data = new DataTransfer();
+        data.items.add(new File([bytes], 'screen.png', { type: 'image/png' }));
+        document.querySelector('${box}').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+      })()`);
+      if (!(await waitInPage(win, "document.querySelector('[data-remote-session-view] [data-remote-image-remove]')", 5_000))) return 'the pasted image did not show in the box';
+      if (!(await waitInPage(win, "document.querySelector('[data-remote-session-view] [data-remote-send]')?.dataset.remoteSend === 'ready'", 2_000))) return 'Send is not ready with only an image';
+      return 'ok: ⇧↵ continues "- " and "1." and ends the list on an empty item; Send ready with only a pasted image';
+    } finally {
+      await js("document.querySelectorAll('[data-remote-session-view] [data-remote-image-remove]').forEach((b) => b.click())");
+      await set('');
+      await js(`document.querySelector('${box}')?.blur()`);
+    }
+  });
+}
+
 /** A finished session's catch-up says what you asked as the prompt's title, without its Markdown `#`. */
 export function runPhoneCatchUpStep(): Promise<string> {
   return onPhone(async (js, win) => {

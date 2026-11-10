@@ -17,6 +17,7 @@ import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
+import { editKey } from '../composer/editing.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { RunAsChip } from '../newSession/RunAsChip.tsx';
 import { RunAsSteps } from '../newSession/RunAsSteps.tsx';
@@ -350,6 +351,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (savedPrompts.onMenuKey(event)) return;
+    if (editKey(event, setPrompt)) return;
     if ((event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) || matches(event.nativeEvent, 'new-session.start')) {
       event.preventDefault();
       void start();

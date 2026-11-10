@@ -1907,6 +1907,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-composer-lists",
+      "name": "Remote: send images or files without text, and ⇧↵ (Return on a phone) continues a list",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-tab-signals",
       "name": "Remote: the needs-you count and dot in the browser tab",
       "page": "remote-access"

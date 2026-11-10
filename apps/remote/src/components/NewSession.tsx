@@ -8,6 +8,7 @@ import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.t
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer, useWide } from '../lib/media.ts';
 import { autoOn, changedFrom, defaultChoice, EFFORT_LABEL, MODE_SHORT, modelLabel, profilesOf, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
+import { continueListKey } from '../lib/listEdit.ts';
 import { optionsSummary, providerSummary, startState, type SummaryPart } from '../lib/newOptions.ts';
 import { lastProject, rememberProject, rememberRunOn } from '../lib/storage.ts';
 import type { ConnectionState } from '../lib/connection.ts';
@@ -540,6 +541,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
                 onKeyDown={(event) => {
+                  // Return is a new line here, so on a list item it starts the next one.
+                  if (continueListKey(event, false, setPrompt)) return;
                   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                     event.preventDefault();
                     void start();
