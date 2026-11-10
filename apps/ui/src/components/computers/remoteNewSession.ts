@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AUTO_MODEL, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions } from '@seshboard/protocol/client';
+import { AUTO_MODEL, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions, type WorktreeBase } from '@seshboard/protocol/client';
 import { autoDescription } from '../../lib/autoModel.ts';
 import type { Choice } from '../newSession/ChoiceMenu.tsx';
 import { filterBranches } from '../worktree/branchMenu.ts';
@@ -53,6 +53,8 @@ export interface RemoteChoice {
   effort: Effort | null;
   permissionMode: PermissionMode;
   worktree: boolean;
+  /** Where a new worktree starts there (`REMOTE_FEATURE_WORKTREE_BASE`); `fresh` from a computer that doesn't say. */
+  baseRef: WorktreeBase;
 }
 
 /** That computer's profiles, also from a Seshboard that doesn't send them yet. */
@@ -75,6 +77,7 @@ export function remoteDefaultChoice(options: RemoteOptions | null, projectId: st
     effort: project?.effort ?? profile?.effort ?? null,
     permissionMode: project?.permissionMode ?? profile?.permissionMode ?? 'default',
     worktree: project?.worktree ?? profile?.worktree ?? false,
+    baseRef: project?.baseRef ?? profile?.baseRef ?? 'fresh',
   };
 }
 
@@ -91,6 +94,8 @@ export function remoteChanges(choice: RemoteChoice, defaults: RemoteChoice, proj
     ...(choice.effort !== defaults.effort ? { effort: choice.effort } : {}),
     ...(choice.permissionMode !== defaults.permissionMode && isRemoteMode(choice.permissionMode) ? { permissionMode: choice.permissionMode } : {}),
     ...(choice.worktree !== defaults.worktree ? { worktree: choice.worktree } : {}),
+    // Only for a worktree: in the current checkout there is nothing to start from.
+    ...(choice.worktree && choice.baseRef !== defaults.baseRef ? { worktreeBase: choice.baseRef } : {}),
   };
 }
 

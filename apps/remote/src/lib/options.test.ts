@@ -22,23 +22,23 @@ const options: RemoteOptions = {
 
 describe('New session choices', () => {
   it('start from the project\'s defaults', () => {
-    expect(defaultChoice(options, 'aaaaaaaaaaaaaaaa')).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true });
-    expect(defaultChoice(options, 'other')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false });
+    expect(defaultChoice(options, 'aaaaaaaaaaaaaaaa')).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
+    expect(defaultChoice(options, 'other')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false, baseRef: 'fresh' });
     expect(defaultChoice(null, null).permissionMode).toBe('default');
   });
 
   it('take the project\'s profile and its defaults under the project\'s own', () => {
     expect(projectProfile(options, 'bbbbbbbbbbbbbbbb')).toBe('work');
     expect(projectProfile(options, 'aaaaaaaaaaaaaaaa')).toBe('default');
-    expect(defaultChoice(options, 'bbbbbbbbbbbbbbbb')).toEqual({ profileId: 'work', model: 'haiku', effort: 'low', permissionMode: 'plan', worktree: true });
+    expect(defaultChoice(options, 'bbbbbbbbbbbbbbbb')).toEqual({ profileId: 'work', model: 'haiku', effort: 'low', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
     // Another profile for this session brings its defaults where the project sets none.
-    expect(defaultChoice(options, 'bbbbbbbbbbbbbbbb', 'default')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false });
+    expect(defaultChoice(options, 'bbbbbbbbbbbbbbbb', 'default')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false, baseRef: 'fresh' });
   });
 
   it('work with a computer that sends no profiles', () => {
     const older = { ...options, profiles: undefined, defaultProfileId: undefined, projects: [{ id: 'aaaaaaaaaaaaaaaa', defaults: options.projects[0]!.defaults }] } as unknown as RemoteOptions;
     expect(profilesOf(older)).toEqual([]);
-    expect(defaultChoice(older, 'aaaaaaaaaaaaaaaa')).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true });
+    expect(defaultChoice(older, 'aaaaaaaaaaaaaaaa')).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
   });
 
   it('send only what was changed', () => {
@@ -47,6 +47,9 @@ describe('New session choices', () => {
     expect(changedFrom({ ...defaults, effort: 'low', worktree: false }, defaults)).toEqual({ effort: 'low', worktree: false });
     // A mode a phone can't pick is never sent, even when it is the project's default.
     expect(changedFrom({ ...defaults, permissionMode: 'bypassPermissions' }, defaults)).toEqual({});
+    // Where a new worktree starts goes only with a worktree, and only when it isn't the default.
+    expect(changedFrom({ ...defaults, worktree: true, baseRef: 'refs/remotes/origin/dev' }, { ...defaults, worktree: true })).toEqual({ worktreeBase: 'refs/remotes/origin/dev' });
+    expect(changedFrom({ ...defaults, worktree: false, baseRef: 'head' }, { ...defaults, worktree: false })).toEqual({});
     // The profile only when it isn't the project's; what matches the new profile's defaults isn't sent.
     const work = defaultChoice(options, 'aaaaaaaaaaaaaaaa', 'work');
     expect(changedFrom(work, work, 'default')).toEqual({ profileId: 'work' });

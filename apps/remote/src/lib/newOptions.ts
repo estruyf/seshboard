@@ -34,6 +34,8 @@ export interface SummaryInput {
   /** The branch it starts on in the project's folder (null: not known), and whether you picked it. */
   branch: string | null;
   branchPicked: boolean;
+  /** Where a new worktree starts, by name ("origin/dev"); null when the computer can't say. */
+  base?: string | null;
   /** The pipeline Run as picked; null for one session. */
   pipeline: string | null;
 }
@@ -50,7 +52,7 @@ export function optionsSummary(input: SummaryInput): OptionsSummary {
   const second: SummaryPart[] = input.pipeline
     ? [{ text: `Runs as ${input.pipeline}`, changed: true }]
     : [
-        choice.worktree ? { text: 'New worktree', changed: choice.worktree !== defaults.worktree } : { text: input.branch ? `This folder on ${input.branch}` : 'This folder', changed: choice.worktree !== defaults.worktree || input.branchPicked },
+        choice.worktree ? { text: input.base ? `New worktree from ${input.base}` : 'New worktree', changed: choice.worktree !== defaults.worktree || choice.baseRef !== defaults.baseRef } : { text: input.branch ? `This folder on ${input.branch}` : 'This folder', changed: choice.worktree !== defaults.worktree || input.branchPicked },
         { text: 'one session', changed: false },
       ];
   const line = (parts: SummaryPart[]) => parts.map((p) => p.text).join(' · ');

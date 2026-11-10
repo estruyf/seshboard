@@ -18,6 +18,8 @@ export { MAX_SIDE_QUESTION_LENGTH, threadTitle } from './sideQuestionConstants.t
 export { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier } from './autoModel.ts';
 export type { CatchUp, CatchUpNeedKind, CatchUpTests } from './catchUp.ts';
 export * from './remoteConstants.ts';
+export { branchOfBase, isBranchBase, type BranchBase, type WorktreeBase } from './worktreeBase.ts';
+export { remoteBaseChoices, remoteBaseListed, remoteBaseName, remoteFreshBase, type RemoteBaseChoice } from './remoteWorktreeBase.ts';
 export { APP_ICON_KEYS, appIconKey, DEFAULT_APP_ICON, remoteIconUrl, remoteManifestUrl, type AppIconKey } from './appIcons.ts';
 export { COLOR_PATTERN } from './color.ts';
 export { overlayShadow } from './themeShadow.ts';

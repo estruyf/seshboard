@@ -4,7 +4,7 @@ import { CodexIcon } from './CodexIcon.tsx';
 import { CopilotIcon } from './CopilotIcon.tsx';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
-import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession, type RemoteProfile } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, remoteBaseChoices, remoteBaseName, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession, type RemoteProfile, type WorktreeBase } from '@seshboard/protocol/remote-client';
 import { branchChoices } from '../lib/branches.ts';
 import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, PROFILE_TEXT, profilesOf, projectProfile, takesEffort } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -170,6 +170,23 @@ export function WorkspaceChip({ value, onPick, disabled, look }: { value: boolea
         { value: false, label: 'This folder', description: 'Edits land in your working copy' },
         { value: true, label: 'New worktree', description: 'An isolated copy; your checkout stays untouched' },
       ]}
+      onPick={onPick}
+    />
+  );
+}
+
+/** Where a new worktree starts: the remote's default branch, the local HEAD, or another branch the computer lists. */
+export function BaseChip({ branches, value, onPick, look }: { branches: RemoteBranches; value: WorktreeBase; onPick: (base: WorktreeBase) => void; look?: Look }) {
+  return (
+    <ChoiceChip
+      label="Branch from"
+      face={remoteBaseName(value, branches)}
+      icon={look === 'row' ? undefined : <GitBranch className="size-3.5 text-muted" aria-hidden />}
+      look={look}
+      rowIcon={<GitBranch aria-hidden />}
+      selected={value}
+      hook="base"
+      options={remoteBaseChoices(branches, value).map((c) => ({ value: c.value, label: c.label, description: c.description ?? c.note, separatorAfter: c.separatorAfter }))}
       onPick={onPick}
     />
   );

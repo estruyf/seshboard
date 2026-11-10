@@ -2621,7 +2621,13 @@ export function createEngine(options: EngineOptions): Engine {
           profileId: choice.profileId,
           checkoutBranch: choice.checkoutBranch,
         }),
-      branches: async (root) => (resolver.resolve(root).gitDir ? listBranches(root) : { current: null, branches: [], checkedOutElsewhere: [] }),
+      // The remote branches and what `fresh` starts from go with them, for a new worktree's Branch from.
+      branches: async (root) => {
+        if (!resolver.resolve(root).gitDir) return { current: null, branches: [], checkedOutElsewhere: [], remoteBranches: [], remote: null, baseBranch: null };
+        const [local, remoteBranches, remotes, base] = await Promise.all([listBranches(root), listRemoteBranches(root), git(root, ['remote']).catch(() => ''), baseBranch(root).catch(() => null)]);
+        const names = remotes.split('\n').filter(Boolean);
+        return { ...local, remoteBranches, remote: names.includes('origin') ? 'origin' : (names[0] ?? null), baseBranch: base };
+      },
       queue: (root, prompt, choice) => {
         const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef, branch: choice.checkoutBranch, profileId: choice.profileId }, {});
         laterChanged();

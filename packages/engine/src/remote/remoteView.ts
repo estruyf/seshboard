@@ -347,7 +347,7 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
     effort: options.effort !== undefined ? options.effort : (inheritedDefault('effort', project, profile.defaults) ?? globals.effort),
     permissionMode: options.permissionMode ?? inheritedPermissionMode(project, profile.defaults) ?? globalMode,
     worktree: options.worktree ?? workspace === 'worktree',
-    baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
+    baseRef: options.worktreeBase ?? project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
     checkoutBranch: options.checkoutBranch ?? null,
   };
 }
@@ -357,11 +357,12 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
  * the global mode comes in where it applies: a profile without a mode, and a project that skips its profile's. The
  * global model and effort (`globals`) come in the same way; a project's unset ones fall to its profile.
  */
-export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'>, globalMode: PermissionMode | null, globals: GlobalModel = NO_GLOBAL_MODEL) => ({
+export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'> & { baseRef?: WorktreeBase | null }, globalMode: PermissionMode | null, globals: GlobalModel = NO_GLOBAL_MODEL) => ({
   model: defaults.model ?? globals.model,
   effort: defaults.effort ?? globals.effort,
   permissionMode: defaults.permissionMode ?? globalMode,
   worktree: defaults.workspace === null ? null : defaults.workspace === 'worktree',
+  baseRef: defaults.baseRef ?? null,
 });
 
 /** A token breakdown as another computer gets it: each project as its id and name, never its folder. */

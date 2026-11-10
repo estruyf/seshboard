@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   agentName,
+  branchOfBase,
+  isBranchBase,
+  remoteBaseListed,
   type ActivityEntry,
   DEFAULT_APP_ICON,
   defuseStubs,
@@ -934,6 +937,12 @@ export class RemoteHub {
     // Settings › General's model and effort are Claude Code's: another provider's profile starts on its own default.
     const globals = this.options.providerOfProfile?.(profile.id) ? NO_GLOBAL_MODEL : this.options.globalModel();
     const choice = sessionChoice(options, project.defaults, profile, this.options.globalPermissionMode(), globals);
+    const base = options.worktreeBase;
+    if (base !== undefined && isBranchBase(base)) {
+      // A base is only for a new worktree, and only a branch the repository still has.
+      if (!choice.worktree) throw new RpcError('INVALID_PARAMS', 'A branch to start from is for a new worktree; choose New worktree');
+      if (!remoteBaseListed(base, await this.options.branches(project.root))) throw new RpcError('NOT_FOUND', `No branch ${branchOfBase(base)} in ${project.name}`);
+    }
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');

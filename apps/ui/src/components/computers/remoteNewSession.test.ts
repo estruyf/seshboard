@@ -58,16 +58,16 @@ const options: RemoteOptions = {
 
 describe('New session choices on another computer', () => {
   it("start from the project's defaults", () => {
-    expect(remoteDefaultChoice(options, 'aaaaaaaaaaaaaaaa')).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true });
-    expect(remoteDefaultChoice(options, 'other')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false });
+    expect(remoteDefaultChoice(options, 'aaaaaaaaaaaaaaaa')).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
+    expect(remoteDefaultChoice(options, 'other')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false, baseRef: 'fresh' });
     expect(remoteDefaultChoice(null, null).permissionMode).toBe('default');
   });
 
   it("take the project's profile, and another profile's defaults under the project's own", () => {
     expect(remoteProjectProfile(options, 'bbbbbbbbbbbbbbbb')).toBe('work');
     expect(remoteProjectProfile(options, 'aaaaaaaaaaaaaaaa')).toBe('default');
-    expect(remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb')).toEqual({ profileId: 'work', model: 'haiku', effort: 'low', permissionMode: 'plan', worktree: true });
-    expect(remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb', 'default')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false });
+    expect(remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb')).toEqual({ profileId: 'work', model: 'haiku', effort: 'low', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
+    expect(remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb', 'default')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false, baseRef: 'fresh' });
   });
 
   it('work with a computer that sends no profiles', () => {
@@ -90,6 +90,14 @@ describe('New session choices on another computer', () => {
     expect(remoteChanges({ ...other, model: 'opus' }, other, 'work')).toEqual({ profileId: 'default', model: 'opus' });
     // Bypass is only picked on the computer itself.
     expect(remoteChanges({ ...defaults, permissionMode: 'bypassPermissions' }, defaults, 'work')).toEqual({});
+  });
+
+  it('send where a new worktree starts only for a worktree, and only when it is not the default', () => {
+    const defaults = remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb');
+    expect(remoteChanges({ ...defaults, baseRef: 'refs/remotes/origin/dev' }, defaults, 'work')).toEqual({ worktreeBase: 'refs/remotes/origin/dev' });
+    expect(remoteChanges({ ...defaults, worktree: false, baseRef: 'head' }, defaults, 'work')).toEqual({ worktree: false });
+    const withBase = { ...options, projects: options.projects.map((p) => (p.id === 'bbbbbbbbbbbbbbbb' ? { ...p, defaults: { ...p.defaults, baseRef: 'refs/heads/dev' as const } } : p)) };
+    expect(remoteDefaultChoice(withBase, 'bbbbbbbbbbbbbbbb').baseRef).toBe('refs/heads/dev');
   });
 
   it('name models and say whether they take an effort', () => {

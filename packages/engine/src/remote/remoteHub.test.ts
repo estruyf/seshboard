@@ -212,7 +212,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     // The Copilot profile is GitHub Copilot's, with its own modes.
     providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }], supports: [] } : null),
     providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
-    branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] } : { current: null, branches: [], checkedOutElsewhere: [] }),
+    branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'], remoteBranches: ['origin/main', 'origin/dev'], remote: 'origin', baseBranch: 'main' } : { current: null, branches: [], checkedOutElsewhere: [] }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
     markUnread: (sessionId) => void calls.push(`unread ${sessionId}`),
@@ -541,7 +541,7 @@ describe('Remote hub', () => {
     await expect(remote.call('later.add', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     // A branch to check out first: only one of the folder's own, free, and not with a worktree.
-    expect(await remote.call('projects.branches', { projectId: projectIdOf(ROOT) })).toEqual({ current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] });
+    expect(await remote.call('projects.branches', { projectId: projectIdOf(ROOT) })).toEqual({ current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'], remoteBranches: ['origin/main', 'origin/dev'], remote: 'origin', baseBranch: 'main' });
     await expect(remote.call('projects.branches', { projectId: projectIdOf(SEEN_ONLY) })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'f', worktree: false, checkoutBranch: 'feat/login' });
     expect(created.at(-1)!.choice).toMatchObject({ worktree: false, checkoutBranch: 'feat/login' });
@@ -551,17 +551,28 @@ describe('Remote hub', () => {
     expect(await remote.call('later.add', { projectId: projectIdOf(ROOT), prompt: 'j', worktree: false, checkoutBranch: 'feat/login' })).toEqual({ id: 'later-1' });
     expect(queued.at(-1)!.choice.checkoutBranch).toBe('feat/login');
 
+    // Where a new worktree starts: a local or remote branch the repository has, and only for a worktree.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'k', worktree: true, worktreeBase: 'refs/remotes/origin/dev' });
+    expect(created.at(-1)!.choice).toMatchObject({ worktree: true, baseRef: 'refs/remotes/origin/dev' });
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'l', worktree: true, worktreeBase: 'head' });
+    expect(created.at(-1)!.choice).toMatchObject({ worktree: true, baseRef: 'head' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'm', worktree: true, worktreeBase: 'refs/heads/gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'n', worktree: false, worktreeBase: 'refs/heads/feat/login' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'o', worktree: true, worktreeBase: 'dev' as never })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await remote.call('later.add', { projectId: projectIdOf(ROOT), prompt: 'p', worktree: true, worktreeBase: 'refs/heads/feat/login' });
+    expect(queued.at(-1)!.choice.baseRef).toBe('refs/heads/feat/login');
+
     const options = await remote.call('options.get', {});
     expect(options.models).toEqual([{ value: 'opus', displayName: 'Opus', description: 'Most capable', supportsEffort: true }]);
     expect(options.modes).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
     expect(options.efforts).toContain('medium');
     expect(options.auto).toEqual({ enabled: true, allowed: ['sonnet', 'opus'] });
-    expect(options.projects.find((p) => p.id === projectIdOf(ROOT))).toEqual({ id: projectIdOf(ROOT), profileId: null, defaults: { model: 'opus', effort: null, permissionMode: null, worktree: null } });
+    expect(options.projects.find((p) => p.id === projectIdOf(ROOT))).toEqual({ id: projectIdOf(ROOT), profileId: null, defaults: { model: 'opus', effort: null, permissionMode: null, worktree: null, baseRef: null } });
     expect(options.projects.find((p) => p.id === projectIdOf(FIRST))?.profileId).toBe('work');
     expect(options.profiles).toEqual([
       // A profile without a mode starts in the global one.
-      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: 'default', worktree: null } },
-      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: 'default', worktree: true } },
+      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: 'default', worktree: null, baseRef: null } },
+      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: 'default', worktree: true, baseRef: null } },
     ]);
     expect(options.defaultProfileId).toBe('default');
     expect(JSON.stringify(options)).not.toContain(ROOT);
@@ -1351,6 +1362,8 @@ describe('what a phone sees', () => {
     const work = { id: 'work', defaults: { model: 'sonnet', effort: 'high' as const, permissionMode: 'plan' as const, workspace: 'current' as const, baseRef: 'fresh' as const } };
     expect(sessionChoice({}, NO_DEFAULTS, work)).toEqual({ profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'plan', worktree: false, baseRef: 'fresh', checkoutBranch: null });
     expect(sessionChoice({}, defaults, work)).toEqual({ profileId: 'work', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head', checkoutBranch: null });
+    // A base the phone picked wins over the project's.
+    expect(sessionChoice({ worktreeBase: 'refs/heads/dev' }, defaults, work)).toMatchObject({ worktree: true, baseRef: 'refs/heads/dev' });
     // The global mode where neither sets one, or where the project skips its profile's.
     expect(sessionChoice({}, NO_DEFAULTS, none, 'auto').permissionMode).toBe('auto');
     expect(sessionChoice({}, NO_DEFAULTS, work, 'auto').permissionMode).toBe('plan');

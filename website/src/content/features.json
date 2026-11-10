@@ -1867,6 +1867,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-worktree-base",
+      "name": "Remote and other computers: Branch from, the branch a new worktree starts from in New session",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-queue-for-later",
       "name": "Remote: Queue for later",
       "page": "remote-access"

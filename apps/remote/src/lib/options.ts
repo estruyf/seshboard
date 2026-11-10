@@ -1,4 +1,4 @@
-import { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteSession } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteSession, type WorktreeBase } from '@seshboard/protocol/remote-client';
 
 /**
  * New session's choices on a phone, worded as on the computer (apps/ui `lib/modes.ts`, `newSession/route.ts`). Pure,
@@ -72,6 +72,8 @@ export interface Choice {
   effort: Effort | null;
   permissionMode: PermissionMode;
   worktree: boolean;
+  /** Where a new worktree starts (`REMOTE_FEATURE_WORKTREE_BASE`); `fresh` from a computer that doesn't say. */
+  baseRef: WorktreeBase;
 }
 
 /** The profiles, also from a computer whose Seshboard doesn't send them yet. */
@@ -94,6 +96,7 @@ export function defaultChoice(options: RemoteOptions | null, projectId: string |
     effort: project?.effort ?? profile?.effort ?? null,
     permissionMode: project?.permissionMode ?? profile?.permissionMode ?? 'default',
     worktree: project?.worktree ?? profile?.worktree ?? false,
+    baseRef: project?.baseRef ?? profile?.baseRef ?? 'fresh',
   };
 }
 
@@ -101,13 +104,15 @@ export function defaultChoice(options: RemoteOptions | null, projectId: string |
  * Only what differs from the defaults goes to the computer, so a default changed meanwhile still applies; the profile
  * only when it isn't the project's (`projectProfileId`).
  */
-export function changedFrom(choice: Choice, defaults: Choice, projectProfileId: string = defaults.profileId): { profileId?: string; model?: string | null; effort?: Effort | null; permissionMode?: RemotePermissionMode; worktree?: boolean } {
+export function changedFrom(choice: Choice, defaults: Choice, projectProfileId: string = defaults.profileId): { profileId?: string; model?: string | null; effort?: Effort | null; permissionMode?: RemotePermissionMode; worktree?: boolean; worktreeBase?: WorktreeBase } {
   return {
     ...(choice.profileId !== projectProfileId ? { profileId: choice.profileId } : {}),
     ...(choice.model !== defaults.model ? { model: choice.model } : {}),
     ...(choice.effort !== defaults.effort ? { effort: choice.effort } : {}),
     ...(choice.permissionMode !== defaults.permissionMode && isRemoteMode(choice.permissionMode) ? { permissionMode: choice.permissionMode } : {}),
     ...(choice.worktree !== defaults.worktree ? { worktree: choice.worktree } : {}),
+    // Only for a worktree: in the project's folder there is nothing to start from.
+    ...(choice.worktree && choice.baseRef !== defaults.baseRef ? { worktreeBase: choice.baseRef } : {}),
   };
 }
 

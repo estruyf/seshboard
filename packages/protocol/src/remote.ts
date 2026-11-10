@@ -6,7 +6,7 @@ import { ActivityDay, RemoteActivityEntry } from './activity.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
 import { ClonePlan, CloneProgress } from './clone.ts';
-import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta, WorktreeBaseSchema } from './host.ts';
 import { Pipeline, PipelineRun, PipelineRunStep, PushPreview } from './pipelineSchema.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
@@ -247,11 +247,23 @@ export const RemoteSessionOptions = z.object({
    * `REMOTE_FEATURE_BRANCHES`. Left out, the session starts on what is checked out. Not with a worktree.
    */
   checkoutBranch: z.string().min(1).max(250).optional(),
+  /**
+   * In a new worktree: where it starts (`fresh`, `head`, or a branch's full ref that `projects.branches` lists), with
+   * `REMOTE_FEATURE_WORKTREE_BASE`. Left out, the project's default base.
+   */
+  worktreeBase: WorktreeBaseSchema.optional(),
 });
 export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 
 /** A project's or a profile's defaults for new sessions (null: not set there). */
-export const RemoteDefaults = z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean().nullable() });
+export const RemoteDefaults = z.object({
+  model: z.string().nullable(),
+  effort: Effort.nullable(),
+  permissionMode: PermissionMode.nullable(),
+  worktree: z.boolean().nullable(),
+  /** Where a new worktree starts (null: not set there). With `REMOTE_FEATURE_WORKTREE_BASE`. */
+  baseRef: WorktreeBaseSchema.nullable().optional(),
+});
 export type RemoteDefaults = z.infer<typeof RemoteDefaults>;
 
 /** A provider's own mode for one of Seshboard's (Copilot's, described in its words). */
@@ -304,6 +316,12 @@ export const RemoteBranches = z.object({
   branches: z.array(z.string()),
   /** Checked out in another worktree: git won't check them out in the project's folder too. */
   checkedOutElsewhere: z.array(z.string()),
+  /** Remote branches (`origin/dev`), most recent first: a new worktree can start from one. With `REMOTE_FEATURE_WORKTREE_BASE`. */
+  remoteBranches: z.array(z.string()).optional(),
+  /** The remote a worktree from `fresh` starts from (origin when there is one); null without a remote. */
+  remote: z.string().nullable().optional(),
+  /** The branch `fresh` starts from: the project's default branch, else the remote's; null when unknown. */
+  baseBranch: z.string().nullable().optional(),
 });
 export type RemoteBranches = z.infer<typeof RemoteBranches>;
 

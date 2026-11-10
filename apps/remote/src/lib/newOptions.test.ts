@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { optionsSummary, providerSummary, startState, type SummaryInput } from './newOptions.ts';
 import type { Choice } from './options.ts';
 
-const defaults: Choice = { profileId: 'default', model: null, effort: null, permissionMode: 'auto', worktree: false };
+const defaults: Choice = { profileId: 'default', model: null, effort: null, permissionMode: 'auto', worktree: false, baseRef: 'fresh' };
 const input = (change: Partial<SummaryInput> = {}, choice: Partial<Choice> = {}): SummaryInput => ({
   choice: { ...defaults, ...choice },
   defaults,
@@ -32,6 +32,7 @@ describe('the Options summary', () => {
     expect(texts(optionsSummary(input({ mode: 'Plan' }, { permissionMode: 'plan' })).first)).toBe('Personal · Default model · *Plan*');
     expect(texts(optionsSummary(input({ effort: 'High' }, { effort: 'high' })).first)).toBe('Personal · Default model · *High* · Auto');
     expect(texts(optionsSummary(input({}, { worktree: true })).second)).toBe('*New worktree* · one session');
+    expect(texts(optionsSummary(input({ base: 'origin/dev' }, { worktree: true, baseRef: 'refs/remotes/origin/dev' })).second)).toBe('*New worktree from origin/dev* · one session');
     expect(texts(optionsSummary(input({ branch: 'main', branchPicked: true })).second)).toBe('*This folder on main* · one session');
   });
 

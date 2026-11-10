@@ -5590,6 +5590,16 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `document.querySelector('[data-menu="remote-branch"] [data-choice="feat/onboarding"]')`, 3_000))) return 'the branch menu does not list the other computer’s branches';
   await click('[data-menu="remote-branch"] [data-choice="feat/onboarding"]');
   if (!(await waitInPage(win, `${routeBranch} === 'feat/onboarding'`, 3_000))) return `picking a branch did not show in the route (${await js(routeBranch)})`;
+  // In a new worktree, Branch from picks where it starts there: the local HEAD names the branch checked out there.
+  const routeBase = "document.querySelector('[data-remote-new-session] [data-route-base]')?.innerText";
+  await click('[data-remote-new-session] [data-worktree-switch]');
+  if (!(await waitInPage(win, `document.querySelector('[data-remote-new-session] [data-remote-base-select]')`, 3_000))) return 'a new worktree on the other computer has no Branch from';
+  await click('[data-remote-base-select]');
+  if (!(await waitInPage(win, `document.querySelector('[data-menu="remote-base"] [data-choice="head"]')`, 3_000))) return 'Branch from does not list the local HEAD';
+  await click('[data-menu="remote-base"] [data-choice="head"]');
+  if (!(await waitInPage(win, `${routeBase} === 'main'`, 3_000))) return `picking the local HEAD did not show in the route (${await js(routeBase)})`;
+  await click('[data-remote-new-session] [data-worktree-switch]');
+  if (!(await waitInPage(win, `${routeBranch} === 'feat/onboarding'`, 3_000))) return `back in the current checkout, the picked branch is gone (${await js(routeBranch)})`;
   // The saved prompt, picked with / in the message box.
   const prompt = savedText;
   await js("document.querySelector('[data-remote-new-session] textarea').focus()");

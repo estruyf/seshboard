@@ -31,6 +31,12 @@ export const REMOTE_FEATURE_ACTIVITY = 'activity.range';
 /** In `hello`'s `features`: `projects.branches` answers, and `session.create` and `later.add` take `checkoutBranch`. */
 export const REMOTE_FEATURE_BRANCHES = 'branches';
 
+/**
+ * In `hello`'s `features`: `projects.branches` lists the remote branches too, and `session.create` and `later.add` take
+ * `worktreeBase`, so a new worktree can start from another branch than the default.
+ */
+export const REMOTE_FEATURE_WORKTREE_BASE = 'worktree.base';
+
 /** In `hello`'s `features`: `session.markUnread` answers, so Mark as read can be undone. */
 export const REMOTE_FEATURE_MARK_UNREAD = 'session.markUnread';
 
