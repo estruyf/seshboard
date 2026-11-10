@@ -8494,8 +8494,14 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   // New session: Clone from GitHub… next to Add project…, and a URL pasted in the folder field offers the clone.
   pressKey(win, 'N', ['meta']);
   if (!(await waitInPage(win, `${one('[data-new-session-view] [data-clone-from-github]')} && ${one('[data-new-session-view] [data-find-project]')}`, 3_000))) return fail('New session has no Clone from GitHub…');
+  // It says what it does, in the projects' column too, rather than being an icon alone.
+  if (!(await js(`${one('[data-new-session-view] [data-clone-from-github]')}.innerText.includes('Clone from GitHub')`))) return fail('Clone from GitHub… under the projects has no label');
+  await shot(win, 'clone-new-session.png');
   await js(`${one('[data-new-session-view] [data-find-project]')}.click()`);
   if (!(await waitInPage(win, one('[data-folder-list] input'), 3_000))) return fail('Filter did not open the folder field');
+  // The demo's few projects don't fill the column: the footer stays under them rather than at the column's bottom.
+  const footerGap = (await js(`${one('[data-new-session-view] [data-project-footer]')}.getBoundingClientRect().top - ${one('[data-new-session-view] [data-folder-list]')}.getBoundingClientRect().bottom`)) as number;
+  if (footerGap > 16) return fail(`the open list pushed Add project… ${Math.round(footerGap)}px down, away from its rows`);
   await setFieldValue(win, '[data-folder-list] input', 'https://github.com/acme/smoke-clone');
   if (!(await waitInPage(win, `${one('[data-clone-option="acme/smoke-clone"]')}?.dataset.active === 'true'`, 3_000))) return fail('a GitHub URL in the folder field did not offer Clone acme/smoke-clone');
   pressKey(win, 'Return');
@@ -8506,6 +8512,9 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   const picked = `${one('[data-route-project]')}?.dataset.tooltip === ${JSON.stringify(target)}`;
   if (!(await waitInPage(win, `${picked} && ${one('[data-worktree-switch]')}?.disabled === true`, 5_000))) return fail('the clone was not picked as the project, or a fresh clone still offers a worktree');
   await shot(win, 'clone-from-github.png');
+  // The sandbox's long temp path fits the column's folder field (cut at its start) instead of running over the message box.
+  const folderField = `${one('[data-clone-folder]')}?.closest('label')`;
+  if (!(await js(`${folderField} && ${folderField}.scrollWidth <= ${folderField}.clientWidth + 1`))) return fail('the folder the clone goes in runs out of its field');
 
   // Start asks about the hook it brings; Cancel starts nothing and keeps the prompt.
   const box = '[data-new-session-view] [data-composer]';

@@ -402,9 +402,10 @@ export function FolderPicker({
     </button>
   );
 
-  // Under the list: the way to all of them (or back), then adding one.
+  // Under the list: the way to all of them (or back), then adding one. Both ways to add keep their labels; in a narrow
+  // column they wrap to a line of their own.
   const footer = (
-    <div className="flex min-w-0 shrink-0 items-center gap-1.5 px-0.5 text-ui" data-project-footer>
+    <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-0.5 text-ui" data-project-footer>
       {open ? (
         <button type="button" onClick={() => close(true)} aria-expanded data-folder-select data-value={value ?? ''} className="shrink-0 rounded font-semibold text-accent-ink hover:underline" data-fewer-projects>
           Show fewer
@@ -416,14 +417,19 @@ export function FolderPicker({
           </button>
         )
       )}
-      <span className="min-w-0 flex-1" />
-      {onClone && <Button size="sm" variant="quiet" iconOnly aria-label="Clone from GitHub…" data-tooltip="Clone from GitHub…" icon={<FolderDown size={14} aria-hidden />} data-clone-from-github onClick={() => clone(null)} className="shrink-0" />}
-      {/* With no projects the row above is the way in. */}
-      {(open || end?.kind !== 'choose') && (
-        <Button size="sm" variant="quiet" icon={<FolderPlus size={14} aria-hidden />} data-add-folder onClick={addProject} className="shrink-0">
-          Add project…
-        </Button>
-      )}
+      <span className="ml-auto flex min-w-0 items-center gap-1.5">
+        {onClone && (
+          <Button size="sm" variant="quiet" icon={<FolderDown size={14} aria-hidden />} data-clone-from-github onClick={() => clone(null)} className="shrink-0">
+            Clone from GitHub…
+          </Button>
+        )}
+        {/* With no projects the row above is the way in. */}
+        {(open || end?.kind !== 'choose') && (
+          <Button size="sm" variant="quiet" icon={<FolderPlus size={14} aria-hidden />} data-add-folder onClick={addProject} className="shrink-0">
+            Add project…
+          </Button>
+        )}
+      </span>
     </div>
   );
 
@@ -510,7 +516,8 @@ export function FolderPicker({
     // A container: the list shows one or two columns as the picker (not the window) narrows.
     <div ref={rootRef} className="@container relative flex min-h-0 flex-1 flex-col gap-2" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {open ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-2" data-folder-list>
+        // As tall as its rows, like the short list, so the footer stays under them; it shrinks and scrolls when they don't fit.
+        <div className="flex min-h-0 flex-col gap-2" data-folder-list>
           <label className="flex h-8 min-w-0 shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2.5 focus-within:border-accent-ink/60">
             {pathMode ? <Folder size={14} className="shrink-0 text-faint" aria-hidden /> : <Search size={14} className="shrink-0 text-faint" aria-hidden />}
             <span className="relative flex min-w-0 flex-1">
