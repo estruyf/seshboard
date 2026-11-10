@@ -203,8 +203,9 @@ export interface CreateParams {
   /**
    * Auto picks the model after the session has opened: it starts on `model`, shows your message and that Auto is
    * choosing, and the message goes once the pick is in (and setup has finished). Null model: the default model.
+   * `effort`: the effort Auto picked with it, null to keep the session's own.
    */
-  pickModel?: (sessionId: string) => Promise<{ model: string | null; autoPick: AutoPick }>;
+  pickModel?: (sessionId: string) => Promise<{ model: string | null; effort?: Effort | null; autoPick: AutoPick }>;
 }
 
 const NOT_RUNNING_MESSAGE = 'This session is not running in Seshboard';
@@ -576,11 +577,12 @@ export class HostManager {
     this.choosing.add(sessionId);
     this.deps.onInfo(this.withPick(host.info));
     try {
-      const { model, autoPick } = await pick(sessionId);
+      const { model, effort, autoPick } = await pick(sessionId);
       if (!this.choosing.has(sessionId)) return;
       if (model) await host.setModel(model).catch(() => {});
+      if (effort) await host.setEffort(effort).catch(() => {});
       this.picks.set(sessionId, autoPick);
-      this.settings.set(sessionId, { model, autoPick });
+      this.settings.set(sessionId, { model, ...(effort ? { effort } : {}), autoPick });
     } catch (error) {
       this.deps.log('warn', `Auto couldn't pick a model: ${(error as Error).message}`);
     } finally {

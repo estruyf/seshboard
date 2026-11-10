@@ -6,6 +6,9 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Auto picks the effort too, and can pick Fable.** Auto now starts a session on an effort that fits the prompt (low for a quick answer, medium for most work, high for a hard bug), unless you set one yourself. Turn on **Fable** in **Settings › Conversation › Auto model** for the hardest work, such as a migration across the whole codebase. It stays off by default, because it uses about twice what Opus does. Haiku no longer gets prompts that change code, and prompts about images go to Opus. With one model allowed, Auto picks it without asking Haiku.
+- **See where Auto picked wrong.** In **Usage**, a model row says how many of the sessions Auto started on it you moved to another model (`· 4 by Auto, 1 changed`).
+
 - **See your running site beside the conversation.** When a project action, a terminal tab or a background command starts a dev server, **Open preview** shows its page in a new **Web** tab on the right (⌘⇧B, or **Open web preview** in the command palette). It has back, forward, reload, an address bar and a phone width. The page stays as it was while another tab or session is in front, and goes with the session to its own window. Only addresses on this computer open there (`localhost`, `127.0.0.1`): other links open in your browser, and the page gets its own storage, apart from Seshboard's.
 - **Activity: see what you did per day, per week or over any range.** A new page under Upcoming in the sidebar (⌘⇧T). It opens on a day: a strip from Monday to Sunday picks one, then you see **the day in short** (a few lines by Haiku), your sessions, turns, time, commits, pull requests and cost, when you worked, and what you did per project. **Week** shows the same numbers and lists for the whole week, with each session once, and **Range** does that from a date till another date or till today, for up to 62 days. The title and actions stay at the top as you scroll, and a bar under them keeps the days and the numbers. Click a session for what it did, and open it from there. Sessions from your other computers count too. **Projects** shows the time per project: click one to see only its sessions. **Copy for standup** gives you the last day you worked, today, this week or your range as Markdown or plain text, for that project if you picked one, and **Export…** saves the day, the week or the range as CSV or Markdown. Home has a **Yesterday** card with the day in short. Turn the summaries off in **Settings › Conversation**. Nothing leaves your computer apart from that summary.
 - **Activity's bars show how much you did, not how many sessions.** Each day's bar is a score against your typical day, the median of your days with sessions in the 4 weeks before. It stacks the time Claude worked, your turns, and your commits and pull requests, each in its own colour. A dashed line marks a typical day, and the label under a bar is the time worked. Hover a day for its score and what went into it, with its sessions and cost. With a project picked, its bars show its share of a normal day.
@@ -25,6 +28,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **Auto suggests a step up, one at a time.** When a session grows past its first prompt, Auto first suggests more effort on the same model, then the next model up at medium effort, instead of jumping straight to the strongest. With a large context, **Compact, then use Opus** keeps the new model's first turn small.
 - **The working mark takes your theme's colours.** In Catppuccin, Nord and Solarized its cables now use colours from the theme's own palette instead of the app icon's orange, and a theme you import gets cables that go with its accent.
 - New session uses the width of the window: projects on the left, the message box in the middle, and the project's sessions and defaults on the right, without scrolling.
 - **Home is as wide as New session.** On a large screen Home now grows just as far, with the same margins, so nothing jumps when you go from one to the other.
@@ -33,6 +37,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Auto's estimate follows today's prices.** The Why popover said Haiku uses about a fifth of what Opus does. It now says under a tenth, and Sonnet about half. Usage also prices Sonnet 5.5's cache reads and Fable 5.2 at their current list prices.
 - **Remote: an edit's diff stays coloured when you scroll it sideways.** On the phone, the green and red lines of an Edit in the conversation stopped at the edge of the box once you scrolled to a long line.
 - **Compacting no longer looks stuck.** The patch panel next to **Compacting the conversation** now pulses, so a long compact shows it is still going.
 - **New session's project list stays together when you search.** With the search field open and only a few projects, **Add project…** and **Quick question** now stay right under the list instead of dropping to the bottom of the window.

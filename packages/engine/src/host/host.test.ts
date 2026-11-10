@@ -1314,6 +1314,16 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('starts on the effort Auto picked with the model', async () => {
+    const t = setup();
+    const autoPick = { model: 'opus' as const, effort: 'high' as const, reason: 'A hard bug.', at: 1, tokens: 900, allowed: ['sonnet' as const, 'opus' as const] };
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', pickModel: async () => ({ model: 'opus', effort: 'high', autoPick }) });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)).toMatchObject({ model: 'opus', effort: 'high', autoPick });
+    expect(t.manager.savedSettings(id)).toMatchObject({ model: 'opus', effort: 'high' });
+    t.manager.closeAll();
+  });
+
   it('keeps the model you pick while Auto is still choosing', async () => {
     const t = setup();
     let answer!: () => void;

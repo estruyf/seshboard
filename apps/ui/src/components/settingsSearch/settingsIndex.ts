@@ -302,7 +302,7 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'auto-model', page: 'conversation', label: 'Auto model', detail: 'Shows Auto in the model menu. Haiku reads only your prompt, never your files or memory.', keywords: 'automatic routing pick choose', target: '[data-auto-model-enabled]' },
     { id: 'auto-model-allowed', page: 'conversation', label: 'Models it can pick', detail: 'Haiku, Sonnet and Opus. At least one.', keywords: 'auto model', target: '[data-auto-model-allowed]' },
     { id: 'auto-model-lean', page: 'conversation', label: 'When in doubt', detail: 'Which way to lean on a close call: Cheaper, Balanced or Stronger.', keywords: 'auto model cost', target: '[data-auto-model-lean]' },
-    { id: 'auto-model-suggest', page: 'conversation', label: 'Suggest a stronger model later', detail: 'When a session grows past its first prompt. Never switches by itself.', keywords: 'auto model upgrade', target: '[data-auto-model-suggest]' },
+    { id: 'auto-model-suggest', page: 'conversation', label: 'Suggest a stronger model later', detail: 'More effort first, then the next model, when a session grows past its first prompt. Never switches by itself.', keywords: 'auto model upgrade', target: '[data-auto-model-suggest]' },
 
     // Notifications and sounds
     {

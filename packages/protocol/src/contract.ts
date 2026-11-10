@@ -3,6 +3,7 @@ import { AbsolutePath } from './absolutePath.ts';
 import type { ContractShape } from './rpc.ts';
 import {
   AutoPick,
+  AutoEffortSchema,
   AutoTierSchema,
   EditorInfo,
   Effort,
@@ -163,9 +164,11 @@ export const RouteResult = z.discriminatedUnion('ok', [
     ok: z.literal(true),
     routeId: z.string(),
     model: AutoTierSchema,
+    /** The effort Haiku thought fits, with the model. */
+    effort: AutoEffortSchema,
     reason: z.string(),
     tokens: z.number(),
-    /** What the model uses against Opus, 0–1 (an estimate). */
+    /** What the model uses against Opus (1 is Opus, 2 twice as much); an estimate. */
     estimateVsOpus: z.number(),
     allowed: z.array(AutoTierSchema),
   }),

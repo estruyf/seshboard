@@ -10,6 +10,7 @@ import { hourOf, parseUsageLine } from './transcriptUsage.ts';
 import { breakdown, periodRange, sessionCost, windowCosts, type SessionLookup } from './usageQuery.ts';
 import { scopeOf, UsageScanner } from './usageScanner.ts';
 import { RoutingStore } from '../autoModel/router.ts';
+import { createSessionSettingsStore } from '../host/sessionSettings.ts';
 import { CatchUpUsageStore } from '../catchUp/catchUpStore.ts';
 
 let dir: string;
@@ -289,6 +290,10 @@ describe('breakdown', () => {
       ['claude-opus-5-5', 1, 0, null],
       ['Auto routing', 0, 0, 2],
     ]);
+    expect(byModel.rows[0]!.autoChanged).toBeUndefined();
+    // Once you move a session off Auto's pick, its model row says so: the clearest sign Auto picked wrong.
+    createSessionSettingsStore(cache.db).set('known', { autoPick: { model: 'sonnet', reason: 'Small.', at: 1, tokens: 1, allowed: ['sonnet', 'opus'], left: true } });
+    expect(breakdown(cache.db, { ...query, groupBy: 'model' }, lookup).rows[0]).toMatchObject({ byAuto: 1, autoChanged: 1 });
     expect(byModel.rows.reduce((sum, r) => sum + r.share, 0)).toBeCloseTo(1);
     expect(byModel.totals.turns).toBe(5);
     expect(byModel.totals.sessions).toBe(2);
@@ -365,7 +370,7 @@ describe('windowCosts', () => {
       now,
     );
     // Sonnet 5.5 ($2 in, $10 out, $0.20 cache read, $2.50 cache write) for k1 and o1, Haiku 5.5 for the summary.
-    const sonnet = (20 * 2 + 1010 * 10 + 2000 * 0.2 + 400 * 2.5) / 1e6;
+    const sonnet = (20 * 2 + 1010 * 10 + 2000 * 0.1 + 400 * 2.5) / 1e6;
     const haiku = (900 * 0.1 + 120 * 0.5) / 1e6;
     const opus = (10 * 4 + 500 * 20 + 1000 * 0.2 + 200 * 5) / 1e6;
     expect(costs.map((c) => c.kind)).toEqual(['session', 'weekly_all', 'weekly_scoped']);
@@ -384,7 +389,7 @@ describe('windowCosts', () => {
 
 describe('costs in the breakdown and per session', () => {
   // At list prices: Sonnet 5.5 $2 in, $10 out, $0.20 cache read, $2.50 cache write; Opus 5.5 $4, $20, $0.20, $5.
-  const sonnet = (output: number) => (10 * 2 + output * 10 + 1000 * 0.2 + 200 * 2.5) / 1e6;
+  const sonnet = (output: number) => (10 * 2 + output * 10 + 1000 * 0.1 + 200 * 2.5) / 1e6;
   const opus = (output: number) => (10 * 4 + output * 20 + 1000 * 0.2 + 200 * 5) / 1e6;
 
   async function seeded() {
