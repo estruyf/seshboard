@@ -1,16 +1,16 @@
-import { Copy, Ellipsis, ExternalLink, Pencil, Pin, PinOff, Plus, X } from 'lucide-react';
+import { Copy, Ellipsis, ExternalLink, Pencil, Pin, PinOff, Plus, Volume2, VolumeX, X } from 'lucide-react';
 import { Fragment } from 'react';
 import { useState, type MouseEvent } from 'react';
 import { shortUrl } from '@seshboard/protocol/client';
 import type { BrowserFavorite } from '@seshboard/protocol/client';
 import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
-import { askRename, copyAddress, openInSystemBrowser } from '../../state/browserActions.ts';
+import { askRename, copyAddress, openInSystemBrowser, toggleMute } from '../../state/browserActions.ts';
 import { newBrowserTab, openFavorite } from '../../state/browserViewStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { Button } from '../ui/Button.tsx';
-import { middleClose, middleDown, TabIcon, tabLabel, TabTitle } from '../webPreview/BrowserPane.tsx';
+import { middleClose, middleDown, SoundMark, TabIcon, tabLabel, TabTitle } from '../webPreview/BrowserPane.tsx';
 import { BROWSER_OWNER, ownerTabs, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
 import { favoriteMenu, menuAt } from '../webPreview/FavoriteTiles.tsx';
 
@@ -43,6 +43,9 @@ export function BrowserTabList() {
       ? { label: 'Unpin tab', icon: <PinOff size={13} aria-hidden />, onSelect: () => useWebPreview.getState().unpin(tab.id), data: { 'data-browser-tab-unpin': true } }
       : { label: 'Pin tab', icon: <Pin size={13} aria-hidden />, disabled: !tab.url, onSelect: () => useWebPreview.getState().pin(tab.id), data: { 'data-browser-tab-pin': true } },
     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-browser-tab-rename': true } },
+    tab.muted
+      ? { label: 'Unmute tab', icon: <Volume2 size={13} aria-hidden />, onSelect: () => toggleMute(tab) }
+      : { label: 'Mute tab', icon: <VolumeX size={13} aria-hidden />, disabled: !tab.url, onSelect: () => toggleMute(tab) },
     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: !tab.url, onSelect: () => copyAddress(tab) },
     { label: 'Open in browser', icon: <ExternalLink size={13} aria-hidden />, disabled: !tab.url, onSelect: () => openInSystemBrowser(tab) },
     'separator',
@@ -101,6 +104,7 @@ export function BrowserTabList() {
                 >
                   <TabIcon tab={tab} size={14} />
                   <TabTitle tab={tab} confirming={confirming === tab.id} />
+                  <SoundMark tab={tab} />
                 </button>
                 <Button
                   variant="quiet"

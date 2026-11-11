@@ -86,6 +86,8 @@ export interface BrowserPageContext {
   owner: 'session' | 'view';
   /** The session's panel takes the whole session area (Full). */
   full: boolean;
+  /** The tab is muted. */
+  muted: boolean;
 }
 
 /** What the palette knows about where you are; every command's `when()` reads it. Built from the stores. */

@@ -123,6 +123,10 @@ export function WebPreviewHost() {
           if (tab) useWebPreview.getState().openTab(tab.owner, event.url);
           return;
         }
+        if (event.kind === 'audio') {
+          if (tab) useWebPreview.getState().heard(tab.id, event.audible);
+          return;
+        }
         if (event.kind === 'favicon') {
           if (!tab || !event.url.startsWith('data:image/')) return;
           void shrinkIcon(event.url).then((icon) => {

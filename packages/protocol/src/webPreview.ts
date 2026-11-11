@@ -103,3 +103,21 @@ export function addressBarUrl(input: string, options: { anyHost?: boolean } = {}
 export function shortUrl(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/^([^/?#]+)\/$/, '$1');
 }
+
+/** Chromium's error names for a failed load in plain words; anything else keeps Chromium's. */
+const LOAD_ERRORS: Record<string, string> = {
+  ERR_NAME_NOT_RESOLVED: "The site's address can't be found.",
+  ERR_INTERNET_DISCONNECTED: 'This computer is offline.',
+  ERR_CONNECTION_REFUSED: 'Nothing answered at this address.',
+  ERR_CONNECTION_RESET: 'The connection was reset.',
+  ERR_CONNECTION_TIMED_OUT: 'The site took too long to answer.',
+  ERR_TIMED_OUT: 'The site took too long to answer.',
+  ERR_ADDRESS_UNREACHABLE: "This address can't be reached.",
+  ERR_CERT_AUTHORITY_INVALID: "The site's certificate isn't trusted.",
+  ERR_CERT_COMMON_NAME_INVALID: "The site's certificate is for another address.",
+  ERR_CERT_DATE_INVALID: "The site's certificate has expired.",
+  ERR_SSL_PROTOCOL_ERROR: "A secure connection couldn't be made.",
+  ERR_TOO_MANY_REDIRECTS: 'The site redirects in a loop.',
+  ERR_BLOCKED_BY_RESPONSE: 'The site refuses to be shown inside another app.',
+};
+export const loadErrorText = (description: string): string => LOAD_ERRORS[description.trim()] ?? (description || 'The page could not load.');

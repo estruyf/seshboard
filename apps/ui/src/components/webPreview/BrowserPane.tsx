@@ -1,8 +1,8 @@
-import { ArrowLeft, ArrowRight, ChevronLeft, Code, Copy, Ellipsis, ExternalLink, Globe, LogOut, Pencil, Pin, Plus, RotateCw, Smartphone, Star, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronLeft, Code, Copy, Ellipsis, ExternalLink, Globe, LogOut, Pencil, Pin, Plus, RotateCw, Smartphone, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { addressBarUrl, browserNavigation, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
+import { addressBarUrl, browserNavigation, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
-import { askClearData, askRename, copyAddress, toggleDevTools, zoomPage } from '../../state/browserActions.ts';
+import { askClearData, askRename, copyAddress, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
 import { toggleFavorite, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -10,7 +10,7 @@ import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
-import { tabName, type BrowserTab } from './browserTabs.ts';
+import { tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
 import { FavoriteTiles } from './FavoriteTiles.tsx';
 import type { ServerOffer } from './serverOffers.ts';
 import { previewPage, registerSlot, usePageState } from './webPreviewPages.ts';
@@ -185,6 +185,12 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           onClick={() => tab && useWebPreview.getState().setPhone(tab.id, !tab.phone)}
           data-web-preview-phone=""
         />}
+        {/* Zoomed: how much, and a click for 100%. */}
+        {tab && tab.zoom !== 1 && (
+          <Button variant="quiet" size="sm" onClick={() => zoomPage(tab, 0)} data-tooltip="Back to 100%" aria-label={`Zoom ${zoomLabel(tab.zoom)}. Back to 100%`} data-web-preview-zoom={zoomLabel(tab.zoom)}>
+            <span className="tabular-nums">{zoomLabel(tab.zoom)}</span>
+          </Button>
+        )}
         <Button variant="quiet" size="sm" iconOnly icon={<ExternalLink size={13} aria-hidden />} aria-label="Open in browser" data-tooltip="Open in browser" disabled={!tab?.url} onClick={() => tab?.url && window.open(tab.url, '_blank')} data-web-preview-open-external="" />
         {browser && tab && (
           <Button
@@ -238,7 +244,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
               {browser ? (
                 <>
                   <p className="text-body text-text">Couldn't open this page</p>
-                  <p className="text-meta text-muted">{failure.description}</p>
+                  <p className="text-meta text-muted">{loadErrorText(failure.description)}</p>
                   <div className="flex gap-2">
                     <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={reload} data-web-preview-retry="">
                       Try again
@@ -251,7 +257,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
               ) : (
                 <>
                   <p className="text-body text-text">Nothing is running at {shortUrl(failure.url || tab!.url!)}</p>
-                  <p className="text-meta text-muted">{failure.description}</p>
+                  <p className="text-meta text-muted">{loadErrorText(failure.description)}</p>
                   <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={reload} data-web-preview-retry="">
                     Retry
                   </Button>
@@ -314,6 +320,7 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
               >
                 <TabIcon tab={t} />
                 <TabTitle tab={t} confirming={asking} />
+                <SoundMark tab={t} />
                 {t.pinned && !asking && <Pin size={10} aria-hidden className="shrink-0 text-faint" />}
               </button>
               <button
@@ -332,6 +339,13 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
       {onNewTab && <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} aria-hidden />} aria-label="New tab" shortcut="browser.new-tab" onClick={onNewTab} data-browser-new-tab="" />}
     </div>
   );
+}
+
+/** A speaker on a tab whose page plays sound, crossed out while it is muted. */
+export function SoundMark({ tab, size = 11 }: { tab: Pick<BrowserTab, 'audible' | 'muted'>; size?: number }) {
+  if (tab.muted) return <VolumeX size={size} aria-label="Muted" role="img" className="shrink-0 text-faint" data-browser-tab-muted="" />;
+  if (tab.audible) return <Volume2 size={size} aria-label="Playing sound" role="img" className="shrink-0 text-muted" data-browser-tab-audible="" />;
+  return null;
 }
 
 /** A tab's name for screen readers: its title, pinned, or the question a first ask to close a pinned tab raises. */
@@ -355,7 +369,10 @@ function pageMenu(tab: BrowserTab): MenuEntry[] {
     'separator',
     { label: 'Zoom in', icon: <ZoomIn size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, 1) },
     { label: 'Zoom out', icon: <ZoomOut size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, -1) },
-    { label: 'Actual size', disabled: blank, onSelect: () => zoomPage(tab, 0) },
+    { label: tab.zoom === 1 ? 'Actual size' : `Actual size (now ${zoomLabel(tab.zoom)})`, disabled: blank || tab.zoom === 1, onSelect: () => zoomPage(tab, 0) },
+    tab.muted
+      ? { label: 'Unmute tab', icon: <Volume2 size={13} aria-hidden />, onSelect: () => toggleMute(tab), data: { 'data-page-unmute': true } }
+      : { label: 'Mute tab', icon: <VolumeX size={13} aria-hidden />, disabled: blank, onSelect: () => toggleMute(tab), data: { 'data-page-mute': true } },
     { label: 'Developer tools', icon: <Code size={13} aria-hidden />, disabled: blank, onSelect: () => toggleDevTools(tab), data: { 'data-page-devtools': true } },
     'separator',
     { label: 'Clear data for this site…', icon: <LogOut size={13} aria-hidden />, disabled: blank, onSelect: () => askClearData(tab), data: { 'data-page-clear-site': true } },

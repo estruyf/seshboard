@@ -1,13 +1,16 @@
 import { create } from 'zustand';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { nextZoom } from './browserTabs.ts';
+import { crashReloadDelay } from './crashRecovery.ts';
 
 /*
  * The web previews' pages, one `<webview>` per browser tab (`browserTabs.ts`), kept at the end of the window's body
  * rather than in the panel: the session view unmounts when you switch to another session, and Electron drops a
  * `<webview>`'s page when it is removed or moved. Each page is drawn over its panel's slot (`registerSlot`), in fixed
  * position, and parked off screen while the slot isn't on show (another tab in front, another session, a hidden pane).
- * Pages are keyed by tab id; the host keeps only the ones shown most recently (`livePages`).
+ * Pages are keyed by tab id; the host keeps only the ones shown most recently (`livePages`). Why `<webview>` and not
+ * `WebContentsView`, the workarounds that needs and when to move: docs/browser.md.
  */
 
 /** The slice of Electron's `<webview>` element the pages use. Its methods throw until the page is attached. */
@@ -23,13 +26,10 @@ interface WebviewElement extends HTMLElement {
   openDevTools(): void;
   closeDevTools(): void;
   isDevToolsOpened(): boolean;
-  getZoomLevel(): number;
-  setZoomLevel(level: number): void;
+  setZoomFactor(factor: number): void;
+  isLoadingMainFrame(): boolean;
+  setAudioMuted(muted: boolean): void;
 }
-
-/** How far the page zooms each way: Chromium's levels, 0 is 100% and each step is about 20%. */
-const ZOOM_MIN = -3;
-const ZOOM_MAX = 5;
 
 /** A failed load: where, and Chromium's words for why. */
 export interface LoadFailure {
@@ -136,14 +136,31 @@ class PreviewPage {
     };
     on('page-title-updated', (event) => title.push(String(event.title ?? '')));
     // The icon comes from main, fetched in the page's partition (`WebPreviewHost`, `favicon`).
-    on('render-process-gone', () => setState(sessionId, { crashed: true, loading: false }));
+    // A stopped page loads again by itself a few times (`crashReloadDelay`); past that it shows its notice.
+    on('render-process-gone', () => {
+      const now = Date.now();
+      const delay = crashReloadDelay(this.crashes, now);
+      this.crashes = [...this.crashes.filter((at) => now - at < 30_000), now];
+      if (delay === null) return setState(sessionId, { crashed: true, loading: false });
+      setState(sessionId, { loading: true });
+      clearTimeout(this.restart);
+      this.restart = setTimeout(() => this.reload(this.tab()?.url ?? null), delay);
+    });
+    // A click in the page gives the <webview> the focus but no mouse event: the app's menus and popovers close on one.
+    on('focus', () => {
+      element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
     // A page that closes itself (a sign-in popup, opened as a tab, once the provider is done) closes its tab.
     on('close', () => useWebPreview.getState().closeTab(sessionId));
     on('dom-ready', () => {
       this.ready = true;
       this.sync();
+      // The tab's zoom and mute, on each new document: Chromium keeps zoom per site, the tab keeps its own.
+      this.applyTab();
     });
-    on('did-start-loading', () => setState(sessionId, { loading: true }));
+    // Loading is the page's own document: an iframe that loads late doesn't keep the line going.
+    on('did-start-loading', () => setState(sessionId, { loading: this.mainFrameLoading() }));
     on('did-stop-loading', () => {
       setState(sessionId, { loading: false });
       this.sync();
@@ -159,6 +176,32 @@ class PreviewPage {
     });
     host.appendChild(element);
     this.element = element;
+  }
+
+  /** When it stopped lately (`render-process-gone`), for `crashReloadDelay`. */
+  private crashes: number[] = [];
+  private restart: ReturnType<typeof setTimeout> | undefined;
+
+  private tab() {
+    return useWebPreview.getState().tabs.find((t) => t.id === this.sessionId);
+  }
+
+  private mainFrameLoading(): boolean {
+    try {
+      return this.element.isLoadingMainFrame();
+    } catch {
+      return true;
+    }
+  }
+
+  /** The tab's zoom and mute on the page now showing. */
+  applyTab() {
+    const tab = this.tab();
+    if (!tab) return;
+    this.call((e) => {
+      e.setZoomFactor(tab.zoom);
+      e.setAudioMuted(tab.muted);
+    });
   }
 
   private sync() {
@@ -193,9 +236,18 @@ class PreviewPage {
   stop = () => this.call((e) => e.stop());
   /** The page's developer tools, in a window of their own; again closes them. */
   devTools = () => this.call((e) => (e.isDevToolsOpened() ? e.closeDevTools() : e.openDevTools()));
-  /** Zooms the page a step in (1) or out (-1), or back to 100% (0). */
-  zoom = (step: 1 | -1 | 0) =>
-    this.call((e) => e.setZoomLevel(step === 0 ? 0 : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(e.getZoomLevel()) + step))));
+  /** Zooms the page a step in (1) or out (-1) through Chrome's levels, or back to 100% (0), and keeps it with the tab. */
+  zoom = (step: 1 | -1 | 0) => {
+    const tab = this.tab();
+    if (!tab) return;
+    useWebPreview.getState().zoomTo(tab.id, nextZoom(tab.zoom, step));
+    this.applyTab();
+  };
+  /** Mutes the page, or lets it play sound again, and keeps that with the tab. */
+  mute = (muted: boolean) => {
+    useWebPreview.getState().setMuted(this.sessionId, muted);
+    this.applyTab();
+  };
   back = () => this.call((e) => e.goBack());
   forward = () => this.call((e) => e.goForward());
 
@@ -224,6 +276,7 @@ class PreviewPage {
   }
 
   destroy() {
+    clearTimeout(this.restart);
     this.off.splice(0).forEach((off) => off());
     this.element.remove();
     usePreviewPages.setState((s) => {

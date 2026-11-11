@@ -29,6 +29,12 @@ export interface BrowserTab {
   lastShownAt: number;
   /** Shown at phone width. */
   phone: boolean;
+  /** Its zoom, as a factor (1 is 100%): kept with the tab, not with the site, and set again on each page it shows. */
+  zoom: number;
+  /** Muted: its page plays no sound. */
+  muted: boolean;
+  /** Its page plays sound now. */
+  audible: boolean;
   /** Goes up when something asks the page to load `url` (an offer, the address bar), so the same address loads again. */
   seq: number;
 }
@@ -127,7 +133,7 @@ export function openTab(state: TabsState, owner: string, url: string | null, opt
   const existing = url ? ownerTabs(state, owner).find((t) => sameAddress(t.url, url)) : undefined;
   if (existing) return { state: focus ? showTab(state, existing.id, options.now) : state, id: existing.id };
   const own = ownerTabs(state, owner);
-  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, seq: options.seq };
+  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, zoom: 1, muted: false, audible: false, seq: options.seq };
   const tabs = [...state.tabs, tab];
   return { state: { tabs, active: focus || !state.active.has(owner) ? withActive(state.active, owner, tab.id) : state.active }, id: tab.id };
 }
@@ -177,7 +183,7 @@ export function moveTab(state: TabsState, id: string, index: number): TabsState 
 }
 
 /** Changes what a tab shows (its address, title, name, icon, width) without moving it. */
-export function updateTab(state: TabsState, id: string, change: Partial<Pick<BrowserTab, 'url' | 'title' | 'name' | 'favicon' | 'phone' | 'seq'>>): TabsState {
+export function updateTab(state: TabsState, id: string, change: Partial<Pick<BrowserTab, 'url' | 'title' | 'name' | 'favicon' | 'phone' | 'zoom' | 'muted' | 'audible' | 'seq'>>): TabsState {
   let changed = false;
   const tabs = state.tabs.map((t) => {
     if (t.id !== id) return t;
@@ -194,7 +200,7 @@ export function restore(state: TabsState, saved: readonly SavedTab[]): TabsState
   const added: BrowserTab[] = [...saved]
     .filter((s) => !have.has(s.id))
     .sort((a, b) => a.position - b.position)
-    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, position: s.position, lastShownAt: 0, phone: false, seq: 0 }));
+    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, position: s.position, lastShownAt: 0, phone: false, zoom: 1, muted: false, audible: false, seq: 0 }));
   if (!added.length) return state;
   let tabs = [...state.tabs, ...added];
   for (const owner of new Set(added.map((t) => t.owner))) tabs = renumber(tabs, owner, ownerTabs({ tabs, active: state.active }, owner));
@@ -226,6 +232,20 @@ export function livePages(state: TabsState, limit = LIVE_PAGES, options: LiveOpt
   const recent = state.tabs.filter((t) => !keep.has(t.id) && t.lastShownAt > 0 && allowed(t)).sort((a, b) => b.lastShownAt - a.lastShownAt);
   return [...onScreen, ...recent].slice(0, limit).map((t) => t.id);
 }
+
+/** Chrome's zoom steps: a page zooms from one to the next. */
+export const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5] as const;
+
+/** The zoom a step in (1) or out (-1) from `zoom` gives, or 100% (0); at either end it stays. */
+export function nextZoom(zoom: number, step: 1 | -1 | 0): number {
+  if (step === 0) return 1;
+  const at = ZOOM_STEPS.findIndex((z) => z >= zoom - 0.001);
+  const index = at < 0 ? ZOOM_STEPS.length - 1 : ZOOM_STEPS[at]! > zoom + 0.001 && step > 0 ? at - 1 : at;
+  return ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, Math.max(0, index + step))]!;
+}
+
+/** A zoom as the toolbar shows it: "110%". */
+export const zoomLabel = (zoom: number): string => `${Math.round(zoom * 100)}%`;
 
 /** How many closed tabs ⌘⇧T can bring back. */
 export const CLOSED_TABS = 25;

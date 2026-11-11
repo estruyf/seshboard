@@ -177,6 +177,8 @@ const PLANS: Record<string, Plan> = {
   'browser-zoom-out': 'here',
   'browser-zoom-reset': 'here',
   'browser-devtools': 'here',
+  'browser-mute-tab': 'here',
+  'browser-unmute-tab': 'here',
   'browser-clear-site': 'here',
   'browser-clear-all': 'here',
   // Lists every window's tabs, the Browser view's too: the main window's.

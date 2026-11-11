@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, cookieOfSite, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, keyForWindow, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, cookieOfSite, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
 
 const key = (k: string, mods: Partial<PreviewKeyInput> = {}): PreviewKeyInput => ({ type: 'keyDown', key: k, meta: false, control: false, alt: false, shift: false, ...mods });
 
@@ -78,6 +78,10 @@ describe('with the browser on', () => {
 
   it('turns a new window into a tab, never a window', () => {
     expect(popupTarget('https://github.com/login/oauth/authorize', true)).toBe('tab');
+    expect(popupTarget('https://github.com/x', true, 'foreground-tab')).toBe('tab');
+    // A sized window.open (a sign-in) stays a window, so window.opener survives.
+    expect(popupTarget('https://accounts.google.com/o/oauth2/auth', true, 'new-window')).toBe('window');
+    expect(popupTarget('https://accounts.google.com/', false, 'new-window')).toBe('browser');
     expect(popupTarget('slack://open', true)).toBe('system');
     expect(popupTarget('javascript:alert(1)', true)).toBe('none');
   });
@@ -175,5 +179,61 @@ describe('keyForWindow', () => {
   it('passes on nothing for a modifier alone or a key it has no name for', () => {
     expect(keyForWindow(key('Shift', { shift: true }))).toBeNull();
     expect(keyForWindow(key('F13'))).toBeNull();
+  });
+});
+
+describe('keys in a page, as T3 Code splits them', () => {
+  it("keeps the page's editing keys and hands ⇧ shortcuts that aren't editing to the app", () => {
+    expect(isEditingKey(key('v', { meta: true, alt: true, shift: true, code: 'KeyV' }), 'darwin')).toBe(true);
+    expect(isEditingKey(key('V', { control: true, shift: true }), 'linux')).toBe(true);
+    expect(isEditingKey(key('z', { meta: true, shift: true }), 'darwin')).toBe(true);
+    expect(isEditingKey(key('z', { control: true, shift: true }), 'win32')).toBe(false);
+    expect(isEditingKey(key('y', { control: true }), 'win32')).toBe(true);
+    expect(isEditingKey(key('y', { meta: true }), 'darwin')).toBe(false);
+    expect(previewKeyAction(key('a', { meta: true, shift: true }), 'darwin')).toBe('forward');
+    expect(previewKeyAction(key('c', { meta: true, shift: true }), 'darwin')).toBe('forward');
+    expect(previewKeyAction(key('a', { meta: true }), 'darwin')).toBeNull();
+  });
+
+  it('leaves AltGr characters, input method keys and held keys to the page, or runs them once', () => {
+    expect(isAltGrCharacter(key('@', { control: true, alt: true }), 'win32')).toBe(true);
+    expect(isAltGrCharacter(key('Dead', { control: true, alt: true }), 'linux')).toBe(true);
+    expect(isAltGrCharacter(key('k', { control: true, alt: true }), 'win32')).toBe(false);
+    expect(isAltGrCharacter(key('@', { control: true, alt: true }), 'darwin')).toBe(false);
+    expect(previewKeyAction(key('{', { control: true, alt: true }), 'win32')).toBeNull();
+    expect(previewKeyAction({ ...key('k', { meta: true }), isComposing: true }, 'darwin')).toBeNull();
+    expect(previewKeyAction({ ...key('w', { meta: true }), isAutoRepeat: true }, 'darwin', true)).toBe('swallow');
+  });
+});
+
+describe('pagePermissionAllowed', () => {
+  it("allows a site's copy buttons, fullscreen and pointer lock, and refuses the rest", () => {
+    for (const ok of ['clipboard-sanitized-write', 'fullscreen', 'pointerLock', 'loopback-network']) expect(pagePermissionAllowed(ok)).toBe(true);
+    for (const no of ['geolocation', 'media', 'notifications', 'clipboard-read', 'openExternal', 'local-fonts']) expect(pagePermissionAllowed(no)).toBe(false);
+  });
+});
+
+describe('pageMenuEntries', () => {
+  const params = { linkURL: '', srcURL: '', mediaType: 'none', selectionText: '', isEditable: false, dictionarySuggestions: [], editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: true } };
+  const ids = (entries: ReturnType<typeof pageMenuEntries>) => entries.map((e) => (e === 'separator' ? '-' : e.id));
+  const page = { browser: true, back: true, forward: false };
+
+  it('offers back, forward and reload on the page itself, then Inspect', () => {
+    expect(ids(pageMenuEntries(params, page))).toEqual(['back', 'forward', 'reload', '-', 'inspect']);
+    expect(pageMenuEntries(params, page)[1]).toMatchObject({ id: 'forward', enabled: false });
+  });
+
+  it("offers the link's actions, a new tab only with the browser on, and copy for a selection", () => {
+    expect(ids(pageMenuEntries({ ...params, linkURL: 'https://github.com/x' }, page))).toEqual(['open-link', 'copy-link', '-', 'inspect']);
+    expect(ids(pageMenuEntries({ ...params, linkURL: 'https://github.com/x' }, { ...page, browser: false }))).toEqual(['copy-link', '-', 'inspect']);
+    expect(ids(pageMenuEntries({ ...params, linkURL: 'mailto:me@example.com' }, page))).toEqual(['copy-email', '-', 'inspect']);
+    expect(ids(pageMenuEntries({ ...params, selectionText: 'hello' }, page))).toEqual(['copy', '-', 'inspect']);
+  });
+
+  it('offers spelling, then editing in a field, as the field allows', () => {
+    const field = { ...params, isEditable: true, dictionarySuggestions: ['hello'], editFlags: { canCut: false, canCopy: false, canPaste: true, canSelectAll: true } };
+    const entries = pageMenuEntries(field, page);
+    expect(ids(entries)).toEqual(['spelling', '-', 'cut', 'copy', 'paste', 'select-all', '-', 'inspect']);
+    expect(entries[2]).toMatchObject({ id: 'cut', enabled: false });
   });
 });

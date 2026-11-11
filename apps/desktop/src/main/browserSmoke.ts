@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { webContents, type BrowserWindow, type WebContents } from 'electron';
+import { BrowserWindow, webContents, type WebContents } from 'electron';
 import { setFieldValue, until, waitInPage } from './pageDriver.ts';
 import { MOD_KEY_PROPERTY, platformModifiers } from './smokeKeys.ts';
 
@@ -340,12 +340,44 @@ export async function runBrowserPaletteStep(win: BrowserWindow, deps: BrowserSmo
   await setFieldValue(win, '[data-browser-view] [data-browser-address]', `${url.replace('http://', '')}two`);
   await js(`${address}.form.requestSubmit()`);
   if (!(await until(() => pageWithTitle('Smoke browser two') !== undefined, 10_000))) return 'the local page did not load';
-  const page = pageWithTitle('Smoke browser two')!;
+  let page = pageWithTitle('Smoke browser two')!;
 
   if (!(await paletteCommand(win, 'Zoom in on the page'))) return 'no Zoom in on the page in the palette';
   if (!(await until(() => page.getZoomLevel() > 0, 3_000))) return `Zoom in left the page at level ${page.getZoomLevel()}`;
+  if (!(await waitInPage(win, `${q('[data-browser-view] [data-web-preview-zoom]')}?.dataset.webPreviewZoom === '110%'`, 2_000))) return 'zoomed in, the toolbar does not say 110%';
   if (!(await paletteCommand(win, 'Page at actual size'))) return 'no Page at actual size in the palette';
   if (!(await until(() => page.getZoomLevel() === 0, 3_000))) return 'Page at actual size did not reset the zoom';
+
+  // Mute and unmute from the palette.
+  if (!(await paletteCommand(win, 'Mute tab'))) return 'no Mute tab in the palette';
+  if (!(await until(() => page.isAudioMuted(), 3_000))) return 'Mute tab did not mute the page';
+  if (!(await paletteCommand(win, 'Unmute tab'))) return 'no Unmute tab in the palette';
+  if (!(await until(() => !page.isAudioMuted(), 3_000))) return 'Unmute tab did not unmute the page';
+
+  // A sized window.open (a sign-in) opens a real window that keeps window.opener; it closes again.
+  const before = new Set(BrowserWindow.getAllWindows().map((w) => w.id));
+  await page.executeJavaScript("window.__popup = window.open('/two', 'signin', 'width=400,height=400'); !!window.__popup", true);
+  let popup: BrowserWindow | undefined;
+  if (!(await until(() => (popup = BrowserWindow.getAllWindows().find((w) => !before.has(w.id) && !w.isDestroyed())) !== undefined, 5_000))) return 'a sized window.open opened no window';
+  const opener = await popup!.webContents.executeJavaScript('!!window.opener').catch(() => false);
+  popup!.destroy();
+  if (opener !== true) return 'the sign-in window lost window.opener';
+
+  // A page whose process stops loads again by itself.
+  const stopped = page;
+  stopped.forcefullyCrashRenderer();
+  const answers = async (contents: WebContents) => (await Promise.race([contents.executeJavaScript('document.title').catch(() => ''), new Promise((resolve) => setTimeout(() => resolve(''), 500))])) === 'Smoke browser two';
+  let back = false;
+  for (const started = Date.now(); !back && Date.now() - started < 8_000; await new Promise((resolve) => setTimeout(resolve, 200))) {
+    const live = webContents.getAllWebContents().filter((c) => c.getType() === 'webview' && !c.isDestroyed() && !c.isCrashed() && c.getTitle() === 'Smoke browser two');
+    for (const contents of live) if (await answers(contents)) {
+      page = contents;
+      back = true;
+      break;
+    }
+  }
+  if (!back) return 'a stopped page did not load again by itself';
+  if (await js(`!!${q('[data-browser-view] [data-web-preview-crashed]')}`)) return 'a stopped page still shows its notice after loading again';
 
   if (!(await paletteCommand(win, 'Page developer tools'))) return 'no Page developer tools in the palette';
   if (!(await until(() => page.isDevToolsOpened(), 5_000))) return 'Page developer tools did not open them';
@@ -379,7 +411,7 @@ export async function runBrowserPaletteStep(win: BrowserWindow, deps: BrowserSmo
   await deps.shot('browser-clear-data');
   escape(win);
   if (!(await waitInPage(win, `!${q('[data-clear-browsing-data-dialog]')}`, 3_000))) return 'Escape did not close Clear all browsing data';
-  return 'ok: zoom in and actual size, developer tools, Rename tab… and Go to tab… from the palette; Clear data for this site asked and removed the cookie; Clear all asked';
+  return 'ok: zoom in (110% in the toolbar) and actual size, mute and unmute, a sign-in window with its opener, a stopped page loaded again, developer tools, Rename tab… and Go to tab… from the palette; Clear data for this site asked and removed the cookie; Clear all asked';
 }
 
 /**

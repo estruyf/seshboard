@@ -932,6 +932,16 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "palette:browser-mute-tab",
+      "name": "Mute tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-unmute-tab",
+      "name": "Unmute tab",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "palette:browser-devtools",
       "name": "Page developer tools",
       "page": "sessions/web-preview"

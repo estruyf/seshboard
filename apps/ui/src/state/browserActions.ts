@@ -1,5 +1,5 @@
 import { shortUrl } from '@seshboard/protocol/client';
-import { BROWSER_OWNER, livePages, type BrowserTab } from '../components/webPreview/browserTabs.ts';
+import { BROWSER_OWNER, livePages, nextZoom, type BrowserTab } from '../components/webPreview/browserTabs.ts';
 import { previewPage } from '../components/webPreview/webPreviewPages.ts';
 import { currentPageTab, openBrowserView, openFavorite } from './browserViewStore.ts';
 import { usePaletteBus } from './paletteBus.ts';
@@ -57,7 +57,20 @@ export async function clearBrowsingData(origin: string | null): Promise<void> {
 }
 
 export const toggleDevTools = (tab: Pick<BrowserTab, 'id'>): void => previewPage(tab.id)?.devTools();
-export const zoomPage = (tab: Pick<BrowserTab, 'id'>, step: 1 | -1 | 0): void => previewPage(tab.id)?.zoom(step);
+export function zoomPage(tab: Pick<BrowserTab, 'id'>, step: 1 | -1 | 0): void {
+  const page = previewPage(tab.id);
+  if (page) return page.zoom(step);
+  // No live page: kept with the tab for when it loads.
+  const now = useWebPreview.getState().tabs.find((t) => t.id === tab.id);
+  if (now) useWebPreview.getState().zoomTo(now.id, nextZoom(now.zoom, step));
+}
+
+/** Mutes a tab, or lets it play sound again. */
+export function toggleMute(tab: Pick<BrowserTab, 'id' | 'muted'>): void {
+  const page = previewPage(tab.id);
+  if (page) page.mute(!tab.muted);
+  else useWebPreview.getState().setMuted(tab.id, !tab.muted);
+}
 
 /** Go to tab…: the tab in front where it lives, the Browser view or its session with the panel open. */
 export function goToTab(tabId: string): void {
@@ -100,6 +113,8 @@ export type BrowserAction =
   | 'zoom-in'
   | 'zoom-out'
   | 'zoom-reset'
+  | 'mute'
+  | 'unmute'
   | 'devtools'
   | 'clear-site'
   | 'clear-all';
@@ -160,6 +175,9 @@ export function runBrowserAction(action: BrowserAction): void {
       return zoomPage(tab, -1);
     case 'zoom-reset':
       return zoomPage(tab, 0);
+    case 'mute':
+    case 'unmute':
+      return toggleMute({ id: tab.id, muted: action === 'unmute' });
     case 'devtools':
       return toggleDevTools(tab);
     case 'clear-site':

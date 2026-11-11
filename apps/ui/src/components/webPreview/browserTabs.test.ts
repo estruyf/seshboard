@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSER_OWNER, cleanTabName, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
+import { BROWSER_OWNER, cleanTabName, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
 
 let n = 0;
 const open = (state: TabsState, owner: string, url: string | null, focus = true) => openTab(state, owner, url, { id: `t${++n}`, now: ++n, seq: n, focus });
@@ -188,5 +188,20 @@ describe('livePages on screen', () => {
     expect(livePages(state, 3)).not.toContain(made[0]);
     expect(livePages(state, 3, { keep: [made[0]!] })).toEqual([made[0], made[4], made[3]]);
     expect(livePages(state, 3, { allowed: (t) => t.url !== 'https://p4.test/' })).toEqual([made[3], made[2], made[1]]);
+  });
+});
+
+describe('zoom', () => {
+  it("steps through Chrome's zoom levels and stops at either end", () => {
+    expect(nextZoom(1, 1)).toBe(1.1);
+    expect(nextZoom(1, -1)).toBe(0.9);
+    expect(nextZoom(1.1, -1)).toBe(1);
+    expect(nextZoom(5, 1)).toBe(5);
+    expect(nextZoom(0.25, -1)).toBe(0.25);
+    expect(nextZoom(1.75, 0)).toBe(1);
+    // Between two steps, the next one up or down.
+    expect(nextZoom(1.05, 1)).toBe(1.1);
+    expect(nextZoom(1.05, -1)).toBe(1);
+    expect(zoomLabel(1.1)).toBe('110%');
   });
 });

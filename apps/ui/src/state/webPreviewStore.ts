@@ -89,6 +89,11 @@ interface WebPreviewState extends TabsState {
   rename(id: string, name: string): void;
   iconed(id: string, favicon: string | null): void;
   setPhone(id: string, phone: boolean): void;
+  /** A tab's zoom (a factor, 1 is 100%), kept with the tab. */
+  zoomTo(id: string, zoom: number): void;
+  setMuted(id: string, muted: boolean): void;
+  /** Its page started or stopped playing sound (main, `audio`). */
+  heard(id: string, audible: boolean): void;
   setFull(sessionId: string, full: boolean): void;
   /** The palette: the front page of a session's panel reloads. */
   reload(sessionId: string): void;
@@ -209,6 +214,9 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     rename: (id, name) => tabs((s) => updateTab(s, id, { name: cleanTabName(name) })),
     iconed: (id, favicon) => tabs((s) => updateTab(s, id, { favicon })),
     setPhone: (id, phone) => tabs((s) => updateTab(s, id, { phone })),
+    zoomTo: (id, zoom) => tabs((s) => updateTab(s, id, { zoom })),
+    setMuted: (id, muted) => tabs((s) => updateTab(s, id, { muted })),
+    heard: (id, audible) => tabs((s) => updateTab(s, id, { audible })),
     setFull: (sessionId, full) => set((s) => ({ full: full ? withValue(s.full, sessionId) : without(s.full, sessionId) })),
     reload: (sessionId) => {
       const front = frontTab(get(), sessionId);

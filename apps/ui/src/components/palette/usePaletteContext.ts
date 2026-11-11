@@ -221,7 +221,7 @@ export function usePaletteContext(): PaletteContext {
     webPreview: prefs.webPreview,
     browserPage:
       prefs.browserEnabled && pageTab
-        ? { url: !!pageTab.url, favorite: pageFavorite, pinned: pageTab.pinned, back: pageState.back, forward: pageState.forward, loading: pageState.loading, owner: view === 'browser' ? 'view' : 'session', full: pageFull }
+        ? { url: !!pageTab.url, favorite: pageFavorite, pinned: pageTab.pinned, back: pageState.back, forward: pageState.forward, loading: pageState.loading, owner: view === 'browser' ? 'view' : 'session', full: pageFull, muted: pageTab.muted }
         : null,
     browserTabs,
     browserClosed,

@@ -186,7 +186,9 @@ export type WebPreviewEvent =
   | { kind: 'popup'; contentsId: number; url: string }
   | { kind: 'download-refused'; contentsId: number; url: string }
   /** The page's icon, as a `data:` image main fetched in the page's partition. */
-  | { kind: 'favicon'; contentsId: number; url: string };
+  | { kind: 'favicon'; contentsId: number; url: string }
+  /** The page started or stopped playing sound. */
+  | { kind: 'audio'; contentsId: number; audible: boolean };
 
 /**
  * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the

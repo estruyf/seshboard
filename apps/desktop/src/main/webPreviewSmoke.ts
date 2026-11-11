@@ -116,11 +116,19 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     const at = (await js("(() => { const r = document.querySelector('[data-web-preview-page]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.bottom - 20) }; })()")) as { x: number; y: number };
     win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount: 1 });
     win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount: 1 });
-    await until(() => page.isFocused(), 2_000);
-    // Focus moving into the page blurs the window's document first; useMarkRead looks after that event.
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    if (!page.isFocused()) return 'a click in the page did not give it the focus';
-    if (!(await js('document.hasFocus()'))) return 'with the focus in the page, the window counts as behind: its session would never be marked read';
+    // Only a window in front gives a page the keyboard (`focusedFrame`; every page of a focused window reports
+    // `isFocused()`). Another app in front during the run: these two checks are skipped, not failed.
+    if (!(await waitInPage(win, "document.activeElement?.tagName === 'WEBVIEW'", 2_000))) return 'a click in the page did not give it the focus in the window';
+    // The page's own process confirms the focus a moment later and sets it again; a person's ⌘K comes long after.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const inFront = win.isFocused();
+    if (inFront) {
+      await until(() => page.focusedFrame !== null, 2_000);
+      // Focus moving into the page blurs the window's document first; useMarkRead looks after that event.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (page.focusedFrame === null) return 'a click in the page did not give it the focus';
+      if (!(await js('document.hasFocus()'))) return 'with the focus in the page, the window counts as behind: its session would never be marked read';
+    }
     page.sendInputEvent({ type: 'keyDown', keyCode: 'K', modifiers: [MOD_MODIFIER] });
     page.sendInputEvent({ type: 'keyUp', keyCode: 'K', modifiers: [MOD_MODIFIER] });
     if (!(await waitInPage(win, "document.querySelector('[data-command-palette]')", 3_000))) return 'the palette key typed in the page did not reach the app';
@@ -151,7 +159,7 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     // In its own window the session has its page there, at the same address, and the main window drops its own.
     const popped = await popOutAndBack(win, deps, url);
     if (popped) return popped;
-    return `ok: ${url} offered and shown, kept ${kept ? 'behind Changes' : '(no Changes to check behind)'} and ${other ? 'with another session on screen' : '(no other session to check)'}, a click in the page keeps the window in front, one page went with the session to its own window and back, the outside link went to the browser, the palette key reached the app, the phone width is 390px`;
+    return `ok: ${url} offered and shown, kept ${kept ? 'behind Changes' : '(no Changes to check behind)'} and ${other ? 'with another session on screen' : '(no other session to check)'}, ${inFront ? 'a click in the page keeps the window in front' : 'focus not checked (another app in front)'}, one page went with the session to its own window and back, the outside link went to the browser, the palette key reached the app, the phone width is 390px`;
   } finally {
     await js(`${q('[data-web-preview-close]')}?.click()`);
     await js(`${q('[data-terminal-stop]')}?.click()`);

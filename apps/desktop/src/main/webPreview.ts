@@ -1,7 +1,7 @@
-import { app, ipcMain, nativeImage, session, webContents, type WebContents } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, webContents, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
 import { localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, cookieOfSite, faviconCap, iconTooLarge, keyForWindow, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, cookieOfSite, faviconCap, iconTooLarge, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
 /**
  * Pages whose keys go to their window (`keysToWindow`): the window's document took the focus from them, which Chromium
@@ -17,6 +17,8 @@ export interface WebPreviewGuardDeps {
   browser(): boolean;
   /** Settings › General › New sessions › Allow browser previews: a session's dev server beside the conversation. */
   preview(): boolean;
+  /** Ask before a page opens another app (`slack:`, `vscode:`): off in a smoke run, where nobody answers. */
+  askFirst: boolean;
 }
 
 /**
@@ -28,8 +30,9 @@ export interface WebPreviewGuardDeps {
  */
 export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
   const previewSession = session.fromPartition(WEB_PREVIEW_PARTITION);
-  previewSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  previewSession.setPermissionCheckHandler(() => false);
+  // A few harmless ones are allowed (`pagePermissionAllowed`); the check answers as the request does.
+  previewSession.setPermissionRequestHandler((_contents, permission, callback) => callback(pagePermissionAllowed(permission)));
+  previewSession.setPermissionCheckHandler((_contents, permission) => pagePermissionAllowed(permission));
   previewSession.on('will-download', (event, item, contents) => {
     event.preventDefault();
     // With the browser on, the page says why nothing happened, and offers the browser instead.
@@ -49,7 +52,10 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
       return;
     }
     const guest = webContents.fromId(contentsId);
-    if (guest && guest.getType() === 'webview' && guest.hostWebContents === event.sender) keysToWindow.add(contentsId);
+    if (!guest || guest.getType() !== 'webview' || guest.hostWebContents !== event.sender) return;
+    // Not `event.sender.focus()` (T3 Code calls it before a command that moves focus): here the focus has moved
+    // already, and that call gives the keyboard and the document's focus back to the page.
+    keysToWindow.add(contentsId);
   });
 
   // Clear data for this site (its cookies, which sign you out, and its storage), or everything the pages keep.
@@ -159,14 +165,97 @@ function send(host: WebContents, event: WebPreviewEvent): void {
   if (!host.isDestroyed()) host.send(IpcChannel.webPreviewEvent, event);
 }
 
+/** A question about another app is on screen: a page that asks again meanwhile gets no.*/
+let asking = false;
+
+/**
+ * Opens an app's link (`slack:`, `vscode:`) a page asked for, after asking you: a page's script could otherwise open
+ * any app without a click. Cancel is the default, so an Enter typed in the page can't answer it; one question at a time.
+ */
+async function openAppLink(host: WebContents, url: string, deps: WebPreviewGuardDeps): Promise<void> {
+  if (!deps.askFirst) return deps.openExternal(url);
+  if (asking) return;
+  asking = true;
+  try {
+    const scheme = url.slice(0, url.indexOf(':'));
+    const owner = BrowserWindow.fromWebContents(host);
+    const options = {
+      type: 'question' as const,
+      buttons: ['Open', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      message: `Open this ${scheme} link?`,
+      detail: `A page in the browser wants to open another app:\n\n${url.length > 300 ? `${url.slice(0, 300)}…` : url}`,
+    };
+    const { response } = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+    if (response === 0) deps.openExternal(url);
+  } finally {
+    asking = false;
+  }
+}
+
+/** A page's right-click menu (`pageMenuEntries`), run here against the page, over `owner` (the page's window, or a sign-in window's own). */
+function showPageMenu(host: WebContents, guest: WebContents, params: Electron.ContextMenuParams, deps: WebPreviewGuardDeps, owner = BrowserWindow.fromWebContents(host)): void {
+  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward() });
+  const run = (id: string, word?: string) => {
+    if (guest.isDestroyed()) return;
+    switch (id) {
+      case 'spelling':
+        return word && guest.replaceMisspelling(word);
+      case 'open-link':
+        return send(host, { kind: 'popup', contentsId: guest.id, url: webPageUrl(params.linkURL)! });
+      case 'copy-link':
+        return clipboard.writeText(params.linkURL);
+      case 'copy-email':
+        return clipboard.writeText(params.linkURL.replace(/^mailto:/i, ''));
+      case 'copy-image':
+        return guest.copyImageAt(params.x, params.y);
+      case 'copy-image-address':
+        return clipboard.writeText(params.srcURL);
+      case 'cut':
+        return guest.cut();
+      case 'copy':
+        return guest.copy();
+      case 'paste':
+        return guest.paste();
+      case 'select-all':
+        return guest.selectAll();
+      case 'back':
+        return guest.navigationHistory.goBack();
+      case 'forward':
+        return guest.navigationHistory.goForward();
+      case 'reload':
+        return guest.reload();
+      case 'inspect':
+        return guest.inspectElement(params.x, params.y);
+    }
+  };
+  const menu = Menu.buildFromTemplate(
+    entries.map((entry) => (entry === 'separator' ? { type: 'separator' as const } : entry.id === 'spelling' ? { label: entry.label, click: () => run('spelling', entry.word) } : { label: entry.label, enabled: entry.enabled, click: () => run(entry.id) })),
+  );
+  menu.popup(owner ? { window: owner } : {});
+}
+
+/** The mouse's back and forward buttons in a page go back and ahead in it: a listener in a world of our own, apart from the page's scripts. */
+const MOUSE_NAVIGATION = `addEventListener('mouseup', (event) => {
+  if (event.button === 3) { event.preventDefault(); history.back(); }
+  else if (event.button === 4) { event.preventDefault(); history.forward(); }
+}, true);`;
+/** The isolated world `MOUSE_NAVIGATION` runs in. */
+const SESHBOARD_WORLD = 1999;
+
 function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardDeps): void {
-  // Leaving the page: an outside page opens in the browser, an app's link with the system, anything else goes nowhere.
+  // Leaving the page: an outside page opens in the browser, an app's link with the system (after asking), anything else goes nowhere.
   const leave = (url: string) => {
     const where = previewNavigation(url, deps.browser());
-    if (where === 'browser' || where === 'system') deps.openExternal(url);
+    if (where === 'browser') deps.openExternal(url);
+    else if (where === 'system') void openAppLink(host, url, deps);
   };
-  guest.setWindowOpenHandler(({ url }) => {
-    switch (popupTarget(url, deps.browser())) {
+  guest.setWindowOpenHandler(({ url, disposition }) => {
+    switch (popupTarget(url, deps.browser(), disposition)) {
+      case 'window':
+        // A real window, sandboxed, in the page's own session, so a sign-in reaches back to the page that opened it.
+        return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 680, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } } };
       case 'tab':
         send(host, { kind: 'popup', contentsId: guest.id, url: webPageUrl(url)! });
         break;
@@ -174,11 +263,29 @@ function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardD
         void guest.loadURL(localPreviewUrl(url)!);
         break;
       case 'browser':
-      case 'system':
         deps.openExternal(url);
+        break;
+      case 'system':
+        void openAppLink(host, url, deps);
         break;
     }
     return { action: 'deny' };
+  });
+  // A sign-in window: no windows of its own, and it stays on web pages; an app's link from it asks first too.
+  guest.on('did-create-window', (popup) => {
+    popup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    popup.webContents.on('will-navigate', (event, url) => {
+      if (previewNavigation(url, deps.browser()) === 'stay') return;
+      event.preventDefault();
+      leave(url);
+    });
+    popup.webContents.on('context-menu', (_event, params) => showPageMenu(host, popup.webContents, params, deps, popup));
+  });
+  guest.on('context-menu', (_event, params) => showPageMenu(host, guest, params, deps));
+  // Which tab plays sound, for its speaker mark (and Mute).
+  guest.on('audio-state-changed', (event) => send(host, { kind: 'audio', contentsId: guest.id, audible: event.audible }));
+  guest.on('dom-ready', () => {
+    void guest.executeJavaScriptInIsolatedWorld(SESHBOARD_WORLD, [{ code: MOUSE_NAVIGATION }]).catch(() => {});
   });
   guest.on('will-navigate', (event, url) => {
     if (previewNavigation(url, deps.browser()) === 'stay') return;
@@ -237,6 +344,7 @@ function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardD
     const action = previewKeyAction(input, process.platform, deps.browser());
     if (!action) return;
     event.preventDefault();
+    if (action === 'swallow') return;
     if (action === 'reload') return guest.reload();
     if (action === 'back') return guest.navigationHistory.canGoBack() && guest.navigationHistory.goBack();
     if (action === 'ahead') return guest.navigationHistory.canGoForward() && guest.navigationHistory.goForward();
