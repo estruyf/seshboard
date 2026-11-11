@@ -19,7 +19,7 @@ function Badged({ icon, count, dot, tone = 'default', data }: { icon: ReactNode;
       {count !== undefined && count > 0 && (
         <span
           aria-hidden
-          className={`pointer-events-none absolute -top-2 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ring-2 ring-sidebar ${tone === 'ok' ? 'bg-ok text-bg' : 'bg-border text-text'}`}
+          className={`pointer-events-none absolute -top-2.5 -right-3.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1.5 text-meta leading-none font-semibold tabular-nums ring-2 ring-sidebar ${tone === 'ok' ? 'bg-ok text-bg' : 'bg-border text-text'}`}
           {...data}
         >
           {count > 99 ? '99+' : count}
@@ -53,7 +53,8 @@ export function SidebarNav({ now, needsYou }: { now: number; needsYou: number })
   const browserTip = tabs > 0 ? `Browser · ${tabs} ${tabs === 1 ? 'tab' : 'tabs'}` : 'Browser';
   const look = 'no-drag w-full! rounded-lg!';
   return (
-    <nav aria-label="Views" className="grid auto-cols-fr grid-flow-col gap-1 px-3 pb-1.5" data-nav-icons>
+    // One tray of equal icons, tinted apart from the sidebar, as a card is.
+    <nav aria-label="Views" className="mx-3 mb-2 grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-bg/50 p-1" data-nav-icons>
       <Button variant="quiet" size="lg" iconOnly icon={<Badged icon={<House size={16} aria-hidden />} dot={needsYou > 0} />} aria-label={homeTip} shortcut="home" selected={atHome} aria-current={atHome ? 'page' : undefined} data-tooltip={homeTip} data-go-home data-nav="home" onClick={() => (sessions(), useSessions.getState().goHome())} className={look} />
       <Button
         variant="quiet"
@@ -74,7 +75,8 @@ export function SidebarNav({ now, needsYou }: { now: number; needsYou: number })
         variant="quiet"
         size="lg"
         iconOnly
-        icon={<Badged icon={<Clock size={16} aria-hidden />} count={today} data={{ 'data-nav-activity-count': true }} />}
+        // No count on the icon: today's sessions are in its tooltip, not something to clear.
+        icon={<Clock size={16} aria-hidden />}
         aria-label={activityTip}
         shortcut="activity"
         selected={atActivity}

@@ -124,8 +124,24 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     page.sendInputEvent({ type: 'keyDown', keyCode: 'K', modifiers: [MOD_MODIFIER] });
     page.sendInputEvent({ type: 'keyUp', keyCode: 'K', modifiers: [MOD_MODIFIER] });
     if (!(await waitInPage(win, "document.querySelector('[data-command-palette]')", 3_000))) return 'the palette key typed in the page did not reach the app';
+    // The palette's field has the focus, and what is typed in the page now goes there: Chromium leaves the keyboard
+    // with the page, so main sends its keys to the window.
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-palette-input]')", 2_000))) return 'the palette opened from the page without the focus in its field';
+    await page.executeJavaScript("window.__typed = ''; addEventListener('keydown', (e) => { window.__typed += e.key; }, true)");
+    for (const type of ['keyDown', 'char', 'keyUp'] as const) page.sendInputEvent({ type, keyCode: 'z' });
+    if (!(await waitInPage(win, "document.querySelector('[data-palette-input]')?.value.endsWith('z')", 2_000))) return `typed in the page after ⌘K, the key did not reach the palette (the page got "${String(await page.executeJavaScript('window.__typed'))}")`;
     await js("document.querySelector('[data-command-palette] input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
     await waitInPage(win, "!document.querySelector('[data-command-palette]')", 2_000);
+    // A click in the page gives it its keys back.
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    page.sendInputEvent({ type: 'mouseDown', x: 20, y: 20, button: 'left', clickCount: 1 });
+    page.sendInputEvent({ type: 'mouseUp', x: 20, y: 20, button: 'left', clickCount: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const type of ['keyDown', 'char', 'keyUp'] as const) page.sendInputEvent({ type, keyCode: 'q' });
+    let back = false;
+    for (const started = Date.now(); !back && Date.now() - started < 2_000; await new Promise((resolve) => setTimeout(resolve, 50))) back = String(await page.executeJavaScript('window.__typed')).includes('q');
+    if (!back) return 'after a click in the page, its keys still went to the window';
 
     await js(`${q('[data-web-preview-phone]')}.click()`);
     if (!(await waitInPage(win, `${q('[data-web-preview-phone]')}.getAttribute('aria-pressed') === 'true' && Math.round(document.querySelector('[data-web-preview-page]').getBoundingClientRect().width) === 390`, 2_000))) return 'the phone width did not show the page 390px wide';

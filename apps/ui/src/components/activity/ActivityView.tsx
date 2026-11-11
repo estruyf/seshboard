@@ -1,3 +1,4 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronLeft, ChevronRight, Copy, Download, FileDiff, GitCommitHorizontal, GitPullRequest, Loader2, Sparkles, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
@@ -10,7 +11,6 @@ import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { ComputerChip } from '../computers/ComputerChip.tsx';
 import { useMinute } from '../focus/useMinute.ts';
 import { ProjectIcon, useProjectColor } from '../ProjectIcon.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
@@ -119,17 +119,14 @@ export function ActivityView() {
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-activity>
-      <div className="drag flex h-13 shrink-0 items-center px-4">
-        <SidebarToggle />
-      </div>
+      <ViewHeader title="Activity" />
       <div className="relative z-10 shrink-0">
         <div className="edge-b" data-scrolled={(!edge.atTop && !pinned) || undefined} data-activity-header>
           <header className={`${COLUMN} flex flex-wrap items-end gap-3 pt-1 pb-3`}>
             <div className="grid min-w-0 flex-1 gap-0.5">
-              <span className="text-ui text-muted">Activity</span>
-              <h1 className="truncate text-hero leading-tight font-semibold" data-activity-title>
+              <h2 className="truncate text-hero leading-tight font-semibold" data-activity-title>
                 {title}
-              </h1>
+              </h2>
             </div>
             {project && (
               <Pill tone="muted" icon={<X size={12} aria-hidden />} onClick={() => useActivity.getState().toggleProject(project.key, project.name)} aria-label={`Show every project, now only ${project.name}`} data-activity-clear-project>

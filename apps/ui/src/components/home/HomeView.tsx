@@ -1,3 +1,4 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { useMemo } from 'react';
 import { basename } from '../../lib/format.ts';
 import { startPass } from '../../state/catchUpPass.ts';
@@ -10,7 +11,6 @@ import { inScope } from '../../state/sidebarRows.ts';
 import { YesterdayCard } from '../activity/YesterdayCard.tsx';
 import { useMinute } from '../focus/useMinute.ts';
 import { useQuickProjects } from '../quickStart/useQuickProjects.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SchedulesCard } from '../schedules/SchedulesCard.tsx';
 import { StartInProject, UpNext } from './HomeBelow.tsx';
@@ -60,9 +60,7 @@ export function HomeView() {
   if (loaded && addedProjects(projects).length === 0) {
     return (
       <div className="flex h-full flex-col">
-        <div className="drag flex h-13 shrink-0 items-center px-4">
-          <SidebarToggle />
-        </div>
+        <ViewHeader title="Home" />
         {/* Yesterday, queued prompts and schedules (in folders that aren't projects) still show, under the way to add the first project. */}
         <div className="@container flex flex-1 flex-col items-center justify-center gap-8 px-6 pb-16">
           <Onboarding />
@@ -78,15 +76,13 @@ export function HomeView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="drag flex h-13 shrink-0 items-center px-4">
-        <SidebarToggle />
-      </div>
+      <ViewHeader title="Home" />
       {/* The container: the breakpoints follow the view (beside the sidebar and panels), not the window. */}
       <div className="@container flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className={`mx-auto grid w-full ${HOME_WIDTH} grid-cols-[minmax(0,1fr)] gap-7 pt-2 pb-12`} data-home>
           <header className="min-w-0">
-            {/* The view's hero heading, a little larger than text-title. */}
-            <h1 className="text-hero leading-tight font-semibold">{greeting(now)}</h1>
+            {/* The greeting, a little larger than text-title; the header names the view. */}
+            <h2 className="text-hero leading-tight font-semibold">{greeting(now)}</h2>
             <p className="mt-1 text-ui text-muted" data-home-summary>
               {homeSummary(needs.length, working.length, review.total)}
             </p>

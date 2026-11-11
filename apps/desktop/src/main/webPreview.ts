@@ -1,7 +1,13 @@
-import { app, ipcMain, session, type WebContents } from 'electron';
+import { app, ipcMain, nativeImage, session, webContents, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
 import { localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, cookieOfSite, faviconCap, iconTooLarge, keyForWindow, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
+
+/**
+ * Pages whose keys go to their window (`keysToWindow`): the window's document took the focus from them, which Chromium
+ * doesn't count as the keyboard leaving the page. Their contents ids.
+ */
+const keysToWindow = new Set<number>();
 
 /** What the guards need from the app. */
 export interface WebPreviewGuardDeps {
@@ -35,6 +41,37 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
   // A dev server's self-signed certificate on this computer is fine; anywhere else Chromium's verdict stands (-3).
   previewSession.setCertificateVerifyProc((request, callback) => callback(request.errorCode !== 0 && acceptsLocalCertificate(request.hostname) ? 0 : -3));
 
+  // A page's keys go to its window (the palette took the focus from it), or, with null, every page of that window's are its own again.
+  ipcMain.on(IpcChannel.webPreviewKeysToWindow, (event, contentsId: unknown) => {
+    if (event.sender.getType() !== 'window') return;
+    if (typeof contentsId !== 'number') {
+      for (const id of keysToWindow) if (webContents.fromId(id)?.hostWebContents === event.sender || !webContents.fromId(id)) keysToWindow.delete(id);
+      return;
+    }
+    const guest = webContents.fromId(contentsId);
+    if (guest && guest.getType() === 'webview' && guest.hostWebContents === event.sender) keysToWindow.add(contentsId);
+  });
+
+  // Clear data for this site (its cookies, which sign you out, and its storage), or everything the pages keep.
+  ipcMain.handle(IpcChannel.webPreviewClearData, async (event, origin: unknown) => {
+    if (!deps.browser() || event.sender.getType() !== 'window') return;
+    if (typeof origin !== 'string') {
+      await previewSession.clearStorageData();
+      await previewSession.clearCache();
+      await previewSession.clearAuthCache();
+      return;
+    }
+    const page = webPageUrl(origin);
+    if (!page) return;
+    const { origin: siteOrigin, hostname } = new URL(page);
+    await previewSession.clearStorageData({ origin: siteOrigin });
+    for (const cookie of await previewSession.cookies.get({})) {
+      if (!cookieOfSite(hostname, cookie.domain)) continue;
+      const url = `${cookie.secure ? 'https' : 'http'}://${(cookie.domain ?? hostname).replace(/^\./, '')}${cookie.path ?? '/'}`;
+      await previewSession.cookies.remove(url, cookie.name).catch(() => {});
+    }
+  });
+
   // ⌘W (Ctrl+W) in the browser's address bar closes the tab, not the window: the window's renderer says when it has focus.
   const addressFocus = new Set<number>();
   ipcMain.on(IpcChannel.webPreviewAddressFocus, (event, focused: unknown) => {
@@ -62,6 +99,8 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
     contents.on('did-attach-webview', (_event, guest) => guardPage(contents, guest, deps));
     const id = contents.id;
     contents.on('destroyed', () => addressFocus.delete(id));
+    // A reload drops the window's state: the address bar that had the focus is gone too.
+    contents.on('did-navigate', () => addressFocus.delete(id));
     contents.on('before-input-event', (event, input) => {
       if (!addressFocus.has(id) || input.type !== 'keyDown' || !deps.browser()) return;
       const mod = process.platform === 'darwin' ? input.meta : input.control;
@@ -72,17 +111,44 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
   });
 }
 
-/** A favicon larger than this is not one: it is left out. */
-const FAVICON_MAX_BYTES = 256 * 1024;
+/** How many of a page's icons are tried before it goes without. */
+const FAVICON_TRIES = 4;
 
-/** A page's icon as a `data:` image, or null when it can't be had or isn't an image. */
-async function faviconData(guest: WebContents, url: string): Promise<string | null> {
+/** An icon over this many bytes is sent to the window shrunk: a 40px PNG (main's for PNG and JPEG, the window's for SVG). */
+const SMALL_ICON_BYTES = 12 * 1024;
+
+/** The response's body, or null once it passes `cap` bytes: read as it comes, so a page can't make main hold more. */
+async function readCapped(response: Response, cap: number): Promise<Buffer | null> {
+  if (Number(response.headers.get('content-length') ?? 0) > cap || !response.body) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return Buffer.concat(chunks);
+    size += value.byteLength;
+    if (size > cap) {
+      void reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+}
+
+/** A page's icon as a small `data:` image, or null when it can't be had, isn't an image or is too large. */
+async function faviconData(guest: WebContents, url: string, signal: AbortSignal): Promise<string | null> {
   try {
-    const response = await guest.session.fetch(url, { signal: AbortSignal.timeout(5_000) });
+    const response = await guest.session.fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]) });
     const type = (response.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
     if (!response.ok || !type.startsWith('image/')) return null;
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length === 0 || bytes.length > FAVICON_MAX_BYTES) return null;
+    const bytes = await readCapped(response, faviconCap(type));
+    if (!bytes || bytes.length === 0 || iconTooLarge(bytes, type)) return null;
+    if (bytes.length > SMALL_ICON_BYTES && (type === 'image/png' || type === 'image/jpeg')) {
+      const image = nativeImage.createFromBuffer(bytes);
+      if (image.isEmpty()) return null;
+      const { width, height } = image.getSize();
+      return (width >= height ? image.resize({ width: 40, quality: 'good' }) : image.resize({ height: 40, quality: 'good' })).toDataURL();
+    }
     return `data:${type};base64,${bytes.toString('base64')}`;
   } catch {
     return null;
@@ -127,12 +193,47 @@ function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardD
   });
   // The page's icon, for its tab: fetched here in the page's own partition (its cookies, its referrer rules) and handed
   // to the window as a `data:` image, so the app's window never loads anything from the page's site itself.
+  // The page's candidates in turn: a site's first one can be broken (a template left unfilled, a 404), and the next works.
+  // A newer list stops the older fetch (only the newest icon counts); the same list again fetches nothing.
+  let fetching: AbortController | null = null;
+  let lastList = '';
   guest.on('page-favicon-updated', (_event, favicons) => {
     if (!deps.browser()) return;
-    const url = favicons.map((icon) => webPageUrl(icon)).find((icon): icon is string => icon !== null);
-    if (url) void faviconData(guest, url).then((data) => data && send(host, { kind: 'favicon', contentsId: guest.id, url: data }));
+    const urls = [...new Set(favicons.map((icon) => webPageUrl(icon)).filter((icon): icon is string => icon !== null))].slice(0, FAVICON_TRIES);
+    const list = urls.join('\n');
+    if (list === lastList) return;
+    lastList = list;
+    fetching?.abort();
+    const controller = new AbortController();
+    fetching = controller;
+    void (async () => {
+      for (const url of urls) {
+        const data = await faviconData(guest, url, controller.signal);
+        if (guest.isDestroyed() || controller.signal.aborted) return;
+        if (data) return send(host, { kind: 'favicon', contentsId: guest.id, url: data });
+      }
+    })();
+  });
+  // A page that goes elsewhere asks for its icon again, even the same one.
+  guest.on('did-navigate', () => {
+    lastList = '';
+  });
+  guest.once('destroyed', () => fetching?.abort());
+  guest.once('destroyed', () => keysToWindow.delete(guest.id));
+  // A click in the page gives it the keyboard again, whatever the window's document says.
+  guest.on('before-mouse-event', (_event, mouse) => {
+    if (mouse.type === 'mouseDown') keysToWindow.delete(guest.id);
   });
   guest.on('before-input-event', (event, input) => {
+    // The window has the focus: what is typed here goes there, as the keyboard would if Chromium had moved it.
+    if (keysToWindow.has(guest.id)) {
+      event.preventDefault();
+      const key = keyForWindow(input);
+      if (!key || host.isDestroyed()) return;
+      host.sendInputEvent({ type: key.type, keyCode: key.keyCode, modifiers: key.modifiers });
+      if (key.char) host.sendInputEvent({ type: 'char', keyCode: key.char, modifiers: key.modifiers });
+      return;
+    }
     const action = previewKeyAction(input, process.platform, deps.browser());
     if (!action) return;
     event.preventDefault();

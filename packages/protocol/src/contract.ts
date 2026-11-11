@@ -193,10 +193,28 @@ export const PinnedBrowserTab = z.object({
   owner: z.string().min(1).max(200),
   url: z.string().min(1).max(8000),
   title: z.string().max(500),
+  /** The name you gave it (Rename tab), shown in place of the page's title; null for none. Optional for an older window. */
+  name: z.string().max(200).nullable().optional(),
+  /** The page's icon as a small `data:` image (never an address), shown at start before the page loads. Optional for an older window. */
+  favicon: z.string().max(65_536).regex(/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i).nullable().optional(),
   position: z.number().int().min(0),
   pinnedAt: z.number().int(),
 });
 export type PinnedBrowserTab = z.infer<typeof PinnedBrowserTab>;
+
+/**
+ * A browser favourite: a site you open often, from the toolbar's star. `favicon` is the page's icon as a `data:` image
+ * (never an address, so the window loads nothing from the site), or null.
+ */
+export const BrowserFavorite = z.object({
+  id: z.string().min(1).max(100),
+  url: z.string().min(1).max(8000),
+  title: z.string().max(500),
+  favicon: z.string().max(65_536).regex(/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i).nullable(),
+  position: z.number().int().min(0),
+  createdAt: z.number().int(),
+});
+export type BrowserFavorite = z.infer<typeof BrowserFavorite>;
 
 export const contract = {
   requests: {
@@ -496,6 +514,11 @@ export const contract = {
     'browser.pinned.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
     /** An owner's pinned tabs in this order. */
     'browser.pinned.reorder': { params: z.object({ owner: z.string().min(1).max(200), ids: z.array(z.string().min(1).max(100)).max(500) }), result: z.object({}) },
+    /** Your browser favourites, in order. */
+    'browser.favorites.list': { params: z.object({}), result: z.object({ favorites: z.array(BrowserFavorite) }) },
+    /** Adds a favourite, or updates one (its title, icon, place). */
+    'browser.favorites.save': { params: z.object({ favorite: BrowserFavorite.omit({ createdAt: true }) }), result: z.object({}) },
+    'browser.favorites.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
     /**

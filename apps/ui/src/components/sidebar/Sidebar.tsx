@@ -11,7 +11,7 @@ import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } fr
 import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
-import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { Select } from '../ui/Select.tsx';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
@@ -632,8 +632,9 @@ export const SessionRow = memo(function SessionRow({
             {kind === 'terminal' ? <SquareTerminal size={11} aria-hidden /> : <Globe size={11} aria-hidden />}
           </span>
         ))}
-        {/* The rail and the age's colour already say needs you, working and unread; the icon is for the rest. */}
-        {!statusRail && <StatusIcon status={status} agent={agent} />}
+        {/* The rail and the age's colour already say needs you, working and unread; the icon is for the rest. With no
+            status its empty slot gives way to the terminal and browser marks, so they end under the age. */}
+        {!statusRail && (status || opened.length === 0) && <StatusIcon status={status} agent={agent} />}
       </span>
     </span>
   );
@@ -1298,22 +1299,28 @@ export function Sidebar() {
 
       {/* With the browser on, Browser swaps the sessions for its tabs; the sessions stay mounted (their notices too). */}
       <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-sessions>
-      {/* The order: by time and state, or what takes least to unblock first. */}
-      <div className="px-3 pb-1.5">
-        <SegmentedControl<SidebarSort>
-          mode="radio"
-          label="Sort sessions"
-          value={sort}
-          onChange={(sidebarSort) => updatePrefs({ sidebarSort })}
-          fill
-          className="no-drag"
-          segments={[
-            { value: 'recent', label: 'Recent', tooltip: 'What needs you, what is working, then by time', data: { 'data-sort-recent': true } },
-            { value: 'quickest', label: 'Quickest to unblock', tooltip: 'What needs you or a review first, the quickest at the top', data: { 'data-sort-quick': true } },
-          ]}
-        />
-      </div>
-      <ProjectFilter counts={counts} sources={sourceSummaries} remoteProjects={remoteProjects} />
+      {/* The project and, beside it, the order: by time and state, or what takes least to unblock first. */}
+      <ProjectFilter
+        counts={counts}
+        sources={sourceSummaries}
+        remoteProjects={remoteProjects}
+        trail={
+          <Select<SidebarSort>
+            label="Sort sessions"
+            tooltip="Sort sessions: Recent puts what needs you and what is working first, then by time. Quickest to unblock puts the quickest at the top."
+            value={sort}
+            onChange={(sidebarSort) => updatePrefs({ sidebarSort })}
+            chevron="up-down"
+            menuWidth={200}
+            className="h-7 shrink-0 rounded-md bg-text/6 px-2 text-ui text-muted hover:bg-border/50 hover:text-text"
+            dataAttrs={{ 'data-sidebar-sort': true }}
+            options={[
+              { value: 'recent', label: 'Recent' },
+              { value: 'quickest', label: 'Quickest to unblock', short: 'Quickest' },
+            ]}
+          />
+        }
+      />
       {noProjects && (
         <div className="mx-3 mb-2 grid justify-items-start gap-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-ui" data-sidebar-onboarding>
           <p className="font-medium text-text">Add a project</p>
@@ -1496,8 +1503,10 @@ export function Sidebar() {
       </div>
       {showTabs && <BrowserTabList />}
 
-      {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines. */}
-      <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={!listEdge.atBottom || undefined} data-sidebar-bottom>
+      {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines.
+          Under the Browser's tabs only Settings: the rest is about sessions (hidden, not gone, so it is as it was on the way back). */}
+      <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={(!showTabs && !listEdge.atBottom) || undefined} data-sidebar-bottom>
+      <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-session-footer>
       {/* Closed, Archived is docked under the list, so a short list never scrolls and a long one keeps it in sight. */}
       {archivedAt === 'dock' && (
         <div ref={dockRef} onKeyDown={onDockKeyDown} className="relative z-10 flex h-9 shrink-0 items-center bg-sidebar px-4.5" data-archived-dock>
@@ -1511,8 +1520,10 @@ export function Sidebar() {
 
       <BrowserIntro />
       <StarOnGithub sessions={all.length} />
+      </div>
 
       <footer className="flex h-10 shrink-0 items-center gap-2 px-3 text-meta text-muted">
+        <div className={showTabs ? 'hidden' : 'contents'}>
         {/* The focus limit, while it's on: how many sessions are going, out of how many. */}
         <FocusCounter />
         {/* The count opens every session, in Settings › Sessions. */}
@@ -1558,10 +1569,12 @@ export function Sidebar() {
           // The list and the open project are one view: a second click leaves it.
           onClick={() => setView(view === 'projects' || view === 'project' ? 'session' : 'projects')}
         />
+        </div>
         <Button
           variant="quiet"
           iconOnly
           icon={<Settings size={15} aria-hidden />}
+          className={showTabs ? 'ml-auto' : undefined}
           aria-label="Settings"
           shortcut="settings"
           selected={view === 'settings'}

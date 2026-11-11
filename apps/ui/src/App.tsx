@@ -40,8 +40,9 @@ import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { WebPreviewHost } from './components/webPreview/WebPreviewHost.tsx';
 import { BrowserView } from './components/browser/BrowserView.tsx';
 import { BROWSER_OWNER } from './components/webPreview/browserTabs.ts';
-import { followView, newBrowserTab, openBrowserView } from './state/browserViewStore.ts';
+import { followDeletedSessions, followView, newBrowserTab, openBrowserView } from './state/browserViewStore.ts';
 import { useBrowserTabsSync } from './state/browserTabsSync.ts';
+import { toggleFavorite, useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
 import { browserOn, useWebPreview } from './state/webPreviewStore.ts';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
@@ -145,8 +146,16 @@ function browserKey(event: KeyboardEvent): boolean {
     const target = event.target instanceof HTMLElement ? event.target : null;
     const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address]')?.dataset.tabId;
     if (!tabId) return false;
-    useWebPreview.getState().closeTab(tabId);
+    useWebPreview.getState().askClose(tabId);
     if (view === 'browser' && !useWebPreview.getState().active.get(BROWSER_OWNER)) document.querySelector<HTMLElement>('[data-browser-view]')?.focus();
+    return true;
+  }
+  if (matches(event, 'browser.favorite')) {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address]')?.dataset.tabId;
+    const tab = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId) : undefined;
+    if (!tab?.url) return false;
+    toggleFavorite(tab);
     return true;
   }
   // ⌘⇧T: in a page or its address bar, that owner's closed tab; in the Browser view, its own. Elsewhere it is Activity's.
@@ -312,7 +321,9 @@ export function App() {
   useWorktreesSync();
   useNavHistorySync();
   useBrowserTabsSync();
+  useBrowserFavoritesSync();
   useEffect(followView, []);
+  useEffect(followDeletedSessions, []);
   // Listen for links before telling main the window is ready: main hands over waiting links then.
   useLinksSync();
   useReadyReport();

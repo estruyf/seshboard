@@ -172,6 +172,7 @@ import { providerStatus, type ProviderDriver } from './providers/provider.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
 import { ProviderForks } from './providers/providerForks.ts';
+import { BrowserFavorites } from './browser/favorites.ts';
 import { PinnedTabs } from './browser/pinnedTabs.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
@@ -545,6 +546,7 @@ export function createEngine(options: EngineOptions): Engine {
   /** Forks made here of another provider's sessions (Codex's), which its own list leaves out until they have a turn. */
   const providerForks = new ProviderForks(cache.db);
   const pinnedTabs = new PinnedTabs(cache.db);
+  const browserFavorites = new BrowserFavorites(cache.db);
   const providerOptions: ProviderOptions = {
     env: process.env,
     home: homedir(),
@@ -3380,6 +3382,9 @@ export function createEngine(options: EngineOptions): Engine {
     'browser.pinned.save': ({ tab }) => (pinnedTabs.save(tab), {}),
     'browser.pinned.remove': ({ id }) => (pinnedTabs.remove(id), {}),
     'browser.pinned.reorder': ({ owner, ids }) => (pinnedTabs.reorder(owner, ids), {}),
+    'browser.favorites.list': () => ({ favorites: browserFavorites.list() }),
+    'browser.favorites.save': ({ favorite }) => (browserFavorites.save(favorite), {}),
+    'browser.favorites.remove': ({ id }) => (browserFavorites.remove(id), {}),
     'limits.state': () => limits.state(),
     'limits.resume': async ({ sessionId }) => {
       await limits.resumeNow(sessionId);

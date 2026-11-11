@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { agentsToggleStep } from './agentsPanel.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { frontTab as frontRightTab, useRightPanel } from './rightPanelStore.ts';
@@ -18,6 +19,7 @@ import {
   showTab,
   unpinTab,
   updateTab,
+  cleanTabName,
   type BrowserTab,
   type SavedTab,
   type TabsState,
@@ -61,10 +63,16 @@ interface WebPreviewState extends TabsState {
   open(sessionId: string, url?: string | null): void;
   /** Closes a session's panel. With the browser on its pinned tabs stay and the others close; off, its page goes. */
   close(sessionId: string): void;
+  /** Hides a session's panel (its Browser button, Escape): every tab stays as it was, for when it is shown again. */
+  hide(sessionId: string): void;
   /** Opens `url` (null: an empty tab) for an owner, or shows the tab it has on that address. The tab's id. */
   openTab(owner: string, url: string | null, options?: { focus?: boolean }): string;
   selectTab(id: string): void;
   closeTab(id: string): void;
+  /** The pinned tab asked to close once (a middle click, its ×, ⌘W), for `CONFIRM_CLOSE_MS`: the next ask closes it. */
+  confirming: string | null;
+  /** Closes a tab, but a pinned one only when asked twice: the first ask marks it (`confirming`). */
+  askClose(id: string): void;
   /** Tabs closed lately, newest last, for ⌘⇧T. */
   closed: readonly BrowserTab[];
   /** Opens the tab closed last again (of `owner` when given); the owner it opened for, or null with none. */
@@ -77,6 +85,8 @@ interface WebPreviewState extends TabsState {
   /** The page moved on by itself (a link, back): remembered, not loaded again. */
   shown(id: string, url: string): void;
   titled(id: string, title: string): void;
+  /** Gives a tab a name of your own (Rename tab); empty gives it the page's title again. */
+  rename(id: string, name: string): void;
   iconed(id: string, favicon: string | null): void;
   setPhone(id: string, phone: boolean): void;
   setFull(sessionId: string, full: boolean): void;
@@ -90,8 +100,12 @@ interface WebPreviewState extends TabsState {
   handOver(sessionId: string, web: SessionWeb | null): void;
 }
 
+/** How long a pinned tab waits for the second ask that closes it. */
+export const CONFIRM_CLOSE_MS = 3_000;
+
 let seq = 0;
 let ids = 0;
+let unconfirm: ReturnType<typeof setTimeout> | undefined;
 const newId = () => `tab-${Date.now().toString(36)}-${(++ids).toString(36)}`;
 
 const without = <T>(set: ReadonlySet<T>, value: T) => {
@@ -111,6 +125,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
   return {
     ...NO_TABS,
     closed: [],
+    confirming: null,
     panels: new Set(),
     full: new Set(),
     reloads: new Map(),
@@ -141,6 +156,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
       }
       set((s) => ({ panels: without(s.panels, sessionId), full: without(s.full, sessionId) }));
     },
+    hide: (sessionId) => set((s) => ({ panels: without(s.panels, sessionId), full: without(s.full, sessionId) })),
     openTab: (owner, url, options = {}) => {
       let id = '';
       tabs((s) => {
@@ -158,13 +174,28 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
       // The last tab of a session's panel closes the panel.
       if (tab && tab.owner !== BROWSER_OWNER && !get().tabs.some((t) => t.owner === tab.owner)) get().close(tab.owner);
     },
+    askClose: (id) => {
+      const tab = get().tabs.find((t) => t.id === id);
+      clearTimeout(unconfirm);
+      if (tab?.pinned && get().confirming !== id) {
+        set({ confirming: id });
+        unconfirm = setTimeout(() => set((s) => (s.confirming === id ? { confirming: null } : s)), CONFIRM_CLOSE_MS);
+        return;
+      }
+      set({ confirming: null });
+      get().closeTab(id);
+    },
     reopenTab: (owner) => {
       const { tab, closed } = takeClosed(get().closed, owner);
       if (!tab?.url) return null;
       set({ closed });
+      const had = new Set(get().tabs.map((t) => t.id));
       const id = get().openTab(tab.owner, tab.url);
-      tabs((s) => updateTab(s, id, { title: tab.title, favicon: tab.favicon }));
-      if (tab.pinned) get().pin(id);
+      // A tab already on that address is only brought forward, as it is; a new one gets back what the closed one had.
+      if (!had.has(id)) {
+        tabs((s) => updateTab(s, id, { title: tab.title, name: tab.name, favicon: tab.favicon }));
+        if (tab.pinned) get().pin(id);
+      }
       // A session's tab comes back in its panel.
       if (tab.owner !== BROWSER_OWNER) set((s) => ({ panels: withValue(s.panels, tab.owner) }));
       return tab.owner;
@@ -175,6 +206,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     navigate: (id, url) => tabs((s) => showTab(updateTab(s, id, { url, title: url, favicon: null, seq: ++seq }), id, Date.now())),
     shown: (id, url) => tabs((s) => updateTab(s, id, { url })),
     titled: (id, title) => tabs((s) => updateTab(s, id, { title })),
+    rename: (id, name) => tabs((s) => updateTab(s, id, { name: cleanTabName(name) })),
     iconed: (id, favicon) => tabs((s) => updateTab(s, id, { favicon })),
     setPhone: (id, phone) => tabs((s) => updateTab(s, id, { phone })),
     setFull: (sessionId, full) => set((s) => ({ full: full ? withValue(s.full, sessionId) : without(s.full, sessionId) })),
@@ -202,13 +234,16 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
 /** A session's Browser panel as its view shows it; null while the panel is closed. */
 export function useSessionWeb(sessionId: string): PanelWeb | null {
   const open = useWebPreview((s) => s.panels.has(sessionId));
-  const tabs = useWebPreview((s) => s.tabs);
+  // Only this session's tabs, and only while its panel is open: another tab's title as it changes re-renders nothing here.
+  const own = useWebPreview(useShallow((s) => (s.panels.has(sessionId) ? ownerTabs(s, sessionId) : NO_OWN)));
   const active = useWebPreview((s) => s.active.get(sessionId));
   const full = useWebPreview((s) => s.full.has(sessionId));
   if (!open) return null;
-  const own = ownerTabs({ tabs, active: new Map() }, sessionId);
   return { tab: own.find((t) => t.id === active) ?? null, tabs: own, full };
 }
+
+const NO_OWN: BrowserTab[] = [];
+
 
 /** How many tabs an owner has (a session's row shows a globe for any). */
 export function useTabCount(owner: string): number {
@@ -227,9 +262,19 @@ export function sessionWebs(state: Pick<WebPreviewState, 'panels' | 'tabs' | 'ac
   return out;
 }
 
-/** The header's Browser button, its shortcut and the palette: open, bring to the front, or close. `othersOpen`: another right panel is open too. */
+/**
+ * The header's Browser button, its shortcut and the palette: open, bring to the front, or hide. Hidden, its tabs stay
+ * as they were for the next open; the panel's × closes them. `othersOpen`: another right panel is open too.
+ */
 export function toggleWebPanel(sessionId: string, othersOpen: boolean, url?: string | null): void {
   const step = agentsToggleStep(isWebOpen(sessionId), frontRightTab(sessionId) === 'web', othersOpen);
-  if (step === 'close') useWebPreview.getState().close(sessionId);
-  else useWebPreview.getState().open(sessionId, isWebOpen(sessionId) ? null : url);
+  if (step === 'close') useWebPreview.getState().hide(sessionId);
+  else showWebPanel(sessionId, url);
+}
+
+/** Opens a session's panel as it was left; one with no tabs yet opens on `offer` (a server running in the session). */
+export function showWebPanel(sessionId: string, offer?: string | null): void {
+  const state = useWebPreview.getState();
+  const kept = state.panels.has(sessionId) || state.tabs.some((t) => t.owner === sessionId);
+  state.open(sessionId, kept ? null : offer);
 }

@@ -28,7 +28,16 @@ describe('PinnedTabs', () => {
     // Browsing on: the address and title change, the pin time stays.
     tabs.save({ ...tab('a', 's1', 0, 'https://github.com/a/pull/2'), title: 'PR 2' });
     const a = tabs.list().find((t) => t.id === 'a')!;
-    expect(a).toMatchObject({ url: 'https://github.com/a/pull/2', title: 'PR 2', pinnedAt: 10 });
+    expect(a).toMatchObject({ url: 'https://github.com/a/pull/2', title: 'PR 2', name: null, pinnedAt: 10 });
+    // A name of your own stays until it is cleared.
+    tabs.save({ ...tab('a', 's1', 0, 'https://github.com/a/pull/2'), name: 'Review' });
+    expect(tabs.list().find((t) => t.id === 'a')!.name).toBe('Review');
+    tabs.save({ ...tab('a', 's1', 0, 'https://github.com/a/pull/2'), name: null });
+    expect(tabs.list().find((t) => t.id === 'a')!.name).toBeNull();
+    // Its icon, for the start before the page loads.
+    expect(tabs.list().find((t) => t.id === 'a')!.favicon).toBeNull();
+    tabs.save({ ...tab('a', 's1', 0, 'https://github.com/a/pull/2'), favicon: 'data:image/png;base64,AAAA' });
+    expect(tabs.list().find((t) => t.id === 'a')!.favicon).toBe('data:image/png;base64,AAAA');
 
     tabs.reorder('s1', ['b', 'a', 'unknown']);
     expect(tabs.list().filter((t) => t.owner === 's1').map((t) => t.id)).toEqual(['b', 'a']);

@@ -1,13 +1,17 @@
-import { ArrowLeft, ArrowRight, ChevronLeft, ExternalLink, Globe, Pin, Plus, RotateCw, Smartphone, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronLeft, Code, Copy, Ellipsis, ExternalLink, Globe, LogOut, Pencil, Pin, Plus, RotateCw, Smartphone, Star, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { addressBarUrl, browserNavigation, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
+import { askClearData, askRename, copyAddress, toggleDevTools, zoomPage } from '../../state/browserActions.ts';
+import { toggleFavorite, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
+import { Menu, type MenuEntry } from '../Menu.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
-import type { BrowserTab } from './browserTabs.ts';
+import { tabName, type BrowserTab } from './browserTabs.ts';
+import { FavoriteTiles } from './FavoriteTiles.tsx';
 import type { ServerOffer } from './serverOffers.ts';
 import { previewPage, registerSlot, usePageState } from './webPreviewPages.ts';
 
@@ -37,6 +41,11 @@ interface BrowserPaneProps {
   trail?: ReactNode;
   /** With no tab: the empty state. */
   empty?: ReactNode;
+  /**
+   * The toolbar is the view's header (the Browser view, which has no title row with a tab open): the header's height and
+   * padding (`PANE_HEADER`), and the window's drag handle between its controls. `lead` puts the sidebar toggle first.
+   */
+  asHeader?: boolean;
 }
 
 /**
@@ -45,7 +54,7 @@ interface BrowserPaneProps {
  * another tab, view or session is in front. Shared by a session's Browser panel and the Browser view. With Browser
  * (preview) off, it is the web preview as it always was: local addresses only, one page, no strip or pin.
  */
-export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, empty }: BrowserPaneProps) {
+export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, empty, asHeader = false }: BrowserPaneProps) {
   const browser = usePreferences((s) => s.prefs.browserEnabled);
   const page = usePageState(tab?.id ?? null);
   // What is being typed in the address bar; null shows the page's own address.
@@ -56,6 +65,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   }, [tab?.id]);
   const address = useRef<HTMLInputElement>(null);
   const tabId = tab?.id ?? null;
+  const favorite = useFavoriteOf(tab?.url ?? null) !== undefined;
+  const [more, setMore] = useState<{ x: number; y: number } | null>(null);
 
   // A new, empty tab starts in the address bar.
   useEffect(() => {
@@ -89,7 +100,10 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="relative flex shrink-0 items-center gap-0.5 border-b border-border px-2 py-1" data-web-preview-toolbar="">
+      <div
+        className={`relative flex shrink-0 items-center gap-0.5 border-b border-border ${asHeader ? 'drag h-13 px-6 *:no-drag @max-[860px]:px-4' : 'px-2 py-1'}`}
+        data-web-preview-toolbar=""
+      >
         {lead}
         <Button variant="quiet" size="sm" iconOnly icon={<ArrowLeft size={13} aria-hidden />} aria-label="Back" disabled={!page.back} onClick={() => tab && previewPage(tab.id)?.back()} data-web-preview-back="" />
         <Button variant="quiet" size="sm" iconOnly icon={<ArrowRight size={13} aria-hidden />} aria-label="Forward" disabled={!page.forward} onClick={() => tab && previewPage(tab.id)?.forward()} data-web-preview-forward="" />
@@ -143,6 +157,22 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             data-web-preview-pin=""
           />
         )}
+        {browser && tab && (
+          <Button
+            variant="quiet"
+            size="sm"
+            iconOnly
+            icon={<Star size={13} aria-hidden className={favorite ? 'fill-current' : undefined} />}
+            aria-label={favorite ? 'Remove from favourites' : 'Add to favourites'}
+            data-tooltip={favorite ? 'Remove from favourites' : 'Add to favourites'}
+            shortcut="browser.favorite"
+            aria-pressed={favorite}
+            selected={favorite}
+            disabled={!tab.url}
+            onClick={() => toggleFavorite(tab)}
+            data-web-preview-favorite=""
+          />
+        )}
         {!browser && <Button
           variant="quiet"
           size="sm"
@@ -156,6 +186,23 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           data-web-preview-phone=""
         />}
         <Button variant="quiet" size="sm" iconOnly icon={<ExternalLink size={13} aria-hidden />} aria-label="Open in browser" data-tooltip="Open in browser" disabled={!tab?.url} onClick={() => tab?.url && window.open(tab.url, '_blank')} data-web-preview-open-external="" />
+        {browser && tab && (
+          <Button
+            variant="quiet"
+            size="sm"
+            iconOnly
+            icon={<Ellipsis size={13} aria-hidden />}
+            aria-label="More for this page"
+            aria-haspopup="menu"
+            aria-expanded={more !== null}
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setMore(more ? null : { x: rect.right - 220, y: rect.bottom + 4 });
+            }}
+            data-web-preview-more=""
+          />
+        )}
+        {more && tab && <Menu x={more.x} y={more.y} entries={pageMenu(tab)} label="Page menu" onClose={() => setMore(null)} />}
         {trail}
         {/* Loading: a thin line under the toolbar. */}
         {page.loading && <div aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 animate-pulse bg-accent-ink" data-web-preview-progress="" />}
@@ -226,9 +273,10 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   );
 }
 
-/** The session's tabs under the toolbar: pinned ones first, each with × on hover, then +. Scrolls sideways, keeping the tab in front in view. */
+/** The session's tabs under the toolbar: pinned ones first, each with × on hover, then +. A double click renames one. Scrolls sideways, keeping the tab in front in view. */
 function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; activeId: string | null; onNewTab?(): void }) {
   const strip = useRef<HTMLDivElement>(null);
+  const confirming = useWebPreview((s) => s.confirming);
   useEffect(() => {
     strip.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeId]);
@@ -246,30 +294,33 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
       <div ref={strip} role="tablist" aria-label="Tabs" onKeyDown={onKey} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" data-web-preview-tabs="">
         {tabs.map((t) => {
           const selected = t.id === activeId;
+          const asking = confirming === t.id;
           return (
             <div key={t.id} className={`group relative flex h-7 max-w-44 min-w-24 shrink-0 items-center rounded-md ${selected ? 'bg-selected text-text' : 'text-muted hover:bg-border/45 hover:text-text'}`}>
               <button
                 type="button"
                 role="tab"
                 aria-selected={selected}
-                aria-label={t.pinned ? `${t.title}, pinned` : t.title}
+                aria-label={tabLabel(t, asking)}
                 tabIndex={selected ? 0 : -1}
                 onClick={() => useWebPreview.getState().selectTab(t.id)}
+                onDoubleClick={() => askRename(t)}
                 onMouseDown={middleDown}
                 onAuxClick={(e) => middleClose(e, t.id)}
                 className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-6 pl-2 text-left text-ui"
                 data-browser-tab={t.id}
                 data-browser-pinned={t.pinned ? '' : undefined}
+                data-browser-confirm-close={asking ? '' : undefined}
               >
                 <TabIcon tab={t} />
-                <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                {t.pinned && <Pin size={10} aria-hidden className="shrink-0 text-faint" />}
+                <TabTitle tab={t} confirming={asking} />
+                {t.pinned && !asking && <Pin size={10} aria-hidden className="shrink-0 text-faint" />}
               </button>
               <button
                 type="button"
-                aria-label={`Close ${t.title}`}
-                onClick={() => useWebPreview.getState().closeTab(t.id)}
-                className="absolute right-1 flex size-5 items-center justify-center rounded text-muted opacity-0 group-hover:opacity-100 hover:bg-border/60 hover:text-text focus-visible:opacity-100"
+                aria-label={asking ? `Close ${tabName(t)} (pinned)` : `Close ${tabName(t)}`}
+                onClick={() => useWebPreview.getState().askClose(t.id)}
+                className={`absolute right-1 flex size-5 items-center justify-center rounded hover:bg-border/60 focus-visible:opacity-100 ${asking ? 'text-error opacity-100' : 'text-muted opacity-0 group-hover:opacity-100 hover:text-text'}`}
                 data-browser-tab-close={t.id}
               >
                 <X size={11} aria-hidden />
@@ -283,30 +334,59 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
   );
 }
 
+/** A tab's name for screen readers: its title, pinned, or the question a first ask to close a pinned tab raises. */
+export function tabLabel(tab: BrowserTab, confirming: boolean): string {
+  if (confirming) return `${tabName(tab)}, pinned. Close again to close it`;
+  return tab.pinned ? `${tabName(tab)}, pinned` : tabName(tab);
+}
+
+/** A tab's title; after a first ask to close a pinned tab, the question until it is asked again or the time runs out. */
+export function TabTitle({ tab, confirming }: { tab: BrowserTab; confirming: boolean }) {
+  if (confirming) return <span className="min-w-0 flex-1 truncate text-error">Close pinned tab?</span>;
+  return <span className="min-w-0 flex-1 truncate">{tabName(tab)}</span>;
+}
+
+/** The toolbar's ⋯: what is used less often for the page on screen, and Clear all browsing data. */
+function pageMenu(tab: BrowserTab): MenuEntry[] {
+  const blank = !tab.url;
+  return [
+    { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-page-rename': true } },
+    { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: blank, onSelect: () => copyAddress(tab) },
+    'separator',
+    { label: 'Zoom in', icon: <ZoomIn size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, 1) },
+    { label: 'Zoom out', icon: <ZoomOut size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, -1) },
+    { label: 'Actual size', disabled: blank, onSelect: () => zoomPage(tab, 0) },
+    { label: 'Developer tools', icon: <Code size={13} aria-hidden />, disabled: blank, onSelect: () => toggleDevTools(tab), data: { 'data-page-devtools': true } },
+    'separator',
+    { label: 'Clear data for this site…', icon: <LogOut size={13} aria-hidden />, disabled: blank, onSelect: () => askClearData(tab), data: { 'data-page-clear-site': true } },
+    { label: 'Clear all browsing data…', icon: <Trash2 size={13} aria-hidden />, onSelect: () => askClearData(null), data: { 'data-page-clear-all': true } },
+  ];
+}
+
 /** A middle press on a tab: no scrolling, the click that follows closes it (`middleClose`). */
 export function middleDown(event: MouseEvent<HTMLElement>): void {
   if (event.button === 1) event.preventDefault();
 }
 
-/** A middle click closes the tab, as in a browser. */
+/** A middle click closes the tab, as in a browser; a pinned one takes a second (`askClose`). */
 export function middleClose(event: MouseEvent<HTMLElement>, tabId: string): void {
   if (event.button !== 1) return;
   event.preventDefault();
-  useWebPreview.getState().closeTab(tabId);
+  useWebPreview.getState().askClose(tabId);
 }
 
-/** A tab's icon: the page's own, or a globe. */
-export function TabIcon({ tab, size = 12 }: { tab: BrowserTab; size?: number }) {
+/** A tab's icon (or a favourite's): the page's own, or a globe. */
+export function TabIcon({ tab, size = 12 }: { tab: Pick<BrowserTab, 'favicon'>; size?: number }) {
   // Which icon failed to draw: a new one gets its chance.
   const [broken, setBroken] = useState<string | null>(null);
   if (!tab.favicon || broken === tab.favicon) return <Globe size={size} aria-hidden className="shrink-0 text-faint" />;
   return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" onError={() => setBroken(tab.favicon)} />;
 }
 
-/** An empty tab: the servers running in the session, or where to type. */
+/** An empty tab: the servers running in the session, or where to type, and the favourites (the browser on). */
 function EmptyTab({ tabId, offers, browser }: { tabId: string; offers: readonly ServerOffer[]; browser: boolean }) {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-sidebar px-6 text-center" data-web-preview-empty="">
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-sidebar px-6 py-4 text-center" data-web-preview-empty="">
       <Globe size={22} aria-hidden className="text-faint" />
       {offers.length > 0 ? (
         <>
@@ -324,6 +404,11 @@ function EmptyTab({ tabId, offers, browser }: { tabId: string; offers: readonly 
         <p className="max-w-64 text-ui text-muted">
           {browser ? `Type an address above (${formatKeys(keysFor('browser.address'))}).` : 'Run your dev server from a project action or the terminal, or type its address above.'}
         </p>
+      )}
+      {browser && (
+        <div className="mt-3 flex w-full justify-center text-left">
+          <FavoriteTiles onOpen={(url) => useWebPreview.getState().navigate(tabId, url)} />
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { CalendarClock, Clock, EyeOff, Globe, House, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
+import { CalendarClock, Clock, EyeOff, Globe, LayoutList, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
 import { openActivity } from '../../state/activityStore.ts';
 import { openBrowserView } from '../../state/browserViewStore.ts';
 import { openUpcoming } from '../../state/upcomingStore.ts';
@@ -435,7 +435,7 @@ export function SidebarRail() {
           variant="quiet"
           size="lg"
           iconOnly
-          icon={<House size={15} aria-hidden />}
+          icon={<LayoutList size={15} aria-hidden />}
           aria-label="Home"
           shortcut="home"
           selected={atHome}

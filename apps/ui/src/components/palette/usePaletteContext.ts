@@ -43,6 +43,10 @@ import { useComputers } from '../../state/computersStore.ts';
 import { localSessionId } from '../../state/remoteSelection.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { useBrowserFavorites, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
+import { usePageState } from '../webPreview/webPreviewPages.ts';
+import { pageOwner } from '../../state/browserViewStore.ts';
+import { frontTab } from '../webPreview/browserTabs.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
 function useGitState(cwd: string | null, busy: boolean, readOnly: boolean): PaletteGit | null {
@@ -133,6 +137,16 @@ export function usePaletteContext(): PaletteContext {
   // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
   const id = view === 'session' ? localSessionId(selectedId) : null;
   const webOpen = useWebPreview((s) => (id ? s.panels.has(id) : false));
+  const pageTab = useWebPreview((s) => {
+    const owner = pageOwner(view, id, s.panels);
+    return owner ? (frontTab(s, owner) ?? null) : null;
+  });
+  const pageFull = useWebPreview((s) => (id ? s.full.has(id) : false));
+  const pageState = usePageState(pageTab?.id ?? null);
+  const pageFavorite = useFavoriteOf(pageTab?.url ?? null) !== undefined;
+  const browserTabs = useWebPreview((s) => s.tabs.length);
+  const browserClosed = useWebPreview((s) => s.closed.length > 0);
+  const favorites = useBrowserFavorites((s) => s.favorites.length);
 
   const catchUps = useCatchUp((s) => s.cards);
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
@@ -205,6 +219,13 @@ export function usePaletteContext(): PaletteContext {
     notifications: prefs.notifications.enabled,
     browser: prefs.browserEnabled,
     webPreview: prefs.webPreview,
+    browserPage:
+      prefs.browserEnabled && pageTab
+        ? { url: !!pageTab.url, favorite: pageFavorite, pinned: pageTab.pinned, back: pageState.back, forward: pageState.forward, loading: pageState.loading, owner: view === 'browser' ? 'view' : 'session', full: pageFull }
+        : null,
+    browserTabs,
+    browserClosed,
+    favorites,
     sounds: prefs.sounds.enabled,
     catchUpFolded: prefs.catchUpSummaries ? prefs.catchUpFolded : null,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },

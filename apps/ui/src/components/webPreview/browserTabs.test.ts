@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSER_OWNER, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, takeClosed, unpinTab, type TabsState } from './browserTabs.ts';
+import { BROWSER_OWNER, cleanTabName, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
 
 let n = 0;
 const open = (state: TabsState, owner: string, url: string | null, focus = true) => openTab(state, owner, url, { id: `t${++n}`, now: ++n, seq: n, focus });
@@ -99,13 +99,15 @@ describe('restore', () => {
   it('adds the saved pinned tabs in order, without a page, and keeps tabs already here', () => {
     const { state, made } = three();
     const restored = restore(state, [
-      { id: 'p2', owner: 's1', url: 'https://p2.test/', title: 'P2', position: 1 },
+      { id: 'p2', owner: 's1', url: 'https://p2.test/', title: 'P2', name: 'Docs', position: 1 },
       { id: 'p1', owner: 's1', url: 'https://p1.test/', title: '', position: 0 },
       { id: made[0]!, owner: 's1', url: 'https://changed.test/', title: 'x', position: 0 },
     ]);
     expect(ids(restored, 's1')).toEqual(['p1', 'p2', ...made]);
     const p1 = restored.tabs.find((t) => t.id === 'p1')!;
     expect(p1).toMatchObject({ pinned: true, lastShownAt: 0, title: 'https://p1.test/' });
+    expect(p1.name).toBeNull();
+    expect(tabName(restored.tabs.find((t) => t.id === 'p2')!)).toBe('Docs');
     expect(restored.tabs.find((t) => t.id === made[0])!.url).toBe('https://a.test/');
     expect(livePages(restored)).not.toContain('p1');
   });
@@ -156,5 +158,35 @@ describe('rowIndicators', () => {
     expect(rowIndicators({ terminal: true, tabs: 0 })).toEqual(['terminal']);
     expect(rowIndicators({ terminal: true, tabs: 4 })).toEqual(['terminal', 'browser']);
     expect(rowIndicators({ terminal: false, tabs: 1 })).toEqual(['browser']);
+  });
+});
+
+describe('tab names', () => {
+  it('shows the name you gave over the page title, and an empty name gives the title back', () => {
+    const { state, made } = three();
+    const named = updateTab(state, made[0]!, { name: cleanTabName('  Pull   request ') });
+    const tab = named.tabs.find((t) => t.id === made[0])!;
+    expect(tab.name).toBe('Pull request');
+    // The page's new title doesn't replace it.
+    expect(tabName(updateTab(named, made[0]!, { title: 'GitHub' }).tabs.find((t) => t.id === made[0])!)).toBe('Pull request');
+    expect(cleanTabName('   ')).toBeNull();
+    expect(tabName({ name: null, title: 'GitHub' })).toBe('GitHub');
+    expect(cleanTabName('x'.repeat(300))).toHaveLength(200);
+  });
+});
+
+describe('livePages on screen', () => {
+  it('keeps the tabs on screen live however long ago they were picked, then the most recent, and only allowed ones', () => {
+    let state = NO_TABS;
+    const made: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const r = open(state, i === 0 ? 's1' : BROWSER_OWNER, `https://p${i}.test/`);
+      state = r.state;
+      made.push(r.id);
+    }
+    // Limit 3: s1's tab was picked first (the oldest), yet it is on screen.
+    expect(livePages(state, 3)).not.toContain(made[0]);
+    expect(livePages(state, 3, { keep: [made[0]!] })).toEqual([made[0], made[4], made[3]]);
+    expect(livePages(state, 3, { allowed: (t) => t.url !== 'https://p4.test/' })).toEqual([made[3], made[2], made[1]]);
   });
 });

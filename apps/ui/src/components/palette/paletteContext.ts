@@ -73,6 +73,21 @@ export interface PaletteTerminal {
   action: { running: boolean } | null;
 }
 
+/** The browser's tab on screen, for the palette's page commands. */
+export interface BrowserPageContext {
+  /** It shows a page (a new tab has none yet). */
+  url: boolean;
+  favorite: boolean;
+  pinned: boolean;
+  back: boolean;
+  forward: boolean;
+  loading: boolean;
+  /** A session's panel, or the Browser view. */
+  owner: 'session' | 'view';
+  /** The session's panel takes the whole session area (Full). */
+  full: boolean;
+}
+
 /** What the palette knows about where you are; every command's `when()` reads it. Built from the stores. */
 export interface PaletteContext {
   /**
@@ -102,6 +117,14 @@ export interface PaletteContext {
   browser?: boolean;
   /** Settings › General › New sessions › Allow browser previews; on unless it says false. */
   webPreview?: boolean;
+  /** The browser's tab on screen (the Browser view's, or the session's open panel); null for none. */
+  browserPage?: BrowserPageContext | null;
+  /** How many browser tabs this window has (Go to tab…). */
+  browserTabs?: number;
+  /** A closed browser tab can come back (Reopen closed tab). */
+  browserClosed?: boolean;
+  /** How many favourites there are (Open favourite…). */
+  favorites?: number;
   /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
   catchUpFolded: boolean | null;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */

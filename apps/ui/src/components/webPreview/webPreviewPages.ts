@@ -20,7 +20,16 @@ interface WebviewElement extends HTMLElement {
   reload(): void;
   stop(): void;
   getWebContentsId(): number;
+  openDevTools(): void;
+  closeDevTools(): void;
+  isDevToolsOpened(): boolean;
+  getZoomLevel(): number;
+  setZoomLevel(level: number): void;
 }
+
+/** How far the page zooms each way: Chromium's levels, 0 is 100% and each step is about 20%. */
+const ZOOM_MIN = -3;
+const ZOOM_MAX = 5;
 
 /** A failed load: where, and Chromium's words for why. */
 export interface LoadFailure {
@@ -42,6 +51,40 @@ const IDLE: PageState = { loading: false, back: false, forward: false, failure: 
 
 /** Chromium's code for a load that something else cut short (a new navigation): not a failure. */
 const ERR_ABORTED = -3;
+
+/**
+ * A page's title, and its address as it moves within the page, reach the store at most this often: a page that ticks
+ * (a timer in the title, an address rewritten as you scroll) would redraw the tab list and the toolbar every time.
+ */
+const NOTE_MS = 300;
+
+/** Calls `run` with the latest value at most once per `ms`, the last value always arriving. */
+function throttled<T>(ms: number, run: (value: T) => void): { push(value: T): void; cancel(): void } {
+  let last = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending: { value: T } | null = null;
+  const flush = () => {
+    timer = undefined;
+    if (!pending) return;
+    last = Date.now();
+    const { value } = pending;
+    pending = null;
+    run(value);
+  };
+  return {
+    push(value) {
+      pending = { value };
+      if (timer) return;
+      const wait = ms - (Date.now() - last);
+      if (wait <= 0) flush();
+      else timer = setTimeout(flush, wait);
+    },
+    cancel() {
+      clearTimeout(timer);
+      pending = null;
+    },
+  };
+}
 
 /** Where a page goes while its slot isn't on show: still running, out of sight. */
 const PARKED = { left: '-100000px', top: '0px', width: '800px', height: '600px' };
@@ -81,12 +124,17 @@ class PreviewPage {
       element.addEventListener(name, listener as EventListener);
       this.off.push(() => element.removeEventListener(name, listener as EventListener));
     };
+    const title = throttled<string>(NOTE_MS, (text) => useWebPreview.getState().titled(sessionId, text));
+    const address = throttled<string>(NOTE_MS, (url) => {
+      useWebPreview.getState().shown(sessionId, url);
+      this.sync();
+    });
+    this.off.push(title.cancel, address.cancel);
     const navigated = (event: Event & Record<string, unknown>) => {
       if (event.isMainFrame === false) return;
-      useWebPreview.getState().shown(sessionId, event.url as string);
-      this.sync();
+      address.push(event.url as string);
     };
-    on('page-title-updated', (event) => useWebPreview.getState().titled(sessionId, String(event.title ?? '')));
+    on('page-title-updated', (event) => title.push(String(event.title ?? '')));
     // The icon comes from main, fetched in the page's partition (`WebPreviewHost`, `favicon`).
     on('render-process-gone', () => setState(sessionId, { crashed: true, loading: false }));
     // A page that closes itself (a sign-in popup, opened as a tab, once the provider is done) closes its tab.
@@ -143,12 +191,19 @@ class PreviewPage {
   }
 
   stop = () => this.call((e) => e.stop());
+  /** The page's developer tools, in a window of their own; again closes them. */
+  devTools = () => this.call((e) => (e.isDevToolsOpened() ? e.closeDevTools() : e.openDevTools()));
+  /** Zooms the page a step in (1) or out (-1), or back to 100% (0). */
+  zoom = (step: 1 | -1 | 0) =>
+    this.call((e) => e.setZoomLevel(step === 0 ? 0 : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(e.getZoomLevel()) + step))));
   back = () => this.call((e) => e.goBack());
   forward = () => this.call((e) => e.goForward());
 
-  /** Its `<webview>`'s contents id, or null before it is attached. */
+  /**
+   * Its `<webview>`'s contents id, or null before it is attached. Not only once `ready`: main sends a page's icon as
+   * soon as the page declares it, often before `dom-ready` on a large page, and the icon would find no tab.
+   */
   contentsId(): number | null {
-    if (!this.ready) return null;
     try {
       return this.element.getWebContentsId();
     } catch {

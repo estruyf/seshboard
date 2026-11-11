@@ -1060,6 +1060,13 @@ export const SHORTCUTS = [
     context: "While a page or its address bar has focus",
   },
   {
+    id: "browser.favorite",
+    keys: ["mod+d"],
+    action: "Add the page to favourites, or remove it",
+    section: "general",
+    context: "While a page or its address bar has focus",
+  },
+  {
     id: "browser.back",
     keys: ["mod+["],
     action: "Back in the page",

@@ -90,6 +90,8 @@ export const IpcChannel = {
   webPreviewKeys: "seshboard:web-preview-keys",
   webPreviewEvent: "seshboard:web-preview-event",
   webPreviewAddressFocus: "seshboard:web-preview-address-focus",
+  webPreviewClearData: "seshboard:web-preview-clear-data",
+  webPreviewKeysToWindow: "seshboard:web-preview-keys-to-window",
   showInMain: "seshboard:show-in-main",
   mainRequested: "seshboard:main-requested",
   popoutsChanged: "seshboard:popouts-changed",
@@ -442,8 +444,8 @@ export interface Preferences {
    */
   dockActivity: boolean;
   /**
-   * Settings › General › Browser: "Allow browser". On, any web page opens in tabs, beside a session and in a Browser
-   * view of its own, with pinned tabs. Off (the default), a session's preview shows only this computer's dev servers.
+   * Settings › General › Browser: "Allow browser". On (the default), any web page opens in tabs, beside a session and
+   * in a Browser view of its own, with pinned tabs. Off, a session's preview shows only this computer's dev servers.
    */
   browserEnabled: boolean;
   /**
@@ -451,7 +453,7 @@ export interface Preferences {
    * a Web tab beside the conversation. Off, and with the browser off too, there is no web page in the app at all.
    */
   webPreview: boolean;
-  /** The sidebar's card that tells about the browser after the update: shown (`ask`) until you turn it on or say Not now. */
+  /** The sidebar's card that tells about the browser after the update: shown (`ask`, the browser on) until you open it or say Got it. */
   browserIntro: BrowserIntro;
   /**
    * Settings › General › Menu bar: "Show in the menu bar" ("in the notification area" on Windows). The working light,
@@ -591,7 +593,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
   dockActivity: true,
-  browserEnabled: false,
+  browserEnabled: true,
   webPreview: true,
   browserIntro: "ask",
   menuBar: true,
@@ -1185,6 +1187,17 @@ export interface SeshboardBridge {
    * instead of closing the window.
    */
   setAddressFocus(focused: boolean): void;
+  /**
+   * Clears what the browser's pages keep (the browser on): a site's cookies and storage for `origin`, which signs you
+   * out of it, or with null everything (cookies, storage, cache, sign-ins). Resolves once it is done.
+   */
+  clearBrowsingData(origin: string | null): Promise<void>;
+  /**
+   * A browser page's keys go to the window: the window's document took the focus from the page (`contentsId`, a key it
+   * handed over opened the palette or a dialog), but Chromium leaves the keyboard with the page. Main sends what is
+   * typed there to the window until the page has the focus again (null).
+   */
+  keysToWindow(contentsId: number | null): void;
   /** In the main window: keys a pop-out handed over. */
   onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
   /** An app shortcut typed in a web preview's page in this window (`<webview>`, whose keys the window never sees). */

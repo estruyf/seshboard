@@ -84,7 +84,8 @@ export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, f
 
   const startResize = (event: PointerEvent<HTMLDivElement>) => {
     const startX = event.clientX;
-    const startWidth = width;
+    // From the width on screen: the stored one can be wider than the session area lets the panel be.
+    const startWidth = Math.min(width, event.currentTarget.parentElement?.getBoundingClientRect().width ?? width);
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     const move = (e: globalThis.PointerEvent) => onWidth(startWidth + (startX - e.clientX));
@@ -118,7 +119,7 @@ export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, f
       onKeyDown={onKey}
       onFocus={onFocus}
       onBlur={onBlur}
-      className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
+      className="relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
       style={{ width }}
       data-mod-pane={pane.id}
       data-mod-frame={pane.plugin}

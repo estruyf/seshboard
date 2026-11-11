@@ -269,7 +269,11 @@ export interface RemoteProjectSummary {
   offline: boolean;
 }
 
-export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { counts: Map<string, { total: number; active: number }>; sources?: readonly SourceSummary[]; remoteProjects?: readonly RemoteProjectSummary[] }) {
+/**
+ * The sidebar's project filter: which project's sessions the list shows (and, with a paired computer, which computers'),
+ * with Manage, Add and Clone at the end of its menu. `trail` sits on its right in the same row (the sort order).
+ */
+export function ProjectFilter({ counts, sources = [], remoteProjects = [], trail }: { counts: Map<string, { total: number; active: number }>; sources?: readonly SourceSummary[]; remoteProjects?: readonly RemoteProjectSummary[]; trail?: ReactNode }) {
   const hidden = useComputers((s) => s.hidden);
   const projects = useProjects((s) => s.projects);
   const filter = useProjects((s) => s.filter);
@@ -324,7 +328,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
   };
 
   return (
-    <div className="flex items-center gap-1 px-3 pb-2">
+    <div className="flex items-center gap-2 px-3 pb-2">
       <button
         ref={buttonRef}
         type="button"
@@ -351,7 +355,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
         {remoteCurrent && <ComputerChip name={remoteCurrent.computerName} computerId={remoteCurrent.computerId} offline={remoteCurrent.offline} />}
         <ChevronDown size={13} className={`shrink-0 text-faint transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
-      <Button variant="quiet" iconOnly icon={<FolderPlus size={15} aria-hidden />} aria-label="Add a project" data-add-project onClick={() => showAdd(true)} className="no-drag" />
+      {trail}
 
       {open && (
         <FilterPopover id={menuId} x={open.x} y={open.y} anchor={buttonRef} onClose={close} closeOnEscape={!submenu} onKeyDown={onMenuKeyDown}>

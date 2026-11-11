@@ -822,6 +822,141 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser-favorites",
+      "name": "Browser favourites: star a page, then open it from the sidebar, an empty tab or the Browser view",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-favorite-add",
+      "name": "Add page to favourites",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-favorite-remove",
+      "name": "Remove page from favourites",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-go-to-tab",
+      "name": "Go to tab…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-open-favorite",
+      "name": "Open favourite…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-address",
+      "name": "Go to address",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-back",
+      "name": "Back in the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-forward",
+      "name": "Forward in the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-stop",
+      "name": "Stop loading the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-close-tab",
+      "name": "Close tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-reopen-tab",
+      "name": "Reopen closed tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-pin-tab",
+      "name": "Pin tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-unpin-tab",
+      "name": "Unpin tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-rename-tab",
+      "name": "Rename tab…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-copy-address",
+      "name": "Copy page address",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-open-external",
+      "name": "Open page in browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-full",
+      "name": "Show browser full size",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-side",
+      "name": "Show browser beside the conversation",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-close-panel",
+      "name": "Close browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-zoom-in",
+      "name": "Zoom in on the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-zoom-out",
+      "name": "Zoom out of the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-zoom-reset",
+      "name": "Page at actual size",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-devtools",
+      "name": "Page developer tools",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-clear-site",
+      "name": "Clear data for this site…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-clear-all",
+      "name": "Clear all browsing data…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-page-tools",
+      "name": "The browser's page menu: developer tools, zoom, and clearing a site's data or all of it to sign out",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.favorite",
+      "name": "Browser: add the page to favourites, or remove it",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "shortcut:browser.view",
       "name": "Browser: your tabs outside a session",
       "page": "sessions/web-preview"

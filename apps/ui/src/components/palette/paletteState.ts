@@ -26,7 +26,7 @@ export function modeForPrefix(char: string | undefined): Exclude<PaletteMode, 'g
 }
 
 /** Lists a `pick` step chooses from. */
-export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt' | 'schedules' | 'schedule-action' | 'triggers' | 'trigger-action' | 'pipelines' | 'run-pipeline';
+export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt' | 'schedules' | 'schedule-action' | 'triggers' | 'trigger-action' | 'pipelines' | 'run-pipeline' | 'browser-tabs' | 'favorites';
 
 /**
  * One step of a command that needs more input. `chip` is how it shows in the input; `from` is the

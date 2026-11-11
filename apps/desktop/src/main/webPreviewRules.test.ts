@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, cookieOfSite, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, keyForWindow, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
 
 const key = (k: string, mods: Partial<PreviewKeyInput> = {}): PreviewKeyInput => ({ type: 'keyDown', key: k, meta: false, control: false, alt: false, shift: false, ...mods });
 
@@ -107,5 +107,73 @@ describe('with the browser off, the web preview as before', () => {
     expect(popupTarget('http://localhost:3000/x')).toBe('same');
     expect(popupTarget('https://github.com/')).toBe('browser');
     expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'https://github.com/' })).toBe(false);
+  });
+});
+
+describe('cookieOfSite', () => {
+  it("takes the site's own cookies and those of the domains above it, never a neighbour's", () => {
+    expect(cookieOfSite('github.com', '.github.com')).toBe(true);
+    expect(cookieOfSite('github.com', 'github.com')).toBe(true);
+    expect(cookieOfSite('gist.github.com', '.github.com')).toBe(true);
+    expect(cookieOfSite('github.com', 'gist.github.com')).toBe(false);
+    expect(cookieOfSite('github.com', 'notgithub.com')).toBe(false);
+    expect(cookieOfSite('mygithub.com', '.github.com')).toBe(false);
+    expect(cookieOfSite('GitHub.com', '.github.COM')).toBe(true);
+    expect(cookieOfSite('github.com', undefined)).toBe(false);
+  });
+});
+
+describe('favicon limits', () => {
+  const png = (width: number, height: number) => {
+    const bytes = new Uint8Array(24);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(16, width);
+    view.setUint32(20, height);
+    return bytes;
+  };
+  const gif = (width: number, height: number) => {
+    const bytes = new Uint8Array(10);
+    const view = new DataView(bytes.buffer);
+    view.setUint16(6, width, true);
+    view.setUint16(8, height, true);
+    return bytes;
+  };
+
+  it('reads an SVG up to 4 MB, a PNG or GIF up to 1 MB, anything else up to 256 KB', () => {
+    expect(faviconCap('image/svg+xml')).toBe(4 * 1024 * 1024);
+    expect(faviconCap('image/png')).toBe(1024 * 1024);
+    expect(faviconCap('image/x-icon')).toBe(256 * 1024);
+  });
+
+  it('refuses a PNG or GIF whose header says it is huge, whatever its bytes', () => {
+    expect(iconTooLarge(png(32, 32), 'image/png')).toBe(false);
+    expect(iconTooLarge(png(20_000, 20_000), 'image/png')).toBe(true);
+    expect(iconTooLarge(png(32, FAVICON_MAX_SIDE + 1), 'image/png')).toBe(true);
+    expect(iconTooLarge(new Uint8Array(8), 'image/png')).toBe(true);
+    expect(iconTooLarge(gif(16, 16), 'image/gif')).toBe(false);
+    expect(iconTooLarge(gif(60_000, 16), 'image/gif')).toBe(true);
+    expect(iconTooLarge(new Uint8Array(4), 'image/x-icon')).toBe(false);
+  });
+});
+
+describe('keyForWindow', () => {
+  it('sends a typed letter with its character, and the key up without one', () => {
+    expect(keyForWindow(key('z'))).toEqual({ type: 'keyDown', keyCode: 'z', char: 'z', modifiers: [] });
+    expect(keyForWindow(key('Z', { shift: true }))).toEqual({ type: 'keyDown', keyCode: 'Z', char: 'Z', modifiers: ['shift'] });
+    expect(keyForWindow({ ...key('z'), type: 'keyUp' })).toEqual({ type: 'keyUp', keyCode: 'z', char: null, modifiers: [] });
+  });
+
+  it("names the keys sendInputEvent knows by another name, and types no character for them or for a shortcut", () => {
+    expect(keyForWindow(key('ArrowDown'))).toMatchObject({ keyCode: 'Down', char: null });
+    expect(keyForWindow(key('Enter'))).toMatchObject({ keyCode: 'Return', char: null });
+    expect(keyForWindow(key('Escape'))).toMatchObject({ keyCode: 'Escape', char: null });
+    expect(keyForWindow(key('Backspace'))).toMatchObject({ keyCode: 'Backspace', char: null });
+    expect(keyForWindow(key(' '))).toMatchObject({ keyCode: 'Space', char: ' ' });
+    expect(keyForWindow(key('k', { meta: true }))).toEqual({ type: 'keyDown', keyCode: 'k', char: null, modifiers: ['meta'] });
+  });
+
+  it('passes on nothing for a modifier alone or a key it has no name for', () => {
+    expect(keyForWindow(key('Shift', { shift: true }))).toBeNull();
+    expect(keyForWindow(key('F13'))).toBeNull();
   });
 });

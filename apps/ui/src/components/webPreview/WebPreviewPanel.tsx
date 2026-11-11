@@ -36,11 +36,13 @@ export function WebPreviewPanel({ sessionId, web, offers, width, onWidth, tabs }
     if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[role=menu], [role=dialog], [role=alertdialog]')) return;
     event.preventDefault();
     if (full) setFull(false);
-    else close();
+    // Escape only hides it, as its Browser button does: the tabs stay for the next open.
+    else useWebPreview.getState().hide(sessionId);
   };
   const startResize = (event: PointerEvent<HTMLDivElement>) => {
     const startX = event.clientX;
-    const startWidth = width;
+    // From the width on screen: the stored one can be wider than the session area lets the panel be.
+    const startWidth = Math.min(width, event.currentTarget.parentElement?.getBoundingClientRect().width ?? width);
     const handle = event.currentTarget;
     handle.setPointerCapture(event.pointerId);
     // The page would take the pointer while it crosses it.
@@ -71,7 +73,7 @@ export function WebPreviewPanel({ sessionId, web, offers, width, onWidth, tabs }
       aria-label={browser ? 'Browser' : 'Web preview'}
       tabIndex={-1}
       onKeyDown={onKey}
-      className={full ? 'relative flex min-w-0 flex-1 flex-col bg-sidebar outline-none' : 'relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l'}
+      className={full ? 'relative flex min-w-0 flex-1 flex-col bg-sidebar outline-none' : 'relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l'}
       style={full ? undefined : { width }}
       data-web-preview=""
       data-web-preview-full={full ? '' : undefined}

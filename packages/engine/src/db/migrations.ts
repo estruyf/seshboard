@@ -942,4 +942,23 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX browser_tabs_owner ON browser_tabs (owner);
   `,
+  // v57: A pinned tab's name of your own (Rename tab), which the page's title doesn't replace. Null: the page's title.
+  `
+  ALTER TABLE browser_tabs ADD COLUMN name TEXT;
+  `,
+  // v58: Browser favourites, the sites you open often. Your own choices that nothing else has: keep them when rebuilding.
+  `
+  CREATE TABLE browser_favorites (
+    id         TEXT PRIMARY KEY,
+    url        TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    favicon    TEXT,
+    position   INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  `,
+  // v59: A pinned tab's icon (a small `data:` image), so it shows at start before the page loads again.
+  `
+  ALTER TABLE browser_tabs ADD COLUMN favicon TEXT;
+  `,
 ];

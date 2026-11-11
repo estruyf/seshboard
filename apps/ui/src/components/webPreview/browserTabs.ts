@@ -18,6 +18,8 @@ export interface BrowserTab {
   url: string | null;
   /** The page's title, or the address until the page says. */
   title: string;
+  /** The name you gave it (Rename tab), shown in place of `title`; null for none. */
+  name: string | null;
   /** The page's icon, when it has one. */
   favicon: string | null;
   pinned: boolean;
@@ -45,7 +47,21 @@ export interface SavedTab {
   owner: string;
   url: string;
   title: string;
+  name?: string | null;
+  favicon?: string | null;
   position: number;
+}
+
+/** How long a tab's name may be. */
+export const TAB_NAME_MAX = 200;
+
+/** What a tab is called: the name you gave it, else the page's title. */
+export const tabName = (tab: Pick<BrowserTab, 'name' | 'title'>): string => tab.name || tab.title;
+
+/** A name typed for a tab, as kept: spaces folded, cut to `TAB_NAME_MAX`; empty is no name (the page's title again). */
+export function cleanTabName(text: string): string | null {
+  const name = text.replace(/\s+/g, ' ').trim().slice(0, TAB_NAME_MAX);
+  return name || null;
 }
 
 /** The same page for Open: same origin and path, whatever the `#` (and the query) says. */
@@ -111,7 +127,7 @@ export function openTab(state: TabsState, owner: string, url: string | null, opt
   const existing = url ? ownerTabs(state, owner).find((t) => sameAddress(t.url, url)) : undefined;
   if (existing) return { state: focus ? showTab(state, existing.id, options.now) : state, id: existing.id };
   const own = ownerTabs(state, owner);
-  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', favicon: null, pinned: false, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, seq: options.seq };
+  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, seq: options.seq };
   const tabs = [...state.tabs, tab];
   return { state: { tabs, active: focus || !state.active.has(owner) ? withActive(state.active, owner, tab.id) : state.active }, id: tab.id };
 }
@@ -160,8 +176,8 @@ export function moveTab(state: TabsState, id: string, index: number): TabsState 
   return { tabs: renumber(state.tabs, tab.owner, own), active: state.active };
 }
 
-/** Changes what a tab shows (its address, title, icon, width) without moving it. */
-export function updateTab(state: TabsState, id: string, change: Partial<Pick<BrowserTab, 'url' | 'title' | 'favicon' | 'phone' | 'seq'>>): TabsState {
+/** Changes what a tab shows (its address, title, name, icon, width) without moving it. */
+export function updateTab(state: TabsState, id: string, change: Partial<Pick<BrowserTab, 'url' | 'title' | 'name' | 'favicon' | 'phone' | 'seq'>>): TabsState {
   let changed = false;
   const tabs = state.tabs.map((t) => {
     if (t.id !== id) return t;
@@ -178,7 +194,7 @@ export function restore(state: TabsState, saved: readonly SavedTab[]): TabsState
   const added: BrowserTab[] = [...saved]
     .filter((s) => !have.has(s.id))
     .sort((a, b) => a.position - b.position)
-    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, favicon: null, pinned: true, position: s.position, lastShownAt: 0, phone: false, seq: 0 }));
+    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, position: s.position, lastShownAt: 0, phone: false, seq: 0 }));
   if (!added.length) return state;
   let tabs = [...state.tabs, ...added];
   for (const owner of new Set(added.map((t) => t.owner))) tabs = renumber(tabs, owner, ownerTabs({ tabs, active: state.active }, owner));
@@ -191,13 +207,24 @@ export function dropOwner(state: TabsState, owner: string): TabsState {
   return { tabs: state.tabs.filter((t) => t.owner !== owner), active: withActive(state.active, owner, null) };
 }
 
-/** The tabs that have a live page: the `limit` shown most recently. Tabs never shown have none. */
-export function livePages(state: TabsState, limit = LIVE_PAGES): string[] {
-  return state.tabs
-    .filter((t) => t.lastShownAt > 0 && t.url)
-    .sort((a, b) => b.lastShownAt - a.lastShownAt)
-    .slice(0, limit)
-    .map((t) => t.id);
+/** Which tabs `livePages` may give a page, and which it must. */
+export interface LiveOptions {
+  /** Tabs on screen now (each open panel's tab in front): live first, whenever they were last picked. */
+  keep?: readonly string[];
+  /** Tabs that may have a page in this window (not one a pop-out shows, not an outside page with the browser off). */
+  allowed?: (tab: BrowserTab) => boolean;
+}
+
+/**
+ * The tabs that have a live page: those on screen, then the ones shown most recently, `limit` in all. Tabs never shown
+ * have none, and neither do tabs without an address.
+ */
+export function livePages(state: TabsState, limit = LIVE_PAGES, options: LiveOptions = {}): string[] {
+  const allowed = (t: BrowserTab) => !!t.url && (options.allowed?.(t) ?? true);
+  const keep = new Set(options.keep ?? []);
+  const onScreen = state.tabs.filter((t) => keep.has(t.id) && allowed(t));
+  const recent = state.tabs.filter((t) => !keep.has(t.id) && t.lastShownAt > 0 && allowed(t)).sort((a, b) => b.lastShownAt - a.lastShownAt);
+  return [...onScreen, ...recent].slice(0, limit).map((t) => t.id);
 }
 
 /** How many closed tabs ⌘⇧T can bring back. */

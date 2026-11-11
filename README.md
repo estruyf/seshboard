@@ -239,6 +239,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘L | Go to the address bar (with a browser on screen) |
 | ⌘⇧T | Reopen the closed tab (in the Browser view, or while a page has focus; Elsewhere it opens Activity) |
 | ⌘W | Close the tab (while a page or its address bar has focus) |
+| ⌘D | Add the page to favourites, or remove it (while a page or its address bar has focus) |
 | ⌘[ | Back in the page (while a page has focus) |
 | ⌘] | Forward in the page (while a page has focus) |
 | ⌘J or ⌃` | Show or hide the terminal |

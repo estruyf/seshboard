@@ -31,7 +31,7 @@ import { ReloadLimiter } from './reloadLimiter.ts';
 import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
 import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
-import { runBrowserIntroStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
+import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -145,8 +145,9 @@ if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store')
 const forcedScheme = process.env.SESHBOARD_COLOR_SCHEME;
 const preferences = new PreferencesStore(join(app.getPath('userData'), 'preferences.json'), sanitizePreferences({ colorScheme: forcedScheme }).colorScheme);
 // The smoke steps need sessions to click; on the real ~/.claude most were started elsewhere. Star on GitHub stays out
-// of the screenshots (the smoke step that checks it asks for it), and so does the browser's card.
-if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done', browserIntro: 'done' });
+// of the screenshots (the smoke step that checks it asks for it), and so does the browser's card. The browser starts
+// off, so the web preview steps check the local-only preview; the browser's own steps turn it on.
+if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done', browserIntro: 'done', browserEnabled: false });
 
 /** Built-in and imported themes; a change (an import, an edited file) goes to every window. */
 const themes = new ThemeStore(join(app.getPath('userData'), 'themes'), BUILT_IN_THEMES, (state) => {
@@ -11455,7 +11456,7 @@ async function runHomeLayoutStep(win: BrowserWindow): Promise<string> {
       usageUnder: !!usage && !!projects && usage.top >= projects.bottom,
       start: !!document.querySelector('[data-home-start] input[aria-label="Start a session"]'),
       summary: document.querySelector('[data-home-summary]')?.textContent ?? '',
-      heading: document.querySelector('[data-home] h1')?.textContent ?? '',
+      heading: document.querySelector('[data-home] h2')?.textContent ?? '',
     };
   })()`;
   type Layout = { lanes: string[]; rows: number; columns: number; usageRight: boolean; usageUnder: boolean; start: boolean; summary: string; heading: string };
@@ -11628,8 +11629,30 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, details, 3_000))) return 'Space did not open the banner’s Details again';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${banner}') && !${details}`, 3_000))) return 'Esc did not close Details first';
+  // A wide panel beside the conversation (the web preview, widened as far as it goes): the banner and the strip shrink
+  // with the conversation, nothing runs past their edge, and their buttons take a second row when they must.
+  const fitsNarrow = async (box: string) => {
+    await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', shiftKey: true, ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-web-preview] [role=separator]')`, 3_000))) return 'the web preview did not open beside the conversation';
+    await js(`(() => { const handle = document.querySelector('${view} [data-web-preview] [role=separator]'); for (let i = 0; i < 40; i++) handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })); })()`);
+    const result = (await js(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.querySelector('${box}');
+      if (!el) return resolve('no catch-up');
+      const rect = el.getBoundingClientRect();
+      if (rect.width >= 640) return resolve('not narrow: ' + Math.round(rect.width) + 'px');
+      const out = [...el.querySelectorAll('button, [data-catchup-state]')].filter((b) => b.offsetParent && b.getBoundingClientRect().right > rect.right + 1);
+      resolve(out.length ? 'past its edge: ' + out.map((b) => b.textContent.trim()).join(', ') : 'ok');
+    })))`)) as string;
+    await js(`document.querySelector('${view} [data-web-preview-close]')?.click()`);
+    await waitInPage(win, `!document.querySelector('${view} [data-web-preview]')`, 3_000);
+    return result;
+  };
+  const bannerNarrow = await fitsNarrow(banner);
+  if (bannerNarrow !== 'ok') return `with a wide panel beside it, the banner: ${bannerNarrow}`;
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${strip}') && !document.querySelector('${banner}')`, 3_000))) return 'Esc did not fold the banner into the strip';
+  const stripNarrow = await fitsNarrow(strip);
+  if (stripNarrow !== 'ok') return `with a wide panel beside it, the strip: ${stripNarrow}`;
   pressKey(win, 'Space');
   if (!(await waitInPage(win, `document.querySelector('${banner}')`, 3_000))) return 'Space did not open the banner again';
   if (!(await waitInPage(win, details, 3_000))) return 'the banner came back without its Details';
@@ -11642,10 +11665,16 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   if (!(await has(banner))) return 'Esc in the message box folded the banner';
   await blur();
 
-  await js("document.querySelector('[data-sort-quick]')?.click()");
+  // The sort is a Select beside the project filter: open it and pick.
+  const sortBy = async (value: string) => {
+    await js("document.querySelector('[data-sidebar-sort]')?.click()");
+    await waitInPage(win, `document.querySelector('[data-select-list] [data-option-value="${value}"]')`, 2_000);
+    await js(`document.querySelector('[data-select-list] [data-option-value="${value}"]')?.click()`);
+  };
+  await sortBy('quickest');
   const grouped = await waitInPage(win, "document.querySelector('[data-session-group=\"review\"], [data-session-group=\"read\"], [data-session-group=\"still-working\"]') && !document.querySelector('[data-session-group=\"open\"], [data-session-group=\"pinned\"], [data-queue-header]')", 3_000);
   if (grouped) await shot(win, 'sidebar-quickest.png');
-  await js("document.querySelector('[data-sort-recent]')?.click()");
+  await sortBy('recent');
   if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
   if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
   return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Details open at first, Space closed and opened them, Esc closed Details then folded the banner, Space opened it again with Details, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
@@ -14081,9 +14110,11 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     updatePreferences({ colorScheme: scheme });
   };
   const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
-  await step('browser intro: the sidebar card turns the browser on, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
+  await step('browser intro: the sidebar card opens the browser, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
   await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
   await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser favorites: star a page, kept after a reload, opened from the sidebar and an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
   await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
   await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));

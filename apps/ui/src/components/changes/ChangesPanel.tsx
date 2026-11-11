@@ -383,7 +383,8 @@ export function ChangesPanel({
   // Drag the left edge to resize; ← → do the same from the keyboard.
   const startResize = (event: PointerEvent<HTMLDivElement>) => {
     const startX = event.clientX;
-    const startWidth = width;
+    // From the width on screen: the stored one can be wider than the session area lets the panel be.
+    const startWidth = Math.min(width, event.currentTarget.parentElement?.getBoundingClientRect().width ?? width);
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     const move = (e: globalThis.PointerEvent) => setWidth(startWidth + (startX - e.clientX));
@@ -406,7 +407,7 @@ export function ChangesPanel({
       aria-label="Changes"
       // Expanded, it fills the session view; otherwise its own width, leaving the conversation some room in a narrow pane.
       // The sidebar's darker surface sets it apart from the conversation, without a line (it comes back in high contrast).
-      className={`relative flex min-w-0 flex-col bg-sidebar forced-colors:border-l ${expanded ? 'flex-1' : 'max-w-[85%] shrink-0'}`}
+      className={`relative flex min-w-0 flex-col bg-sidebar forced-colors:border-l ${expanded ? 'flex-1' : 'max-w-[min(85%,calc(100%-27.5rem))] shrink-0'}`}
       style={expanded ? undefined : { width }}
       data-changes-panel
       data-changes-expanded={expanded}

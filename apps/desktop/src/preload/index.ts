@@ -166,6 +166,8 @@ const bridge: SeshboardBridge = {
     return () => ipcRenderer.off(IpcChannel.webPreviewEvent, handler);
   },
   setAddressFocus: (focused) => ipcRenderer.send(IpcChannel.webPreviewAddressFocus, focused === true),
+  keysToWindow: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewKeysToWindow, typeof contentsId === 'number' ? contentsId : null),
+  clearBrowsingData: (origin) => ipcRenderer.invoke(IpcChannel.webPreviewClearData, typeof origin === 'string' ? origin : null) as Promise<void>,
   showInMain: (request) => ipcRenderer.send(IpcChannel.showInMain, request),
   onMainRequest(listener) {
     const handler = (_event: unknown, request: MainWindowRequest) => listener(request);
