@@ -390,8 +390,8 @@ export interface Preferences {
   chrome: boolean;
   /**
    * Settings › General: "Visuals in replies". On, the sessions Seshboard starts or resumes (Claude Code's, Codex's and
-   * Copilot's) get its `visualize` MCP server, so the agent can draw a diagram or a small tool in its reply. Off by
-   * default: its two tools cost a few tokens in every turn.
+   * Copilot's) get its `visualize` MCP server, so the agent can draw a diagram or a small tool in its reply. On by
+   * default. Its two tools cost a few tokens in every turn, so it can be turned off.
    */
   agentVisuals: boolean;
   /**
@@ -550,7 +550,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   newSessionModel: "",
   newSessionEffort: "",
   chrome: false,
-  agentVisuals: false,
+  agentVisuals: true,
   keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
