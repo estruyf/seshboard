@@ -203,7 +203,7 @@ export function usePaletteContext(): PaletteContext {
     paneWays: paneCount > 1 && selectedId ? WAYS.filter((way) => neighbour(layout, selectedId, way) !== null) : [],
     focusLimit: prefs.focusLimit,
     notifications: prefs.notifications.enabled,
-    browser: prefs.experimentalBrowser,
+    browser: prefs.browserEnabled,
     sounds: prefs.sounds.enabled,
     catchUpFolded: prefs.catchUpSummaries ? prefs.catchUpFolded : null,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },

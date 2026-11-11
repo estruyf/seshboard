@@ -221,9 +221,9 @@ export interface PaletteApi {
   /** Opens the session's web preview in front, on the newest server running in it when none is open yet. */
   openWeb(): void;
   reloadWeb(): void;
-  /** Browser (preview): the Browser view, with its tabs in the sidebar. */
+  /** The browser: the Browser view, with its tabs in the sidebar. */
   openBrowserView(): void;
-  /** Browser (preview): a new tab, the session's or the Browser view's. */
+  /** The browser: a new tab, the session's or the Browser view's. */
   newBrowserTab(): void;
   showTools(): void;
   openInEditor(): void;

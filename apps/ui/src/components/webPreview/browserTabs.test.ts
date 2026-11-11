@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSER_OWNER, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, restore, rowIndicators, sameAddress, unpinTab, type TabsState } from './browserTabs.ts';
+import { BROWSER_OWNER, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, takeClosed, unpinTab, type TabsState } from './browserTabs.ts';
 
 let n = 0;
 const open = (state: TabsState, owner: string, url: string | null, focus = true) => openTab(state, owner, url, { id: `t${++n}`, now: ++n, seq: n, focus });
@@ -121,6 +121,32 @@ describe('livePages', () => {
       made.push(r.id);
     }
     expect(livePages(state)).toEqual(made.slice(2).reverse());
+  });
+});
+
+describe('rememberClosed and takeClosed', () => {
+  it('brings back the last closed tab, of an owner when asked, one at a time', () => {
+    const { state, made } = three();
+    const [a, b, c] = made.map((id) => state.tabs.find((t) => t.id === id)!);
+    const other = { ...a!, id: 'x', owner: BROWSER_OWNER };
+    let closed = rememberClosed(rememberClosed(rememberClosed(rememberClosed([], a!), b!), other), c!);
+    const first = takeClosed(closed);
+    expect(first.tab?.id).toBe(c!.id);
+    const browser = takeClosed(first.closed, BROWSER_OWNER);
+    expect(browser.tab?.id).toBe('x');
+    closed = browser.closed;
+    expect(takeClosed(closed, 's1').tab?.id).toBe(b!.id);
+    expect(takeClosed([], 's1').tab).toBeNull();
+  });
+
+  it('skips empty tabs and keeps only the newest', () => {
+    const { state } = three();
+    const tab = state.tabs[0]!;
+    expect(rememberClosed([], { ...tab, url: null })).toEqual([]);
+    let closed: readonly (typeof tab)[] = [];
+    for (let i = 0; i < 30; i++) closed = rememberClosed(closed, { ...tab, id: `c${i}` });
+    expect(closed).toHaveLength(25);
+    expect(closed.at(-1)!.id).toBe('c29');
   });
 });
 

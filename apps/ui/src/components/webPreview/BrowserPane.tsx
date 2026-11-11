@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, ChevronLeft, ExternalLink, Globe, Pin, Plus, RotateCw, Smartphone, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { addressBarUrl, browserNavigation, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -46,7 +46,7 @@ interface BrowserPaneProps {
  * (preview) off, it is the web preview as it always was: local addresses only, one page, no strip or pin.
  */
 export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, empty }: BrowserPaneProps) {
-  const browser = usePreferences((s) => s.prefs.experimentalBrowser);
+  const browser = usePreferences((s) => s.prefs.browserEnabled);
   const page = usePageState(tab?.id ?? null);
   // What is being typed in the address bar; null shows the page's own address.
   const [draft, setDraft] = useState<string | null>(null);
@@ -254,6 +254,8 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
                 aria-label={t.pinned ? `${t.title}, pinned` : t.title}
                 tabIndex={selected ? 0 : -1}
                 onClick={() => useWebPreview.getState().selectTab(t.id)}
+                onMouseDown={middleDown}
+                onAuxClick={(e) => middleClose(e, t.id)}
                 className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-6 pl-2 text-left text-ui"
                 data-browser-tab={t.id}
                 data-browser-pinned={t.pinned ? '' : undefined}
@@ -280,11 +282,24 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
   );
 }
 
+/** A middle press on a tab: no scrolling, the click that follows closes it (`middleClose`). */
+export function middleDown(event: MouseEvent<HTMLElement>): void {
+  if (event.button === 1) event.preventDefault();
+}
+
+/** A middle click closes the tab, as in a browser. */
+export function middleClose(event: MouseEvent<HTMLElement>, tabId: string): void {
+  if (event.button !== 1) return;
+  event.preventDefault();
+  useWebPreview.getState().closeTab(tabId);
+}
+
 /** A tab's icon: the page's own, or a globe. */
 export function TabIcon({ tab, size = 12 }: { tab: BrowserTab; size?: number }) {
-  const [broken, setBroken] = useState(false);
-  if (!tab.favicon || broken) return <Globe size={size} aria-hidden className="shrink-0 text-faint" />;
-  return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" onError={() => setBroken(true)} />;
+  // Which icon failed to draw: a new one gets its chance.
+  const [broken, setBroken] = useState<string | null>(null);
+  if (!tab.favicon || broken === tab.favicon) return <Globe size={size} aria-hidden className="shrink-0 text-faint" />;
+  return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" onError={() => setBroken(tab.favicon)} />;
 }
 
 /** An empty tab: the servers running in the session, or where to type. */

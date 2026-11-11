@@ -113,7 +113,7 @@ function currentTerminalOwner(): string | null {
 }
 
 /**
- * The browser's keys (Browser (preview) on): ⌘⇧B outside a session shows the Browser view (in one it toggles the
+ * The browser's keys (the browser on): ⌘⇧B outside a session shows the Browser view (in one it toggles the
  * session's browser, `web.toggle`), ⌘T opens a tab, ⌘L goes to the address bar, and ⌘W closes the tab while its page
  * or address bar has focus (main hands both over as keys). True when the key was one of them and did something.
  */
@@ -147,6 +147,15 @@ function browserKey(event: KeyboardEvent): boolean {
     if (!tabId) return false;
     useWebPreview.getState().closeTab(tabId);
     if (view === 'browser' && !useWebPreview.getState().active.get(BROWSER_OWNER)) document.querySelector<HTMLElement>('[data-browser-view]')?.focus();
+    return true;
+  }
+  // ⌘⇧T: in a page or its address bar, that owner's closed tab; in the Browser view, its own. Elsewhere it is Activity's.
+  if (matches(event, 'browser.reopen-tab')) {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address]')?.dataset.tabId;
+    const owner = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId)?.owner : view === 'browser' ? BROWSER_OWNER : undefined;
+    if (!owner) return false;
+    useWebPreview.getState().reopenTab(owner);
     return true;
   }
   return false;
@@ -190,11 +199,12 @@ function useShortcuts() {
       } else if (matches(event, 'upcoming')) {
         event.preventDefault();
         openUpcoming();
+      } else if (browserOn() && browserKey(event)) {
+        // Before Activity: ⌘⇧T reopens a closed tab in the Browser view and in a page.
+        event.preventDefault();
       } else if (matches(event, 'activity')) {
         event.preventDefault();
         openActivity();
-      } else if (browserOn() && browserKey(event)) {
-        event.preventDefault();
       } else if (matches(event, 'search')) {
         if (otherModalOpen()) return;
         event.preventDefault();

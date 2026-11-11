@@ -7,7 +7,7 @@ import { BrowserPane } from '../webPreview/BrowserPane.tsx';
 import { BROWSER_OWNER } from '../webPreview/browserTabs.ts';
 
 /**
- * The Browser view (Browser (preview) on): the tabs that belong to no session, listed in the sidebar, and the one in
+ * The Browser view (the browser on): the tabs that belong to no session, listed in the sidebar, and the one in
  * front here. Its pages live with the sessions' (`webPreviewPages.ts`), so they keep running while a session is on screen.
  */
 export function BrowserView() {
@@ -16,14 +16,14 @@ export function BrowserView() {
     return id ? (s.tabs.find((t) => t.id === id) ?? null) : null;
   });
   return (
-    <div className="@container flex h-full min-h-0 flex-col bg-sidebar" data-browser-view="">
+    // The main area's surface, apart from the sidebar's, as every other view.
+    <div className="@container flex h-full min-h-0 flex-col bg-bg" data-browser-view="">
       <header className="drag flex h-11 shrink-0 items-center gap-2 px-4">
         <SidebarToggle />
         <h1 className="min-w-0 flex-1 truncate text-title font-semibold text-text">{tab ? tab.title : 'Browser'}</h1>
       </header>
-      <div className="no-drag flex min-h-0 flex-1 flex-col">
-        <BrowserPane tab={tab} onNewTab={newBrowserTab} empty={<NoPage />} />
-      </div>
+      {/* The toolbar and address bar come with a tab: with none there is nothing to type into. */}
+      <div className="no-drag relative flex min-h-0 flex-1 flex-col">{tab ? <BrowserPane tab={tab} onNewTab={newBrowserTab} /> : <NoPage />}</div>
     </div>
   );
 }

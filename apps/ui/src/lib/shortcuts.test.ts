@@ -227,6 +227,8 @@ describe('the shortcut registry', () => {
       'browser.view': [HOME, SESSION],
       'browser.new-tab': [at({ view: 'browser' }), HOME],
       'browser.address': [SESSION, at({ view: 'usage' })],
+      'browser.reopen-tab': [at({ view: 'browser' }), SESSION],
+      activity: [SESSION, at({ view: 'browser' })],
       'ask.open': [SESSION, at({ view: 'session' })],
       'transcript.file-link-other': [SESSION, HOME],
       'transcript.run-send': [SESSION, HOME],

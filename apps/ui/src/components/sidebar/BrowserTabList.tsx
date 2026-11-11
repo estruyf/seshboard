@@ -7,7 +7,7 @@ import { toast } from '../../state/toastStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { Button } from '../ui/Button.tsx';
-import { TabIcon } from '../webPreview/BrowserPane.tsx';
+import { middleClose, middleDown, TabIcon } from '../webPreview/BrowserPane.tsx';
 import { BROWSER_OWNER, ownerTabs, type BrowserTab } from '../webPreview/browserTabs.ts';
 
 /**
@@ -57,6 +57,8 @@ export function BrowserTabList() {
                   type="button"
                   onClick={() => show(tab)}
                   onContextMenu={(e) => openMenu(e, tab)}
+                  onMouseDown={middleDown}
+                  onAuxClick={(e) => middleClose(e, tab.id)}
                   aria-current={selected ? 'page' : undefined}
                   aria-label={tab.pinned ? `${tab.title}, pinned` : tab.title}
                   data-tooltip={tab.url ? `${tab.title}\n${shortUrl(tab.url)}` : tab.title}

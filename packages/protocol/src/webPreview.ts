@@ -37,7 +37,7 @@ export function localPreviewUrl(url: string): string | null {
 }
 
 /**
- * `url` as the browser (Settings › General › Browser (preview)) loads it, or null when it may not: http(s) to any
+ * `url` as the browser (Settings › General › Enable browser) loads it, or null when it may not: http(s) to any
  * host, without credentials in the address. Everything else (`file:`, `javascript:`, `data:`, an app's own scheme)
  * never loads in the page.
  */

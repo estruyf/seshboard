@@ -12,7 +12,9 @@ import {
   openTab,
   ownerTabs,
   pinTab,
+  rememberClosed,
   restore,
+  takeClosed,
   showTab,
   unpinTab,
   updateTab,
@@ -37,8 +39,8 @@ export interface PanelWeb {
   full: boolean;
 }
 
-/** Settings › General › Browser (preview): any web page, tabs and pins. Off, one local page per session, as before. */
-export const browserOn = (): boolean => usePreferences.getState().prefs.experimentalBrowser;
+/** Settings › General › Enable browser: any web page, tabs and pins. Off, one local page per session, as before. */
+export const browserOn = (): boolean => usePreferences.getState().prefs.browserEnabled;
 
 interface WebPreviewState extends TabsState {
   /** The sessions whose Browser (Web) panel is open; it may sit behind another tab. */
@@ -55,6 +57,10 @@ interface WebPreviewState extends TabsState {
   openTab(owner: string, url: string | null, options?: { focus?: boolean }): string;
   selectTab(id: string): void;
   closeTab(id: string): void;
+  /** Tabs closed lately, newest last, for ⌘⇧T. */
+  closed: readonly BrowserTab[];
+  /** Opens the tab closed last again (of `owner` when given); the owner it opened for, or null with none. */
+  reopenTab(owner?: string): string | null;
   pin(id: string): void;
   unpin(id: string): void;
   move(id: string, index: number): void;
@@ -96,6 +102,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     });
   return {
     ...NO_TABS,
+    closed: [],
     panels: new Set(),
     full: new Set(),
     reloads: new Map(),
@@ -131,9 +138,21 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     selectTab: (id) => tabs((s) => showTab(s, id, Date.now())),
     closeTab: (id) => {
       const tab = get().tabs.find((t) => t.id === id);
+      if (tab) set((s) => ({ closed: rememberClosed(s.closed, tab) }));
       tabs((s) => closeTab(s, id));
       // The last tab of a session's panel closes the panel.
       if (tab && tab.owner !== BROWSER_OWNER && !get().tabs.some((t) => t.owner === tab.owner)) get().close(tab.owner);
+    },
+    reopenTab: (owner) => {
+      const { tab, closed } = takeClosed(get().closed, owner);
+      if (!tab?.url) return null;
+      set({ closed });
+      const id = get().openTab(tab.owner, tab.url);
+      tabs((s) => updateTab(s, id, { title: tab.title, favicon: tab.favicon }));
+      if (tab.pinned) get().pin(id);
+      // A session's tab comes back in its panel.
+      if (tab.owner !== BROWSER_OWNER) set((s) => ({ panels: withValue(s.panels, tab.owner) }));
+      return tab.owner;
     },
     pin: (id) => tabs((s) => pinTab(s, id)),
     unpin: (id) => tabs((s) => unpinTab(s, id)),

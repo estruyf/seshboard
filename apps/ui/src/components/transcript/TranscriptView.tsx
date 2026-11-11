@@ -383,7 +383,7 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
  * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
  */
 /**
- * A web link in a reply, with Browser (preview) on: it opens in the session's browser (a tab already on that address
+ * A web link in a reply, with the browser on: it opens in the session's browser (a tab already on that address
  * comes to the front). ⌘-click (Ctrl-click) leaves it to the system browser. File links keep their own setting.
  */
 function openLinkInBrowser(event: ReactMouseEvent<HTMLElement>, sessionId: string): void {
@@ -619,7 +619,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showPreview || showWeb || terminalOnRight || panesOpen);
   // The Web button, ⌘⇧B and the palette: opened, it starts on the newest server running in the session.
   const toggleWebHere = () => toggleWebPanel(sessionId, right.open.some((tab) => tab !== 'web'), serverOffers[0]?.url ?? null);
-  const browserPreview = usePreferences((s) => s.prefs.experimentalBrowser);
+  const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
   const webName = browserPreview ? 'browser' : 'web preview';
   const webTip =
     webFront === false
@@ -1704,7 +1704,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 ]
               : []),
             // Only while a dev server runs in the session, or the tab is open: the shortcut and the palette open it any time.
-            // With Browser (preview) on, always: it opens any page.
+            // With the browser on, always: it opens any page.
             ...(showWeb || serverOffers.length > 0 || browserPreview
               ? [
                   {

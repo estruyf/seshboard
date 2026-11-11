@@ -16,7 +16,7 @@ import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
-import { NavIcons, SidebarNav } from './SidebarNav.tsx';
+import { SidebarNav } from './SidebarNav.tsx';
 import { BrowserTabList } from './BrowserTabList.tsx';
 import { useSidebarList } from '../../state/browserViewStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
@@ -331,8 +331,8 @@ export const SessionRow = memo(function SessionRow({
   // Whose session it is: from its transcript, or while it starts (not indexed yet) from what runs it. A session on
   // another computer has neither.
   const hostProvider = useHosts((s) => s.hosts.get(data.id)?.provider ?? null);
-  // With Browser (preview) on: small grey marks for a terminal or a browser the session has open.
-  const browserPreview = usePreferences((s) => s.prefs.experimentalBrowser);
+  // With the browser on: small grey marks for a terminal or a browser the session has open.
+  const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
   const terminalOpen = useTerminals((s) => browserPreview && !remote && [...s.terminals.values()].some((t) => t.sessionId === data.id));
   const tabCount = useTabCount(browserPreview && !remote ? data.id : '');
   const opened = rowIndicators({ terminal: terminalOpen, tabs: tabCount });
@@ -1242,7 +1242,7 @@ export function Sidebar() {
   const deviceNotice = useDeviceAnnouncement();
   const remoteFooterShown = useRemoteFooterShown();
   const localWaiting = all.filter((row) => rowStatus(row) === 'needs-you').length;
-  const browserPreview = usePreferences((s) => s.prefs.experimentalBrowser);
+  const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
   const showTabs = useSidebarList((s) => browserPreview && s.list === 'browser');
 
   return (
@@ -1253,10 +1253,11 @@ export function Sidebar() {
         <span className="text-body font-semibold text-text/90">Seshboard</span>
       </div>
 
-      {browserPreview && <NavIcons now={now} needsYou={localWaiting} />}
+      <SidebarNav now={now} needsYou={localWaiting} />
 
-      {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. */}
-      <div className="flex items-center gap-1.5 px-3 pb-1.5">
+      {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. The
+          Browser's tab list has no search or New session. */}
+      <div className={`items-center gap-1.5 px-3 pb-1.5 ${showTabs ? 'hidden' : 'flex'}`}>
         {/* A real field on the darkest surface, so it reads as the place to type. */}
         <label className="no-drag flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-bg px-2.5 text-faint focus-within:ring-1 focus-within:ring-accent-ink/50">
           <Search size={14} className="shrink-0" aria-hidden />
@@ -1293,9 +1294,8 @@ export function Sidebar() {
         </span>
       </div>
 
-      {!browserPreview && <SidebarNav now={now} />}
 
-      {/* With Browser (preview) on, Browser swaps the sessions for its tabs; the sessions stay mounted (their notices too). */}
+      {/* With the browser on, Browser swaps the sessions for its tabs; the sessions stay mounted (their notices too). */}
       <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-sessions>
       {/* The order: by time and state, or what takes least to unblock first. */}
       <div className="px-3 pb-1.5">

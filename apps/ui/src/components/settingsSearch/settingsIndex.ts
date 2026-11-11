@@ -74,7 +74,7 @@ export function settingsIndex(): SettingEntry[] {
     {
       id: 'experimental-browser',
       page: 'general',
-      label: 'Browser (preview)',
+      label: 'Enable browser',
       detail: BROWSER_PREVIEW_DETAIL,
       keywords: 'web page tabs pin github pull request url internet experimental',
       target: '[data-experimental-browser-setting]',

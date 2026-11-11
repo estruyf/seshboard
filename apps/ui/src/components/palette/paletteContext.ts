@@ -98,7 +98,7 @@ export interface PaletteContext {
   /** Settings › Notifications: notifications and sounds on or off. */
   notifications: boolean;
   sounds: boolean;
-  /** Settings › General › Browser (preview): any web page, tabs and the Browser view. */
+  /** Settings › General › Enable browser: any web page, tabs and the Browser view. */
   browser?: boolean;
   /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
   catchUpFolded: boolean | null;

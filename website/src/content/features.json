@@ -798,7 +798,7 @@
     },
     {
       "id": "feature:browser",
-      "name": "Browser (preview): any web page beside a session or in a Browser view of its own, in tabs, with pinned tabs that come back after a restart",
+      "name": "The browser: any web page beside a session or in a Browser view of its own, in tabs, with pinned tabs that come back after a restart",
       "page": "sessions/web-preview"
     },
     {
@@ -834,6 +834,11 @@
     {
       "id": "shortcut:browser.address",
       "name": "Go to the address bar",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.reopen-tab",
+      "name": "Reopen the closed tab",
       "page": "sessions/web-preview"
     },
     {

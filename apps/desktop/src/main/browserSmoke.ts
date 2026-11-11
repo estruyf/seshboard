@@ -4,19 +4,22 @@ import { webContents, type BrowserWindow, type WebContents } from 'electron';
 import { setFieldValue, until, waitInPage } from './pageDriver.ts';
 import { MOD_KEY_PROPERTY } from './smokeKeys.ts';
 
-// The smoke steps for Browser (preview) (Settings › General). A tiny server on this computer (Node's own http module, on
+// The smoke steps for Enable browser (Settings › General). A tiny server on this computer (Node's own http module, on
 // a free port) stands in for the web, so no outside site is needed: a page with a title, a link to a second one, and a
 // link that leaves for example.com.
 
 const PAGES: Record<string, string> = {
-  '/': '<title>Smoke browser</title><h1>One</h1><a id=next href=/two>Two</a> <a id=out href=https://example.com/>Out</a>',
+  '/': '<title>Smoke browser</title><link rel=icon href=/icon.svg><h1>One</h1><a id=next href=/two>Two</a> <a id=out href=https://example.com/>Out</a>',
   '/two': '<title>Smoke browser two</title><h1>Two</h1>',
 };
+
+/** The page's icon, for the tab's favicon. */
+const ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#e8590c"/></svg>';
 
 export interface BrowserSmokeDeps {
   /** Saves a screenshot in light and in dark (`name-light.png`, `name-dark.png`), for the pull request. */
   shot(name: string): Promise<void>;
-  /** Sets Browser (preview) on or off, as Settings would. */
+  /** Sets the browser on or off, as Settings would. */
   setBrowser(on: boolean): void;
   /** The outside addresses the preview sent to the browser (recorded, not opened, in a smoke run). */
   outside: readonly string[];
@@ -31,6 +34,11 @@ let base = '';
 async function site(): Promise<string> {
   if (server) return base;
   server = createServer((request, response) => {
+    if (request.url === '/icon.svg') {
+      response.writeHead(200, { 'content-type': 'image/svg+xml' });
+      response.end(ICON);
+      return;
+    }
     const body = PAGES[request.url ?? ''];
     response.writeHead(body ? 200 : 404, { 'content-type': 'text/html' });
     response.end(body ?? 'Not found');
@@ -48,26 +56,38 @@ const pageWithTitle = (title: string): WebContents | undefined => webContents.ge
 const q = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
 
 /**
- * "browser view": Browser in the sidebar's views shows the Browser view with its tabs listed; Open tab gives an empty
- * tab with the address bar; the local page loads there, and its title shows in the list.
+ * "browser view": Browser in the sidebar's views shows the Browser view with its tabs listed, without the search row and
+ * without an address bar until a tab is open; Open tab gives one; the local page loads there, and its title and favicon
+ * show in the list. A middle click closes the tab and ⌘⇧T brings it back.
  */
 export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const url = await site();
   deps.setBrowser(true);
-  if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with Browser (preview) on';
+  if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
   for (const nav of ['home', 'upcoming', 'activity']) if (!(await js(`!!${q(`[data-nav="${nav}"]`)}`))) return `no ${nav} icon in the sidebar's views`;
   await js(`${q('[data-nav="browser"]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'Browser did not show the Browser view and its tab list';
   if (!(await js(`!!${q('[data-browser-view] [data-browser-empty]')} || !!${q('[data-browser-view] [data-web-preview-slot]')}`))) return 'the Browser view shows neither a page nor its empty state';
+  if (await js(`!!${q('[data-browser-view] [data-browser-empty]')} && !!${q('[data-browser-view] [data-browser-address]')}`)) return 'the empty Browser view shows an address bar';
+  if (await js(`!!${q('[data-new-session]')}?.checkVisibility()`)) return 'the Browser tab list still shows New session and the search';
   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view] [data-browser-address]')} && !${q('[data-browser-view] [data-browser-address]')}.disabled`, 3_000))) return 'Open tab gave no address bar';
   await setFieldValue(win, '[data-browser-view] [data-browser-address]', url.replace('http://', ''));
   await js(`${q('[data-browser-view] [data-browser-address]')}.form.requestSubmit()`);
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the local page did not load in the Browser view';
-  if (!(await waitInPage(win, `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].some((t) => t.textContent.includes('Smoke browser'))`, 3_000))) return "the page's title is not in the tab list";
+  const listed = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser'))`;
+  if (!(await waitInPage(win, listed, 3_000))) return "the page's title is not in the tab list";
+  if (!(await waitInPage(win, `${listed}?.querySelector('img[src]')?.complete && ${listed}.querySelector('img').naturalWidth > 0`, 5_000))) return `the page's favicon is not on its tab (${String(await js(`${listed}?.innerHTML`))})`;
   await deps.shot('browser-view');
-  return `ok: ${url} opened in a Browser tab, its title in the list`;
+  // A middle click closes it; ⌘⇧T in the Browser view brings it back.
+  await js(`${listed}.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
+  if (!(await waitInPage(win, `!${listed}`, 3_000))) return 'a middle click did not close the tab';
+  await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', shiftKey: true, ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
+  if (!(await waitInPage(win, `${listed} && ${q('[data-browser-view] [data-browser-address]')}`, 3_000))) return '⌘⇧T did not reopen the closed tab';
+  if (await js(`!!${q('[data-activity]')}`)) return '⌘⇧T opened Activity in the Browser view';
+  if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the reopened tab did not load its page';
+  return `ok: ${url} opened in a Browser tab, its title and favicon in the list, closed with a middle click and reopened with ⌘⇧T`;
 }
 
 /** "browser pin": pinned, the tab is still in the list with its pin after the window reloads. Needs "browser view" first. */
@@ -117,14 +137,14 @@ export async function runSessionBrowserStep(win: BrowserWindow, deps: BrowserSmo
 }
 
 /**
- * "browser outside link": with Browser (preview) off, the panel is the web preview as before: a local page loads, and
+ * "browser outside link": with the browser off, the panel is the web preview as before: a local page loads, and
  * its link to example.com goes to the browser (recorded) while the page stays.
  */
 export async function runBrowserOutsideLinkStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const url = await site();
   deps.setBrowser(false);
-  if (!(await waitInPage(win, `!${q('[data-nav="browser"]')}`, 3_000))) return 'the Browser icon stayed with Browser (preview) off';
+  if (!(await waitInPage(win, `!${q('[data-nav="browser"]')}`, 3_000))) return 'the Browser icon stayed with the browser off';
   const session = (await js(`document.querySelector('[data-current-session]')?.dataset.currentSession ?? null`)) as string | null;
   if (!session) return 'no session on screen';
   const S = `[data-current-session="${session}"]`;
@@ -140,7 +160,7 @@ export async function runBrowserOutsideLinkStep(win: BrowserWindow, deps: Browse
   await page.executeJavaScript("document.getElementById('out').click()", true);
   if (!(await until(() => deps.outside.slice(before).includes('https://example.com/'), 3_000))) return `the outside link was not sent to the browser (sent: ${JSON.stringify(deps.outside.slice(before))})`;
   if (page.getTitle() !== 'Smoke browser') return `the page left for ${page.getURL()}`;
-  if (await js(`!!${q(`${S} [data-web-preview-tabs]`)} || !!${q(`${S} [data-web-preview-pin]`)}`)) return 'the web preview shows tabs or a pin with Browser (preview) off';
+  if (await js(`!!${q(`${S} [data-web-preview-tabs]`)} || !!${q(`${S} [data-web-preview-pin]`)}`)) return 'the web preview shows tabs or a pin with the browser off';
   await js(`${q(`${S} [data-web-preview-close]`)}.click()`);
-  return 'ok: with Browser (preview) off, the outside link went to the browser and the page stayed';
+  return 'ok: with the browser off, the outside link went to the browser and the page stayed';
 }

@@ -546,11 +546,11 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               onChange={(agentVisuals) => update({ agentVisuals })}
             />
             <Toggle
-              label="Browser (preview)"
+              label="Enable browser"
               detail={BROWSER_PREVIEW_DETAIL}
-              checked={prefs.experimentalBrowser}
+              checked={prefs.browserEnabled}
               attr="data-experimental-browser-setting"
-              onChange={(experimentalBrowser) => update({ experimentalBrowser })}
+              onChange={(browserEnabled) => update({ browserEnabled })}
             />
           </Section>
           <Section title="Quitting">

@@ -7,12 +7,12 @@ import { acceptsLocalCertificate, popupTarget, previewKeyAction, previewNavigati
 export interface WebPreviewGuardDeps {
   /** Opens an address outside the app: an outside page in the browser, an app's link with the system (a smoke run records it instead). */
   openExternal(url: string): void;
-  /** Settings › General › Browser (preview): any web page and tabs. Read on every check, so a change applies at once. */
+  /** Settings › General › Enable browser: any web page and tabs. Read on every check, so a change applies at once. */
   browser(): boolean;
 }
 
 /**
- * The web preview's `<webview>` (a session's dev server beside the conversation, or with Browser (preview) on any web
+ * The web preview's `<webview>` (a session's dev server beside the conversation, or with the browser on any web
  * page, in tabs), checked here: one attaches only in its own partition, on an allowed address, sandboxed and without a
  * preload or Node; its page stays on allowed addresses (`previewNavigation`); a new window it asks for becomes a tab
  * or goes to the browser (`popupTarget`), never a window; its permission requests and downloads are refused; and the
@@ -70,6 +70,23 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
   });
 }
 
+/** A favicon larger than this is not one: it is left out. */
+const FAVICON_MAX_BYTES = 256 * 1024;
+
+/** A page's icon as a `data:` image, or null when it can't be had or isn't an image. */
+async function faviconData(guest: WebContents, url: string): Promise<string | null> {
+  try {
+    const response = await guest.session.fetch(url, { signal: AbortSignal.timeout(5_000) });
+    const type = (response.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+    if (!response.ok || !type.startsWith('image/')) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > FAVICON_MAX_BYTES) return null;
+    return `data:${type};base64,${bytes.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
 function send(host: WebContents, event: WebPreviewEvent): void {
   if (!host.isDestroyed()) host.send(IpcChannel.webPreviewEvent, event);
 }
@@ -105,6 +122,13 @@ function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardD
     if (!isMainFrame || previewNavigation(url, deps.browser()) === 'stay') return;
     event.preventDefault();
     leave(url);
+  });
+  // The page's icon, for its tab: fetched here in the page's own partition (its cookies, its referrer rules) and handed
+  // to the window as a `data:` image, so the app's window never loads anything from the page's site itself.
+  guest.on('page-favicon-updated', (_event, favicons) => {
+    if (!deps.browser()) return;
+    const url = favicons.map((icon) => webPageUrl(icon)).find((icon): icon is string => icon !== null);
+    if (url) void faviconData(guest, url).then((data) => data && send(host, { kind: 'favicon', contentsId: guest.id, url: data }));
   });
   guest.on('before-input-event', (event, input) => {
     const action = previewKeyAction(input, process.platform, deps.browser());

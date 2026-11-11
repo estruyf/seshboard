@@ -176,11 +176,15 @@ export interface WebPreviewKeys {
 }
 
 /**
- * What a browser page did that its window shows (Browser (preview) on): it opened a new window (`window.open`,
- * `target=_blank`, a sign-in popup), which becomes a tab of the same owner, or a download was refused.
+ * What a browser page did that its window shows (the browser on): it opened a new window (`window.open`,
+ * `target=_blank`, a sign-in popup), which becomes a tab of the same owner, a download was refused, or its icon came.
  * `contentsId` is the page's.
  */
-export type WebPreviewEvent = { kind: 'popup'; contentsId: number; url: string } | { kind: 'download-refused'; contentsId: number; url: string };
+export type WebPreviewEvent =
+  | { kind: 'popup'; contentsId: number; url: string }
+  | { kind: 'download-refused'; contentsId: number; url: string }
+  /** The page's icon, as a `data:` image main fetched in the page's partition. */
+  | { kind: 'favicon'; contentsId: number; url: string };
 
 /**
  * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
@@ -435,10 +439,10 @@ export interface Preferences {
    */
   dockActivity: boolean;
   /**
-   * Settings › General: "Browser (preview)". On, the web preview opens any web page in tabs, with a Browser view of its
+   * Settings › General: "Enable browser". On, the web preview opens any web page in tabs, with a Browser view of its
    * own and pinned tabs. Off (the default), it shows only this computer's dev servers, one page per session.
    */
-  experimentalBrowser: boolean;
+  browserEnabled: boolean;
   /**
    * Settings › General › Menu bar: "Show in the menu bar" ("in the notification area" on Windows). The working light,
    * what needs you and new work, from the menu bar's icon. On by default.
@@ -577,7 +581,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
   dockActivity: true,
-  experimentalBrowser: false,
+  browserEnabled: false,
   menuBar: true,
   keepRunning: true,
   hideDock: false,
@@ -778,7 +782,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
-  if (typeof raw.experimentalBrowser === "boolean") out.experimentalBrowser = raw.experimentalBrowser;
+  if (typeof raw.browserEnabled === "boolean") out.browserEnabled = raw.browserEnabled;
   if (typeof raw.menuBar === "boolean") out.menuBar = raw.menuBar;
   if (typeof raw.keepRunning === "boolean") out.keepRunning = raw.keepRunning;
   if (typeof raw.hideDock === "boolean") out.hideDock = raw.hideDock;
@@ -1160,7 +1164,7 @@ export interface SeshboardBridge {
   showSession(sessionId: string): void;
   /** From a pop-out: brings the main window to the front and presses these keys there. */
   forwardKeys(keys: ForwardedKeys): void;
-  /** A browser page opened a window or a download was refused (Browser (preview) on). */
+  /** A browser page opened a window or a download was refused (the browser on). */
   onWebPreviewEvent(listener: (event: WebPreviewEvent) => void): () => void;
   /**
    * The browser's address bar has focus (or lost it): main then hands ⌘W (Ctrl+W) to the window as keys, for Close tab,

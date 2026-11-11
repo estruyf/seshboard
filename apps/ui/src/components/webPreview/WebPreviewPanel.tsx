@@ -21,13 +21,13 @@ interface WebPreviewPanelProps {
 }
 
 /**
- * A session's Browser (with Browser (preview) off, its running dev server) on the right next to the conversation, a tab
+ * A session's Browser (with the browser off, its running dev server) on the right next to the conversation, a tab
  * beside Changes, Ask and the rest, or the whole session area in Full. The toolbar, tab strip and page are the
  * `BrowserPane`; the pages live at the end of the window (`webPreviewPages.ts`), so they keep running while another tab
  * or session is on screen. Main checks them: their own partition, no Node, outside links in the browser while it is off.
  */
 export function WebPreviewPanel({ sessionId, web, offers, width, onWidth, tabs }: WebPreviewPanelProps) {
-  const browser = usePreferences((s) => s.prefs.experimentalBrowser);
+  const browser = usePreferences((s) => s.prefs.browserEnabled);
   const close = () => useWebPreview.getState().close(sessionId);
   const full = browser && web.full;
   const setFull = (on: boolean) => useWebPreview.getState().setFull(sessionId, on);

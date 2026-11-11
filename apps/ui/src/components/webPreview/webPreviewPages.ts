@@ -87,11 +87,7 @@ class PreviewPage {
       this.sync();
     };
     on('page-title-updated', (event) => useWebPreview.getState().titled(sessionId, String(event.title ?? '')));
-    on('page-favicon-updated', (event) => {
-      const icons = event.favicons as unknown;
-      const icon = Array.isArray(icons) ? icons.find((i): i is string => typeof i === 'string' && /^(https?:|data:image\/)/.test(i)) : undefined;
-      useWebPreview.getState().iconed(sessionId, icon ?? null);
-    });
+    // The icon comes from main, fetched in the page's partition (`WebPreviewHost`, `favicon`).
     on('render-process-gone', () => setState(sessionId, { crashed: true, loading: false }));
     // A page that closes itself (a sign-in popup, opened as a tab, once the provider is done) closes its tab.
     on('close', () => useWebPreview.getState().closeTab(sessionId));

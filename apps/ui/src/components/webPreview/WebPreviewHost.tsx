@@ -71,6 +71,10 @@ export function WebPreviewHost() {
           if (tab) useWebPreview.getState().openTab(tab.owner, event.url);
           return;
         }
+        if (event.kind === 'favicon') {
+          if (tab && event.url.startsWith('data:image/')) useWebPreview.getState().iconed(tab.id, event.url);
+          return;
+        }
         toast("Downloads aren't supported here yet. Open in browser.", {
           icon: 'browser',
           actions: event.url ? [{ label: 'Open in browser', onSelect: () => void window.open(event.url, '_blank'), data: { 'data-web-preview-download-open': true } }] : undefined,

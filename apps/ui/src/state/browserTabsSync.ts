@@ -13,7 +13,7 @@ const kept = (tab: BrowserTab) => ({ id: tab.id, owner: tab.owner, url: tab.url 
 const same = (a: ReturnType<typeof kept>, b: ReturnType<typeof kept>) => a.url === b.url && a.title === b.title && a.position === b.position && a.owner === b.owner;
 
 /**
- * Pinned browser tabs that last (Browser (preview) on): once per connection the engine's list is restored (their pages
+ * Pinned browser tabs that last (the browser on): once per connection the engine's list is restored (their pages
  * load when first shown), then every pin, unpin, move and close is saved, and a pinned tab's address and title as you
  * browse, at most once a second. Tabs that aren't pinned live only in the window. The main window only: a pop-out's
  * tabs are the same session's, kept there.
@@ -21,7 +21,7 @@ const same = (a: ReturnType<typeof kept>, b: ReturnType<typeof kept>) => a.url =
 export function useBrowserTabsSync(): void {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  const on = usePreferences((s) => s.prefs.experimentalBrowser);
+  const on = usePreferences((s) => s.prefs.browserEnabled);
   useEffect(() => {
     if (!client || !on || popoutSession) return;
     let saved = new Map<string, ReturnType<typeof kept>>();

@@ -365,6 +365,8 @@ export const SHORTCUTS = [
     keys: ["mod+shift+t"],
     action: "Activity: what you did per day",
     section: "general",
+    // In the Browser view (and in a page) ⌘⇧T reopens the closed tab, as in a browser.
+    when: (ctx) => ctx.view !== "browser",
   },
   {
     id: "usage.open",
@@ -1015,14 +1017,14 @@ export const SHORTCUTS = [
     action: "Show or hide the session's browser",
     section: "session",
     when: inSession,
-    note: "Your running dev server, or with Browser (preview) on any page, beside the conversation",
+    note: "Your running dev server, or with the browser on any page, beside the conversation",
   },
   {
     id: "browser.view",
     keys: ["mod+shift+b"],
     action: "Browser: your tabs outside a session",
     section: "general",
-    context: "Outside a session, with Browser (preview) on",
+    context: "Outside a session, with the browser on",
     when: (ctx) => !inSession(ctx),
   },
   {
@@ -1030,7 +1032,7 @@ export const SHORTCUTS = [
     keys: ["mod+t"],
     action: "New tab",
     section: "general",
-    context: "In a session or the Browser view, with Browser (preview) on",
+    context: "In a session or the Browser view, with the browser on",
     when: (ctx) => inSession(ctx) || ctx.view === "browser",
   },
   {
@@ -1040,6 +1042,15 @@ export const SHORTCUTS = [
     section: "general",
     context: "With a browser on screen",
     when: (ctx) => inSession(ctx) || ctx.view === "browser",
+  },
+  {
+    id: "browser.reopen-tab",
+    keys: ["mod+shift+t"],
+    action: "Reopen the closed tab",
+    section: "general",
+    context: "In the Browser view, or while a page has focus",
+    note: "Elsewhere it opens Activity",
+    when: (ctx) => ctx.view === "browser",
   },
   {
     id: "browser.close-tab",

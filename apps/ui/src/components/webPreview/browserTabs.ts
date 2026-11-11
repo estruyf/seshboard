@@ -1,5 +1,5 @@
 /*
- * The browser's tabs (Settings › General › Browser (preview)), as plain data: each belongs to an owner, a session (its
+ * The browser's tabs (Settings › General › Enable browser), as plain data: each belongs to an owner, a session (its
  * id) or the Browser view (`BROWSER_OWNER`), and each owner has the one in front. Pure, so the rules (open or show,
  * which tab comes forward on close, pinned tabs first) are tested on their own; `webPreviewStore.ts` holds the state.
  */
@@ -198,6 +198,22 @@ export function livePages(state: TabsState, limit = LIVE_PAGES): string[] {
     .sort((a, b) => b.lastShownAt - a.lastShownAt)
     .slice(0, limit)
     .map((t) => t.id);
+}
+
+/** How many closed tabs ⌘⇧T can bring back. */
+export const CLOSED_TABS = 25;
+
+/** A tab closed: remembered for Reopen, newest last. An empty tab is not worth reopening. */
+export function rememberClosed(closed: readonly BrowserTab[], tab: BrowserTab): readonly BrowserTab[] {
+  if (!tab.url) return closed;
+  return [...closed.filter((t) => t.id !== tab.id), tab].slice(-CLOSED_TABS);
+}
+
+/** The tab ⌘⇧T brings back: the last one closed, of `owner` when given. The rest stay for the next press. */
+export function takeClosed(closed: readonly BrowserTab[], owner?: string): { tab: BrowserTab | null; closed: readonly BrowserTab[] } {
+  const index = closed.findLastIndex((t) => owner === undefined || t.owner === owner);
+  if (index < 0) return { tab: null, closed };
+  return { tab: closed[index]!, closed: closed.filter((_, i) => i !== index) };
 }
 
 /** What a session's row says is open, in this order: a terminal, a browser (one mark however many tabs). */

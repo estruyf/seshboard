@@ -14070,7 +14070,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
   await step("web preview: an action's server offered on its run strip and pill, its page beside the conversation, outside links to the browser", () => runWebPreviewStep(win, { shot: (name) => shot(win, name), addAction: (name, command) => addAction(win, name, command), outside: webPreviewOutside, popoutOf: (id) => popouts.get(id) }));
-  // Browser (preview): on for the first three, off again by the last (which checks the web preview as before). "browser
+  // The browser: on for the first three, off again by the last (which checks the web preview as before). "browser
   // pin" needs "browser view"'s tab; "browser outside link" uses the panel "session browser" left open, or opens one.
   const bothSchemes = async (name: string) => {
     const scheme = preferences.get().colorScheme;
@@ -14080,11 +14080,11 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     }
     updatePreferences({ colorScheme: scheme });
   };
-  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ experimentalBrowser: on }), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
+  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
   await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
   await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
   await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
-  await step('browser outside link: with Browser (preview) off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
+  await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
@@ -14154,7 +14154,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 
 app.whenReady().then(() => {
   protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
-  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().experimentalBrowser });
+  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().browserEnabled });
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);
