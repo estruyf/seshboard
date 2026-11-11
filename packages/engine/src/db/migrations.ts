@@ -929,4 +929,17 @@ export const migrations: readonly string[] = [
   DROP TABLE IF EXISTS skim_highlights;
   DROP TABLE IF EXISTS skim_usage;
   `,
+  // v56: Pinned browser tabs, a session's or the Browser view's, so they come back after a restart. They are your own
+  // choices and nothing else has them: keep them when rebuilding.
+  `
+  CREATE TABLE browser_tabs (
+    id         TEXT PRIMARY KEY,
+    owner      TEXT NOT NULL,
+    url        TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    position   INTEGER NOT NULL,
+    pinned_at  INTEGER NOT NULL
+  );
+  CREATE INDEX browser_tabs_owner ON browser_tabs (owner);
+  `,
 ];

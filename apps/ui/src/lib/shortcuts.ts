@@ -221,7 +221,7 @@ export const sameShortcut = (a: string, b: string) =>
 
 /** Where you are, for `when()`. Built from the stores (and where focus was) when the shortcuts sheet opens. */
 export interface ShortcutContext {
-  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming" | "activity";
+  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming" | "activity" | "browser";
   /** A session is open in the session view. */
   session: boolean;
   /** Claude is working, or waiting for you, in that session. */
@@ -1012,10 +1012,55 @@ export const SHORTCUTS = [
   {
     id: "web.toggle",
     keys: ["mod+shift+b"],
-    action: "Show or hide the web preview",
+    action: "Show or hide the session's browser",
     section: "session",
     when: inSession,
-    note: "Your running dev server beside the conversation",
+    note: "Your running dev server, or with Browser (preview) on any page, beside the conversation",
+  },
+  {
+    id: "browser.view",
+    keys: ["mod+shift+b"],
+    action: "Browser: your tabs outside a session",
+    section: "general",
+    context: "Outside a session, with Browser (preview) on",
+    when: (ctx) => !inSession(ctx),
+  },
+  {
+    id: "browser.new-tab",
+    keys: ["mod+t"],
+    action: "New tab",
+    section: "general",
+    context: "In a session or the Browser view, with Browser (preview) on",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+  },
+  {
+    id: "browser.address",
+    keys: ["mod+l"],
+    action: "Go to the address bar",
+    section: "general",
+    context: "With a browser on screen",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+  },
+  {
+    id: "browser.close-tab",
+    keys: ["mod+w"],
+    action: "Close the tab",
+    section: "general",
+    context: "While a page or its address bar has focus",
+  },
+  {
+    id: "browser.back",
+    keys: ["mod+["],
+    action: "Back in the page",
+    section: "general",
+    context: "While a page has focus",
+  },
+  {
+    id: "browser.forward",
+    keys: ["mod+]"],
+    action: "Forward in the page",
+    section: "general",
+    context: "While a page has focus",
   },
   {
     id: "ask.open",

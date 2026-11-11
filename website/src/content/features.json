@@ -797,6 +797,61 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser",
+      "name": "Browser (preview): any web page beside a session or in a Browser view of its own, in tabs, with pinned tabs that come back after a restart",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:open-session-browser",
+      "name": "Open browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:reload-browser-page",
+      "name": "Reload page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-new-tab",
+      "name": "New tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-view",
+      "name": "Go to Browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.view",
+      "name": "Browser: your tabs outside a session",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.new-tab",
+      "name": "New tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.address",
+      "name": "Go to the address bar",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.close-tab",
+      "name": "Close the tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.back",
+      "name": "Back in the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.forward",
+      "name": "Forward in the page",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "palette:toggle-changes",
       "name": "Toggle changes",
       "page": "terminal-changes-git/changes"

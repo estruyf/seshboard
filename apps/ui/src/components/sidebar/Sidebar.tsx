@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, runOfParent as protocolRunOfParent, type CatchUp, type RunView } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -16,7 +16,12 @@ import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
-import { SidebarNav } from './SidebarNav.tsx';
+import { NavIcons, SidebarNav } from './SidebarNav.tsx';
+import { BrowserTabList } from './BrowserTabList.tsx';
+import { useSidebarList } from '../../state/browserViewStore.ts';
+import { useTerminals } from '../../state/terminalsStore.ts';
+import { useTabCount } from '../../state/webPreviewStore.ts';
+import { rowIndicators } from '../webPreview/browserTabs.ts';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { useKeptSessions } from '../../state/keptSessions.ts';
 import { startPass } from '../../state/catchUpPass.ts';
@@ -326,6 +331,11 @@ export const SessionRow = memo(function SessionRow({
   // Whose session it is: from its transcript, or while it starts (not indexed yet) from what runs it. A session on
   // another computer has neither.
   const hostProvider = useHosts((s) => s.hosts.get(data.id)?.provider ?? null);
+  // With Browser (preview) on: small grey marks for a terminal or a browser the session has open.
+  const browserPreview = usePreferences((s) => s.prefs.experimentalBrowser);
+  const terminalOpen = useTerminals((s) => browserPreview && !remote && [...s.terminals.values()].some((t) => t.sessionId === data.id));
+  const tabCount = useTabCount(browserPreview && !remote ? data.id : '');
+  const opened = rowIndicators({ terminal: terminalOpen, tabs: tabCount });
   const whose = data.summary ? data.summary : remote ? null : { provider: hostProvider };
   const agent = agentNameOf(whose);
   // A pipeline (#179): a run row stands for its run; a session a run started from says where the run is while it goes
@@ -444,7 +454,7 @@ export const SessionRow = memo(function SessionRow({
     'data-done-reason': done?.kind,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, note, left: leftLines, reminder: reminderText, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, note, left: leftLines, reminder: reminderText, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText, ...opened.map((kind) => `${kind} open`)].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -616,6 +626,11 @@ export const SessionRow = memo(function SessionRow({
           </>
         )}
         {chip}
+        {opened.map((kind) => (
+          <span key={kind} role="img" aria-label={kind === 'terminal' ? 'A terminal is open' : 'A browser is open'} data-tooltip={kind === 'terminal' ? 'A terminal is open' : 'A browser is open'} className="flex shrink-0 text-faint" data-session-open={kind}>
+            {kind === 'terminal' ? <SquareTerminal size={11} aria-hidden /> : <Globe size={11} aria-hidden />}
+          </span>
+        ))}
         {/* The rail and the age's colour already say needs you, working and unread; the icon is for the rest. */}
         {!statusRail && <StatusIcon status={status} agent={agent} />}
       </span>
@@ -1227,6 +1242,8 @@ export function Sidebar() {
   const deviceNotice = useDeviceAnnouncement();
   const remoteFooterShown = useRemoteFooterShown();
   const localWaiting = all.filter((row) => rowStatus(row) === 'needs-you').length;
+  const browserPreview = usePreferences((s) => s.prefs.experimentalBrowser);
+  const showTabs = useSidebarList((s) => browserPreview && s.list === 'browser');
 
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
@@ -1235,6 +1252,8 @@ export function Sidebar() {
       <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24' : 'pl-4.5'}`}>
         <span className="text-body font-semibold text-text/90">Seshboard</span>
       </div>
+
+      {browserPreview && <NavIcons now={now} needsYou={localWaiting} />}
 
       {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. */}
       <div className="flex items-center gap-1.5 px-3 pb-1.5">
@@ -1274,8 +1293,10 @@ export function Sidebar() {
         </span>
       </div>
 
-      <SidebarNav now={now} />
+      {!browserPreview && <SidebarNav now={now} />}
 
+      {/* With Browser (preview) on, Browser swaps the sessions for its tabs; the sessions stay mounted (their notices too). */}
+      <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-sessions>
       {/* The order: by time and state, or what takes least to unblock first. */}
       <div className="px-3 pb-1.5">
         <SegmentedControl<SidebarSort>
@@ -1471,6 +1492,8 @@ export function Sidebar() {
         </div>
       )}
       </div>
+      </div>
+      {showTabs && <BrowserTabList />}
 
       {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines. */}
       <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={!listEdge.atBottom || undefined} data-sidebar-bottom>

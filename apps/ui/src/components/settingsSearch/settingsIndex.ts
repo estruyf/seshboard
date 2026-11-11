@@ -7,7 +7,7 @@ import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
-import { VISUALS_DETAIL } from '../general/visualsCopy.ts';
+import { BROWSER_PREVIEW_DETAIL, VISUALS_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -70,6 +70,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: VISUALS_DETAIL,
       keywords: 'visual diagram chart widget draw mcp app show_widget visualize codex copilot',
       target: '[data-agent-visuals-setting]',
+    },
+    {
+      id: 'experimental-browser',
+      page: 'general',
+      label: 'Browser (preview)',
+      detail: BROWSER_PREVIEW_DETAIL,
+      keywords: 'web page tabs pin github pull request url internet experimental',
+      target: '[data-experimental-browser-setting]',
     },
     { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
 

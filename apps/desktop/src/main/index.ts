@@ -31,6 +31,7 @@ import { ReloadLimiter } from './reloadLimiter.ts';
 import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
 import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
+import { runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -1413,7 +1414,7 @@ ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
 });
 // A view a pop-out doesn't have (Settings, Usage, a project, New session, Go to, Search) opens in the main window, which comes to the front.
-const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming', 'activity']);
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming', 'activity', 'browser']);
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
@@ -1622,6 +1623,13 @@ ipcMain.on(IpcChannel.showRemoteLog, () => {
 });
 
 const readyReports: TimedReport[] = [];
+/** Reloads of the main window a smoke step made, whose ready reports are expected (`reloadForSmoke`). */
+let smokeReloads = 0;
+/** A smoke step reloads the main window: the ready report that follows is not taken for an engine restart. */
+function reloadForSmoke(win: BrowserWindow): void {
+  smokeReloads++;
+  win.webContents.reload();
+}
 ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
   const timed: TimedReport = {
     ...report,
@@ -1632,6 +1640,12 @@ ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   // What waited for a window is for the main one; a pop-out only shows its session.
   if (!win || win !== mainWindow) return;
+  // A smoke step reloaded the window on purpose (`reloadForSmoke`): its report is not the engine restarting.
+  if (smokeReloads > 0) {
+    smokeReloads--;
+    for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
+    return;
+  }
   // Only the main window's: the menu bar's and Quick start's report too, in any order, and a second report here means the engine restarted.
   readyReports.push(timed);
   for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
@@ -14056,6 +14070,21 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
   await step("web preview: an action's server offered on its run strip and pill, its page beside the conversation, outside links to the browser", () => runWebPreviewStep(win, { shot: (name) => shot(win, name), addAction: (name, command) => addAction(win, name, command), outside: webPreviewOutside, popoutOf: (id) => popouts.get(id) }));
+  // Browser (preview): on for the first three, off again by the last (which checks the web preview as before). "browser
+  // pin" needs "browser view"'s tab; "browser outside link" uses the panel "session browser" left open, or opens one.
+  const bothSchemes = async (name: string) => {
+    const scheme = preferences.get().colorScheme;
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await setColorScheme(win, colorScheme);
+      await shot(win, `${name}-${colorScheme}.png`);
+    }
+    updatePreferences({ colorScheme: scheme });
+  };
+  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ experimentalBrowser: on }), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
+  await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
+  await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
+  await step('browser outside link: with Browser (preview) off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
@@ -14125,7 +14154,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 
 app.whenReady().then(() => {
   protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
-  installWebPreviewGuards((url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)));
+  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().experimentalBrowser });
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);

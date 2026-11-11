@@ -3,10 +3,11 @@ import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 
 /*
- * The web previews' pages, one `<webview>` per session, kept at the end of the window's body rather than in the
- * session's panel: the session view unmounts when you switch to another session, and Electron drops a `<webview>`'s
- * page when it is removed or moved. Each page is drawn over its panel's slot (`registerSlot`), in fixed position, and
- * parked off screen while the slot isn't on show (another tab in front, another session, a hidden pane).
+ * The web previews' pages, one `<webview>` per browser tab (`browserTabs.ts`), kept at the end of the window's body
+ * rather than in the panel: the session view unmounts when you switch to another session, and Electron drops a
+ * `<webview>`'s page when it is removed or moved. Each page is drawn over its panel's slot (`registerSlot`), in fixed
+ * position, and parked off screen while the slot isn't on show (another tab in front, another session, a hidden pane).
+ * Pages are keyed by tab id; the host keeps only the ones shown most recently (`livePages`).
  */
 
 /** The slice of Electron's `<webview>` element the pages use. Its methods throw until the page is attached. */
@@ -27,15 +28,17 @@ export interface LoadFailure {
   description: string;
 }
 
-/** What a session's page is doing, for its panel's toolbar. */
+/** What a tab's page is doing, for its panel's toolbar. */
 export interface PageState {
   loading: boolean;
   back: boolean;
   forward: boolean;
   failure: LoadFailure | null;
+  /** The page's process went (`render-process-gone`): it shows nothing until it is reloaded. */
+  crashed: boolean;
 }
 
-const IDLE: PageState = { loading: false, back: false, forward: false, failure: null };
+const IDLE: PageState = { loading: false, back: false, forward: false, failure: null, crashed: false };
 
 /** Chromium's code for a load that something else cut short (a new navigation): not a failure. */
 const ERR_ABORTED = -3;
@@ -45,9 +48,9 @@ const PARKED = { left: '-100000px', top: '0px', width: '800px', height: '600px' 
 
 export const usePreviewPages = create<{ pages: ReadonlyMap<string, PageState> }>()(() => ({ pages: new Map() }));
 
-/** A session's page as its toolbar shows it. */
-export function usePageState(sessionId: string): PageState {
-  return usePreviewPages((s) => s.pages.get(sessionId)) ?? IDLE;
+/** A tab's page as its toolbar shows it. */
+export function usePageState(tabId: string | null): PageState {
+  return usePreviewPages((s) => (tabId ? s.pages.get(tabId) : undefined)) ?? IDLE;
 }
 
 const setState = (sessionId: string, change: Partial<PageState>) =>
@@ -70,6 +73,8 @@ class PreviewPage {
     element.setAttribute('partition', WEB_PREVIEW_PARTITION);
     element.setAttribute('allowpopups', '');
     element.dataset.webPreviewPage = sessionId;
+    const tab = useWebPreview.getState().tabs.find((t) => t.id === sessionId);
+    if (tab) element.dataset.webPreviewOwner = tab.owner;
     // White under the page whatever the theme, as a browser draws it: a page without a background of its own expects that.
     Object.assign(element.style, { position: 'fixed', background: 'white', ...PARKED });
     const on = (name: string, listener: (event: Event & Record<string, unknown>) => void) => {
@@ -81,6 +86,15 @@ class PreviewPage {
       useWebPreview.getState().shown(sessionId, event.url as string);
       this.sync();
     };
+    on('page-title-updated', (event) => useWebPreview.getState().titled(sessionId, String(event.title ?? '')));
+    on('page-favicon-updated', (event) => {
+      const icons = event.favicons as unknown;
+      const icon = Array.isArray(icons) ? icons.find((i): i is string => typeof i === 'string' && /^(https?:|data:image\/)/.test(i)) : undefined;
+      useWebPreview.getState().iconed(sessionId, icon ?? null);
+    });
+    on('render-process-gone', () => setState(sessionId, { crashed: true, loading: false }));
+    // A page that closes itself (a sign-in popup, opened as a tab, once the provider is done) closes its tab.
+    on('close', () => useWebPreview.getState().closeTab(sessionId));
     on('dom-ready', () => {
       this.ready = true;
       this.sync();
@@ -121,13 +135,13 @@ class PreviewPage {
   }
 
   load(url: string) {
-    setState(this.sessionId, { failure: null });
+    setState(this.sessionId, { failure: null, crashed: false });
     if (!this.ready) this.element.setAttribute('src', url);
     else void this.element.loadURL(url).catch(() => {}); // A failure shows through did-fail-load.
   }
 
   reload(url: string | null) {
-    setState(this.sessionId, { failure: null });
+    setState(this.sessionId, { failure: null, crashed: false });
     if (this.ready) this.call((e) => e.reload());
     else if (url) this.load(url);
   }
@@ -178,10 +192,16 @@ let resized: ResizeObserver | null = null;
 let fallback: ReturnType<typeof setInterval> | undefined;
 const FALLBACK_MS = 400;
 
-/** A session's page, once the host made it. */
-export const previewPage = (sessionId: string): PreviewPage | undefined => pages.get(sessionId);
+/** A tab's page, once the host made it. */
+export const previewPage = (tabId: string): PreviewPage | undefined => pages.get(tabId);
 
-/** Makes or drops pages so there is one per session in `wanted`. */
+/** The tab whose page has this contents id (the main process names pages by it). */
+export function tabOfContents(contentsId: number): string | undefined {
+  for (const [tabId, page] of pages) if (page.contentsId() === contentsId) return tabId;
+  return undefined;
+}
+
+/** Makes or drops pages so there is one per tab in `wanted`. */
 export function keepPages(wanted: ReadonlySet<string>): void {
   if (!host) {
     host = document.createElement('div');

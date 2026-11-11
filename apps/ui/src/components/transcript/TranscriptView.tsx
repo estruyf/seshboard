@@ -1,8 +1,8 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl } from '@seshboard/protocol/client';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
+import { isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { fastCommand, fastModeFace } from '../../lib/fastMode.ts';
@@ -121,7 +121,7 @@ import { AgentsPanel } from '../agents/AgentsPanel.tsx';
 import { FilePreviewPanel } from '../filePreview/FilePreviewPanel.tsx';
 import { WebPreviewPanel } from '../webPreview/WebPreviewPanel.tsx';
 import { sessionServerOffers } from '../webPreview/serverOffers.ts';
-import { toggleWebPanel, useSessionWeb } from '../../state/webPreviewStore.ts';
+import { toggleWebPanel, useSessionWeb, useWebPreview } from '../../state/webPreviewStore.ts';
 import { PreviewOpenerContext, type OpenPreview } from '../filePreview/previewOpener.ts';
 import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.ts';
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
@@ -152,7 +152,7 @@ import { currentPrompt, isPrompt, LAND_OFFSET, MIN_PROMPTS, MIN_WIDTH, nextPromp
 import { startNewSession } from '../newSession/startSession.ts';
 import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
-import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
+import { formatKeys, keysFor, matches as isShortcut, modKey } from '../../lib/shortcuts.ts';
 import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
 import { BackToRunButton, ParentRunRows, ParentStepTree, StepCrumb, StepStopNotice, StepTopLines, StepVerdictCard, useRunPlaceholder } from '../pipelines/RunParts.tsx';
 import { withRunStub } from '../pipelines/runView.ts';
@@ -382,6 +382,19 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
  * panes, so its header has the handle to drag it by and a close for the pane, and an inactive one dims.
  * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
  */
+/**
+ * A web link in a reply, with Browser (preview) on: it opens in the session's browser (a tab already on that address
+ * comes to the front). ⌘-click (Ctrl-click) leaves it to the system browser. File links keep their own setting.
+ */
+function openLinkInBrowser(event: ReactMouseEvent<HTMLElement>, sessionId: string): void {
+  if (event.defaultPrevented || event.button !== 0 || modKey(event) || event.shiftKey || event.altKey) return;
+  const link = (event.target as HTMLElement).closest('a[href]');
+  const url = link ? webPageUrl(link.getAttribute('href') ?? '') : null;
+  if (!url) return;
+  event.preventDefault();
+  useWebPreview.getState().open(sessionId, url);
+}
+
 /** One empty list, so a session without a provider keeps the same one between renders. */
 const NO_FEATURES: readonly ProviderFeature[] = [];
 const NO_MESSAGES: ReadonlySet<string> = new Set();
@@ -606,6 +619,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showPreview || showWeb || terminalOnRight || panesOpen);
   // The Web button, ⌘⇧B and the palette: opened, it starts on the newest server running in the session.
   const toggleWebHere = () => toggleWebPanel(sessionId, right.open.some((tab) => tab !== 'web'), serverOffers[0]?.url ?? null);
+  const browserPreview = usePreferences((s) => s.prefs.experimentalBrowser);
+  const webName = browserPreview ? 'browser' : 'web preview';
+  const webTip =
+    webFront === false
+      ? `Bring the ${webName} to the front`
+      : showWeb
+        ? `Hide ${webName}`
+        : serverOffers.length > 0
+          ? `Preview ${shortUrl(serverOffers[0]!.url)}`
+          : 'Show browser';
   // The header's Preview button, there only while a file is open: to the front, or closed.
   const togglePreviewHere = () => {
     const step = agentsToggleStep(showPreview, right.tab === 'preview', right.open.length > 1);
@@ -1681,16 +1704,17 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 ]
               : []),
             // Only while a dev server runs in the session, or the tab is open: the shortcut and the palette open it any time.
-            ...(showWeb || serverOffers.length > 0
+            // With Browser (preview) on, always: it opens any page.
+            ...(showWeb || serverOffers.length > 0 || browserPreview
               ? [
                   {
                     value: 'web' as const,
-                    label: 'Web',
+                    label: browserPreview ? 'Browser' : 'Web',
                     icon: <Globe size={14} aria-hidden />,
                     iconOnly: true,
-                    dot: !showWeb,
-                    tooltip: `${webFront === false ? 'Bring the web preview to the front' : showWeb ? 'Hide web preview' : `Preview ${shortUrl(serverOffers[0]!.url)}`} (${formatKeys(keysFor('web.toggle'))})`,
-                    ariaLabel: `${webFront === false ? 'Bring the web preview to the front' : showWeb ? 'Hide web preview' : `Preview ${shortUrl(serverOffers[0]!.url)}`} (${formatKeys(keysFor('web.toggle'))})`,
+                    dot: !showWeb && serverOffers.length > 0,
+                    tooltip: `${webTip} (${formatKeys(keysFor('web.toggle'))})`,
+                    ariaLabel: `${webTip} (${formatKeys(keysFor('web.toggle'))})`,
                     kbd: keysFor('web.toggle'),
                     front: webFront,
                     expanded: showWeb && webFront !== false,
@@ -1822,7 +1846,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       <TriggerOriginBar sessionId={sessionId} />
 
       {/* In a narrow pop-out a panel on the right fills the view (the rule in styles.css), as an expanded Changes does. */}
-      <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
+      <div ref={bodyRef} className="relative flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
         {/* An expanded Changes panel takes the whole view; the conversation stays mounted (scroll position, drafts) but hidden. */}
         <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
           {findQuery !== null && !terminalMaximized && (
@@ -1869,6 +1893,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               onTouchMove={markUserScroll}
               onPointerDown={markUserScroll}
               onKeyDown={onScrollKey}
+              onClick={(event) => browserPreview && openLinkInBrowser(event, sessionId)}
               role="region"
               aria-label="Conversation"
               className={`min-h-0 flex-1 overflow-y-auto ${terminalMaximized ? 'hidden' : ''}`}

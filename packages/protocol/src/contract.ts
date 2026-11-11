@@ -187,6 +187,17 @@ const GitLooseEndSchema = z.discriminatedUnion('kind', [
 /** By session (or pipeline run row) id. */
 const LooseEndsMap = z.record(z.string(), z.array(GitLooseEndSchema));
 
+/** A pinned browser tab, kept by the engine so it comes back after a restart. `owner` is a session's id, or `'browser'`. */
+export const PinnedBrowserTab = z.object({
+  id: z.string().min(1).max(100),
+  owner: z.string().min(1).max(200),
+  url: z.string().min(1).max(8000),
+  title: z.string().max(500),
+  position: z.number().int().min(0),
+  pinnedAt: z.number().int(),
+});
+export type PinnedBrowserTab = z.infer<typeof PinnedBrowserTab>;
+
 export const contract = {
   requests: {
     'system.info': {
@@ -478,6 +489,13 @@ export const contract = {
     'session.queue.sendNow': { params: z.object({ sessionId: SessionId, id: z.string() }), result: z.object({}) },
     /** After a stopped or failed turn: sends the next queued message and lets the queue move on by itself again. */
     'session.queue.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** The browser tabs you pinned, a session's or the Browser view's (`owner: 'browser'`), to restore at start. */
+    'browser.pinned.list': { params: z.object({}), result: z.object({ tabs: z.array(PinnedBrowserTab) }) },
+    /** Pins a tab, or updates one already pinned (its address and title as you browse, its place). */
+    'browser.pinned.save': { params: z.object({ tab: PinnedBrowserTab.omit({ pinnedAt: true }) }), result: z.object({}) },
+    'browser.pinned.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** An owner's pinned tabs in this order. */
+    'browser.pinned.reorder': { params: z.object({ owner: z.string().min(1).max(200), ids: z.array(z.string().min(1).max(100)).max(500) }), result: z.object({}) },
     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
     /**

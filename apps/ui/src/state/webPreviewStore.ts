@@ -1,8 +1,27 @@
 import { create } from 'zustand';
 import { agentsToggleStep } from './agentsPanel.ts';
-import { frontTab, useRightPanel } from './rightPanelStore.ts';
+import { usePreferences } from './preferencesStore.ts';
+import { frontTab as frontRightTab, useRightPanel } from './rightPanelStore.ts';
+import {
+  BROWSER_OWNER,
+  closeTab,
+  dropOwner,
+  frontTab,
+  moveTab,
+  NO_TABS,
+  openTab,
+  ownerTabs,
+  pinTab,
+  restore,
+  showTab,
+  unpinTab,
+  updateTab,
+  type BrowserTab,
+  type SavedTab,
+  type TabsState,
+} from '../components/webPreview/browserTabs.ts';
 
-/** One session's web preview: the page it shows (null before one is picked) and whether it is at phone width. */
+/** One session's web preview as another window takes it over: the page in front and whether it is at phone width. */
 export interface SessionWeb {
   url: string | null;
   phone: boolean;
@@ -10,63 +29,173 @@ export interface SessionWeb {
   seq: number;
 }
 
-interface WebPreviewState {
-  /** The sessions whose Web tab is open (it may sit behind another tab). */
-  sessions: ReadonlyMap<string, SessionWeb>;
-  /** Goes up when the palette asks a session's page to reload. */
+/** A session's Browser panel as its view shows it: the tab in front (none on a panel of pinned tabs not shown yet) and its tabs in order. */
+export interface PanelWeb {
+  tab: BrowserTab | null;
+  tabs: readonly BrowserTab[];
+  /** The panel takes the whole session area instead of the side. */
+  full: boolean;
+}
+
+/** Settings › General › Browser (preview): any web page, tabs and pins. Off, one local page per session, as before. */
+export const browserOn = (): boolean => usePreferences.getState().prefs.experimentalBrowser;
+
+interface WebPreviewState extends TabsState {
+  /** The sessions whose Browser (Web) panel is open; it may sit behind another tab. */
+  panels: ReadonlySet<string>;
+  /** Sessions whose panel takes the whole session area. */
+  full: ReadonlySet<string>;
+  /** Goes up when the palette asks a tab's page to reload. */
   reloads: ReadonlyMap<string, number>;
-  /** Opens the tab in front; on `url` when given, else on the page it had. */
+  /** Opens a session's panel in front; on `url` when given (a tab on it), else on the tab it had. */
   open(sessionId: string, url?: string | null): void;
+  /** Closes a session's panel. With the browser on its tabs stay (pinned ones come back after a restart); off, its page goes. */
   close(sessionId: string): void;
+  /** Opens `url` (null: an empty tab) for an owner, or shows the tab it has on that address. The tab's id. */
+  openTab(owner: string, url: string | null, options?: { focus?: boolean }): string;
+  selectTab(id: string): void;
+  closeTab(id: string): void;
+  pin(id: string): void;
+  unpin(id: string): void;
+  move(id: string, index: number): void;
+  /** Asks a tab's page to load `url` (the address bar). */
+  navigate(id: string, url: string): void;
   /** The page moved on by itself (a link, back): remembered, not loaded again. */
-  shown(sessionId: string, url: string): void;
-  setPhone(sessionId: string, phone: boolean): void;
+  shown(id: string, url: string): void;
+  titled(id: string, title: string): void;
+  iconed(id: string, favicon: string | null): void;
+  setPhone(id: string, phone: boolean): void;
+  setFull(sessionId: string, full: boolean): void;
+  /** The palette: the front page of a session's panel reloads. */
   reload(sessionId: string): void;
+  /** The pinned tabs the engine kept, added without loading their pages. */
+  restorePinned(saved: readonly SavedTab[]): void;
+  /** A session deleted: its tabs and panel go. */
+  forget(sessionId: string): void;
+  /** Another window hands over a session's panel (`sessionView.ts`); null closes it. */
+  handOver(sessionId: string, web: SessionWeb | null): void;
 }
 
 let seq = 0;
+let ids = 0;
+const newId = () => `tab-${Date.now().toString(36)}-${(++ids).toString(36)}`;
 
-export const useWebPreview = create<WebPreviewState>()((set) => ({
-  sessions: new Map(),
-  reloads: new Map(),
-  open: (sessionId, url) => {
+const without = <T>(set: ReadonlySet<T>, value: T) => {
+  if (!set.has(value)) return set;
+  const next = new Set(set);
+  next.delete(value);
+  return next;
+};
+const withValue = <T>(set: ReadonlySet<T>, value: T) => (set.has(value) ? set : new Set(set).add(value));
+
+export const useWebPreview = create<WebPreviewState>()((set, get) => {
+  const tabs = (change: (state: TabsState) => TabsState) =>
     set((s) => {
-      const before = s.sessions.get(sessionId);
-      const next: SessionWeb = url ? { url, phone: before?.phone ?? false, seq: ++seq } : (before ?? { url: null, phone: false, seq: ++seq });
-      return { sessions: new Map(s.sessions).set(sessionId, next) };
+      const next = change(s);
+      return next === s ? s : { tabs: next.tabs, active: next.active };
     });
-    useRightPanel.getState().setTab(sessionId, 'web');
-  },
-  close: (sessionId) =>
-    set((s) => {
-      if (!s.sessions.has(sessionId)) return s;
-      const sessions = new Map(s.sessions);
-      sessions.delete(sessionId);
-      return { sessions };
-    }),
-  shown: (sessionId, url) =>
-    set((s) => {
-      const before = s.sessions.get(sessionId);
-      return !before || before.url === url ? s : { sessions: new Map(s.sessions).set(sessionId, { ...before, url }) };
-    }),
-  setPhone: (sessionId, phone) =>
-    set((s) => {
-      const before = s.sessions.get(sessionId);
-      return !before ? s : { sessions: new Map(s.sessions).set(sessionId, { ...before, phone }) };
-    }),
-  reload: (sessionId) => set((s) => ({ reloads: new Map(s.reloads).set(sessionId, (s.reloads.get(sessionId) ?? 0) + 1) })),
-}));
+  return {
+    ...NO_TABS,
+    panels: new Set(),
+    full: new Set(),
+    reloads: new Map(),
+    open: (sessionId, url) => {
+      const front = frontTab(get(), sessionId);
+      if (!browserOn()) {
+        // One page per session, as the web preview always had: a new address loads in it.
+        if (front && url) get().navigate(front.id, url);
+        else if (!front) get().openTab(sessionId, url ?? null);
+      } else if (url) get().openTab(sessionId, url);
+      else if (!front) {
+        // Pinned tabs not shown yet: the first comes forward; none at all, an empty tab.
+        const first = ownerTabs(get(), sessionId)[0];
+        if (first) get().selectTab(first.id);
+        else get().openTab(sessionId, null);
+      } else get().selectTab(front.id);
+      set((s) => ({ panels: withValue(s.panels, sessionId) }));
+      useRightPanel.getState().setTab(sessionId, 'web');
+    },
+    close: (sessionId) => {
+      if (!browserOn()) tabs((s) => dropOwner(s, sessionId));
+      set((s) => ({ panels: without(s.panels, sessionId), full: without(s.full, sessionId) }));
+    },
+    openTab: (owner, url, options = {}) => {
+      let id = '';
+      tabs((s) => {
+        const result = openTab(s, owner, url, { id: newId(), now: Date.now(), seq: ++seq, focus: options.focus });
+        id = result.id;
+        return result.state;
+      });
+      return id;
+    },
+    selectTab: (id) => tabs((s) => showTab(s, id, Date.now())),
+    closeTab: (id) => {
+      const tab = get().tabs.find((t) => t.id === id);
+      tabs((s) => closeTab(s, id));
+      // The last tab of a session's panel closes the panel.
+      if (tab && tab.owner !== BROWSER_OWNER && !get().tabs.some((t) => t.owner === tab.owner)) get().close(tab.owner);
+    },
+    pin: (id) => tabs((s) => pinTab(s, id)),
+    unpin: (id) => tabs((s) => unpinTab(s, id)),
+    move: (id, index) => tabs((s) => moveTab(s, id, index)),
+    navigate: (id, url) => tabs((s) => showTab(updateTab(s, id, { url, title: url, favicon: null, seq: ++seq }), id, Date.now())),
+    shown: (id, url) => tabs((s) => updateTab(s, id, { url })),
+    titled: (id, title) => tabs((s) => updateTab(s, id, { title })),
+    iconed: (id, favicon) => tabs((s) => updateTab(s, id, { favicon })),
+    setPhone: (id, phone) => tabs((s) => updateTab(s, id, { phone })),
+    setFull: (sessionId, full) => set((s) => ({ full: full ? withValue(s.full, sessionId) : without(s.full, sessionId) })),
+    reload: (sessionId) => {
+      const front = frontTab(get(), sessionId);
+      if (front) set((s) => ({ reloads: new Map(s.reloads).set(front.id, (s.reloads.get(front.id) ?? 0) + 1) }));
+    },
+    restorePinned: (saved) => tabs((s) => restore(s, saved)),
+    forget: (sessionId) => {
+      tabs((s) => dropOwner(s, sessionId));
+      set((s) => ({ panels: without(s.panels, sessionId), full: without(s.full, sessionId) }));
+    },
+    handOver: (sessionId, web) => {
+      if (!web) {
+        get().close(sessionId);
+        return;
+      }
+      const id = web.url ? get().openTab(sessionId, web.url) : (frontTab(get(), sessionId)?.id ?? get().openTab(sessionId, null));
+      get().setPhone(id, web.phone);
+      set((s) => ({ panels: withValue(s.panels, sessionId) }));
+    },
+  };
+});
 
-/** A session's web preview, as it shows it; null while its tab is closed. */
-export function useSessionWeb(sessionId: string): SessionWeb | null {
-  return useWebPreview((s) => s.sessions.get(sessionId)) ?? null;
+/** A session's Browser panel as its view shows it; null while the panel is closed. */
+export function useSessionWeb(sessionId: string): PanelWeb | null {
+  const open = useWebPreview((s) => s.panels.has(sessionId));
+  const tabs = useWebPreview((s) => s.tabs);
+  const active = useWebPreview((s) => s.active.get(sessionId));
+  const full = useWebPreview((s) => s.full.has(sessionId));
+  if (!open) return null;
+  const own = ownerTabs({ tabs, active: new Map() }, sessionId);
+  return { tab: own.find((t) => t.id === active) ?? null, tabs: own, full };
 }
 
-export const isWebOpen = (sessionId: string | null) => !!sessionId && useWebPreview.getState().sessions.has(sessionId);
+/** How many tabs an owner has (a session's row shows a globe for any). */
+export function useTabCount(owner: string): number {
+  return useWebPreview((s) => s.tabs.reduce((n, t) => n + (t.owner === owner ? 1 : 0), 0));
+}
 
-/** The header's Web button, its shortcut and the palette: open, bring to the front, or close. `othersOpen`: another right panel is open too. */
+export const isWebOpen = (sessionId: string | null) => !!sessionId && useWebPreview.getState().panels.has(sessionId);
+
+/** Each session's panel as another window takes it over: the tab in front, for the panels that are open. */
+export function sessionWebs(state: Pick<WebPreviewState, 'panels' | 'tabs' | 'active'>): ReadonlyMap<string, SessionWeb> {
+  const out = new Map<string, SessionWeb>();
+  for (const sessionId of state.panels) {
+    const front = frontTab(state, sessionId);
+    out.set(sessionId, { url: front?.url ?? null, phone: front?.phone ?? false, seq: front?.seq ?? 0 });
+  }
+  return out;
+}
+
+/** The header's Browser button, its shortcut and the palette: open, bring to the front, or close. `othersOpen`: another right panel is open too. */
 export function toggleWebPanel(sessionId: string, othersOpen: boolean, url?: string | null): void {
-  const step = agentsToggleStep(isWebOpen(sessionId), frontTab(sessionId) === 'web', othersOpen);
+  const step = agentsToggleStep(isWebOpen(sessionId), frontRightTab(sessionId) === 'web', othersOpen);
   if (step === 'close') useWebPreview.getState().close(sessionId);
   else useWebPreview.getState().open(sessionId, isWebOpen(sessionId) ? null : url);
 }

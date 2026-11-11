@@ -172,6 +172,7 @@ import { providerStatus, type ProviderDriver } from './providers/provider.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
 import { ProviderForks } from './providers/providerForks.ts';
+import { PinnedTabs } from './browser/pinnedTabs.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
@@ -543,6 +544,7 @@ export function createEngine(options: EngineOptions): Engine {
   // Profiles of other providers (Settings › Profiles): one adapter each, with its own folder, runtime and login.
   /** Forks made here of another provider's sessions (Codex's), which its own list leaves out until they have a turn. */
   const providerForks = new ProviderForks(cache.db);
+  const pinnedTabs = new PinnedTabs(cache.db);
   const providerOptions: ProviderOptions = {
     env: process.env,
     home: homedir(),
@@ -2931,6 +2933,7 @@ export function createEngine(options: EngineOptions): Engine {
     askStore.forget(sessionId);
     providerNotes.forget(sessionId);
     providerForks.forget(sessionId);
+    pinnedTabs.forget(sessionId);
     owned.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
@@ -2986,6 +2989,11 @@ export function createEngine(options: EngineOptions): Engine {
     cleanupInBackground();
   };
   scanCompleteHook = () => {
+    // Pinned tabs of sessions this computer no longer knows go once, at the first full scan of a run.
+    if (!scanned) {
+      const gone = pinnedTabs.prune((id) => sessions.get(id) !== undefined);
+      if (gone.length) log('info', `Dropped the pinned browser tabs of ${gone.length} session${gone.length === 1 ? '' : 's'} that are gone: ${gone.join(', ')}`);
+    }
     scanned = true;
     maybeRunOnLaunch();
     // Reminders that came due while Seshboard was closed.
@@ -3368,6 +3376,10 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'upNext.list': () => ({ queues: hosts.upNextLists() }),
+    'browser.pinned.list': () => ({ tabs: pinnedTabs.list() }),
+    'browser.pinned.save': ({ tab }) => (pinnedTabs.save(tab), {}),
+    'browser.pinned.remove': ({ id }) => (pinnedTabs.remove(id), {}),
+    'browser.pinned.reorder': ({ owner, ids }) => (pinnedTabs.reorder(owner, ids), {}),
     'limits.state': () => limits.state(),
     'limits.resume': async ({ sessionId }) => {
       await limits.resumeNow(sessionId);

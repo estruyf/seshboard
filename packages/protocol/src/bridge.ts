@@ -88,6 +88,8 @@ export const IpcChannel = {
   forwardKeys: "seshboard:forward-keys",
   keysForwarded: "seshboard:keys-forwarded",
   webPreviewKeys: "seshboard:web-preview-keys",
+  webPreviewEvent: "seshboard:web-preview-event",
+  webPreviewAddressFocus: "seshboard:web-preview-address-focus",
   showInMain: "seshboard:show-in-main",
   mainRequested: "seshboard:main-requested",
   popoutsChanged: "seshboard:popouts-changed",
@@ -174,6 +176,13 @@ export interface WebPreviewKeys {
 }
 
 /**
+ * What a browser page did that its window shows (Browser (preview) on): it opened a new window (`window.open`,
+ * `target=_blank`, a sign-in popup), which becomes a tab of the same owner, or a download was refused.
+ * `contentsId` is the page's.
+ */
+export type WebPreviewEvent = { kind: 'popup'; contentsId: number; url: string } | { kind: 'download-refused'; contentsId: number; url: string };
+
+/**
  * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
  * Usage view, a project's page, New session (on a folder, in a new worktree), Go to, Search, or a step to another
  * session in the sidebar's order, or Upcoming (on a filter, with a schedule's run in view). `section` and `tab` are the names the main window's views use; it ignores one it
@@ -188,7 +197,8 @@ export type MainWindowRequest =
   | { kind: "search"; memory: boolean }
   | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
   | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null }
-  | { kind: "activity"; day: string | null };
+  | { kind: "activity"; day: string | null }
+  | { kind: "browser" };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -425,6 +435,11 @@ export interface Preferences {
    */
   dockActivity: boolean;
   /**
+   * Settings › General: "Browser (preview)". On, the web preview opens any web page in tabs, with a Browser view of its
+   * own and pinned tabs. Off (the default), it shows only this computer's dev servers, one page per session.
+   */
+  experimentalBrowser: boolean;
+  /**
    * Settings › General › Menu bar: "Show in the menu bar" ("in the notification area" on Windows). The working light,
    * what needs you and new work, from the menu bar's icon. On by default.
    */
@@ -562,6 +577,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
   dockActivity: true,
+  experimentalBrowser: false,
   menuBar: true,
   keepRunning: true,
   hideDock: false,
@@ -762,6 +778,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
+  if (typeof raw.experimentalBrowser === "boolean") out.experimentalBrowser = raw.experimentalBrowser;
   if (typeof raw.menuBar === "boolean") out.menuBar = raw.menuBar;
   if (typeof raw.keepRunning === "boolean") out.keepRunning = raw.keepRunning;
   if (typeof raw.hideDock === "boolean") out.hideDock = raw.hideDock;
@@ -1143,6 +1160,13 @@ export interface SeshboardBridge {
   showSession(sessionId: string): void;
   /** From a pop-out: brings the main window to the front and presses these keys there. */
   forwardKeys(keys: ForwardedKeys): void;
+  /** A browser page opened a window or a download was refused (Browser (preview) on). */
+  onWebPreviewEvent(listener: (event: WebPreviewEvent) => void): () => void;
+  /**
+   * The browser's address bar has focus (or lost it): main then hands ⌘W (Ctrl+W) to the window as keys, for Close tab,
+   * instead of closing the window.
+   */
+  setAddressFocus(focused: boolean): void;
   /** In the main window: keys a pop-out handed over. */
   onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
   /** An app shortcut typed in a web preview's page in this window (`<webview>`, whose keys the window never sees). */

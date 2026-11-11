@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
 
 const key = (k: string, mods: Partial<PreviewKeyInput> = {}): PreviewKeyInput => ({ type: 'keyDown', key: k, meta: false, control: false, alt: false, shift: false, ...mods });
 
@@ -56,5 +56,48 @@ describe('previewNavigation', () => {
     expect(previewNavigation('https://github.com/login')).toBe('browser');
     expect(previewNavigation('file:///etc/hosts')).toBe('block');
     expect(previewNavigation('vscode://file/x')).toBe('block');
+  });
+});
+
+describe('with the browser on', () => {
+  it('lets any web address attach, and nothing else', () => {
+    expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'https://github.com/' }, true)).toBe(true);
+    expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'file:///etc/hosts' }, true)).toBe(false);
+    expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'https://u:p@github.com/' }, true)).toBe(false);
+    expect(webviewAllowed({ partition: 'persist:other', src: 'https://github.com/' }, true)).toBe(false);
+  });
+
+  it('keeps web pages, hands app links to the system and blocks the rest', () => {
+    expect(previewNavigation('https://github.com/login', true)).toBe('stay');
+    expect(previewNavigation('vscode://file/x', true)).toBe('system');
+    expect(previewNavigation('file:///etc/hosts', true)).toBe('block');
+    expect(previewNavigation('javascript:alert(1)', true)).toBe('block');
+    expect(previewNavigation('data:text/html,hi', true)).toBe('block');
+    expect(previewNavigation('https://user:pass@github.com/', true)).toBe('block');
+  });
+
+  it('turns a new window into a tab, never a window', () => {
+    expect(popupTarget('https://github.com/login/oauth/authorize', true)).toBe('tab');
+    expect(popupTarget('slack://open', true)).toBe('system');
+    expect(popupTarget('javascript:alert(1)', true)).toBe('none');
+  });
+
+  it('goes back and ahead on ⌘[ and ⌘], only with the browser on', () => {
+    expect(previewKeyAction(key('[', { meta: true }), 'darwin', true)).toBe('back');
+    expect(previewKeyAction(key(']', { control: true }), 'win32', true)).toBe('ahead');
+    expect(previewKeyAction(key('[', { meta: true }), 'darwin')).toBe('forward');
+    expect(previewKeyAction(key('t', { meta: true }), 'darwin', true)).toBe('forward');
+    expect(previewKeyAction(key('w', { meta: true }), 'darwin', true)).toBe('forward');
+    expect(previewKeyAction(key('l', { meta: true }), 'darwin', true)).toBe('forward');
+  });
+});
+
+describe('with the browser off, the web preview as before', () => {
+  it('keeps the old rules', () => {
+    expect(previewNavigation('https://github.com/login')).toBe('browser');
+    expect(previewNavigation('vscode://file/x')).toBe('block');
+    expect(popupTarget('http://localhost:3000/x')).toBe('same');
+    expect(popupTarget('https://github.com/')).toBe('browser');
+    expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'https://github.com/' })).toBe(false);
   });
 });

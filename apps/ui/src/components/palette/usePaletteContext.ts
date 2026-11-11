@@ -129,10 +129,10 @@ export function usePaletteContext(): PaletteContext {
   const comments = useDiffComments((s) => s.comments);
 
   const pageRoot = useProjectPage((s) => s.root);
-  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'activity' ? 'activity' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
+  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'activity' ? 'activity' : mainView === 'browser' ? 'browser' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
   // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
   const id = view === 'session' ? localSessionId(selectedId) : null;
-  const webOpen = useWebPreview((s) => (id ? s.sessions.has(id) : false));
+  const webOpen = useWebPreview((s) => (id ? s.panels.has(id) : false));
 
   const catchUps = useCatchUp((s) => s.cards);
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
@@ -203,6 +203,7 @@ export function usePaletteContext(): PaletteContext {
     paneWays: paneCount > 1 && selectedId ? WAYS.filter((way) => neighbour(layout, selectedId, way) !== null) : [],
     focusLimit: prefs.focusLimit,
     notifications: prefs.notifications.enabled,
+    browser: prefs.experimentalBrowser,
     sounds: prefs.sounds.enabled,
     catchUpFolded: prefs.catchUpSummaries ? prefs.catchUpFolded : null,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },

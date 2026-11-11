@@ -221,6 +221,10 @@ export interface PaletteApi {
   /** Opens the session's web preview in front, on the newest server running in it when none is open yet. */
   openWeb(): void;
   reloadWeb(): void;
+  /** Browser (preview): the Browser view, with its tabs in the sidebar. */
+  openBrowserView(): void;
+  /** Browser (preview): a new tab, the session's or the Browser view's. */
+  newBrowserTab(): void;
   showTools(): void;
   openInEditor(): void;
   revealInFinder(): void;
@@ -861,8 +865,12 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'toggle-terminal', title: 'Toggle terminal', group: 'session', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: (ctx) => session(ctx) !== null, run: (api) => api.toggleTerminal() },
   { id: 'new-terminal-tab', title: 'New terminal tab', group: 'session', icon: Plus, keywords: 'shell', when: (ctx) => withCwd(ctx) && ctx.connected, run: (api) => api.newTerminalTab() },
   { id: 'toggle-agents', title: 'Toggle agents', group: 'session', shortcut: keysFor('agents.toggle'), icon: Bot, keywords: 'subagents background panel', when: hasSession, run: (api) => api.toggleAgents() },
-  { id: 'open-web-preview', title: 'Open web preview', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'browser localhost dev server site page', when: hasSession, run: (api) => api.openWeb() },
-  { id: 'reload-web-preview', title: 'Reload web preview', group: 'session', icon: RotateCw, keywords: 'refresh browser localhost dev server page', when: (ctx) => hasSession(ctx) && ctx.session!.web, run: (api) => api.reloadWeb() },
+  { id: 'open-web-preview', title: 'Open web preview', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'browser localhost dev server site page', when: (ctx) => hasSession(ctx) && !ctx.browser, run: (api) => api.openWeb() },
+  { id: 'reload-web-preview', title: 'Reload web preview', group: 'session', icon: RotateCw, keywords: 'refresh browser localhost dev server page', when: (ctx) => hasSession(ctx) && ctx.session!.web && !ctx.browser, run: (api) => api.reloadWeb() },
+  { id: 'open-session-browser', title: 'Open browser', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'web preview page tab github pull request localhost dev server site', when: (ctx) => hasSession(ctx) && !!ctx.browser, run: (api) => api.openWeb() },
+  { id: 'reload-browser-page', title: 'Reload page', group: 'session', icon: RotateCw, keywords: 'refresh browser web preview tab', when: (ctx) => hasSession(ctx) && ctx.session!.web && !!ctx.browser, run: (api) => api.reloadWeb() },
+  { id: 'browser-new-tab', title: 'New tab', group: 'general', shortcut: keysFor('browser.new-tab'), icon: Plus, keywords: 'browser web page open', when: (ctx) => !!ctx.browser && (ctx.view === 'browser' || hasSession(ctx)), run: (api) => api.newBrowserTab() },
+  { id: 'browser-view', title: 'Go to Browser', group: 'general', shortcut: keysFor('browser.view'), icon: Globe, keywords: 'web page tabs pinned github', when: (ctx) => !!ctx.browser && ctx.view !== 'browser', run: (api) => api.openBrowserView() },
   { id: 'toggle-commands', title: 'Toggle commands', group: 'session', shortcut: keysFor('commands.toggle'), icon: ScrollText, keywords: 'background shell output monitor panel', when: hasSession, run: (api) => api.toggleCommands() },
   { id: 'toggle-changes', title: 'Toggle changes', group: 'session', shortcut: keysFor('changes.toggle'), icon: FileDiff, keywords: 'diff git panel', when: inGit, run: (api) => api.toggleChanges() },
   { id: 'tools', title: 'Tools: MCP servers, skills, agents, plugins', group: 'session', icon: Blocks, keywords: 'mcp extensions capabilities', when: withCwd, run: (api) => api.showTools() },
