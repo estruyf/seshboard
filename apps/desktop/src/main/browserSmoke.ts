@@ -21,6 +21,8 @@ export interface BrowserSmokeDeps {
   shot(name: string): Promise<void>;
   /** Sets the browser on or off, as Settings would. */
   setBrowser(on: boolean): void;
+  /** Sets the browser's other preferences: its card in the sidebar, previews. */
+  setPrefs(patch: { browserIntro?: 'ask' | 'done'; webPreview?: boolean }): void;
   /** The outside addresses the preview sent to the browser (recorded, not opened, in a smoke run). */
   outside: readonly string[];
   /** Reloads the window, which the run then doesn't take for an engine restart. */
@@ -66,7 +68,8 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   deps.setBrowser(true);
   if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
   for (const nav of ['home', 'upcoming', 'activity']) if (!(await js(`!!${q(`[data-nav="${nav}"]`)}`))) return `no ${nav} icon in the sidebar's views`;
-  await js(`${q('[data-nav="browser"]')}.click()`);
+  // "browser intro" may have opened it already; Browser again would go back to the sessions.
+  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'Browser did not show the Browser view and its tab list';
   if (!(await js(`!!${q('[data-browser-view] [data-browser-empty]')} || !!${q('[data-browser-view] [data-web-preview-slot]')}`))) return 'the Browser view shows neither a page nor its empty state';
   if (await js(`!!${q('[data-browser-view] [data-browser-empty]')} && !!${q('[data-browser-view] [data-browser-address]')}`)) return 'the empty Browser view shows an address bar';
@@ -88,6 +91,29 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   if (await js(`!!${q('[data-activity]')}`)) return '⌘⇧T opened Activity in the Browser view';
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the reopened tab did not load its page';
   return `ok: ${url} opened in a Browser tab, its title and favicon in the list, closed with a middle click and reopened with ⌘⇧T`;
+}
+
+/**
+ * "browser intro": with both settings at their defaults after the update, the sidebar's card offers the browser; with
+ * previews off too, a session's ⌘⇧B shows no page; Turn on turns the browser on and opens the Browser view.
+ */
+export async function runBrowserIntroStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  deps.setBrowser(false);
+  deps.setPrefs({ browserIntro: 'ask', webPreview: false });
+  if (!(await waitInPage(win, `${q('[data-browser-intro]')} && !${q('[data-nav="browser"]')}`, 3_000))) return 'no card about the browser in the sidebar';
+  const session = (await js(`document.querySelector('[data-current-session]')?.dataset.currentSession ?? null`)) as string | null;
+  if (session) {
+    await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', shiftKey: true, ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
+    // Showing that nothing opens: a short wait is the only way.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    if (await js(`!!${q(`[data-current-session="${session}"] [data-web-preview]`)}`)) return 'with previews and the browser off, ⌘⇧B still opened a page';
+  }
+  deps.setPrefs({ webPreview: true });
+  await deps.shot('browser-intro');
+  await js(`${q('[data-browser-intro-on]')}.click()`);
+  if (!(await waitInPage(win, `!${q('[data-browser-intro]')} && ${q('[data-nav="browser"]')} && ${q('[data-browser-view]')}`, 3_000))) return 'Turn on did not turn the browser on and open the Browser view';
+  return `ok: the card offered the browser${session ? ', no page with previews off' : ''}, Turn on opened the Browser view`;
 }
 
 /** "browser pin": pinned, the tab is still in the list with its pin after the window reloads. Needs "browser view" first. */

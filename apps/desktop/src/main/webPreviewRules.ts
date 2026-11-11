@@ -45,10 +45,11 @@ export interface WebviewAttach {
 
 /**
  * Whether a `<webview>` may attach: only the web preview's, in its own partition, on a local address (any web address
- * with the browser on), or still blank, before its first load. Main forces the rest of its preferences itself.
+ * with the browser on), or still blank, before its first load. None with both the browser and previews off. Main
+ * forces the rest of its preferences itself.
  */
-export function webviewAllowed(params: WebviewAttach, browser = false): boolean {
-  if (params.partition !== WEB_PREVIEW_PARTITION) return false;
+export function webviewAllowed(params: WebviewAttach, browser = false, preview = true): boolean {
+  if (params.partition !== WEB_PREVIEW_PARTITION || (!browser && !preview)) return false;
   if (!params.src || params.src === 'about:blank') return true;
   return (browser ? webPageUrl(params.src) : localPreviewUrl(params.src)) !== null;
 }

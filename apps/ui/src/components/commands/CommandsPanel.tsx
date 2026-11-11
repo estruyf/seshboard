@@ -1,7 +1,7 @@
 import { CircleAlert, Copy, Globe, ScrollText, Square, X } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { shortUrl, type BackgroundTask } from '@seshboard/protocol/client';
-import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { usePreviewAllowed, useWebPreview } from '../../state/webPreviewStore.ts';
 import { useCommandsPanel } from '../../state/commandsPanelStore.ts';
 import { ASK_MAX_SHARE, ASK_MIN_WIDTH, askWidthForKey } from '../ask/askWidth.ts';
 import { formatDuration, useTicker } from '../transcript/ActivityGroup.tsx';
@@ -84,7 +84,8 @@ function CommandOutput({ sessionId, run }: { sessionId: string; run: CommandRun 
   const out = useTaskOutput(sessionId, run.outputFile, run.state === 'running');
   const text = useMemo(() => plainOutput(out.text), [out.text]);
   // A dev server it started, while it runs: one click shows its page beside the conversation.
-  const preview = run.state === 'running' ? (out.urls[0] ?? null) : null;
+  const allowed = usePreviewAllowed();
+  const preview = run.state === 'running' && allowed ? (out.urls[0] ?? null) : null;
   const boxRef = useRef<HTMLPreElement>(null);
   // Follows the end while you're at the end; scrolled up to read, it stays where you are.
   const atEnd = useRef(true);

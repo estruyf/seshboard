@@ -6,7 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
-- **A browser for your sessions:** open any page, such as a pull request on GitHub, beside a session or on its own, keep several tabs, and pin the ones you want back after a restart. Turn on **Enable browser** in **Settings › General**.
+- **A browser for your sessions:** open any page, such as a pull request on GitHub, beside a session or on its own, keep several tabs, and pin the ones you want back after a restart. Seshboard offers it once after the update, and **Settings › General › Browser** turns it on or off. **Allow browser previews** in **Settings › General › New sessions** turns off the preview of a session's dev server.
 - **Auto picks the effort too, and can pick Fable.** Auto now starts a session on an effort that fits the prompt (low for a quick answer, medium for most work, high for a hard bug), unless you set one yourself. Turn on **Fable** in **Settings › Conversation › Auto model** for the hardest work, such as a migration across the whole codebase. It stays off by default, because it uses about twice what Opus does. Haiku no longer gets prompts that change code, and prompts about images go to Opus. With one model allowed, Auto picks it without asking Haiku.
 - **See where Auto picked wrong.** In **Usage**, a model row says how many of the sessions Auto started on it you moved to another model (`· 4 by Auto, 1 changed`).
 

@@ -14,7 +14,7 @@ import { actionCommand, elapsedLabel, runStatus, tabStatus, type RunTimes } from
 import { XTerm } from './XTerm.tsx';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { shortUrl } from '@seshboard/protocol/client';
-import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { usePreviewAllowed, useWebPreview } from '../../state/webPreviewStore.ts';
 import { terminalOffer } from '../webPreview/serverOffers.ts';
 
 /**
@@ -95,7 +95,8 @@ export function TerminalPanel({
   const terminals = useMemo(() => [...all.values()].filter((t) => t.sessionId === sessionId).sort((a, b) => a.startedAt - b.startedAt), [all, sessionId]);
   const active = terminals.find((t) => t.id === activeId) ?? terminals.at(-1);
   // A dev server the tab started, shown beside the conversation in the session's web preview (not outside a session).
-  const preview = sessionId ? terminalOffer(active) : null;
+  const allowed = usePreviewAllowed();
+  const preview = sessionId && allowed ? terminalOffer(active) : null;
   const openPreview = () => sessionId && preview && useWebPreview.getState().open(sessionId, preview);
 
   // The run strip shows the action's command from its definition; look again whenever another action tab comes up (it may have been edited).

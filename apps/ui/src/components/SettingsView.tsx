@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
-import { BROWSER_PREVIEW_DETAIL, VISUALS_DETAIL } from './general/visualsCopy.ts';
+import { BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -546,11 +546,20 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               onChange={(agentVisuals) => update({ agentVisuals })}
             />
             <Toggle
-              label="Enable browser"
-              detail={BROWSER_PREVIEW_DETAIL}
+              label="Allow browser previews"
+              detail={WEB_PREVIEW_DETAIL}
+              checked={prefs.webPreview}
+              attr="data-web-preview-setting"
+              onChange={(webPreview) => update({ webPreview })}
+            />
+          </Section>
+          <Section title="Browser">
+            <Toggle
+              label="Allow browser"
+              detail={BROWSER_DETAIL}
               checked={prefs.browserEnabled}
-              attr="data-experimental-browser-setting"
-              onChange={(browserEnabled) => update({ browserEnabled })}
+              attr="data-browser-setting"
+              onChange={(browserEnabled) => update({ browserEnabled, browserIntro: 'done' })}
             />
           </Section>
           <Section title="Quitting">

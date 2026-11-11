@@ -100,6 +100,8 @@ export interface PaletteContext {
   sounds: boolean;
   /** Settings › General › Enable browser: any web page, tabs and the Browser view. */
   browser?: boolean;
+  /** Settings › General › New sessions › Allow browser previews; on unless it says false. */
+  webPreview?: boolean;
   /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
   catchUpFolded: boolean | null;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */

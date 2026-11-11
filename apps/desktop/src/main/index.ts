@@ -31,7 +31,7 @@ import { ReloadLimiter } from './reloadLimiter.ts';
 import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
 import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
-import { runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
+import { runBrowserIntroStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -145,8 +145,8 @@ if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store')
 const forcedScheme = process.env.SESHBOARD_COLOR_SCHEME;
 const preferences = new PreferencesStore(join(app.getPath('userData'), 'preferences.json'), sanitizePreferences({ colorScheme: forcedScheme }).colorScheme);
 // The smoke steps need sessions to click; on the real ~/.claude most were started elsewhere. Star on GitHub stays out
-// of the screenshots (the smoke step that checks it asks for it).
-if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done' });
+// of the screenshots (the smoke step that checks it asks for it), and so does the browser's card.
+if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done', browserIntro: 'done' });
 
 /** Built-in and imported themes; a change (an import, an edited file) goes to every window. */
 const themes = new ThemeStore(join(app.getPath('userData'), 'themes'), BUILT_IN_THEMES, (state) => {
@@ -14080,7 +14080,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     }
     updatePreferences({ colorScheme: scheme });
   };
-  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
+  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
+  await step('browser intro: the sidebar card turns the browser on, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
   await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
   await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
   await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
@@ -14154,7 +14155,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 
 app.whenReady().then(() => {
   protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
-  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().browserEnabled });
+  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().browserEnabled, preview: () => preferences.get().webPreview });
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);

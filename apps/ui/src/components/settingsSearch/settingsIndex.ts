@@ -7,7 +7,7 @@ import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
-import { BROWSER_PREVIEW_DETAIL, VISUALS_DETAIL } from '../general/visualsCopy.ts';
+import { BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -72,12 +72,20 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-agent-visuals-setting]',
     },
     {
-      id: 'experimental-browser',
+      id: 'web-preview',
       page: 'general',
-      label: 'Enable browser',
-      detail: BROWSER_PREVIEW_DETAIL,
-      keywords: 'web page tabs pin github pull request url internet experimental',
-      target: '[data-experimental-browser-setting]',
+      label: 'Allow browser previews',
+      detail: WEB_PREVIEW_DETAIL,
+      keywords: 'web preview dev server localhost site page',
+      target: '[data-web-preview-setting]',
+    },
+    {
+      id: 'browser',
+      page: 'general',
+      label: 'Allow browser',
+      detail: BROWSER_DETAIL,
+      keywords: 'web page tabs pin github pull request url internet',
+      target: '[data-browser-setting]',
     },
     { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
 

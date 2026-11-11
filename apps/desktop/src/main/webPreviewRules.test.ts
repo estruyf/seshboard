@@ -92,6 +92,14 @@ describe('with the browser on', () => {
   });
 });
 
+describe('with previews off', () => {
+  it('lets no page attach, unless the browser is on', () => {
+    expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'http://localhost:5173/' }, false, false)).toBe(false);
+    expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION }, false, false)).toBe(false);
+    expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'https://github.com/' }, true, false)).toBe(true);
+  });
+});
+
 describe('with the browser off, the web preview as before', () => {
   it('keeps the old rules', () => {
     expect(previewNavigation('https://github.com/login')).toBe('browser');

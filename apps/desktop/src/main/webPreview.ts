@@ -9,6 +9,8 @@ export interface WebPreviewGuardDeps {
   openExternal(url: string): void;
   /** Settings › General › Enable browser: any web page and tabs. Read on every check, so a change applies at once. */
   browser(): boolean;
+  /** Settings › General › New sessions › Allow browser previews: a session's dev server beside the conversation. */
+  preview(): boolean;
 }
 
 /**
@@ -43,7 +45,7 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() !== 'window') return;
     contents.on('will-attach-webview', (event, preferences, params) => {
-      if (!webviewAllowed(params, deps.browser())) {
+      if (!webviewAllowed(params, deps.browser(), deps.preview())) {
         event.preventDefault();
         return;
       }

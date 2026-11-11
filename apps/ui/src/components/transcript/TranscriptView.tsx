@@ -121,7 +121,7 @@ import { AgentsPanel } from '../agents/AgentsPanel.tsx';
 import { FilePreviewPanel } from '../filePreview/FilePreviewPanel.tsx';
 import { WebPreviewPanel } from '../webPreview/WebPreviewPanel.tsx';
 import { sessionServerOffers } from '../webPreview/serverOffers.ts';
-import { toggleWebPanel, useSessionWeb, useWebPreview } from '../../state/webPreviewStore.ts';
+import { previewAllowed, toggleWebPanel, usePreviewAllowed, useSessionWeb, useWebPreview } from '../../state/webPreviewStore.ts';
 import { PreviewOpenerContext, type OpenPreview } from '../filePreview/previewOpener.ts';
 import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.ts';
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
@@ -620,6 +620,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The Web button, ⌘⇧B and the palette: opened, it starts on the newest server running in the session.
   const toggleWebHere = () => toggleWebPanel(sessionId, right.open.some((tab) => tab !== 'web'), serverOffers[0]?.url ?? null);
   const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
+  const webAllowed = usePreviewAllowed();
   const webName = browserPreview ? 'browser' : 'web preview';
   const webTip =
     webFront === false
@@ -699,7 +700,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         event.preventDefault();
         toggleCommandsHere();
       }
-      if (active && isShortcut(event, 'web.toggle')) {
+      if (active && isShortcut(event, 'web.toggle') && previewAllowed()) {
         event.preventDefault();
         toggleWebHere();
       }
@@ -1705,7 +1706,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               : []),
             // Only while a dev server runs in the session, or the tab is open: the shortcut and the palette open it any time.
             // With the browser on, always: it opens any page.
-            ...(showWeb || serverOffers.length > 0 || browserPreview
+            ...(showWeb || ((serverOffers.length > 0 || browserPreview) && webAllowed)
               ? [
                   {
                     value: 'web' as const,

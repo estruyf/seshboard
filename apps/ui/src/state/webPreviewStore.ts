@@ -42,6 +42,14 @@ export interface PanelWeb {
 /** Settings › General › Enable browser: any web page, tabs and pins. Off, one local page per session, as before. */
 export const browserOn = (): boolean => usePreferences.getState().prefs.browserEnabled;
 
+/** A web page may show at all: the browser is on, or Settings › General › New sessions › Allow browser previews. */
+export const previewAllowed = (): boolean => usePreferences.getState().prefs.browserEnabled || usePreferences.getState().prefs.webPreview;
+
+/** `previewAllowed`, for a view: the Web button and the Open preview offers show only then. */
+export function usePreviewAllowed(): boolean {
+  return usePreferences((s) => s.prefs.browserEnabled || s.prefs.webPreview);
+}
+
 interface WebPreviewState extends TabsState {
   /** The sessions whose Browser (Web) panel is open; it may sit behind another tab. */
   panels: ReadonlySet<string>;
@@ -107,6 +115,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     full: new Set(),
     reloads: new Map(),
     open: (sessionId, url) => {
+      if (!previewAllowed()) return;
       const front = frontTab(get(), sessionId);
       if (!browserOn()) {
         // One page per session, as the web preview always had: a new address loads in it.

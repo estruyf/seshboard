@@ -9,7 +9,7 @@ import { Pill } from '../ui/Pill.tsx';
 import { ACTION_ICON, formatShortcut } from './useActions.ts';
 import type { ActionsMenu } from './useActionsMenu.tsx';
 import { useTerminals } from '../../state/terminalsStore.ts';
-import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { usePreviewAllowed, useWebPreview } from '../../state/webPreviewStore.ts';
 import { terminalOffer } from '../webPreview/serverOffers.ts';
 
 const MENU_WIDTH = 240;
@@ -31,6 +31,8 @@ export function ActionPills({ actions: menu }: { actions: ActionsMenu }) {
   const [context, setContext] = useState<{ action: ListedAction; at: ContextMenuPoint } | null>(null);
   const { openEditor, sessionId } = menu;
   const terminals = useTerminals((s) => s.terminals);
+  // Settings › General › New sessions › Allow browser previews (or the browser) off: no Open preview.
+  const allowed = usePreviewAllowed();
   /** The address of the server an action started in this session, while it runs. */
   const offerOf = (action: ListedAction) => {
     for (const terminal of terminals.values()) {
@@ -122,7 +124,7 @@ export function ActionPills({ actions: menu }: { actions: ActionsMenu }) {
               <span className="truncate @max-[860px]:sr-only">{action.name}</span>
             </Pill>
             {/* The action started a dev server: one click shows it beside the conversation. */}
-            {offer && (
+            {offer && allowed && (
               <Pill
                 ghost
                 icon={<Globe size={12} aria-hidden />}

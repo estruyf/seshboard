@@ -60,6 +60,7 @@ import { ProjectFilter, type RemoteProjectSummary, type SourceSummary } from './
 import { thisComputerName } from '../../lib/platform.ts';
 import { agentNameOf, sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
+import { BrowserIntro } from './BrowserIntro.tsx';
 import { ComputersStrip } from '../computers/ComputersStrip.tsx';
 import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '../remote/ConnectedDevices.tsx';
 import { ComputerChip, useComputerTint } from '../computers/ComputerChip.tsx';
@@ -1508,6 +1509,7 @@ export function Sidebar() {
       <ConnectedDevices />
       <ComputersStrip localWaiting={localWaiting} joined={remoteFooterShown} />
 
+      <BrowserIntro />
       <StarOnGithub sessions={all.length} />
 
       <footer className="flex h-10 shrink-0 items-center gap-2 px-3 text-meta text-muted">

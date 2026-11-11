@@ -270,6 +270,9 @@ export const FOCUS_LIMIT_DEFAULT = 3;
  */
 export type GithubStar = "ask" | "done";
 
+/** The browser's card in the sidebar after the update (`Preferences.browserIntro`). */
+export type BrowserIntro = "ask" | "done";
+
 /**
  * The moments that can play a sound: Claude needs you (a permission, a question or a plan), finished a turn,
  * stopped with an error, and a project action that ended.
@@ -439,10 +442,17 @@ export interface Preferences {
    */
   dockActivity: boolean;
   /**
-   * Settings › General: "Enable browser". On, the web preview opens any web page in tabs, with a Browser view of its
-   * own and pinned tabs. Off (the default), it shows only this computer's dev servers, one page per session.
+   * Settings › General › Browser: "Allow browser". On, any web page opens in tabs, beside a session and in a Browser
+   * view of its own, with pinned tabs. Off (the default), a session's preview shows only this computer's dev servers.
    */
   browserEnabled: boolean;
+  /**
+   * Settings › General › New sessions: "Allow browser previews". On (the default), a dev server a session runs shows in
+   * a Web tab beside the conversation. Off, and with the browser off too, there is no web page in the app at all.
+   */
+  webPreview: boolean;
+  /** The sidebar's card that tells about the browser after the update: shown (`ask`) until you turn it on or say Not now. */
+  browserIntro: BrowserIntro;
   /**
    * Settings › General › Menu bar: "Show in the menu bar" ("in the notification area" on Windows). The working light,
    * what needs you and new work, from the menu bar's icon. On by default.
@@ -582,6 +592,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIconOnRemote: true,
   dockActivity: true,
   browserEnabled: false,
+  webPreview: true,
+  browserIntro: "ask",
   menuBar: true,
   keepRunning: true,
   hideDock: false,
@@ -783,6 +795,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
   if (typeof raw.browserEnabled === "boolean") out.browserEnabled = raw.browserEnabled;
+  if (typeof raw.webPreview === "boolean") out.webPreview = raw.webPreview;
+  if (oneOf(["ask", "done"] as const, raw.browserIntro)) out.browserIntro = raw.browserIntro;
   if (typeof raw.menuBar === "boolean") out.menuBar = raw.menuBar;
   if (typeof raw.keepRunning === "boolean") out.keepRunning = raw.keepRunning;
   if (typeof raw.hideDock === "boolean") out.hideDock = raw.hideDock;
