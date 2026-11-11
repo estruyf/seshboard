@@ -51,7 +51,7 @@ interface WebPreviewState extends TabsState {
   reloads: ReadonlyMap<string, number>;
   /** Opens a session's panel in front; on `url` when given (a tab on it), else on the tab it had. */
   open(sessionId: string, url?: string | null): void;
-  /** Closes a session's panel. With the browser on its tabs stay (pinned ones come back after a restart); off, its page goes. */
+  /** Closes a session's panel. With the browser on its pinned tabs stay and the others close; off, its page goes. */
   close(sessionId: string): void;
   /** Opens `url` (null: an empty tab) for an owner, or shows the tab it has on that address. The tab's id. */
   openTab(owner: string, url: string | null, options?: { focus?: boolean }): string;
@@ -124,6 +124,12 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     },
     close: (sessionId) => {
       if (!browserOn()) tabs((s) => dropOwner(s, sessionId));
+      else {
+        // The tabs you didn't pin go with the panel (⌘⇧T brings one back); pinned ones stay for next time.
+        const loose = get().tabs.filter((t) => t.owner === sessionId && !t.pinned);
+        set((s) => ({ closed: loose.reduce(rememberClosed, s.closed) }));
+        tabs((s) => loose.reduce((state, t) => closeTab(state, t.id), s));
+      }
       set((s) => ({ panels: without(s.panels, sessionId), full: without(s.full, sessionId) }));
     },
     openTab: (owner, url, options = {}) => {

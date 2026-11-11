@@ -160,7 +160,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
         {/* Loading: a thin line under the toolbar. */}
         {page.loading && <div aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 animate-pulse bg-accent-ink" data-web-preview-progress="" />}
       </div>
-      {browser && tabs && tabs.length > 1 && <TabStrip tabs={tabs} activeId={tab?.id ?? null} onNewTab={onNewTab} />}
+      {/* From the first tab: each has its ×, and + opens another. */}
+      {browser && tabs && tabs.length > 0 && <TabStrip tabs={tabs} activeId={tab?.id ?? null} onNewTab={onNewTab} />}
       {refused && (
         <Notice inline tone="error" className="shrink-0 px-3 py-1.5 text-meta" data-web-preview-refused={refused}>
           {refused === 'local-only' ? 'Only addresses on this computer open here, such as localhost:3000.' : refused === 'scheme' ? "Seshboard can't open this address" : 'Type an address'}

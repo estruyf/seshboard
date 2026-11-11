@@ -133,7 +133,30 @@ export async function runSessionBrowserStep(win: BrowserWindow, deps: BrowserSmo
   if (!(await waitInPage(win, `${address} && ${address}.value.includes('example.com/guidelines/buttons')`, 5_000))) return `the panel does not show the link (address: ${String(await js(`${address}?.value ?? 'no panel'`))})`;
   if (!(await js(`!!${q(`[data-session-list] [data-session-id="${id}"] [data-session-open="browser"]`)}`))) return 'the session row has no browser mark';
   await deps.shot('session-browser');
-  return 'ok: the reply link opened in the session panel, the row shows the globe';
+
+  // One tab already has its strip, with × and +. + opens a second tab; the local page loads there.
+  const P = `[data-current-session="${id}"] [data-web-preview]`;
+  const strip = `document.querySelectorAll(${JSON.stringify(`${P} [data-web-preview-tabs] [data-browser-tab]`)}).length`;
+  if (!(await js(`${strip} === 1 && !!${q(`${P} [data-browser-new-tab]`)}`))) return 'one tab shows no tab strip with + (no way to open another)';
+  await js(`${q(`${P} [data-browser-new-tab]`)}.click()`);
+  if (!(await waitInPage(win, `${strip} === 2`, 3_000))) return '+ did not open a second tab';
+  const url = await site();
+  await setFieldValue(win, `${P} [data-browser-address]`, url.replace('http://', ''));
+  await js(`${q(`${P} [data-browser-address]`)}.form.requestSubmit()`);
+  if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the local page did not load in the second tab';
+
+  // Full: the page takes the session area and nothing covers it (the point in its middle is the page).
+  await js(`${q(`${P} [data-web-preview-size="full"]`)}.click()`);
+  const wide = `(() => { const page = [...document.querySelectorAll('[data-web-preview-page]')].find((p) => p.style.left !== '-100000px'); if (!page) return false; const r = page.getBoundingClientRect(); return r.width > window.innerWidth * 0.6 && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === page; })()`;
+  if (!(await waitInPage(win, `${q(`${P}[data-web-preview-full]`)} && ${wide}`, 3_000))) return 'in Full the page is not on screen across the session area';
+  if (await js(`${q(`[data-current-session="${id}"] [data-transcript]`)}?.checkVisibility()`)) return 'in Full the conversation still shows';
+  await js(`${q(`${P} [data-web-preview-conversation]`)}.click()`);
+  if (!(await waitInPage(win, `!${q(`${P}[data-web-preview-full]`)} && ${q(`[data-current-session="${id}"] [data-transcript]`)}.checkVisibility()`, 3_000))) return '‹ Conversation did not go back to the side';
+
+  // Closing the panel closes its tabs (none is pinned): the row's globe goes.
+  await js(`${q(`${P} [data-web-preview-close]`)}.click()`);
+  if (!(await waitInPage(win, `!${q(P)} && !${q(`[data-session-list] [data-session-id="${id}"] [data-session-open="browser"]`)}`, 3_000))) return 'closing the panel left it or the row\'s globe';
+  return 'ok: the reply link opened in the session panel with the globe on the row, + opened a second tab, Full showed the page, closing the panel closed its tabs';
 }
 
 /**

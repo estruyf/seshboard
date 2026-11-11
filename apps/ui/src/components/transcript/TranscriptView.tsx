@@ -1846,9 +1846,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       <TriggerOriginBar sessionId={sessionId} />
 
       {/* In a narrow pop-out a panel on the right fills the view (the rule in styles.css), as an expanded Changes does. */}
-      <div ref={bodyRef} className="relative flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
+      <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
         {/* An expanded Changes panel takes the whole view; the conversation stays mounted (scroll position, drafts) but hidden. */}
-        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
+        {/* So does the browser in Full: its page is drawn over the panel's slot, which then takes the conversation's room. */}
+        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (right.tab === 'web' && !whyRequest && browserPreview && web?.full && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
           {findQuery !== null && !terminalMaximized && (
             <FindBar
               query={findQuery}

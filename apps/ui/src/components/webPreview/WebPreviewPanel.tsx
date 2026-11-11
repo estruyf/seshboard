@@ -71,7 +71,7 @@ export function WebPreviewPanel({ sessionId, web, offers, width, onWidth, tabs }
       aria-label={browser ? 'Browser' : 'Web preview'}
       tabIndex={-1}
       onKeyDown={onKey}
-      className={full ? 'absolute inset-0 z-20 flex min-w-0 flex-col bg-sidebar outline-none' : 'relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l'}
+      className={full ? 'relative flex min-w-0 flex-1 flex-col bg-sidebar outline-none' : 'relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l'}
       style={full ? undefined : { width }}
       data-web-preview=""
       data-web-preview-full={full ? '' : undefined}
