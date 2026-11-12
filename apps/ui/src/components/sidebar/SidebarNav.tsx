@@ -1,5 +1,4 @@
 import { CalendarClock, Clock, Globe, House } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { openActivity } from '../../state/activityStore.ts';
 import { openBrowserView, useSidebarList } from '../../state/browserViewStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -8,27 +7,9 @@ import { openUpcoming } from '../../state/upcomingStore.ts';
 import { useSessionsToday } from '../../state/useSessionsToday.ts';
 import { useUpcomingSummary } from '../../state/useUpcomingSummary.ts';
 import { useTabCount } from '../../state/webPreviewStore.ts';
+import { Badged } from '../ui/Badged.tsx';
 import { Button } from '../ui/Button.tsx';
 import { BROWSER_OWNER } from '../webPreview/browserTabs.ts';
-
-/** An icon with its count on the corner, or a dot. */
-function Badged({ icon, count, dot, tone = 'default', data }: { icon: ReactNode; count?: number; dot?: boolean; tone?: 'default' | 'ok'; data?: Record<`data-${string}`, boolean> }) {
-  return (
-    <span className="relative flex">
-      {icon}
-      {count !== undefined && count > 0 && (
-        <span
-          aria-hidden
-          className={`pointer-events-none absolute -top-2.5 -right-3.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1.5 text-meta leading-none font-semibold tabular-nums ring-2 ring-sidebar ${tone === 'ok' ? 'bg-ok text-bg' : 'bg-border text-text'}`}
-          {...data}
-        >
-          {count > 99 ? '99+' : count}
-        </span>
-      )}
-      {dot && <span aria-hidden className="absolute -top-1 -right-1 size-2 animate-pulse rounded-full bg-warn ring-2 ring-sidebar" data-nav-needs-you />}
-    </span>
-  );
-}
 
 /**
  * Home, Upcoming, Activity and (with Settings › General › Enable browser on) Browser, as one row of icons of equal width

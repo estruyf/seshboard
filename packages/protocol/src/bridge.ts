@@ -257,6 +257,11 @@ export type WhileWorking = "queue" | "steer";
 export type ResumeAtLimit = "ask" | "always";
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
+/** How the sidebar groups its sessions: by state (Needs you, Working, To review, Open) or by project. */
+export type SidebarGroup = "state" | "project";
+/** The session tools the rail at a session's right edge can show (a mod's panes go under `mods`). */
+export const RAIL_TOOLS = ["changes", "terminal", "web", "preview", "ask", "agents", "commands", "mods"] as const;
+export type RailTool = (typeof RAIL_TOOLS)[number];
 /** Which buttons a session row shows under the pointer: only Archive, or Mark as read, Pin and Archive. */
 export type QuickActionsShow = "archive" | "all";
 
@@ -547,6 +552,12 @@ export interface Preferences {
   providerOffersDismissed: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
+  /** The sidebar's View button: group the sessions by state or by project. */
+  sidebarGroup: SidebarGroup;
+  /** The View button's Show › Done: Done docked under the list. Off, Done shows only while searching. */
+  sidebarShowDone: boolean;
+  /** Tools left off the rail (its right-click menu). They keep their shortcuts and palette commands. */
+  railHidden: RailTool[];
   /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
   quickActions: boolean;
   /** Settings › Sidebar: which quick actions show ("Show"). Working rows keep Stop either way. */
@@ -625,6 +636,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   githubHintSeen: [],
   providerOffersDismissed: [],
   sidebarSort: "recent",
+  sidebarGroup: "state",
+  sidebarShowDone: true,
+  railHidden: [],
   quickActions: true,
   quickActionsShow: "all",
   githubStar: "ask",
@@ -845,6 +859,11 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
+  if (oneOf(["state", "project"] as const, raw.sidebarGroup))
+    out.sidebarGroup = raw.sidebarGroup;
+  if (typeof raw.sidebarShowDone === "boolean") out.sidebarShowDone = raw.sidebarShowDone;
+  if (Array.isArray(raw.railHidden))
+    out.railHidden = RAIL_TOOLS.filter((tool) => (raw.railHidden as unknown[]).includes(tool));
   if (typeof raw.quickActions === "boolean") out.quickActions = raw.quickActions;
   if (oneOf(["archive", "all"] as const, raw.quickActionsShow))
     out.quickActionsShow = raw.quickActionsShow;

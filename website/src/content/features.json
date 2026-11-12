@@ -4092,6 +4092,41 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:sidebar-view",
+      "name": "The sidebar's View button: group by State or Project, sort Recent or Quickest to unblock, show Done and Compact rows",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-by-project",
+      "name": "Sessions grouped by project: what needs you first, a folded project says what is in it (\"1 needs you · 2 working\"), + and ⋯ on its header",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:tool-rail",
+      "name": "The rail at a session's right edge: Changes, Terminal, Browser, Preview, Ask, Agents, Commands and mods, with what is in them as badges; right-click to hide a tool",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:sidebar-group-project",
+      "name": "Group sessions by project",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:sidebar-group-state",
+      "name": "Group sessions by state",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:sidebar-compact-rows",
+      "name": "Compact rows",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.fold-projects",
+      "name": "sidebar.fold-projects",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "feature:star-on-github",
       "name": "Star on GitHub",
       "page": "sessions/sidebar"

@@ -88,15 +88,15 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     const kept = (await js(`!!${q('[data-toggle-changes]')}`)) as boolean;
     if (kept) {
       await js(`${q('[data-toggle-changes]')}.click()`);
-      if (!(await waitInPage(win, `!${q('[data-web-preview]')} && ${q('[data-right-tab="web"]')} && ${parked}`, 3_000))) return 'the page did not go out of sight behind Changes';
-      await js(`${q('[data-right-tab="web"]')}.click()`);
+      if (!(await waitInPage(win, `!${q('[data-web-preview]')} && ${q('[data-toggle-web]')}?.dataset.railState === 'behind' && ${parked}`, 3_000))) return 'the page did not go out of sight behind Changes';
+      await js(`${q('[data-toggle-web]')}.click()`);
       if (!(await waitInPage(win, `${q('[data-web-preview]')} && ${over}`, 3_000))) return 'the page did not come back over the Web tab';
       if (!(await keptPage())) return 'the page was loaded again after another tab was in front';
       // Behind Web, the first click brings Changes to the front and the second closes it.
       await js(`${q('[data-toggle-changes]')}.click()`);
-      await waitInPage(win, `${q('[data-right-tab="changes"][aria-selected="true"]')}`, 2_000);
+      await waitInPage(win, `${q('[data-toggle-changes]')}?.dataset.railState === 'front'`, 2_000);
       await js(`${q('[data-toggle-changes]')}.click()`);
-      if (!(await waitInPage(win, `!${q('[data-right-tab="changes"]')} && ${over}`, 3_000))) return 'closing Changes did not bring the page back';
+      if (!(await waitInPage(win, `${q('[data-toggle-changes]')}?.dataset.railState === 'closed' && ${over}`, 3_000))) return 'closing Changes did not bring the page back';
     }
     // And while another session is on screen.
     const here = (await js("document.querySelector('[data-current-session]').dataset.currentSession")) as string;
@@ -105,7 +105,7 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
       await js(`document.querySelector('[data-session-id=${JSON.stringify(other)}]').click()`);
       if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(other)} && ${parked}`, 5_000))) return 'the page did not go out of sight with another session on screen';
       await js(`document.querySelector('[data-session-id=${JSON.stringify(here)}]').click()`);
-      if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(here)} && ${q('[data-web-preview]')} && ${over}`, 5_000))) return `the page did not come back with its session (${JSON.stringify(await js(`({ current: document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(here)}, panel: !!${q('[data-web-preview]')}, tabs: [...document.querySelectorAll('${S} [data-right-tab]')].map((t) => t.dataset.rightTab + (t.getAttribute('aria-selected') === 'true' ? '*' : '')), slot: ${q('[data-web-preview-slot]')}?.getBoundingClientRect().toJSON(), page: document.querySelector('[data-web-preview-page]')?.getBoundingClientRect().toJSON(), covered: ${q('[data-web-preview-slot]')}?.dataset.covered })`))})`;
+      if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(here)} && ${q('[data-web-preview]')} && ${over}`, 5_000))) return `the page did not come back with its session (${JSON.stringify(await js(`({ current: document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(here)}, panel: !!${q('[data-web-preview]')}, tools: [...document.querySelectorAll('${S} [data-rail-tool]')].map((t) => t.dataset.railTool + ':' + t.dataset.railState), slot: ${q('[data-web-preview-slot]')}?.getBoundingClientRect().toJSON(), page: document.querySelector('[data-web-preview-page]')?.getBoundingClientRect().toJSON(), covered: ${q('[data-web-preview-slot]')}?.dataset.covered })`))})`;
       if (!(await keptPage())) return 'the page was loaded again after another session was on screen';
     }
 

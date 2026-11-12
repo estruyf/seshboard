@@ -271,6 +271,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘Z | Undo the last quick action (in the sidebar) |
 | ← or → | Close or open a section, or a pipeline's steps (on a section header or a pipeline's row in the sidebar) |
 | ⌥-click | Close or open every section (on a section header in the sidebar) |
+| ⌘⌥[ | Collapse or expand all projects (while the sidebar groups sessions by project) |
 | ⌘↩ | Start a queued item now (on a queued item, in the sidebar or Home) |
 | ⌘E | Edit a queued item in New session (on a queued item, in the sidebar or Home) |
 | ⌥↑ or ⌥↓ | Move a queued item up or down (on a queued item, in the sidebar or Home) |

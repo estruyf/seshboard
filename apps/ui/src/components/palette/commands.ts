@@ -39,6 +39,7 @@ import {
   FolderDown,
   FolderGit2,
   FolderPlus,
+  FolderTree,
   Gauge,
   GitBranch,
   GitBranchPlus,
@@ -49,6 +50,8 @@ import {
   GitPullRequest,
   Hash,
   LayoutList,
+  ListFilter,
+  Rows3,
   Keyboard,
   ListChecks,
   ListEnd,
@@ -466,6 +469,18 @@ export const COMMANDS: PaletteCommand[] = [
       run: (api) => api.setPreferences({ sidebarStyle: value }),
     }),
   ),
+  // The sidebar's View button: grouping, and one line per row (the Compact sidebar style).
+  { id: 'sidebar-group-project', title: 'Group sessions by project', group: 'general', icon: FolderTree, keywords: 'sidebar view folders projects', when: (ctx) => ctx.sidebarGroup !== 'project', run: (api) => api.setPreferences({ sidebarGroup: 'project' }) },
+  { id: 'sidebar-group-state', title: 'Group sessions by state', group: 'general', icon: ListFilter, keywords: 'sidebar view needs you working review open', when: (ctx) => ctx.sidebarGroup !== 'state', run: (api) => api.setPreferences({ sidebarGroup: 'state' }) },
+  {
+    id: 'sidebar-compact-rows',
+    title: (ctx) => (ctx.sidebarStyle === 'compact' ? 'Turn off compact rows' : 'Compact rows'),
+    group: 'general',
+    icon: Rows3,
+    keywords: 'sidebar view one line dense',
+    when: always,
+    run: (api, ctx) => api.setPreferences({ sidebarStyle: ctx.sidebarStyle === 'compact' ? 'standard' : 'compact' }),
+  },
   ...CONVERSATION_VIEWS.map(
     ({ value, label }): PaletteCommand => ({
       id: `conversation-${value}`,

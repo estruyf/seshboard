@@ -63,6 +63,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     ],
     themeId: 'demo-time',
     sidebarStyle: 'standard',
+    sidebarGroup: 'state',
     conversationView: 'skim',
     sidebar: 'open',
     settingsSection: 'general',

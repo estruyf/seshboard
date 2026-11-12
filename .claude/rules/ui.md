@@ -62,7 +62,7 @@ With more than one Claude profile, the rail on a session row shows the profile's
 
 **Selection and hover.** A selected row is `bg-selected` (a neutral fill) plus its status rail; hover is `hover:bg-border/45`. Don't use `bg-accent/15` for selection: it vanishes on the light sidebar. A yellow tint is fine for a pressed toggle or a highlighted menu option.
 
-**Buttons.** One primary action per area, as a yellow fill (`bg-accent text-on-accent font-semibold`, 28px high in toolbars, 30-32px in cards and the message box). A secondary action next to it (Cancel, Close, Choose…) is the `btn-secondary` utility: a bordered button that stays visible on dialogs and popovers. Never a bare text link, and not `border border-border`, which disappears on overlay surfaces. Toolbar icons and inline controls are quiet: `text-muted`, `hover:bg-border/50 hover:text-text`. Related toggles sit together in one segmented control (see Changes | Terminal in the session header). Put actions people use less often in the `⋯` menu rather than adding another icon. Things people run all the time stay one click away: project actions are pills above the message box (the first three, then "N more"; icon only in a narrow pane), and every action is also in the `⋯` menu.
+**Buttons.** One primary action per area, as a yellow fill (`bg-accent text-on-accent font-semibold`, 28px high in toolbars, 30-32px in cards and the message box). A secondary action next to it (Cancel, Close, Choose…) is the `btn-secondary` utility: a bordered button that stays visible on dialogs and popovers. Never a bare text link, and not `border border-border`, which disappears on overlay surfaces. Toolbar icons and inline controls are quiet: `text-muted`, `hover:bg-border/50 hover:text-text`. Related toggles sit together in one segmented control (Uncommitted | vs base in Changes); a session's panels are on its rail of tools ([detail](../../docs/ui-patterns.md#the-rail-of-tools)). Put actions people use less often in the `⋯` menu rather than adding another icon. Things people run all the time stay one click away: project actions are pills above the message box (the first three, then "N more"; icon only in a narrow pane), and every action is also in the `⋯` menu.
 
 **Keyboard first.** Every primary action has a shortcut, and the button shows it in a `<kbd>` (`⌘↵`, `Esc`, `⌘1`). Choices in a list can be picked with number keys.
 
@@ -96,7 +96,9 @@ Focus rings and lines that show selection stay. In Windows high contrast (`force
 - [Sidebar states](../../docs/ui-patterns.md#sidebar-states): open, minimal and closed sidebar, its widths and keys.
 - [Split view](../../docs/ui-patterns.md#split-view): the tiling pane tree, drag and drop, dividers, pane keys.
 - [Collapsible sections and the queue](../../docs/ui-patterns.md#collapsible-sections-and-the-queue): sidebar section headers, Up next.
+- [Sessions by project](../../docs/ui-patterns.md#sessions-by-project): the View button, project headers, folding.
 - [Pipelines](../../docs/ui-patterns.md#pipelines): sub-sessions nested in the sidebar's tree, run rows, the step tree.
+- [The rail of tools](../../docs/ui-patterns.md#the-rail-of-tools): a session's tools at its right edge, their order, states and badges.
 - [Unsent messages](../../docs/ui-patterns.md#unsent-messages): the draft pen on rows and buttons.
 - [Saved prompts](../../docs/ui-patterns.md#saved-prompts): `{{blanks}}`, the / picker, sharing.
 - [Home](../../docs/ui-patterns.md#home): the width, the lanes and their breakpoints, the usage column.

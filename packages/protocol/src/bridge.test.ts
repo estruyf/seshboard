@@ -41,6 +41,30 @@ describe('sidebarCollapsed preference', () => {
   });
 });
 
+describe('sidebar view and rail preferences', () => {
+  it('groups by state, shows Done and keeps every tool on the rail by default', () => {
+    expect(DEFAULT_PREFERENCES.sidebarGroup).toBe('state');
+    expect(DEFAULT_PREFERENCES.sidebarShowDone).toBe(true);
+    expect(DEFAULT_PREFERENCES.railHidden).toEqual([]);
+  });
+
+  it('keeps state and project, and drops anything else', () => {
+    expect(sanitizePreferences({ sidebarGroup: 'project' })).toEqual({ sidebarGroup: 'project' });
+    expect(sanitizePreferences({ sidebarGroup: 'state' })).toEqual({ sidebarGroup: 'state' });
+    expect(sanitizePreferences({ sidebarGroup: 'day' })).toEqual({});
+  });
+
+  it('keeps Show Done only as a boolean', () => {
+    expect(sanitizePreferences({ sidebarShowDone: false })).toEqual({ sidebarShowDone: false });
+    expect(sanitizePreferences({ sidebarShowDone: 'no' })).toEqual({});
+  });
+
+  it('keeps the known tools hidden from the rail, once each, in the rail order', () => {
+    expect(sanitizePreferences({ railHidden: ['ask', 'changes', 'ask', 'nope', 3] })).toEqual({ railHidden: ['changes', 'ask'] });
+    expect(sanitizePreferences({ railHidden: 'ask' })).toEqual({});
+  });
+});
+
 describe('fileLinkClick preference', () => {
   const REV = FILE_LINK_CLICK_REVISION;
 

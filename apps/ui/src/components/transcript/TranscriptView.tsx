@@ -75,7 +75,6 @@ import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
-import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle, useAgentName } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
@@ -121,7 +120,7 @@ import { AgentsPanel } from '../agents/AgentsPanel.tsx';
 import { FilePreviewPanel } from '../filePreview/FilePreviewPanel.tsx';
 import { WebPreviewPanel } from '../webPreview/WebPreviewPanel.tsx';
 import { sessionServerOffers } from '../webPreview/serverOffers.ts';
-import { previewAllowed, toggleWebPanel, usePreviewAllowed, useSessionWeb, useWebPreview } from '../../state/webPreviewStore.ts';
+import { previewAllowed, toggleWebPanel, usePreviewAllowed, useSessionWeb, useTabCount, useWebPreview } from '../../state/webPreviewStore.ts';
 import { PreviewOpenerContext, type OpenPreview } from '../filePreview/previewOpener.ts';
 import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.ts';
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
@@ -135,7 +134,8 @@ import { ProviderSessionControls } from '../providers/ProviderSessionControls.ts
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
-import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
+import { ToolRail, type RailItem } from './ToolRail.tsx';
+import { railEntries, railLabel, railToolState, type RailToolId } from './toolRail.ts';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
@@ -171,8 +171,19 @@ const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', s
  */
 const STATUS_TONE = { running: 'text-accent-ink', 'needs-you': 'text-warn', idle: 'text-muted' } as const;
 
-/** A pop-out narrower than this (the session view's width) gives a panel on the right the whole view. */
-const NARROW_POPOUT_PANEL = 640;
+/** The rail's icons for Seshboard's own tools. */
+const RAIL_ICONS = {
+  changes: <FileDiff size={17} aria-hidden />,
+  terminal: <SquareTerminal size={17} aria-hidden />,
+  web: <Globe size={17} aria-hidden />,
+  preview: <Eye size={17} aria-hidden />,
+  ask: <MessageCircleQuestion size={17} aria-hidden />,
+  agents: <Bot size={17} aria-hidden />,
+  commands: <ScrollText size={17} aria-hidden />,
+};
+
+/** A session view narrower than this (without its rail) gives a panel on the right the whole view, as a sheet. */
+const NARROW_PANEL = 760;
 /** Within this many pixels of the end counts as at the end (rounding), so the conversation follows new output again. */
 const AT_END_PX = 4;
 /** Further up than this, Jump to latest shows. */
@@ -601,18 +612,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, preview: showPreview, web: showWeb, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
-  // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
-  const changesFront = right.tabs && showChanges ? right.tab === 'changes' : undefined;
-  const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
-  const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
-  const commandsFront = right.tabs && showCommands ? right.tab === 'commands' : undefined;
-  const previewFront = right.tabs && showPreview ? right.tab === 'preview' : undefined;
-  const webFront = right.tabs && showWeb ? right.tab === 'web' : undefined;
-  const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
   const panesOpen = modPanes.length > 0;
-  // A pop-out can be narrower than a panel and a usable conversation together: then the panel takes the whole view,
-  // and the header's buttons (or the panel's ×) bring the conversation back.
-  const narrowPanel = inPopout && (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_POPOUT_PANEL;
+  // A session view can be narrower than a panel and a usable conversation together: then the panel opens over the
+  // conversation as a sheet, and the rail (or the panel's ×) brings the conversation back.
+  const narrowPanel = (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_PANEL;
   const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
   const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
   const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
@@ -621,15 +624,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const toggleWebHere = () => toggleWebPanel(sessionId, right.open.some((tab) => tab !== 'web'), serverOffers[0]?.url ?? null);
   const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
   const webAllowed = usePreviewAllowed();
-  const webName = browserPreview ? 'browser' : 'web preview';
-  const webTip =
-    webFront === false
-      ? `Bring the ${webName} to the front`
-      : showWeb
-        ? `Hide ${webName}`
-        : serverOffers.length > 0
-          ? `Preview ${shortUrl(serverOffers[0]!.url)}`
-          : 'Show browser';
   // The header's Preview button, there only while a file is open: to the front, or closed.
   const togglePreviewHere = () => {
     const step = agentsToggleStep(showPreview, right.tab === 'preview', right.open.length > 1);
@@ -645,17 +639,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const closeModPane = (id: string) => {
     if (client) void client.call('mods.pane', { sessionId, action: 'close', id }).catch(() => {});
   };
-  const rightTabs = (actions: ReactNode) => (
-    <RightPanelTabs
-      tab={right.tab ?? 'changes'}
-      open={right.open}
-      onTab={pickRightTab}
-      counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning, commands: commandsRunning, terminal: terminalCount }}
-      titles={Object.fromEntries(modPanes.map((p) => [p.id, p.title]))}
-    >
-      {actions}
-    </RightPanelTabs>
-  );
   // A mod asked for one of its panes to take the keyboard: its tab comes to the front and takes focus.
   const [paneFocus, setPaneFocus] = useState({ id: null as string | null, nonce: 0 });
   const focusRequested = active ? sessionMods.panes.focusRequestedId : null;
@@ -1513,6 +1496,76 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     }
     return null;
   }, [items]);
+  // The rail at the view's right edge: every tool of the session, each with its toggle, shortcut and what is in it. A
+  // tool that doesn't apply is left out (`railEntries`). Docked below, the terminal shows in front while it is open.
+  const railHidden = usePreferences((s) => s.prefs.railHidden);
+  const webTabs = useTabCount(sessionId);
+  const railCounts = { changes: changedCount, terminal: terminalCount, web: browserPreview ? webTabs : 0, agents: agentsRunning, commands: commandsRunning };
+  const railState = (id: RailToolId) => (id === 'terminal' && !terminalOnRight ? (panelOpen ? 'front' : 'closed') : railToolState(id, right.open, right.tab));
+  const modTitles = new Map(modPanes.map((p) => [modPaneTab(p.id), p.title]));
+  const railTool = (id: RailToolId): RailItem => {
+    const name = id === 'web' && !browserPreview ? 'Web' : id === 'preview' && previewTarget ? `Preview · ${basename(previewTarget.path)}` : modTitles.get(id as `mod:${string}`);
+    const shortcut = id === 'changes' ? 'changes.toggle' : id === 'terminal' ? 'terminal.toggle' : id === 'web' ? 'web.toggle' : id === 'agents' ? 'agents.toggle' : id === 'commands' ? 'commands.toggle' : null;
+    const state = railState(id);
+    const ready = id === 'ask' && ask.ready && !ask.open;
+    const pane = paneOfTab(id);
+    return {
+      id,
+      icon:
+        pane !== null ? (
+          <span className="flex size-[17px] items-center justify-center rounded-[5px] border-[1.5px] border-current text-[10px] leading-none font-bold" aria-hidden>
+            {(modTitles.get(id as `mod:${string}`) ?? pane).slice(0, 1).toUpperCase()}
+          </span>
+        ) : (
+          RAIL_ICONS[id as keyof typeof RAIL_ICONS]
+        ),
+      label: `${railLabel(id, railCounts, { name })}${ready ? ' · An answer is ready' : ''}`,
+      ariaLabel: `${railLabel(id, railCounts, { name, separator: ', ' })}${ready ? ', an answer is ready' : ''}`,
+      kbd: shortcut ? formatKeys(keysFor(shortcut)) : undefined,
+      count: railCounts[id as keyof typeof railCounts],
+      // An answer in Ask, or a server running in the session for the browser to show.
+      dot: ready || (id === 'web' && !showWeb && serverOffers.length > 0),
+      state,
+      data: { [`data-toggle-${pane !== null ? 'mod-pane' : id}`]: true },
+      onClick: () => {
+        if (pane !== null) return state === 'front' ? closeModPane(pane) : pickRightTab(id);
+        if (id === 'changes') toggleChangesHere();
+        else if (id === 'ask') toggleAskHere();
+        else if (id === 'agents') toggleAgentsHere();
+        else if (id === 'commands') toggleCommandsHere();
+        else if (id === 'preview') togglePreviewHere();
+        else if (id === 'web') toggleWebHere();
+        else toggleTerminalPanel(sessionId);
+      },
+    };
+  };
+  const railItems: RailItem[] = railEntries(
+    {
+      changes: Boolean(cwd && isRepo),
+      terminal: true,
+      // Only while a dev server runs in the session, or the tab is open; with the browser on, always: it opens any page.
+      web: showWeb || ((serverOffers.length > 0 || browserPreview) && webAllowed),
+      preview: previewTarget !== null,
+      // Ask forks the session in its own tool: another provider's only when it can.
+      ask: canAsk || ask.open,
+      agents: agents.length > 0 || agentsState.open,
+      commands: backgroundCommands.length > 0 || commandsState.open,
+      mods: modPanes.map((p) => p.id),
+    },
+    railHidden,
+  ).map((entry) => (entry.kind === 'divider' ? 'divider' : railTool(entry.id)));
+  /** Hide panel: closes whatever the right side shows. */
+  const hidePanels = () => {
+    if (whyRequest) useWhy.getState().close();
+    if (showChanges) closeChanges(sessionId);
+    if (ask.open) closeAskHere();
+    if (showAgents) closeAgents(sessionId);
+    if (showCommands) closeCommands(sessionId);
+    if (showPreview) useFilePreview.getState().closePanel(sessionId);
+    if (showWeb) useWebPreview.getState().hide(sessionId);
+    if (terminalOnRight) useTerminals.getState().togglePanel(sessionId, false);
+    for (const pane of modPanes) closeModPane(pane.id);
+  };
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
@@ -1525,15 +1578,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         rightBlocked={terminalBlocked}
         viewWidth={bodyWidth}
         viewHeight={bodyHeight}
-        tabs={terminalOnRight && right.tabs ? rightTabs : undefined}
         shared={terminalOnRight && right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
       />
     </Suspense>
   );
 
   return (
-    // `@container`: the header compacts itself when the pane is narrow (two sessions side by side).
-    <div className="@container flex h-full min-h-0 flex-col" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
+    // The session's column, then its rail of tools at the right edge, full height.
+    <div className="flex h-full min-h-0" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
+    {/* `@container`: the header compacts itself when the pane is narrow (two sessions side by side). */}
+    <div className="@container flex min-w-0 flex-1 flex-col">
       {/* With two panes, the active one has an accent line along the top. */}
       <header
         className={`${PANE_HEADER} ${tiled && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
@@ -1605,139 +1659,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             )}
           </div>
         </div>
-        {/* Changes | Ask | Agents | Commands | Preview | Terminal: the side panels as one compact, icon-only segmented control. */}
-        <SegmentedControl
-          mode="toggle"
-          label="Panels"
-          quiet
-          className="no-drag"
-          data-panel-toggles
-          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(showPreview ? ['preview' as const] : []), ...(showWeb ? ['web' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) =>
-            panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : panel === 'preview' ? togglePreviewHere() : panel === 'web' ? toggleWebHere() : toggleTerminalPanel(sessionId)
-          }
-          segments={[
-            ...(cwd && isRepo
-              ? [
-                  {
-                    value: 'changes' as const,
-                    label: 'Changes',
-                    icon: <FileDiff size={14} aria-hidden />,
-                    iconOnly: true,
-                    badge: changedCount,
-                    tooltip: `${changesFront === false ? 'Bring changed files to the front' : changesOpen ? 'Hide changed files' : 'Show changed files'} (${formatKeys(keysFor('changes.toggle'))})`,
-                    ariaLabel: `${changesFront === false ? 'Bring changed files to the front' : changesOpen ? 'Hide changed files' : 'Show changed files'}${changedCount ? `, ${changedCount} changed` : ''} (${formatKeys(keysFor('changes.toggle'))})`,
-                    kbd: keysFor('changes.toggle'),
-                    front: changesFront,
-                    expanded: changesOpen && changesFront !== false,
-                    data: { 'data-toggle-changes': true },
-                  },
-                ]
-              : []),
-            // Ask forks the session in its own tool: another provider's only when it can (Copilot can).
-            ...(!canAsk && !ask.open
-              ? []
-              : [
-            {
-              value: 'ask' as const,
-              label: 'Ask',
-              icon: <MessageCircleQuestion size={14} aria-hidden />,
-              iconOnly: true,
-              // An answer came in while the panel was closed.
-              dot: ask.ready && !ask.open ? ('link' as const) : false,
-              tooltip: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ' · An answer is ready' : ''}`,
-              ariaLabel: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ', an answer is ready' : ''}`,
-              front: askFront,
-              expanded: ask.open && askFront !== false,
-              data: { 'data-toggle-ask': true },
-            },
-                ]),
-            // Only a session that has started agents has this; the panel stays reachable while it is open.
-            ...(agents.length > 0 || agentsState.open
-              ? [
-                  {
-                    value: 'agents' as const,
-                    label: 'Agents',
-                    icon: <Bot size={14} aria-hidden />,
-                    iconOnly: true,
-                    badge: agentsRunning,
-                    tooltip: `${agentsFront === false ? 'Bring agents to the front' : agentsState.open ? 'Hide agents' : 'Show agents'} (${formatKeys(keysFor('agents.toggle'))})${agentsRunning ? ` · ${agentsRunning} running` : ''}`,
-                    ariaLabel: `${agentsFront === false ? 'Bring agents to the front' : agentsState.open ? 'Hide agents' : 'Show agents'}${agentsRunning ? `, ${agentsRunning} running` : ''} (${formatKeys(keysFor('agents.toggle'))})`,
-                    kbd: keysFor('agents.toggle'),
-                    front: agentsFront,
-                    expanded: showAgents && agentsFront !== false,
-                    data: { 'data-toggle-agents': true },
-                  },
-                ]
-              : []),
-            // Only a session that has run background commands has this; the panel stays reachable while it is open.
-            ...(backgroundCommands.length > 0 || commandsState.open
-              ? [
-                  {
-                    value: 'commands' as const,
-                    label: 'Commands',
-                    icon: <ScrollText size={14} aria-hidden />,
-                    iconOnly: true,
-                    badge: commandsRunning,
-                    tooltip: `${commandsFront === false ? 'Bring commands to the front' : commandsState.open ? 'Hide commands' : 'Show background commands'} (${formatKeys(keysFor('commands.toggle'))})${commandsRunning ? ` · ${commandsRunning} running` : ''}`,
-                    ariaLabel: `${commandsFront === false ? 'Bring commands to the front' : commandsState.open ? 'Hide commands' : 'Show background commands'}${commandsRunning ? `, ${commandsRunning} running` : ''} (${formatKeys(keysFor('commands.toggle'))})`,
-                    kbd: keysFor('commands.toggle'),
-                    front: commandsFront,
-                    expanded: showCommands && commandsFront !== false,
-                    data: { 'data-toggle-commands': true },
-                  },
-                ]
-              : []),
-            // Only while a file is open in the side panel: a link opens it, the button brings it back to the front or closes it.
-            ...(previewTarget
-              ? [
-                  {
-                    value: 'preview' as const,
-                    label: 'Preview',
-                    icon: <Eye size={14} aria-hidden />,
-                    iconOnly: true,
-                    tooltip: previewFront === false ? `Bring the preview of ${basename(previewTarget.path)} to the front` : `Close the preview of ${basename(previewTarget.path)}`,
-                    ariaLabel: previewFront === false ? `Bring the preview of ${basename(previewTarget.path)} to the front` : `Close the preview of ${basename(previewTarget.path)}`,
-                    front: previewFront,
-                    expanded: previewFront !== false,
-                    data: { 'data-toggle-preview': true },
-                  },
-                ]
-              : []),
-            // Only while a dev server runs in the session, or the tab is open: the shortcut and the palette open it any time.
-            // With the browser on, always: it opens any page.
-            ...(showWeb || ((serverOffers.length > 0 || browserPreview) && webAllowed)
-              ? [
-                  {
-                    value: 'web' as const,
-                    label: browserPreview ? 'Browser' : 'Web',
-                    icon: <Globe size={14} aria-hidden />,
-                    iconOnly: true,
-                    dot: !showWeb && serverOffers.length > 0,
-                    tooltip: `${webTip} (${formatKeys(keysFor('web.toggle'))})`,
-                    ariaLabel: `${webTip} (${formatKeys(keysFor('web.toggle'))})`,
-                    kbd: keysFor('web.toggle'),
-                    front: webFront,
-                    expanded: showWeb && webFront !== false,
-                    data: { 'data-toggle-web': true },
-                  },
-                ]
-              : []),
-            {
-              value: 'terminal' as const,
-              label: 'Terminal',
-              icon: <SquareTerminal size={14} aria-hidden />,
-              iconOnly: true,
-              dot: terminalCount > 0,
-              tooltip: `${terminalFront === false ? 'Bring the terminal to the front' : panelOpen ? 'Hide terminal' : 'Show terminal'} (${formatKeys(keysFor('terminal.toggle'))})${terminalCount ? ` · ${terminalCount} running` : ''}`,
-              ariaLabel: `${terminalFront === false ? 'Bring the terminal to the front' : panelOpen ? 'Hide terminal' : 'Show terminal'}${terminalCount ? `, ${terminalCount} running` : ''} (${formatKeys(keysFor('terminal.toggle'))})`,
-              kbd: keysFor('terminal.toggle'),
-              front: terminalFront,
-              expanded: panelOpen && terminalFront !== false,
-              data: { 'data-toggle-terminal': true },
-            },
-          ]}
-        />
         {cwd && isRepo && (
           <GitButton
             sessionId={sessionId}
@@ -2064,8 +1985,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <div className={`group/composer relative shrink-0 bg-bg forced-colors:border-t ${terminalMaximized ? 'hidden' : ''}`} data-composer-area>
             <div className="composer-fade absolute inset-x-0 bottom-full" aria-hidden data-composer-fade />
             {/* minmax(0,1fr): the column stays as wide as the pane, so long lines truncate instead of pushing it wider. */}
-            {/* The message box at the catch-up card's width, a size wider than the conversation. */}
-            <div className="mx-auto grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-3 @max-[860px]:px-4">
+            {/* The message box at the catch-up card's width, a size wider than the conversation. A narrow pane (split
+                view, with the rail beside it) keeps less room around it, so notes above the box wrap less. */}
+            <div className="mx-auto grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-3 @max-[860px]:px-4 @max-[560px]:px-3 @max-[560px]:pt-2 @max-[560px]:pb-2">
               {(actionsMenu.openEditor || showTodos || backgroundTasks.length > 0 || keepAwake) && (
                 <div className="grid gap-1.5">
                   {/* The project's actions on the left; Claude's task list and its background tasks on the right, as small pills. The task list opens below them. */}
@@ -2334,7 +2256,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onRefresh={refreshChanges}
             onClose={() => closeChanges(sessionId)}
             outside={catchUp?.signals.outOfScope}
-            tabs={right.tabs ? rightTabs : undefined}
             shared={right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
           />
         )}
@@ -2345,7 +2266,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             working={working}
             width={rightWidth}
             onWidth={setRightWidth}
-            tabs={right.tabs ? rightTabs : undefined}
             onAsk={askHere}
             onRetry={(threadId, item) => client && void retryAsk(client, sessionId, threadId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
             onQuote={(answer) => useDrafts.getState().requestQuote(sessionId, answer)}
@@ -2362,7 +2282,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             pane={frontPane}
             width={rightWidth}
             onWidth={setRightWidth}
-            tabs={right.tabs ? rightTabs : undefined}
             onClose={() => closeModPane(frontPane.id)}
             focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
           />
@@ -2379,7 +2298,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onStop={stopTask}
             width={rightWidth}
             onWidth={setRightWidth}
-            tabs={right.tabs ? rightTabs : undefined}
             onClose={() => closeAgents(sessionId)}
           />
         )}
@@ -2393,13 +2311,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onStop={stopTask}
             width={rightWidth}
             onWidth={setRightWidth}
-            tabs={right.tabs ? rightTabs : undefined}
             onClose={() => closeCommands(sessionId)}
           />
         )}
         {!whyRequest && right.tab === 'preview' && previewTarget && !terminalMaximized && (
           <PreviewOpenerContext.Provider value={openPreviewHere}>
-            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={rightWidth} onWidth={setRightWidth} tabs={right.tabs ? rightTabs : undefined} />
+            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={rightWidth} onWidth={setRightWidth} />
           </PreviewOpenerContext.Provider>
         )}
         {/* Its page lives outside this view (webPreviewPages.ts), so it keeps running while another tab is in front. */}
@@ -2410,10 +2327,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             offers={serverOffers}
             width={rightWidth}
             onWidth={setRightWidth}
-            tabs={right.tabs ? rightTabs : undefined}
           />
         )}
       </div>
+    </div>
+    <ToolRail items={railItems} onHide={right.open.length > 0 || whyRequest ? hidePanels : null} />
     </div>
   );
 }

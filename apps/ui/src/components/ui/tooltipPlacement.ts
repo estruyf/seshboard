@@ -27,6 +27,14 @@ export function placeTooltip(target: Rect, tip: Size, viewport: Size, prefer: 'b
   return { left: Math.round(left), top: Math.round(top) };
 }
 
+/** Where a tooltip goes on its target's left (the session's rail of tools): centred on it vertically, kept inside the window. */
+export function placeTooltipLeft(target: Rect & { height: number }, tip: Size, viewport: Size): { left: number; top: number } {
+  const left = Math.max(MARGIN, target.left - GAP - tip.width);
+  const centred = target.top + target.height / 2 - tip.height / 2;
+  const top = Math.max(MARGIN, Math.min(centred, viewport.height - tip.height - MARGIN));
+  return { left: Math.round(left), top: Math.round(top) };
+}
+
 /**
  * Where a tooltip goes beside its target (the minimal sidebar's rows): to the right, centred on it
  * vertically, kept inside the window.

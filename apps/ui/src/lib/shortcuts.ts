@@ -39,9 +39,11 @@ export function shortcutFromEvent(event: {
       ? event.code.slice(3).toLowerCase()
       : event.altKey && event.code?.startsWith("Digit")
         ? event.code.slice(5)
-        : event.code === "Space"
-          ? " "
-          : event.key.toLowerCase();
+        : event.altKey && (event.code === "BracketLeft" || event.code === "BracketRight")
+          ? (event.code === "BracketLeft" ? "[" : "]")
+          : event.code === "Space"
+            ? " "
+            : event.key.toLowerCase();
   const key = NAMED_KEYS[raw] ?? raw;
   return [
     event.metaKey && "cmd",
@@ -694,6 +696,13 @@ export const SHORTCUTS = [
     section: "sessions",
     context: "On a section header in the sidebar",
     where: "sidebar",
+  },
+  {
+    id: "sidebar.fold-projects",
+    keys: ["mod+alt+["],
+    action: "Collapse or expand all projects",
+    section: "sessions",
+    context: "While the sidebar groups sessions by project",
   },
   {
     id: "queue.start",
