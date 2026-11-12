@@ -269,6 +269,9 @@ function setup(
     planApproved?: HostManagerDeps['planApproved'];
     autoAnswer?: HostManagerDeps['autoAnswer'];
     assertTrusted?: HostManagerDeps['assertTrusted'];
+    browserTool?: HostManagerDeps['browserTool'];
+    browserAccess?: HostManagerDeps['browserAccess'];
+    allowBrowserSite?: HostManagerDeps['allowBrowserSite'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -298,6 +301,8 @@ function setup(
       return q as never;
     },
     USAGE_LIMIT_ERROR_PREFIXES: ["You've hit your", "You've reached your"],
+    // A stand-in for the SDK's in-process server: what it was made with, to look at.
+    createSdkMcpServer: (options) => ({ type: 'sdk', name: options.name, instance: { options } as never }),
     startup: async ({ options }) => {
       const warmup = { options, closed: false };
       warmups.push(warmup);
@@ -340,6 +345,9 @@ function setup(
     planApproved: opts.planApproved,
     autoAnswer: opts.autoAnswer,
     assertTrusted: opts.assertTrusted,
+    browserTool: opts.browserTool,
+    browserAccess: opts.browserAccess,
+    allowBrowserSite: opts.allowBrowserSite,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -580,6 +588,45 @@ describe('HostManager', () => {
     expect(t.manager.list().permissions).toHaveLength(1);
     t.manager.respond(t.permissions[2]!.requestId, { behavior: 'allow' });
     await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-Write=recheck Bash=recheck AskUserQuestion=allow')));
+    t.manager.closeAll();
+  });
+
+  it('runs a browser tool on an allowed site without asking, and names any other site in the prompt', async () => {
+    const allowed: Array<{ sessionId: string; site: string }> = [];
+    const t = setup({
+      browserAccess: async (_sessionId, tool) => (tool === 'snapshot' ? { allow: true } : { allow: false, site: 'https://contoso.sharepoint.com' }),
+      allowBrowserSite: (sessionId, site) => allowed.push({ sessionId, site }),
+    });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'serial:mcp__browser__snapshot,mcp__browser__click' });
+    // The snapshot ran; the click on another site waits for you, with the site in its words.
+    await until(() => t.permissions.length === 1);
+    expect(t.permissions[0]).toMatchObject({
+      toolName: 'mcp__browser__click',
+      title: 'Claude wants to use contoso.sharepoint.com in the browser',
+      alwaysLabel: 'contoso.sharepoint.com in this project',
+    });
+    // Always allow: the project allows the site from now on, and Claude Code gets no permission rule of its own.
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', always: true });
+    await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-mcp__browser__snapshot=allow mcp__browser__click=allow')));
+    expect(allowed).toEqual([{ sessionId: id, site: 'https://contoso.sharepoint.com' }]);
+    t.manager.closeAll();
+  });
+
+  it('gives sessions the browser tools only while Claude in the browser is on', async () => {
+    const calls: Array<{ sessionId: string; tool: string }> = [];
+    const t = setup({ browserTool: async (request) => (calls.push({ sessionId: request.sessionId, tool: request.tool }), { text: 'ok' }) });
+    await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.mcpServers).toBeUndefined();
+    t.manager.setAgentBrowser(true);
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    const server = t.queries[1]!.options.mcpServers?.browser as unknown as { name: string; instance: { options: { tools: Array<{ name: string; handler(args: unknown): Promise<unknown> }> } } };
+    expect(server.name).toBe('browser');
+    expect(server.instance.options.tools.map((tool) => tool.name)).toEqual(['open', 'snapshot', 'click', 'type', 'press', 'screenshot', 'console']);
+    // Not allowed up front: every call goes through the site check.
+    expect(t.queries[1]!.options.allowedTools ?? []).not.toContain('mcp__browser__click');
+    // A call drives this session's page.
+    await expect(server.instance.options.tools[1]!.handler({})).resolves.toEqual({ content: [{ type: 'text', text: 'ok' }] });
+    expect(calls).toEqual([{ sessionId: id, tool: 'snapshot' }]);
     t.manager.closeAll();
   });
 

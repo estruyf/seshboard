@@ -1,6 +1,6 @@
 import { randomUUID, type UUID } from 'node:crypto';
-import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { cacheTtlOf, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
+import type { CanUseTool, HookCallback, McpServerConfig, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { BROWSER_SERVER, cacheTtlOf, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -102,6 +102,8 @@ export interface HostConfig {
   chrome?: boolean;
   /** Visuals in replies (Settings › General): Seshboard's `visualize` MCP server, with its two tools allowed. */
   visualize?: McpStdioServer | null;
+  /** Claude in the browser: Seshboard's in-process `browser` server. Its calls go through the permission check. */
+  browser?: McpServerConfig | null;
   /** Only tools that read (`isReadOnlyTool`), through a PreToolUse hook: a read-only pipeline step (#179). */
   readOnly?: boolean;
   /** Let the agent mark its key sentences (Settings › Conversation): `SKIM_MARKS_PROMPT` goes after Claude Code's prompt. */
@@ -212,6 +214,9 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     options.mcpServers = { visualize: { type: 'stdio', ...config.visualize } };
     options.allowedTools = VISUALIZE_TOOLS;
   }
+  // Not in `allowedTools`: each call goes through canUseTool, which lets pages on this computer and the project's sites
+  // through and asks for any other site. A read-only step gets none.
+  if (config.browser && !config.readOnly) options.mcpServers = { ...options.mcpServers, [BROWSER_SERVER]: config.browser };
   return options;
 }
 

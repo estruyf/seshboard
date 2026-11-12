@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createEngine, demoCodex, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
-import { RemoteAppUpdate } from '@seshboard/protocol';
+import { RemoteAppUpdate, type BrowserToolRequest, type BrowserToolResult } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -31,6 +31,16 @@ const trash = (paths: string[], scope: TrashScope) =>
 
 const appVersion = argValue('--app-version') ?? '0.0.0';
 
+/** Claude's browser tools: the pages live in the app's windows, so main drives them (main/browserAgent.ts). */
+let nextBrowserId = 1;
+const pendingBrowser = new Map<number, (result: BrowserToolResult) => void>();
+const browser = (request: BrowserToolRequest) =>
+  new Promise<BrowserToolResult>((resolve) => {
+    const id = nextBrowserId++;
+    pendingBrowser.set(id, resolve);
+    process.parentPort.postMessage({ type: 'browser-tool', id, request });
+  });
+
 /** Remote's keys, from main, which keeps them in the system's keychain (see main/remoteIdentity.ts). */
 let nextIdentityId = 1;
 const pendingIdentity = new Map<number, (secret: Uint8Array | null) => void>();
@@ -56,6 +66,7 @@ function demoUsage(): DemoUsage | undefined {
 const engine = createEngine({
   dataDir,
   trash,
+  browser,
   // The VS Code companion connects over a socket; SESHBOARD_NO_COMPANION=1 leaves it closed.
   ...(process.env.SESHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion } }),
   // Remote, for a paired phone. SESHBOARD_REMOTE_APP_URL points it at a development build of the remote app
@@ -211,6 +222,17 @@ process.parentPort.on('message', (event) => {
   // Settings › Conversation › Let the agent mark its key sentences.
   if (data?.type === 'skimMarks') {
     engine.setSkimMarks((data as { enabled?: unknown }).enabled !== false);
+    return;
+  }
+  // Settings › General › Let Claude use the browser (with the browser on).
+  if (data?.type === 'agentBrowser') {
+    engine.setAgentBrowser((data as { enabled?: unknown }).enabled === true);
+    return;
+  }
+  if (data?.type === 'browser-tool-result' && typeof data.id === 'number') {
+    const result = (data as { result?: BrowserToolResult }).result;
+    pendingBrowser.get(data.id)?.(result && typeof result.text === 'string' ? result : { text: 'The browser did not answer.', error: true });
+    pendingBrowser.delete(data.id);
     return;
   }
   // Settings › General › Use Claude in Chrome.

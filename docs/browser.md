@@ -58,3 +58,19 @@ VS Code's approach is the guide for a move: a page manager in main, a placeholde
 - Smoke steps query main for views instead of `[data-web-preview-page]` elements.
 
 Start with a spike behind a setting, in the Browser view only, and check three things: typing after ⌘K reaches the palette without key routing, the palette and menus look right over a page with the screenshot swap, and the page keeps up while the sidebar folds.
+
+## Claude in the browser
+
+A session's agent can drive its own Browser panel to check its work: open the dev server, read the page, type and click as a person would. Settings › General › Browser › **Let Claude use the browser** turns it on (with the browser on); sessions started or resumed after a change get it.
+
+**The tools.** Each Claude Code process gets Seshboard's in-process `browser` MCP server (`packages/engine/src/browser/browserTools.ts`, made with the SDK's `createSdkMcpServer`): `open`, `snapshot`, `click`, `type`, `press`, `screenshot` and `console`, named `mcp__browser__<tool>`. A pre-warmed process gets them too and learns its session when one takes it over. A read-only pipeline step gets none.
+
+**The path of a call.** The engine has no Electron, so a call goes engine → main (`browser-tool` on the parent port, `apps/desktop/src/engine/index.ts`) → `main/browserAgent.ts`. Main asks the window that shows the session (its pop-out, else the main window) which page to use (`BrowserAgentTargetRequest`, answered by `browserAgentTarget.ts` in the renderer). The agent works in a tab of its own in the session's panel, so your tabs keep their pages; `open` makes it (or loads the address in it) and shows the panel. Main checks the page is one of that window's browser pages, then:
+
+- `snapshot` runs `SNAPSHOT_SCRIPT` in the page: headings, text, and each element you can act on with its role, name, state and a ref (`e12`). Refs live in a map on the page (`__seshboardRefs`), so the DOM never changes. Open shadow roots are read; frames are named, not read.
+- `click` scrolls the element into view and sends a real mouse click at its middle (`sendInputEvent`, scaled by the page's zoom). `type` focuses the field, selects what it holds and inserts the text; `press` sends a key.
+- `screenshot` is `capturePage`, at most 1280px wide, as JPEG. `console` lists the page's last 100 messages, errors first, collected from the moment the page exists.
+
+Every result says where the page is after the call, and text from a page is marked as data, not instructions.
+
+**Which sites.** Every call goes through the engine's permission check (the tools are not in `allowedTools`). A page on this computer (`localhost`, `*.localhost`, loopback) and a site the project allows (`ProjectDefaults.browserSites`, origins) run without asking; any other site shows the permission card, naming the site and saying Claude acts there with your login. **Always allow** adds the site to the project (the project's settings list them, under Browser sites). Sites match by origin (`siteAllowed` in `packages/protocol/src/browserSites.ts`), so allowing `contoso.sharepoint.com` never allows `contoso-admin.sharepoint.com`. A session outside an added project can only allow once.

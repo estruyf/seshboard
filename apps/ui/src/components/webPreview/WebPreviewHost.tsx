@@ -9,6 +9,7 @@ import { localPreviewUrl } from '@seshboard/protocol/client';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { BROWSER_OWNER, LIVE_PAGES, livePages } from './browserTabs.ts';
 import { shrinkIcon } from './shrinkIcon.ts';
+import { listenForBrowserAgent } from './browserAgentTarget.ts';
 import { keepPages, placePages, previewPage, tabOfContents } from './webPreviewPages.ts';
 
 /** A browser change that can move or cover a page: a panel shown, hidden or resized, another tab in front, a tab opened or closed, a new tab getting its first address, phone width. */
@@ -111,6 +112,9 @@ export function WebPreviewHost() {
       off?.();
     };
   }, []);
+
+  // Claude's browser tools ask this window for a session's page (main/browserAgent.ts).
+  useEffect(() => listenForBrowserAgent(), []);
 
   // A page's new window becomes a tab of the same owner; a refused download says so, with the browser instead.
   useEffect(

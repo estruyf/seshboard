@@ -107,6 +107,8 @@ export const ProjectDefaults = z.object({
    * start from it, pull requests go into it and changes compare against it. Null follows the remote.
    */
   defaultBranch: z.string().min(1).max(250).nullable().default(null),
+  /** Sites Claude's browser tools may use without asking in this project, as origins (docs/browser.md); this computer always may. */
+  browserSites: z.array(z.string().min(1).max(500)).max(50).optional(),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
 
@@ -114,7 +116,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, browserSites: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({

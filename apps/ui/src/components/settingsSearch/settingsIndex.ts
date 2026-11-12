@@ -7,7 +7,7 @@ import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
-import { BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
+import { AGENT_BROWSER_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -86,6 +86,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: BROWSER_DETAIL,
       keywords: 'web page tabs pin github pull request url internet',
       target: '[data-browser-setting]',
+    },
+    {
+      id: 'agent-browser',
+      page: 'general',
+      label: 'Let Claude use the browser',
+      detail: AGENT_BROWSER_DETAIL,
+      keywords: 'agent claude browser tools click test check page sites sharepoint dev server',
+      target: '[data-agent-browser-setting]',
     },
     { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
 

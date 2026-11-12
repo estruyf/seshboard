@@ -20,6 +20,11 @@ import {
   REMOTE_LOG_FILE,
   contract,
   isSameOrInside,
+  siteAllowed,
+  siteOf,
+  withSite,
+  type BrowserToolRequest,
+  type BrowserToolResult,
   RpcError,
   serveRpc,
   type Contract,
@@ -227,6 +232,11 @@ export interface EngineOptions {
    * while it does.
    */
   onKeepAwake?: (on: boolean) => void;
+  /**
+   * Claude in the browser (docs/browser.md): drives a session's page in its Browser panel. Pages live in the desktop
+   * app's windows, so main answers each call. Without it sessions don't get the browser tools.
+   */
+  browser?: (request: BrowserToolRequest) => Promise<BrowserToolResult>;
   /** Where the built-in profile's sessions are read from. Defaults to the Claude Agent SDK (tests pass a fake). */
   sessionSource?: SessionSource;
   /** A fake Copilot SDK and `copilot` (tests, and the demo's `demoCopilot`). Defaults to the SDK and the user's own `copilot`. */
@@ -424,6 +434,8 @@ export interface Engine {
   setSkimMarks(enabled: boolean): void;
   /** Visuals in replies: the `visualize` server new and resumed sessions get, or null when it is off. */
   setVisuals(server: McpStdioServer | null): void;
+  /** Settings › General › Let Claude use the browser: sessions started or resumed from now on get the browser tools. */
+  setAgentBrowser(enabled: boolean): void;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
   /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
@@ -1127,6 +1139,21 @@ export function createEngine(options: EngineOptions): Engine {
       await Promise.all([links.warmText(text), githubContext.warm(text)]);
     },
   };
+  /**
+   * The added project a session belongs to, for its browser sites: its own, or the one its folder is in (a session that
+   * isn't indexed yet, a worktree inside the repository). Null outside an added project.
+   */
+  const addedProjectOf = (sessionId: string): string | null => {
+    const summary = sessions.get(sessionId);
+    const added = listProjects().filter((p) => p.added);
+    if (summary?.projectRoot && added.some((p) => p.root === summary.projectRoot)) return summary.projectRoot;
+    const cwd = summary?.cwd ?? liveList().find((l) => l.sessionId === sessionId)?.cwd ?? null;
+    return cwd ? (added.find((p) => isSameOrInside(cwd, p.root))?.root ?? null) : null;
+  };
+  const browserSitesOf = (sessionId: string): readonly string[] => {
+    const root = addedProjectOf(sessionId);
+    return root ? (projects.defaultsOf(root).browserSites ?? []) : [];
+  };
   const hosts = new RoutedHostManager({
     limits,
     signIns,
@@ -1180,6 +1207,20 @@ export function createEngine(options: EngineOptions): Engine {
     readOnly: (id) => runner?.isReadOnly(id) ?? false,
     planApproved: (id, plan) => runner?.planApproved(id, plan) ?? null,
     autoAnswer: (request) => runner?.autoAnswer(request) ?? null,
+    browserTool: options.browser,
+    // A browser tool works on the address it opens, or the session's page: on this computer or a site the project
+    // allows, it runs; anywhere else the prompt names the site. With no page yet, the call itself says so.
+    browserAccess: async (sessionId, tool, input) => {
+      const url = tool === 'open' ? String(input.url ?? '') : ((await options.browser?.({ sessionId, tool: 'where', args: {} }))?.url ?? null);
+      const site = url ? siteOf(url) : null;
+      return !site || siteAllowed(url!, browserSitesOf(sessionId)) ? { allow: true } : { allow: false, site };
+    },
+    allowBrowserSite: (sessionId, site) => {
+      const root = addedProjectOf(sessionId);
+      if (!root) return log('info', `Allowed ${site} once: the session is not in an added project`);
+      const defaults = projects.defaultsOf(root);
+      projects.setDefaults(root, { ...defaults, browserSites: withSite(defaults.browserSites ?? [], site) });
+    },
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -4649,6 +4690,7 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.setSkimMarks(enabled);
     },
     setVisuals: (server) => hosts.setVisuals(server),
+    setAgentBrowser: (enabled) => hosts.setAgentBrowser(enabled),
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setAppUpdate: (update) => remote?.setAppUpdate(update),

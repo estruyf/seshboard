@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState } from '@seshboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -31,6 +31,8 @@ import { ReloadLimiter } from './reloadLimiter.ts';
 import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
 import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
+import { installBrowserAgent } from './browserAgent.ts';
+import { runBrowserAgentStep } from './browserAgentSmoke.ts';
 import { runToolRailBadgesStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
 import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
@@ -330,6 +332,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'skimMarks', enabled: prefs.skimMarks });
   // Settings › General › Visuals in replies: sessions started or resumed from now on get the visualize server.
   engine?.sendStanding({ type: 'visuals', server: prefs.agentVisuals ? visualizeServer() : null });
+  // Settings › General › Browser › Let Claude use the browser: sessions started or resumed from now on get its tools.
+  engine?.sendStanding({ type: 'agentBrowser', enabled: prefs.browserEnabled && prefs.agentBrowser });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
@@ -434,6 +438,14 @@ let notifier: Notifier;
 let mainWindow: BrowserWindow | null = null;
 /** Pop-out windows by the session each one shows. */
 const popouts = new Map<string, BrowserWindow>();
+/** Claude's browser tools: a session's calls drive its page, in the window that shows it (its pop-out, else the main window). */
+const browserAgent = installBrowserAgent({
+  windowFor: (sessionId) => {
+    const popout = popouts.get(sessionId);
+    return popout && !popout.isDestroyed() ? popout : mainWindow;
+  },
+  enabled: () => preferences.get().browserEnabled && preferences.get().agentBrowser,
+});
 /**
  * How each pop-out's session has its panels laid out, by session (a `SessionView`, which main never looks inside): what
  * the main window had when the session popped out, then what the pop-out last reported. It goes back to the main window
@@ -569,6 +581,11 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
+  // Claude's browser tools: a call the engine got from a session, run on its page (always answered).
+  const browserCall = message as { type?: unknown; id?: unknown; request?: BrowserToolRequest } | null;
+  if (browserCall?.type === 'browser-tool' && typeof browserCall.id === 'number' && browserCall.request) {
+    return { type: 'browser-tool-result', id: browserCall.id, result: await browserAgent.run(browserCall.request) };
+  }
   const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; codexHome?: unknown; on?: unknown } | null;
   // Keep awake until done: a session with the flag on works, or the last one finished.
   if (request?.type === 'keep-awake') {
@@ -14128,6 +14145,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
   await step('browser intro: the sidebar card opens the browser, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
   await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
+  await step('claude in the browser: open, snapshot, type, click, screenshot and console on a local page, in the session’s own tab', () =>
+    runBrowserAgentStep(win, { run: (request) => browserAgent.run(request), setPrefs: updatePreferences, prefs: () => preferences.get(), shot: bothSchemes }),
+  );
   await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser favorites: star a page, kept after a reload, opened from the sidebar and an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
