@@ -25,13 +25,9 @@ import {
   type ModPromptAnswer,
   type ModPromptAsk,
   type ModsSnapshot,
-  browserToolOf,
   siteLabel,
   type BrowserTool,
-  type BrowserToolRequest,
-  type BrowserToolResult,
 } from '@seshboard/protocol';
-import { browserServer, type CreateSdkMcpServer } from '../browser/browserTools.ts';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
@@ -48,8 +44,6 @@ import type { McpStdioServer } from '../providers/provider.ts';
 export interface SdkRuntime {
   query(args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }): Query;
   startup(args: { options: Options }): Promise<WarmQuery>;
-  /** The SDK's in-process MCP server, for Claude's browser tools; without it sessions don't get them. */
-  createSdkMcpServer?: CreateSdkMcpServer;
   /** The messages that mean a usage limit was reached (alpha in the SDK, so it may be missing: see `limitPrefixes`). */
   USAGE_LIMIT_ERROR_PREFIXES?: readonly string[];
 }
@@ -151,13 +145,11 @@ export interface HostManagerDeps {
    * without you); null shows it as usual.
    */
   autoAnswer?: (request: PermissionRequest) => PermissionDecision | null;
-  /** Claude's browser tools (docs/browser.md): main drives the session's page. Without it sessions don't get them. */
-  browserTool?: (request: BrowserToolRequest) => Promise<BrowserToolResult>;
   /**
-   * Whether a browser tool may run without asking: on a page of this computer, or a site the session's project allows.
-   * Otherwise the site it would work on, which the permission prompt names.
+   * The browser tools (docs/browser.md): Seshboard's `browser` MCP server for one process, tied to the session
+   * `sessionId` names when a call comes; null while Settings › General › Browser has them off.
    */
-  browserAccess?: (sessionId: string, tool: BrowserTool, input: Record<string, unknown>) => Promise<{ allow: true } | { allow: false; site: string }>;
+  browserServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
   /** "Always allow" on a browser site's prompt: the session's project allows that site from now on. */
   allowBrowserSite?: (sessionId: string, site: string) => void;
 }
@@ -269,8 +261,6 @@ export class HostManager {
   private chrome = false;
   /** Visuals in replies (Settings › General): the `visualize` server sessions, and the pre-warmed process, start with. */
   private visualize: McpStdioServer | null = null;
-  /** Claude in the browser (Settings › General): sessions, and the pre-warmed process, start with the `browser` tools. */
-  private agentBrowser = false;
   private skimMarks = true;
   private readonly modAsks = new Map<string, (answer: ModPromptAnswer | null) => void>();
 
@@ -964,25 +954,11 @@ export class HostManager {
     this.discardWarm();
   }
 
-  /** Claude in the browser on or off. As with the visualize server, running sessions keep what they started with. */
-  setAgentBrowser(enabled: boolean): void {
-    if (enabled === this.agentBrowser) return;
-    this.agentBrowser = enabled;
+  /** The browser tools on or off (`browserServer`). As with the visualize server, running sessions keep what they started with. */
+  browserChanged(): void {
     this.discardWarm();
   }
 
-  /**
-   * The `browser` tools for one Claude Code process, or null when they are off. `sessionId` says whose page the calls
-   * drive: a fork changes it, and a pre-warmed process learns it only when a session takes it over.
-   */
-  private browserFor(sdk: SdkRuntime, sessionId: () => string | null): ReturnType<CreateSdkMcpServer> | null {
-    const tool = this.deps.browserTool;
-    if (!this.agentBrowser || !tool || !sdk.createSdkMcpServer) return null;
-    return browserServer(sdk.createSdkMcpServer, (name, args) => {
-      const id = sessionId();
-      return id ? tool({ sessionId: id, tool: name, args }) : Promise.resolve({ text: 'No session is using this process yet.', error: true });
-    });
-  }
 
   /**
    * Let the agent mark its key sentences, on or off. Claude Code reads its system prompt at startup, so running
@@ -1074,6 +1050,9 @@ export class HostManager {
     // Until a new session takes it over, the waiting process is no session: keep its registry entry out of the list.
     this.deps.ephemeral?.add(sessionId);
     const route: Warm['route'] = { canUseTool: null, sessionId: null };
+    const browser = (await this.deps.browserServer?.(() => route.sessionId?.() ?? null)) ?? null;
+    // Settings changed while the server started: this process would start with the old ones.
+    if (generation !== this.warmGeneration) return;
     const options = buildOptions(
       {
         sessionId,
@@ -1086,7 +1065,7 @@ export class HostManager {
         worktree: null,
         chrome: this.chrome,
         visualize: this.visualize,
-        browser: this.browserFor(sdk, () => route.sessionId?.() ?? null),
+        browser,
         skimMarks: this.skimMarks,
         env,
         claudePath,
@@ -1187,7 +1166,7 @@ export class HostManager {
         chrome: this.chrome,
         visualize: this.visualize,
         // A pre-warmed process has its tools already; a new one gets them here.
-        browser: warm ? null : this.browserFor(sdk, () => hostRef?.sessionId ?? null),
+        browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
         skimMarks: this.skimMarks,
       },
       {
@@ -1249,16 +1228,22 @@ export class HostManager {
   }
 
   private ask(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2]): Promise<PermissionResult> {
-    // Claude's browser tools: a page on this computer, or a site the project allows, needs no prompt; any other site asks,
-    // naming the site, and "Always allow" adds it to the project.
-    const browser = browserToolOf(toolName);
-    if (browser && this.deps.browserAccess) {
-      return this.deps.browserAccess(sessionId, browser, input).then(
-        (access): Promise<PermissionResult> => (access.allow ? Promise.resolve({ behavior: 'allow', updatedInput: input }) : this.prompt(sessionId, toolName, input, options, access.site)),
-        () => this.prompt(sessionId, toolName, input, options),
-      );
-    }
     return this.prompt(sessionId, toolName, input, options);
+  }
+
+  /**
+   * The browser tools want a site this session's project doesn't allow (the bridge, `BrowserBridge`): asks in the
+   * session's permission card, naming the site. True when you allowed it; "Always allow" also keeps it for the project.
+   */
+  async askBrowserSite(sessionId: string, site: string, tool: BrowserTool, input: Record<string, unknown>): Promise<boolean> {
+    const host = this.hosts.get(sessionId);
+    host?.waitingOnYou(true);
+    try {
+      const result = await this.prompt(sessionId, `mcp__browser__${tool}`, input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], site);
+      return result.behavior === 'allow';
+    } finally {
+      host?.waitingOnYou(false);
+    }
   }
 
   private prompt(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2], browserSite?: string): Promise<PermissionResult> {
@@ -1278,7 +1263,7 @@ export class HostManager {
         toolUseId: str(options.toolUseID),
         input: clipped.value,
         ...(clipped.truncated ? { truncated: true } : {}),
-        title: browserSite ? `Claude wants to use ${siteLabel(browserSite)} in the browser` : str((options as { title?: unknown }).title),
+        title: browserSite ? `Claude Code wants to use ${siteLabel(browserSite)} in the browser` : str((options as { title?: unknown }).title),
         description: browserSite ? 'It clicks and types there as you, with your login on that site.' : str((options as { description?: unknown }).description),
         decisionReason: str(options.decisionReason),
         blockedPath: str(options.blockedPath),

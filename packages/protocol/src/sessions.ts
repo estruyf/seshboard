@@ -107,7 +107,7 @@ export const ProjectDefaults = z.object({
    * start from it, pull requests go into it and changes compare against it. Null follows the remote.
    */
   defaultBranch: z.string().min(1).max(250).nullable().default(null),
-  /** Sites Claude's browser tools may use without asking in this project, as origins (docs/browser.md); this computer always may. */
+  /** Sites the browser tools may use without asking in this project, as origins (docs/browser.md); this computer always may. */
   browserSites: z.array(z.string().min(1).max(500)).max(50).optional(),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaults>;

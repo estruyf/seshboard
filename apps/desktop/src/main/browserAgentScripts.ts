@@ -1,5 +1,5 @@
 /*
- * The scripts Claude's browser tools run in a page (`executeJavaScript`, main/browserAgent.ts), and the pure helpers
+ * The scripts the browser tools run in a page (`executeJavaScript`, main/browserAgent.ts), and the pure helpers
  * around them. A snapshot lists the page's text and the elements you can act on, each with a ref (`e12`) kept in a
  * map on the page, so the page's DOM is never changed; a later call finds the element by its ref again.
  */

@@ -4092,12 +4092,12 @@
       "page": "sessions/sidebar"
     },
     {
-      "id": "feature:agent-browser",
-      "name": "Claude in the browser: the agent opens, reads, types and clicks in its session's Browser panel, takes a picture and reads the console",
+      "id": "feature:browser-control",
+      "name": "Browser control: the session's agent (Claude Code, Copilot, Codex) opens, reads, types and clicks in its Browser panel, takes a picture and reads the console",
       "page": "sessions/web-preview"
     },
     {
-      "id": "feature:agent-browser-sites",
+      "id": "feature:browser-control-sites",
       "name": "Browser sites: pages on this computer need no approval, other sites ask first, Always allow keeps a site for the project (its settings list them)",
       "page": "sessions/web-preview"
     },

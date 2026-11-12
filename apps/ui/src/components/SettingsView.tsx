@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
-import { AGENT_BROWSER_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -562,11 +562,11 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               onChange={(browserEnabled) => update({ browserEnabled, browserIntro: 'done' })}
             />
             <Toggle
-              label="Let Claude use the browser"
-              detail={AGENT_BROWSER_DETAIL}
-              checked={prefs.agentBrowser}
-              attr="data-agent-browser-setting"
-              onChange={(agentBrowser) => update({ agentBrowser })}
+              label="Allow Seshboard to control the browser"
+              detail={BROWSER_CONTROL_DETAIL}
+              checked={prefs.browserControl}
+              attr="data-browser-control-setting"
+              onChange={(browserControl) => update({ browserControl })}
             />
           </Section>
           <Section title="Quitting">

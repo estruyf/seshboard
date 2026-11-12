@@ -53,6 +53,8 @@ export default defineConfig({
           engine: resolve(here, 'src/engine/index.ts'),
           // The visualize MCP server agents start (Seshboard's binary run as Node, over stdio).
           visualize: resolve(here, 'src/visualize/index.ts'),
+          // The browser MCP server agents start: its calls go to the engine over a local socket.
+          'browser-mcp': resolve(here, 'src/browserMcp/index.ts'),
         },
       },
     },

@@ -4,8 +4,8 @@ import { normaliseSite, siteLabel, withSite } from '@seshboard/protocol/client';
 import { Button } from '../ui/Button.tsx';
 
 /**
- * The sites Claude's browser tools may use in a project without asking (docs/browser.md), such as the SharePoint
- * tenant a web part is tested on. Pages on this computer always can. "Always allow" on a site's prompt adds one here.
+ * The sites the browser tools may use in a project without asking (docs/browser.md), such as a staging site or a
+ * hosted app a dev server plugs into. Pages on this computer always can. "Always allow" on a site's prompt adds one here.
  */
 export function BrowserSitesEditor({ sites, onSave }: { sites: readonly string[]; onSave(sites: string[]): Promise<void> }) {
   const [value, setValue] = useState('');
@@ -24,7 +24,7 @@ export function BrowserSitesEditor({ sites, onSave }: { sites: readonly string[]
   };
   const add = async () => {
     const site = normaliseSite(value);
-    if (!site) return setError('Type a web address, such as contoso.sharepoint.com.');
+    if (!site) return setError('Type a web address, such as app.example.com.');
     await save(withSite(sites, site));
     setValue('');
   };
@@ -61,7 +61,7 @@ export function BrowserSitesEditor({ sites, onSave }: { sites: readonly string[]
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="contoso.sharepoint.com"
+          placeholder="app.example.com"
           aria-label="Site to allow"
           spellCheck={false}
           className="h-8 w-72 max-w-full min-w-0 rounded-md border border-border bg-bg px-2.5 font-mono text-ui text-text outline-none focus:border-accent-ink/60"

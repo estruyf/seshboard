@@ -113,7 +113,7 @@ export function WebPreviewHost() {
     };
   }, []);
 
-  // Claude's browser tools ask this window for a session's page (main/browserAgent.ts).
+  // The browser tools ask this window for a session's page (main/browserAgent.ts).
   useEffect(() => listenForBrowserAgent(), []);
 
   // A page's new window becomes a tab of the same owner; a refused download says so, with the browser instead.

@@ -32,7 +32,7 @@ import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visual
 import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
 import { installBrowserAgent } from './browserAgent.ts';
-import { runBrowserAgentStep } from './browserAgentSmoke.ts';
+import { runBrowserAgentStep, runBrowserServerStep } from './browserAgentSmoke.ts';
 import { runToolRailBadgesStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
 import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
@@ -309,6 +309,8 @@ function updatePreferences(patch: unknown): void {
  * it needs no Node on the computer, on its bundle next to this one (inside the app's archive when packaged).
  */
 const visualizeServer = () => ({ command: process.execPath, args: [join(here, 'visualize.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
+/** Seshboard's `browser` MCP server (`src/browserMcp/`), started the same way; the engine adds its socket and a session's token. */
+const browserMcpServer = () => ({ command: process.execPath, args: [join(here, 'browser-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
 
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived, doneOnMerge: prefs.doneOnMerge });
@@ -332,8 +334,9 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'skimMarks', enabled: prefs.skimMarks });
   // Settings › General › Visuals in replies: sessions started or resumed from now on get the visualize server.
   engine?.sendStanding({ type: 'visuals', server: prefs.agentVisuals ? visualizeServer() : null });
-  // Settings › General › Browser › Let Claude use the browser: sessions started or resumed from now on get its tools.
-  engine?.sendStanding({ type: 'agentBrowser', enabled: prefs.browserEnabled && prefs.agentBrowser });
+  // Settings › General › Browser › Allow Seshboard to control the browser: sessions started or resumed from now on get
+  // the browser server, whatever their agent.
+  engine?.sendStanding({ type: 'browserControl', server: prefs.browserEnabled && prefs.browserControl ? browserMcpServer() : null });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
@@ -438,13 +441,13 @@ let notifier: Notifier;
 let mainWindow: BrowserWindow | null = null;
 /** Pop-out windows by the session each one shows. */
 const popouts = new Map<string, BrowserWindow>();
-/** Claude's browser tools: a session's calls drive its page, in the window that shows it (its pop-out, else the main window). */
+/** The browser tools: a session's calls drive its page, in the window that shows it (its pop-out, else the main window). */
 const browserAgent = installBrowserAgent({
   windowFor: (sessionId) => {
     const popout = popouts.get(sessionId);
     return popout && !popout.isDestroyed() ? popout : mainWindow;
   },
-  enabled: () => preferences.get().browserEnabled && preferences.get().agentBrowser,
+  enabled: () => preferences.get().browserEnabled && preferences.get().browserControl,
 });
 /**
  * How each pop-out's session has its panels laid out, by session (a `SessionView`, which main never looks inside): what
@@ -581,7 +584,7 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  // Claude's browser tools: a call the engine got from a session, run on its page (always answered).
+  // The browser tools: a call the engine got from a session, run on its page (always answered).
   const browserCall = message as { type?: unknown; id?: unknown; request?: BrowserToolRequest } | null;
   if (browserCall?.type === 'browser-tool' && typeof browserCall.id === 'number' && browserCall.request) {
     return { type: 'browser-tool-result', id: browserCall.id, result: await browserAgent.run(browserCall.request) };
@@ -14145,7 +14148,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
   await step('browser intro: the sidebar card opens the browser, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
   await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
-  await step('claude in the browser: open, snapshot, type, click, screenshot and console on a local page, in the session’s own tab', () =>
+  await step('browser server: runs as this app, lists its tools, and says when it has no session', () => runBrowserServerStep(browserMcpServer()));
+  await step('browser control: open, snapshot, type, click, screenshot and console on a local page, in the session’s own tab', () =>
     runBrowserAgentStep(win, { run: (request) => browserAgent.run(request), setPrefs: updatePreferences, prefs: () => preferences.get(), shot: bothSchemes }),
   );
   await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });

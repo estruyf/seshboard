@@ -4,13 +4,13 @@ import type { BrowserWindow } from 'electron';
 import type { BrowserToolRequest, BrowserToolResult } from '@seshboard/protocol/bridge';
 import { waitInPage } from './pageDriver.ts';
 
-// The smoke step for Claude's browser tools: main's side of them, called as the engine would, on a small page served
-// on this computer. No Claude Code runs: the tools are driven directly, so the step checks what Claude would get back.
+// The smoke step for the browser tools: main's side of them, called as the engine would, on a small page served on this
+// computer. No agent runs: the tools are driven directly, so the step checks what an agent would get back.
 
 export interface BrowserAgentSmokeDeps {
   run(request: BrowserToolRequest): Promise<BrowserToolResult>;
-  setPrefs(patch: { browserEnabled?: boolean; agentBrowser?: boolean }): void;
-  prefs(): { browserEnabled: boolean; agentBrowser: boolean };
+  setPrefs(patch: { browserEnabled?: boolean; browserControl?: boolean }): void;
+  prefs(): { browserEnabled: boolean; browserControl: boolean };
   shot(name: string): Promise<void>;
 }
 
@@ -32,7 +32,7 @@ async function serve(): Promise<{ server: Server; url: string }> {
 }
 
 /**
- * Claude in the browser: `open` loads a page on this computer in the session's own tab and shows its panel,
+ * Browser control: `open` loads a page on this computer in the session's own tab and shows its panel,
  * `snapshot` lists the heading, field and button with refs, `type` and `click` act on them as a person would (the page
  * answers), `screenshot` returns a picture, `console` lists the page's error, and a gone ref says so.
  */
@@ -41,7 +41,7 @@ export async function runBrowserAgentStep(win: BrowserWindow, deps: BrowserAgent
   const before = deps.prefs();
   const { server, url } = await serve();
   try {
-    deps.setPrefs({ browserEnabled: true, agentBrowser: true });
+    deps.setPrefs({ browserEnabled: true, browserControl: true });
     // A step before may have left the Browser view on screen: back to Home, then the first session.
     if (!(await js("!!document.querySelector('[data-current-session]')"))) {
       await js("document.querySelector('[data-go-home]')?.click()");
@@ -85,5 +85,50 @@ export async function runBrowserAgentStep(win: BrowserWindow, deps: BrowserAgent
   } finally {
     server.close();
     deps.setPrefs(before);
+  }
+}
+
+/**
+ * Browser server: the `browser` MCP server agents start runs as this app (Node mode), lists its seven tools, and answers
+ * a call with a clear error when it has no Seshboard to reach (started outside a session).
+ */
+export async function runBrowserServerStep(server: { command: string; args: string[]; env: Record<string, string> }): Promise<string> {
+  const { spawn } = await import('node:child_process');
+  const child = spawn(server.command, server.args, { env: { ...process.env, ...server.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const answers = new Map<number, Record<string, unknown>>();
+  let buffered = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    buffered += chunk;
+    for (let at = buffered.indexOf('\n'); at >= 0; at = buffered.indexOf('\n')) {
+      const line = buffered.slice(0, at);
+      buffered = buffered.slice(at + 1);
+      try {
+        const message = JSON.parse(line) as { id?: number };
+        if (typeof message.id === 'number') answers.set(message.id, message as Record<string, unknown>);
+      } catch {
+        // Not JSON-RPC: the check below reports the missing answer.
+      }
+    }
+  });
+  let next = 0;
+  const ask = async (method: string, params: object) => {
+    const id = ++next;
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+    const started = performance.now();
+    while (!answers.has(id) && performance.now() - started < 10_000) await new Promise((resolve) => setTimeout(resolve, 20));
+    return answers.get(id)?.result as Record<string, unknown> | undefined;
+  };
+  try {
+    const init = await ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'smoke', version: '1' } });
+    if ((init?.serverInfo as { name?: string } | undefined)?.name !== 'seshboard-browser') return `the server did not start (${JSON.stringify(init ?? null)})`;
+    const tools = ((await ask('tools/list', {}))?.tools as Array<{ name: string }> | undefined)?.map((t) => t.name) ?? [];
+    if (tools.join() !== 'open,snapshot,click,type,press,screenshot,console') return `the server lists ${JSON.stringify(tools)}`;
+    const call = await ask('tools/call', { name: 'snapshot', arguments: {} });
+    const text = (call?.content as Array<{ text: string }> | undefined)?.[0]?.text ?? '';
+    if (call?.isError !== true || !text.includes('not reachable')) return `outside a session, a call answered ${JSON.stringify(call ?? null)}`;
+    return `ok: runs as this app, lists ${tools.length} tools, and says it can't reach Seshboard outside a session`;
+  } finally {
+    child.kill();
   }
 }

@@ -444,7 +444,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   const fallback = profiles.find((p) => p.isDefault);
   // "Always allow" on a site's prompt changes the project's sites in the engine: read them again when this opens.
   useEffect(() => reload(), [reload]);
-  const browserOn = usePreferences((s) => s.prefs.browserEnabled && s.prefs.agentBrowser);
+  const browserOn = usePreferences((s) => s.prefs.browserEnabled && s.prefs.browserControl);
   const save = async (defaults: ProjectDefaults) => {
     if (!client) return;
     try {
@@ -514,7 +514,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         </div>
       </SettingRow>
       {browserOn && (
-        <SettingRow label="Browser sites" hint="Claude's browser tools use these sites here without asking. Pages on this computer always can. Any other site asks first." data-project-browser-sites>
+        <SettingRow label="Browser sites" hint="The agent can use these sites in the browser here without asking. Pages on this computer always can. Any other site asks first." data-project-browser-sites>
           <BrowserSitesEditor
             sites={project.defaults.browserSites ?? []}
             onSave={async (browserSites) => {

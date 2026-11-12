@@ -194,7 +194,7 @@ export type WebPreviewEvent =
   | { kind: 'audio'; contentsId: number; audible: boolean };
 
 /**
- * Claude's browser tools ask a window for the page a session's tools work on (main/browserAgent.ts). `open`: load this
+ * The browser tools ask a window for the page a session's tools work on (main/browserAgent.ts). `open`: load this
  * address in the session's agent tab (made, and its panel shown, when needed). `ensure`: make the page live (show the
  * panel) when it was dropped. Without either, only say which page it is.
  */
@@ -443,11 +443,12 @@ export interface Preferences {
    */
   agentVisuals: boolean;
   /**
-   * Settings › General › Browser: "Let Claude use the browser". On (with the browser on), the sessions Seshboard starts
-   * or resumes get its `browser` tools: open, read, click and type in the session's Browser panel. Pages on this
-   * computer need no approval; other sites ask first, or are allowed per project.
+   * Settings › General › Browser: "Allow Seshboard to control the browser". On (with the browser on), the sessions
+   * Seshboard starts or resumes get its `browser` tools, whatever their agent (Claude Code, Copilot, Codex): open,
+   * read, click and type in the session's Browser panel. Pages on this computer need no approval; other sites ask
+   * first, or are allowed per project.
    */
-  agentBrowser: boolean;
+  browserControl: boolean;
   /**
    * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
    * Seshboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
@@ -623,7 +624,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   newSessionEffort: "",
   chrome: false,
   agentVisuals: false,
-  agentBrowser: true,
+  browserControl: true,
   keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
@@ -815,7 +816,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.newSessionEffort = raw.newSessionEffort;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
   if (typeof raw.agentVisuals === "boolean") out.agentVisuals = raw.agentVisuals;
-  if (typeof raw.agentBrowser === "boolean") out.agentBrowser = raw.agentBrowser;
+  if (typeof raw.browserControl === "boolean") out.browserControl = raw.browserControl;
   if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "beta"] as const, raw.updateChannel))
@@ -1233,7 +1234,7 @@ export interface SeshboardBridge {
   forwardKeys(keys: ForwardedKeys): void;
   /** A browser page opened a window or a download was refused (the browser on). */
   onWebPreviewEvent(listener: (event: WebPreviewEvent) => void): () => void;
-  /** Claude's browser tools: main asks for (and, to open, makes) the page a session's tools work on. */
+  /** The browser tools: main asks for (and, to open, makes) the page a session's tools work on. */
   onBrowserAgentTarget(listener: (request: BrowserAgentTargetRequest) => Promise<BrowserAgentTarget>): () => void;
   /**
    * The browser's address bar has focus (or lost it): main then hands ⌘W (Ctrl+W) to the window as keys, for Close tab,

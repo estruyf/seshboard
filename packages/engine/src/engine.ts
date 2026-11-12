@@ -179,6 +179,7 @@ import { ProviderNotes } from './providers/providerNotes.ts';
 import { ProviderForks } from './providers/providerForks.ts';
 import { BrowserFavorites } from './browser/favorites.ts';
 import { PinnedTabs } from './browser/pinnedTabs.ts';
+import { BrowserBridge } from './browser/browserBridge.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
@@ -233,7 +234,7 @@ export interface EngineOptions {
    */
   onKeepAwake?: (on: boolean) => void;
   /**
-   * Claude in the browser (docs/browser.md): drives a session's page in its Browser panel. Pages live in the desktop
+   * Browser control (docs/browser.md): drives a session's page in its Browser panel. Pages live in the desktop
    * app's windows, so main answers each call. Without it sessions don't get the browser tools.
    */
   browser?: (request: BrowserToolRequest) => Promise<BrowserToolResult>;
@@ -434,8 +435,11 @@ export interface Engine {
   setSkimMarks(enabled: boolean): void;
   /** Visuals in replies: the `visualize` server new and resumed sessions get, or null when it is off. */
   setVisuals(server: McpStdioServer | null): void;
-  /** Settings › General › Let Claude use the browser: sessions started or resumed from now on get the browser tools. */
-  setAgentBrowser(enabled: boolean): void;
+  /**
+   * Settings › General › Browser › Allow Seshboard to control the browser: the `browser` MCP server (Seshboard's binary
+   * and its script, from main) that sessions started or resumed from now on get, whatever their agent; null when off.
+   */
+  setBrowserControl(server: McpStdioServer | null): void;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
   /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
@@ -1154,6 +1158,28 @@ export function createEngine(options: EngineOptions): Engine {
     const root = addedProjectOf(sessionId);
     return root ? (projects.defaultsOf(root).browserSites ?? []) : [];
   };
+  /** "Always allow" on a site's prompt: the session's project keeps the site. A session outside an added project allows it once. */
+  const allowBrowserSite = (sessionId: string, site: string) => {
+    const root = addedProjectOf(sessionId);
+    if (!root) return log('info', `Allowed ${site} once: the session is not in an added project`);
+    const defaults = projects.defaultsOf(root);
+    projects.setDefaults(root, { ...defaults, browserSites: withSite(defaults.browserSites ?? [], site) });
+  };
+  // The browser tools (docs/browser.md): every agent's `browser` server reaches this bridge, which checks the site,
+  // asks you for one the project doesn't allow, and has main drive the page. Off until main sends the server to start.
+  let browserBase: McpStdioServer | null = null;
+  const browserBridge = new BrowserBridge({
+    run: (request) => options.browser?.(request) ?? Promise.resolve({ text: 'The browser is not available here.', error: true }),
+    // A call works on the address it opens, or the session's page: with no page yet, the call itself says so.
+    access: async (sessionId, tool, args) => {
+      const url = tool === 'open' ? String(args.url ?? '') : ((await options.browser?.({ sessionId, tool: 'where', args: {} }))?.url ?? null);
+      const site = url ? siteOf(url) : null;
+      return !site || siteAllowed(url!, browserSitesOf(sessionId)) ? { allow: true } : { allow: false, site };
+    },
+    ask: (sessionId, site, tool, args) => hosts.askBrowserSite(sessionId, site, tool, args),
+    log,
+  });
+  const browserServer = (sessionId: () => string | null) => (browserBase && options.browser ? browserBridge.serverFor(browserBase, sessionId) : Promise.resolve(null));
   const hosts = new RoutedHostManager({
     limits,
     signIns,
@@ -1207,20 +1233,8 @@ export function createEngine(options: EngineOptions): Engine {
     readOnly: (id) => runner?.isReadOnly(id) ?? false,
     planApproved: (id, plan) => runner?.planApproved(id, plan) ?? null,
     autoAnswer: (request) => runner?.autoAnswer(request) ?? null,
-    browserTool: options.browser,
-    // A browser tool works on the address it opens, or the session's page: on this computer or a site the project
-    // allows, it runs; anywhere else the prompt names the site. With no page yet, the call itself says so.
-    browserAccess: async (sessionId, tool, input) => {
-      const url = tool === 'open' ? String(input.url ?? '') : ((await options.browser?.({ sessionId, tool: 'where', args: {} }))?.url ?? null);
-      const site = url ? siteOf(url) : null;
-      return !site || siteAllowed(url!, browserSitesOf(sessionId)) ? { allow: true } : { allow: false, site };
-    },
-    allowBrowserSite: (sessionId, site) => {
-      const root = addedProjectOf(sessionId);
-      if (!root) return log('info', `Allowed ${site} once: the session is not in an added project`);
-      const defaults = projects.defaultsOf(root);
-      projects.setDefaults(root, { ...defaults, browserSites: withSite(defaults.browserSites ?? [], site) });
-    },
+    browserServer,
+    allowBrowserSite,
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -1256,6 +1270,8 @@ export function createEngine(options: EngineOptions): Engine {
   let skimMarksOn = true;
   const providerHosts = new ProviderHosts({
     providers: () => providerProfiles.adapters(),
+    browserServer,
+    allowBrowserSite,
     appendSystem: () => (skimMarksOn ? SKIM_MARKS_PROMPT : null),
     profileOf: providerProfileOf,
     sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
@@ -4690,7 +4706,11 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.setSkimMarks(enabled);
     },
     setVisuals: (server) => hosts.setVisuals(server),
-    setAgentBrowser: (enabled) => hosts.setAgentBrowser(enabled),
+    setBrowserControl: (server) => {
+      if (JSON.stringify(server) === JSON.stringify(browserBase)) return;
+      browserBase = server;
+      hosts.browserChanged();
+    },
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setAppUpdate: (update) => remote?.setAppUpdate(update),
@@ -4728,6 +4748,7 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      browserBridge.close();
       clearInterval(providerLiveTimer);
       // Providers' runtimes (a headless `copilot`) stop with the engine.
       providerProfiles.dispose();

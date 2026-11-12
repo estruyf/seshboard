@@ -269,8 +269,7 @@ function setup(
     planApproved?: HostManagerDeps['planApproved'];
     autoAnswer?: HostManagerDeps['autoAnswer'];
     assertTrusted?: HostManagerDeps['assertTrusted'];
-    browserTool?: HostManagerDeps['browserTool'];
-    browserAccess?: HostManagerDeps['browserAccess'];
+    browserServer?: HostManagerDeps['browserServer'];
     allowBrowserSite?: HostManagerDeps['allowBrowserSite'];
   } = {},
 ) {
@@ -301,8 +300,6 @@ function setup(
       return q as never;
     },
     USAGE_LIMIT_ERROR_PREFIXES: ["You've hit your", "You've reached your"],
-    // A stand-in for the SDK's in-process server: what it was made with, to look at.
-    createSdkMcpServer: (options) => ({ type: 'sdk', name: options.name, instance: { options } as never }),
     startup: async ({ options }) => {
       const warmup = { options, closed: false };
       warmups.push(warmup);
@@ -345,8 +342,7 @@ function setup(
     planApproved: opts.planApproved,
     autoAnswer: opts.autoAnswer,
     assertTrusted: opts.assertTrusted,
-    browserTool: opts.browserTool,
-    browserAccess: opts.browserAccess,
+    browserServer: opts.browserServer,
     allowBrowserSite: opts.allowBrowserSite,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
@@ -591,42 +587,50 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
-  it('runs a browser tool on an allowed site without asking, and names any other site in the prompt', async () => {
+  it('asks for a browser site in the session’s permission card, and keeps it for the project on Always allow', async () => {
     const allowed: Array<{ sessionId: string; site: string }> = [];
-    const t = setup({
-      browserAccess: async (_sessionId, tool) => (tool === 'snapshot' ? { allow: true } : { allow: false, site: 'https://contoso.sharepoint.com' }),
-      allowBrowserSite: (sessionId, site) => allowed.push({ sessionId, site }),
-    });
-    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'serial:mcp__browser__snapshot,mcp__browser__click' });
-    // The snapshot ran; the click on another site waits for you, with the site in its words.
+    const t = setup({ allowBrowserSite: (sessionId, site) => allowed.push({ sessionId, site }) });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const asked = t.manager.askBrowserSite(id, 'https://app.example.com', 'click', { ref: 'e1' });
     await until(() => t.permissions.length === 1);
     expect(t.permissions[0]).toMatchObject({
+      sessionId: id,
       toolName: 'mcp__browser__click',
-      title: 'Claude wants to use contoso.sharepoint.com in the browser',
-      alwaysLabel: 'contoso.sharepoint.com in this project',
+      title: 'Claude Code wants to use app.example.com in the browser',
+      alwaysLabel: 'app.example.com in this project',
     });
-    // Always allow: the project allows the site from now on, and Claude Code gets no permission rule of its own.
     t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', always: true });
-    await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-mcp__browser__snapshot=allow mcp__browser__click=allow')));
-    expect(allowed).toEqual([{ sessionId: id, site: 'https://contoso.sharepoint.com' }]);
+    await expect(asked).resolves.toBe(true);
+    expect(allowed).toEqual([{ sessionId: id, site: 'https://app.example.com' }]);
+    // Declined: the call doesn't run, and the project keeps nothing.
+    const declined = t.manager.askBrowserSite(id, 'https://other.example.com', 'open', { url: 'https://other.example.com/' });
+    await until(() => t.permissions.length === 2);
+    t.manager.respond(t.permissions[1]!.requestId, { behavior: 'deny' });
+    await expect(declined).resolves.toBe(false);
+    expect(allowed).toHaveLength(1);
     t.manager.closeAll();
   });
 
-  it('gives sessions the browser tools only while Claude in the browser is on', async () => {
-    const calls: Array<{ sessionId: string; tool: string }> = [];
-    const t = setup({ browserTool: async (request) => (calls.push({ sessionId: request.sessionId, tool: request.tool }), { text: 'ok' }) });
+  it('gives sessions the browser server while it is on, with its tools allowed: its bridge asks for sites itself', async () => {
+    let on = false;
+    const owners: Array<() => string | null> = [];
+    const t = setup({
+      browserServer: async (sessionId) => {
+        if (!on) return null;
+        owners.push(sessionId);
+        return { command: '/app/Seshboard', args: ['browser-mcp.js'], env: { SESHBOARD_BROWSER_TOKEN: 'secret' } };
+      },
+    });
     await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
     expect(t.queries[0]!.options.mcpServers).toBeUndefined();
-    t.manager.setAgentBrowser(true);
+    on = true;
+    t.manager.browserChanged();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
-    const server = t.queries[1]!.options.mcpServers?.browser as unknown as { name: string; instance: { options: { tools: Array<{ name: string; handler(args: unknown): Promise<unknown> }> } } };
-    expect(server.name).toBe('browser');
-    expect(server.instance.options.tools.map((tool) => tool.name)).toEqual(['open', 'snapshot', 'click', 'type', 'press', 'screenshot', 'console']);
-    // Not allowed up front: every call goes through the site check.
-    expect(t.queries[1]!.options.allowedTools ?? []).not.toContain('mcp__browser__click');
-    // A call drives this session's page.
-    await expect(server.instance.options.tools[1]!.handler({})).resolves.toEqual({ content: [{ type: 'text', text: 'ok' }] });
-    expect(calls).toEqual([{ sessionId: id, tool: 'snapshot' }]);
+    expect(t.queries[1]!.options.mcpServers?.browser).toEqual({ type: 'stdio', command: '/app/Seshboard', args: ['browser-mcp.js'], env: { SESHBOARD_BROWSER_TOKEN: 'secret' } });
+    expect(t.queries[1]!.options.allowedTools).toEqual(expect.arrayContaining(['mcp__browser__open', 'mcp__browser__click', 'mcp__browser__console']));
+    // Its calls drive this session's page.
+    expect(owners.at(-1)!()).toBe(id);
     t.manager.closeAll();
   });
 

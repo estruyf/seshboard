@@ -4,7 +4,7 @@ import { frontTab } from './browserTabs.ts';
 import { previewPage } from './webPreviewPages.ts';
 
 /*
- * Claude's browser tools, this window's side (docs/browser.md): main asks which page a session's tools work on, and to
+ * The browser tools, this window's side (docs/browser.md): main asks which page a session's tools work on, and to
  * open an address there. The agent works in a tab of its own in the session's Browser panel, so your own tabs (a pinned
  * pull request) keep their pages; it uses the tab in front when it has none yet and isn't opening anything.
  */

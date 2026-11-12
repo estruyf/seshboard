@@ -31,7 +31,7 @@ const trash = (paths: string[], scope: TrashScope) =>
 
 const appVersion = argValue('--app-version') ?? '0.0.0';
 
-/** Claude's browser tools: the pages live in the app's windows, so main drives them (main/browserAgent.ts). */
+/** The browser tools: the pages live in the app's windows, so main drives them (main/browserAgent.ts). */
 let nextBrowserId = 1;
 const pendingBrowser = new Map<number, (result: BrowserToolResult) => void>();
 const browser = (request: BrowserToolRequest) =>
@@ -224,9 +224,11 @@ process.parentPort.on('message', (event) => {
     engine.setSkimMarks((data as { enabled?: unknown }).enabled !== false);
     return;
   }
-  // Settings › General › Let Claude use the browser (with the browser on).
-  if (data?.type === 'agentBrowser') {
-    engine.setAgentBrowser((data as { enabled?: unknown }).enabled === true);
+  // Settings › General › Browser › Allow Seshboard to control the browser: the `browser` server to start, or null.
+  if (data?.type === 'browserControl') {
+    const server = (data as { server?: { command?: unknown; args?: unknown; env?: unknown } | null }).server;
+    const valid = server && typeof server.command === 'string' && Array.isArray(server.args) && server.args.every((a) => typeof a === 'string') && server.env && typeof server.env === 'object';
+    engine.setBrowserControl(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
     return;
   }
   if (data?.type === 'browser-tool-result' && typeof data.id === 'number') {

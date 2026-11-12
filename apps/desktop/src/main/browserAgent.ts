@@ -4,7 +4,7 @@ import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { CONSOLE_KEEP, consoleLevel, consoleText, focusScript, keyEvents, locateScript, SNAPSHOT_SCRIPT, snapshotText, type ConsoleEntry } from './browserAgentScripts.ts';
 
 /*
- * Claude in the browser (docs/browser.md): the engine hands each browser tool call to main, which drives the session's
+ * Browser control (docs/browser.md): the engine hands each browser tool call to main, which drives the session's
  * page. The window that shows the session (its pop-out, or the main window) says which page that is and opens it
  * (`BrowserAgentTargetRequest`); main then reads it with a script and clicks and types with input events, as a person
  * would. Which sites a call may touch was decided before it got here, in the engine's permission check.
@@ -13,7 +13,7 @@ import { CONSOLE_KEEP, consoleLevel, consoleText, focusScript, keyEvents, locate
 export interface BrowserAgentDeps {
   /** The window that shows a session: its pop-out, or the main window. */
   windowFor(sessionId: string): BrowserWindow | null;
-  /** Settings › General: the browser on, and Let Claude use the browser. */
+  /** Settings › General: the browser on, and Allow Seshboard to control the browser. */
   enabled(): boolean;
 }
 
