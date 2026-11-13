@@ -1,8 +1,8 @@
-import { ArrowLeft, ArrowRight, ChevronLeft, Code, Copy, Ellipsis, ExternalLink, Globe, LogOut, Pencil, Pin, Plus, RotateCw, Smartphone, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { addressBarUrl, browserNavigation, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
-import { askClearData, askRename, copyAddress, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
+import { askClearData, askRename, copyAddress, findInPage, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
 import { toggleFavorite, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
@@ -216,6 +216,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
       </div>
       {/* From the first tab: each has its ×, and + opens another. */}
       {browser && tabs && tabs.length > 0 && <TabStrip tabs={tabs} activeId={tab?.id ?? null} onNewTab={onNewTab} />}
+      {tab?.url && page.find.open && <FindBar key={tab.id} tabId={tab.id} focus={page.find.focus} matches={page.find.matches} active={page.find.active} />}
       {refused && (
         <Notice inline tone="error" className="shrink-0 px-3 py-1.5 text-meta" data-web-preview-refused={refused}>
           {refused === 'local-only' ? 'Only addresses on this computer open here, such as localhost:3000.' : refused === 'scheme' ? "Seshboard can't open this address" : 'Type an address'}
@@ -390,6 +391,7 @@ function pageMenu(tab: BrowserTab): MenuEntry[] {
     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-page-rename': true } },
     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: blank, onSelect: () => copyAddress(tab) },
     'separator',
+    { label: 'Find in page', icon: <Search size={13} aria-hidden />, disabled: blank, onSelect: () => findInPage(tab), data: { 'data-page-find': true } },
     { label: 'Zoom in', icon: <ZoomIn size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, 1) },
     { label: 'Zoom out', icon: <ZoomOut size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, -1) },
     { label: tab.zoom === 1 ? 'Actual size' : `Actual size (now ${zoomLabel(tab.zoom)})`, disabled: blank || tab.zoom === 1, onSelect: () => zoomPage(tab, 0) },
@@ -401,6 +403,54 @@ function pageMenu(tab: BrowserTab): MenuEntry[] {
     { label: 'Clear data for this site…', icon: <LogOut size={13} aria-hidden />, disabled: blank, onSelect: () => askClearData(tab), data: { 'data-page-clear-site': true } },
     { label: 'Clear all browsing data…', icon: <Trash2 size={13} aria-hidden />, onSelect: () => askClearData(null), data: { 'data-page-clear-all': true } },
   ];
+}
+
+/** Find in page: the word to look for, the count of matches, and steps through them. Escape closes it. */
+function FindBar({ tabId, focus, matches, active }: { tabId: string; focus: number; matches: number; active: number }) {
+  const field = useRef<HTMLInputElement>(null);
+  const [text, setText] = useState('');
+  useEffect(() => {
+    field.current?.focus();
+    field.current?.select();
+  }, [focus]);
+  const step = (direction: 'next' | 'previous') => text && previewPage(tabId)?.find(text, direction);
+  const onKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      previewPage(tabId)?.closeFind();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      step(event.shiftKey ? 'previous' : 'next');
+    }
+  };
+  const none = text !== '' && matches === 0;
+  return (
+    <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1" role="search" data-browser-find="" data-tab-id={tabId}>
+      <input
+        ref={field}
+        type="text"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          previewPage(tabId)?.find(e.target.value);
+        }}
+        onKeyDown={onKey}
+        placeholder="Find in page"
+        spellCheck={false}
+        aria-label="Find in page"
+        aria-invalid={none ? true : undefined}
+        className={`h-7 min-w-0 flex-1 rounded-md border bg-card px-2 text-ui text-text outline-none placeholder:text-faint focus:border-link ${none ? 'border-error' : 'border-edge'}`}
+        data-browser-find-input=""
+      />
+      <span className="min-w-14 text-right text-meta text-muted tabular-nums" aria-live="polite" data-browser-find-count="">
+        {text === '' ? '' : none ? 'No matches' : `${active} of ${matches}`}
+      </span>
+      <Button variant="quiet" size="sm" iconOnly icon={<ChevronUp size={13} aria-hidden />} aria-label="Previous match" data-tooltip="Previous match" disabled={matches === 0} onClick={() => step('previous')} data-browser-find-previous="" />
+      <Button variant="quiet" size="sm" iconOnly icon={<ChevronDown size={13} aria-hidden />} aria-label="Next match" data-tooltip="Next match" disabled={matches === 0} onClick={() => step('next')} data-browser-find-next="" />
+      <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Close find" data-tooltip="Close find" onClick={() => previewPage(tabId)?.closeFind()} data-browser-find-close="" />
+    </div>
+  );
 }
 
 /** A middle press on a tab: no scrolling, the click that follows closes it (`middleClose`). */

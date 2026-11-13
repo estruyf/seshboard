@@ -852,6 +852,11 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "palette:browser-find",
+      "name": "Find in the page",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "palette:browser-back",
       "name": "Back in the page",
       "page": "sessions/web-preview"
@@ -959,6 +964,11 @@
     {
       "id": "feature:browser-page-tools",
       "name": "The browser's page menu: developer tools, zoom, and clearing a site's data or all of it to sign out",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.find",
+      "name": "Browser: find in the page",
       "page": "sessions/web-preview"
     },
     {

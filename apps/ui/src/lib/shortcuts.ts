@@ -1053,6 +1053,15 @@ export const SHORTCUTS = [
     when: (ctx) => inSession(ctx) || ctx.view === "browser",
   },
   {
+    id: "browser.find",
+    keys: ["mod+f"],
+    action: "Find in the page",
+    section: "general",
+    context: "While a page or its address bar has focus, or in the Browser view",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+    where: "tab",
+  },
+  {
     id: "browser.reopen-tab",
     keys: ["mod+shift+t"],
     action: "Reopen the closed tab",

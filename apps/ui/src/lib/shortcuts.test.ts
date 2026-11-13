@@ -227,6 +227,7 @@ describe('the shortcut registry', () => {
       'browser.view': [HOME, SESSION],
       'browser.new-tab': [at({ view: 'browser' }), HOME],
       'browser.address': [SESSION, at({ view: 'usage' })],
+      'browser.find': [at({ view: 'browser' }), HOME],
       'browser.move-tab': [at({ view: 'browser' }), HOME],
       'browser.reopen-tab': [at({ view: 'browser' }), SESSION],
       activity: [SESSION, at({ view: 'browser' })],
@@ -320,6 +321,7 @@ describe('the shortcut registry', () => {
 
 /** Keys that are meant to do different things at the same time and place, and how they're told apart. */
 const INTENDED_OVERLAPS: Record<string, string> = {
+  'cmd+f': 'In a session ⌘F finds in the conversation; while a browser page or its find bar has focus it finds in the page.',
   escape: 'Esc closes or cancels what is nearest: a menu or dialog first, then a waiting card, then the message box stops Claude.',
   'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',

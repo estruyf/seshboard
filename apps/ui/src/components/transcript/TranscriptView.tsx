@@ -688,7 +688,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         toggleWebHere();
       }
       // ⌘F finds in this conversation (the terminal keeps its own keys).
-      if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm')) {
+      if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm, [data-web-preview-page], [data-browser-address], [data-browser-find]')) {
         event.preventDefault();
         setFindQuery((q) => q ?? '');
         setFindFocus((n) => n + 1);

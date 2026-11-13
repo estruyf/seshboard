@@ -160,6 +160,7 @@ const PLANS: Record<string, Plan> = {
   // The session's browser panel in the pop-out: its page commands work there, and a favourite opens in it.
   'browser-open-favorite': 'here',
   'browser-address': 'here',
+  'browser-find': 'here',
   'browser-back': 'here',
   'browser-forward': 'here',
   'browser-stop': 'here',

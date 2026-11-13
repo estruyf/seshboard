@@ -56,6 +56,9 @@ export async function clearBrowsingData(origin: string | null): Promise<void> {
   toast(origin ? `Signed out of ${siteName(origin)}` : 'Browsing data cleared', { icon: 'browser' });
 }
 
+/** Find in page: opens the page's find bar, or puts the focus back in it. */
+export const findInPage = (tab: Pick<BrowserTab, 'id'>): void => previewPage(tab.id)?.openFind();
+
 export const toggleDevTools = (tab: Pick<BrowserTab, 'id'>): void => previewPage(tab.id)?.devTools();
 export function zoomPage(tab: Pick<BrowserTab, 'id'>, step: 1 | -1 | 0): void {
   const page = previewPage(tab.id);
@@ -107,6 +110,7 @@ export type BrowserAction =
   | 'copy-address'
   | 'open-external'
   | 'address'
+  | 'find'
   | 'full'
   | 'side'
   | 'close-panel'
@@ -164,6 +168,8 @@ export function runBrowserAction(action: BrowserAction): void {
         field?.select();
       });
       return;
+    case 'find':
+      return findInPage(tab);
     case 'full':
     case 'side':
       return web.setFull(tab.owner, action === 'full');

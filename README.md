@@ -237,6 +237,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧B | Browser: your tabs outside a session (Outside a session, with the browser on) |
 | ⌘T | New tab (in a session or the Browser view, with the browser on) |
 | ⌘L | Go to the address bar (with a browser on screen) |
+| ⌘F | Find in the page (while a page or its address bar has focus, or in the Browser view) |
 | ⌘⇧T | Reopen the closed tab (in the Browser view, or while a page has focus; Elsewhere it opens Activity) |
 | ⌥↑ or ⌥↓ or ⌥← or ⌥→ | Move the tab up or down, or left or right (on a tab, in the Browser view's list or a session's tab strip; Or drag it. Pinned tabs stay before the others) |
 | ⌘W | Close the tab (while a page or its address bar has focus) |

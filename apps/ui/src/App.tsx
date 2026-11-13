@@ -40,7 +40,8 @@ import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { WebPreviewHost } from './components/webPreview/WebPreviewHost.tsx';
 import { BrowserView } from './components/browser/BrowserView.tsx';
 import { BROWSER_OWNER } from './components/webPreview/browserTabs.ts';
-import { followDeletedSessions, followView, newBrowserTab, openBrowserView } from './state/browserViewStore.ts';
+import { currentPageTab, followDeletedSessions, followView, newBrowserTab, openBrowserView } from './state/browserViewStore.ts';
+import { previewPage } from './components/webPreview/webPreviewPages.ts';
 import { useBrowserTabsSync } from './state/browserTabsSync.ts';
 import { toggleFavorite, useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
 import { browserOn, useWebPreview } from './state/webPreviewStore.ts';
@@ -156,6 +157,15 @@ function browserKey(event: KeyboardEvent): boolean {
     const tab = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId) : undefined;
     if (!tab?.url) return false;
     toggleFavorite(tab);
+    return true;
+  }
+  // ⌘F in a page, its address bar or find bar (or anywhere in the Browser view) finds in the page.
+  if (matches(event, 'browser.find')) {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address], [data-browser-find]')?.dataset.tabId ?? (view === 'browser' ? currentPageTab()?.id : undefined);
+    const page = tabId ? previewPage(tabId) : undefined;
+    if (!page || !useWebPreview.getState().tabs.find((t) => t.id === tabId)?.url) return false;
+    page.openFind();
     return true;
   }
   // ⌘⇧T: in a page or its address bar, that owner's closed tab; in the Browser view, its own. Elsewhere it is Activity's.

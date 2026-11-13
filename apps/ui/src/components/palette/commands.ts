@@ -122,6 +122,7 @@ import {
   LogOut,
   ZoomIn,
   ZoomOut,
+  Search,
 } from 'lucide-react';
 import type { BrowserAction } from '../../state/browserActions.ts';
 import type { ColorScheme, ConversationView, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
@@ -909,6 +910,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'browser-go-to-tab', title: 'Go to tab…', group: 'general', icon: AppWindow, keywords: 'browser switch tabs pages web', when: (ctx) => !!ctx.browser && (ctx.browserTabs ?? 0) > 0, next: () => ({ kind: 'pick', list: 'browser-tabs', chip: 'Go to tab' }) },
   { id: 'browser-open-favorite', title: 'Open favourite…', group: 'general', icon: Star, keywords: 'favorite bookmark site browser web', when: (ctx) => !!ctx.browser && (ctx.favorites ?? 0) > 0, next: () => ({ kind: 'pick', list: 'favorites', chip: 'Open favourite' }) },
   { id: 'browser-address', title: 'Go to address', group: 'general', shortcut: keysFor('browser.address'), icon: Globe, keywords: 'browser url type location open page', when: onPage, run: (api) => api.browserAction('address') },
+  { id: 'browser-find', title: 'Find in the page', group: 'general', shortcut: keysFor('browser.find'), icon: Search, keywords: 'browser search text match page', when: onLoadedPage, run: (api) => api.browserAction('find') },
   { id: 'browser-back', title: 'Back in the page', group: 'general', shortcut: keysFor('browser.back'), icon: ArrowLeft, keywords: 'browser previous history', when: (ctx) => onLoadedPage(ctx) && ctx.browserPage!.back, run: (api) => api.browserAction('back') },
   { id: 'browser-forward', title: 'Forward in the page', group: 'general', shortcut: keysFor('browser.forward'), icon: ArrowRight, keywords: 'browser next history', when: (ctx) => onLoadedPage(ctx) && ctx.browserPage!.forward, run: (api) => api.browserAction('forward') },
   { id: 'browser-stop', title: 'Stop loading the page', group: 'general', icon: StopCircle, keywords: 'browser cancel', when: (ctx) => onPage(ctx) && ctx.browserPage!.loading, run: (api) => api.browserAction('stop') },

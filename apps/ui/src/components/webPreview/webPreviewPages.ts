@@ -29,6 +29,8 @@ interface WebviewElement extends HTMLElement {
   setZoomFactor(factor: number): void;
   isLoadingMainFrame(): boolean;
   setAudioMuted(muted: boolean): void;
+  findInPage(text: string, options?: { forward?: boolean; findNext?: boolean; matchCase?: boolean }): number;
+  stopFindInPage(action: 'clearSelection' | 'keepSelection' | 'activateSelection'): void;
 }
 
 /** A failed load: where, and Chromium's words for why. */
@@ -45,9 +47,11 @@ export interface PageState {
   failure: LoadFailure | null;
   /** The page's process went (`render-process-gone`): it shows nothing until it is reloaded. */
   crashed: boolean;
+  /** Find in page: its bar is open, the matches of what was typed (null before a result), and a count that asks for the field's focus. */
+  find: { open: boolean; matches: number; active: number; focus: number };
 }
 
-const IDLE: PageState = { loading: false, back: false, forward: false, failure: null, crashed: false };
+const IDLE: PageState = { loading: false, back: false, forward: false, failure: null, crashed: false, find: { open: false, matches: 0, active: 0, focus: 0 } };
 
 /** Chromium's code for a load that something else cut short (a new navigation): not a failure. */
 const ERR_ABORTED = -3;
@@ -168,7 +172,14 @@ class PreviewPage {
     on('did-navigate', navigated);
     on('did-navigate-in-page', navigated);
     on('did-start-navigation', (event) => {
-      if (event.isMainFrame && !event.isSameDocument) setState(sessionId, { failure: null });
+      if (event.isMainFrame && !event.isSameDocument) setState(sessionId, { failure: null, ...this.findCleared() });
+    });
+    // Chromium reports the count as it finds; the last report of a search is final.
+    on('found-in-page', (event) => {
+      const result = event.result as { matches: number; activeMatchOrdinal: number } | undefined;
+      if (!result) return;
+      const find = this.findState();
+      setState(sessionId, { find: { ...find, matches: result.matches, active: result.activeMatchOrdinal } });
     });
     on('did-fail-load', (event) => {
       if (!event.isMainFrame || event.errorCode === ERR_ABORTED) return;
@@ -248,6 +259,41 @@ class PreviewPage {
     useWebPreview.getState().setMuted(this.sessionId, muted);
     this.applyTab();
   };
+  private findState() {
+    return usePreviewPages.getState().pages.get(this.sessionId)?.find ?? IDLE.find;
+  }
+
+  /** A navigation drops Chromium's matches; the bar stays open, empty of results. */
+  private findCleared(): Pick<PageState, 'find'> {
+    return { find: { ...this.findState(), matches: 0, active: 0 } };
+  }
+
+  /** Opens the find bar, or gives its field the focus again when it is open. */
+  openFind = () => {
+    const find = this.findState();
+    setState(this.sessionId, { find: { ...find, open: true, focus: find.focus + 1 } });
+  };
+
+  /** Looks for `text` (a new word from the first match; the same word, `step` moves to the next or previous); an empty one clears. */
+  find = (text: string, step: 'new' | 'next' | 'previous' = 'new') => {
+    if (!text) return this.clearFind();
+    this.call((e) => {
+      e.findInPage(text, { forward: step !== 'previous', findNext: step !== 'new' });
+    });
+  };
+
+  private clearFind() {
+    this.call((e) => e.stopFindInPage('clearSelection'));
+    setState(this.sessionId, this.findCleared());
+  }
+
+  /** Closes the find bar and clears the highlights; the page takes the keyboard back. */
+  closeFind = () => {
+    this.clearFind();
+    setState(this.sessionId, { find: { ...this.findState(), open: false } });
+    this.call((e) => e.focus());
+  };
+
   back = () => this.call((e) => e.goBack());
   forward = () => this.call((e) => e.goForward());
 
