@@ -111,7 +111,7 @@ session: 3f2c9a1e-5b7d-4c0e-9a51-2f0d8c6e1b44
 project: switchboard
 folder: /Users/elio/dev/switchboard/.claude/worktrees/usage-cost
 branch: worktree-usage-cost
-pull request: #148 open, base main, https://github.com/estruyf/switchboard/pull/148
+pull request: #148 open, base main, https://github.com/estruyf/seshboard/pull/148
 state: finished, last active 2026-10-18 13:02
 asked: Add a setting to hide the estimated cost on the usage bars
 commits:

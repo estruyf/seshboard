@@ -929,18 +929,18 @@ export interface AppInfo {
 
 /** `releases/tag/v…` for a version, where its release notes are. */
 export const releaseUrl = (version: string) =>
-  `https://github.com/estruyf/switchboard/releases/tag/v${version}`;
+  `https://github.com/estruyf/seshboard/releases/tag/v${version}`;
 export const CHANGELOG_URL =
-  "https://github.com/estruyf/switchboard/blob/main/CHANGELOG.md";
+  "https://github.com/estruyf/seshboard/blob/main/CHANGELOG.md";
 /** Seshboard's repository, which Star on GitHub opens when gh can't star it. */
-export const REPO_URL = "https://github.com/estruyf/switchboard";
+export const REPO_URL = "https://github.com/estruyf/seshboard";
 
 /** Where the VS Code companion is published: the Marketplace for VS Code, Open VSX for Cursor and Windsurf. */
 export const VSCODE_EXTENSION_URLS = {
   marketplace:
     "https://marketplace.visualstudio.com/items?itemName=eliostruyf.switchboard-companion",
   openVsx: "https://open-vsx.org/extension/eliostruyf/switchboard-companion",
-  guide: "https://github.com/estruyf/switchboard#vs-code-companion",
+  guide: "https://github.com/estruyf/seshboard#vs-code-companion",
 } as const;
 
 /**

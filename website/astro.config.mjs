@@ -37,7 +37,7 @@ export default defineConfig({
       description: 'A fast app for Mac, Windows and Linux for running and keeping track of your Claude Code sessions.',
       logo: { src: './src/assets/logo.svg', alt: 'Seshboard' },
       favicon: '/favicon.svg',
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/estruyf/switchboard' }],
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/estruyf/seshboard' }],
       customCss: ['./src/styles/switchboard.css'],
       head: [
         // A preview must not compete with the real site in search results.
@@ -54,7 +54,7 @@ export default defineConfig({
         Hero: './src/components/overrides/Hero.astro',
         Footer: './src/components/overrides/Footer.astro',
       },
-      editLink: { baseUrl: 'https://github.com/estruyf/switchboard/edit/main/website/' },
+      editLink: { baseUrl: 'https://github.com/estruyf/seshboard/edit/main/website/' },
       credits: false,
       sidebar,
       plugins: [starlightLinksValidator({ exclude: ({ link }) => generatedPages.test(link) })],

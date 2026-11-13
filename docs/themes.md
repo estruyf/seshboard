@@ -31,7 +31,7 @@ This one has only a dark version, so in light mode Seshboard uses Demo Time.
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "name": "Solarized",          // required, 1 to 48 characters
   "author": "Ethan Schoonover",  // optional
   "version": 1,                 // required: the theme format, 1
@@ -54,7 +54,7 @@ Here is a short Solarized with both modes, a few colours of its own, its termina
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "name": "Solarized Short",
   "author": "Ethan Schoonover",
   "version": 1,
@@ -83,7 +83,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "name": "Demo Time",
   "author": "Elio Struyf",
   "version": 1,

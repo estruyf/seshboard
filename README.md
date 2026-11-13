@@ -7,7 +7,7 @@
 <p align="center">A fast app for Mac, Windows and Linux to run and keep track of your Claude Code sessions, across all your Claude accounts.</p>
 
 <p align="center">
-  <a href="https://github.com/estruyf/switchboard/releases/latest"><b>Download for Mac, Windows or Linux</b></a> · <a href="https://seshboard.app/">Docs</a> · <code>brew install --cask estruyf/tap/seshboard</code>
+  <a href="https://github.com/estruyf/seshboard/releases/latest"><b>Download for Mac, Windows or Linux</b></a> · <a href="https://seshboard.app/">Docs</a> · <code>brew install --cask estruyf/tap/seshboard</code>
 </p>
 
 <p align="center">
@@ -136,7 +136,7 @@ What works differently on Windows is in [Windows support](docs/windows-support.m
 
 ## Install
 
-Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest), open it and drag Seshboard to Applications.
+Download the `.dmg` from the [latest release](https://github.com/estruyf/seshboard/releases/latest), open it and drag Seshboard to Applications.
 
 On Windows, download `Seshboard-<version>-setup.exe` from the same release and run it. It installs for you only, without admin rights, and updates itself.
 

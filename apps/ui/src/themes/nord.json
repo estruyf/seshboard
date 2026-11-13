@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "$comment": "Nord (github.com/nordtheme/visual-studio-code), dark only. Aurora red, orange and purple are a little lighter here so they read as text on Polar Night. Code colours are Shiki's nord, the same theme.",
   "name": "Nord",
   "author": "Sven Greb (ported by Elio Struyf)",

@@ -75,7 +75,7 @@ This one only has a dark version. A theme can have only a light or only a dark v
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "name": "Solarized",          // required, 1 to 48 characters
   "author": "Ethan Schoonover",  // optional
   "version": 1,                 // required: the theme format, 1
@@ -89,7 +89,7 @@ This one only has a dark version. A theme can have only a light or only a dark v
 - **`colors`** (optional): any of the tokens below, by name. They win over what is generated.
 - **`terminal`**: the terminal's colours. Only read from `dark`, because the terminal panel is always dark. See [Code and terminal colours](/themes/syntax-colours/).
 - **`syntax`** (optional): the colours of code. See [Code and terminal colours](/themes/syntax-colours/).
-- **`$schema`** gives you completion and checks while you type in editors such as VS Code. Exports always include it. The schema is [switchboard-theme.schema.json](https://github.com/estruyf/switchboard/blob/main/docs/switchboard-theme.schema.json).
+- **`$schema`** gives you completion and checks while you type in editors such as VS Code. Exports always include it. The schema is [switchboard-theme.schema.json](https://github.com/estruyf/seshboard/blob/main/docs/switchboard-theme.schema.json).
 - `$comment` holds notes and is ignored. Files may have `//` and `/* */` comments and trailing commas. Unknown keys are ignored, and the import lists them.
 
 ### Colour values
@@ -128,7 +128,7 @@ Every value must be `#rgb`, `#rrggbb` or `#rrggbbaa`, `rgb()` or `rgba()`, `hsl(
 | `terminal-shadow` | the shadow the terminal panel casts |
 | `profile-yellow`, `-blue`, `-green`, `-purple`, `-red`, `-orange`, `-gray` | the colours that tell [Claude profiles](/settings/claude-profiles/) apart |
 
-The full reference, with Demo Time's value for every token, how missing colours are generated and a longer example, is in [Themes](https://github.com/estruyf/switchboard/blob/main/docs/themes.md) on GitHub.
+The full reference, with Demo Time's value for every token, how missing colours are generated and a longer example, is in [Themes](https://github.com/estruyf/seshboard/blob/main/docs/themes.md) on GitHub.
 
 ## Settings
 

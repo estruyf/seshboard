@@ -147,7 +147,7 @@ jobs:
     timeout-minutes: 60
     # The Azure login has no stored secret: GitHub's OpenID Connect token is exchanged for one, and the app
     # registration's federated credential only accepts it from this environment
-    # (repo:estruyf@2900833/switchboard@1405532462:environment:windows-signing).
+    # (repo:estruyf@2900833/seshboard@1405532462:environment:windows-signing).
     environment: windows-signing
     permissions:
       contents: read

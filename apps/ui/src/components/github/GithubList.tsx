@@ -15,7 +15,7 @@ export interface GithubListProps {
   optionId(index: number): string;
   rows: readonly GithubListItem[];
   active: number;
-  /** The project's repository, for the header ("open · estruyf/switchboard"). */
+  /** The project's repository, for the header ("open · estruyf/seshboard"). */
   repo: string | null;
   loading: boolean;
   /** Why the list may be old or empty (a rate limit, offline); shown above the rows. */

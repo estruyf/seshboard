@@ -15,7 +15,7 @@ import { RoundButton } from './ui.tsx';
 /** This build of the remote app (vite.config.ts); empty while developing. */
 const BUILD: string = import.meta.env.VITE_APP_BUILD ?? '';
 /** Where Send feedback goes. */
-const ISSUES = 'https://github.com/estruyf/switchboard/issues';
+const ISSUES = 'https://github.com/estruyf/seshboard/issues';
 
 /**
  * The Settings page: Appearance (Theme, its colours, Text size), Notifications, the paired computers (switch to

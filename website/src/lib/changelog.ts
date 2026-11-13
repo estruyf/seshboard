@@ -8,7 +8,7 @@ export interface Heading {
   text: string;
 }
 
-const REPO = 'https://github.com/estruyf/switchboard/blob/main/';
+const REPO = 'https://github.com/estruyf/seshboard/blob/main/';
 
 /**
  * The repository's CHANGELOG.md as HTML for the Changelog page, rendered at build time so the page always

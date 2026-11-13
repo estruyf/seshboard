@@ -1148,5 +1148,5 @@
   ],
   "title": "Seshboard theme",
   "description": "A colour theme for Seshboard. See docs/themes.md.",
-  "$id": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json"
+  "$id": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json"
 }

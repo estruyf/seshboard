@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "$comment": "Demo Time (github.com/estruyf/vscode-demo-time-theme), the same values as apps/ui/src/styles.css. Every token is set, so exporting it gives a full starting point.",
   "name": "Demo Time",
   "author": "Elio Struyf",

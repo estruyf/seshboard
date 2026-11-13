@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "name": "Solarized",
   "author": "Ethan Schoonover (ported by Elio Struyf)",
   "version": 1,

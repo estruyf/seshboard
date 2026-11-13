@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "$comment": "Matches the Ocean app icon (assets/app-icons/ocean.svg).",
   "name": "Ocean",
   "author": "Elio Struyf",

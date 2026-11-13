@@ -15,7 +15,7 @@ npm run dist
 
 This builds `apps/desktop/dist/mac-arm64/Seshboard.app` and `apps/desktop/dist/Seshboard-<version>-arm64.dmg`. Open the `.dmg` and drag Seshboard to Applications.
 
-It also writes what the in-app updater needs: `Seshboard-<version>-arm64-mac.zip` (Squirrel.Mac installs from the zip, not the `.dmg`), its `.blockmap`, and the update feed `latest-mac.yml`. Inside the app, `Contents/Resources/app-update.yml` tells the updater where to look (the GitHub releases of `estruyf/switchboard`, from the `publish` section of `electron-builder.yml`). electron-builder never uploads anything itself (`--publish never`); the release workflow does.
+It also writes what the in-app updater needs: `Seshboard-<version>-arm64-mac.zip` (Squirrel.Mac installs from the zip, not the `.dmg`), its `.blockmap`, and the update feed `latest-mac.yml`. Inside the app, `Contents/Resources/app-update.yml` tells the updater where to look (the GitHub releases of `estruyf/seshboard`, from the `publish` section of `electron-builder.yml`). electron-builder never uploads anything itself (`--publish never`); the release workflow does.
 
 ### Preview builds
 
@@ -235,7 +235,7 @@ and these secrets, for the app registration that may sign (it needs the *Trusted
 | `AZURE_CLIENT_ID` | The app registration's application (client) ID |
 | `AZURE_SUBSCRIPTION_ID` | The subscription that holds the Trusted Signing account |
 
-There is no client secret. The Windows job runs in the GitHub environment `windows-signing` (created on its first run) and logs in with GitHub's OpenID Connect token, which Azure accepts through a federated credential on the app registration. Add it under Certificates & secrets → Federated credentials as *Other issuer*: issuer `https://token.actions.githubusercontent.com`, subject `repo:estruyf@2900833/switchboard@1405532462:environment:windows-signing`, audience `api://AzureADTokenExchange`. GitHub sends the subject with the owner's and repository's IDs, which is why the *GitHub Actions* template's `repo:estruyf/switchboard:…` doesn't match; an `AADSTS700213` error in the Azure login step prints the subject GitHub sent.
+There is no client secret. The Windows job runs in the GitHub environment `windows-signing` (created on its first run) and logs in with GitHub's OpenID Connect token, which Azure accepts through a federated credential on the app registration. Add it under Certificates & secrets → Federated credentials as *Other issuer*: issuer `https://token.actions.githubusercontent.com`, subject `repo:estruyf@2900833/seshboard@1405532462:environment:windows-signing`, audience `api://AzureADTokenExchange`. GitHub sends the subject with the owner's and repository's IDs, which is why the *GitHub Actions* template's `repo:estruyf/seshboard:…` doesn't match; an `AADSTS700213` error in the Azure login step prints the subject GitHub sent.
 
 **A `.pfx` certificate** takes `WIN_CERTIFICATE_PFX_BASE64`, the `.pfx` base64-encoded (in PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx')) | Set-Clipboard`), and `WIN_CERTIFICATE_PASSWORD`, its password. When both ways are set up, Azure Trusted Signing is used.
 

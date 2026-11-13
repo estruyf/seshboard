@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "$comment": "Catppuccin (catppuccin.com): Latte in light mode, Mocha in dark, with the Mauve accent, mapped as catppuccin/vscode does. Latte's green, pink, peach, yellow and blue are a little darker here so they read as text on its base. Text is a step darker than Latte's (and brighter than Mocha's) so messages and the message box keep enough contrast; muted takes Latte's Text and Mocha's Subtext1. Code colours are Shiki's catppuccin-latte and catppuccin-mocha.",
   "name": "Catppuccin",
   "author": "Catppuccin (ported by Elio Struyf)",
