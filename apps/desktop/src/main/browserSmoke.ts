@@ -62,7 +62,7 @@ const q = (selector: string) => `document.querySelector(${JSON.stringify(selecto
 /**
  * "browser view": Browser in the sidebar's views shows the Browser view with its tabs listed, without the search row and
  * without an address bar until a tab is open; Open tab gives one; the local page loads there, and its title and favicon
- * show in the list. A middle click closes the tab and ⌘⇧T brings it back.
+ * show in the list. Dragging a tab moves it, and so does ⌥↓. A middle click closes the tab and ⌘⇧T brings it back.
  */
 export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -97,6 +97,26 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   if (!(await waitInPage(win, longRow, 10_000))) return "the long page's title is not in the tab list";
   const overflow = `(() => { const list = ${q('[data-browser-tab-list]')}.getBoundingClientRect(); return [...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab], [data-browser-tab-list] [data-browser-tab-menu]')].some((el) => el.getBoundingClientRect().right > list.right + 1); })()`;
   if (await js(overflow)) return 'a long title pushes the tab rows past the edge of the list';
+  // Dragged onto the top half of the short page's row, the long one goes before it; ⌥↓ on it puts it back after.
+  // `listed` finds the first row with the short title, which is the long one once it moved first.
+  const short = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser') && !t.textContent.includes('long'))`;
+  const order = `(() => { const rows = [...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')]; return rows.indexOf(${longRow}) < rows.indexOf(${short}) ? 'long first' : 'short first'; })()`;
+  await js(`(() => {
+    const source = ${longRow}.closest('li');
+    const target = ${short}.closest('li');
+    const r = target.getBoundingClientRect();
+    const data = new DataTransfer();
+    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: data }));
+    return new Promise((done) => requestAnimationFrame(() => {
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data, clientX: r.left + 20, clientY: r.top + 4 }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data, clientX: r.left + 20, clientY: r.top + 4 }));
+      source.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: data }));
+      done();
+    }));
+  })()`);
+  if (!(await waitInPage(win, `${order} === 'long first'`, 3_000))) return 'dragging a tab onto another did not move it before that one';
+  await js(`${longRow}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', altKey: true, bubbles: true, cancelable: true }))`);
+  if (!(await waitInPage(win, `${order} === 'short first'`, 3_000))) return '⌥↓ on a tab did not move it down';
   // Closed again, so the steps after this find the short page's tab alone.
   await js(`${longRow}.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
   if (!(await waitInPage(win, `!${longRow}`, 3_000))) return 'a middle click did not close the long tab';
@@ -108,7 +128,7 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   if (!(await waitInPage(win, `${listed} && ${q('[data-browser-view] [data-browser-address]')}`, 3_000))) return '⌘⇧T did not reopen the closed tab';
   if (await js(`!!${q('[data-activity]')}`)) return '⌘⇧T opened Activity in the Browser view';
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the reopened tab did not load its page';
-  return `ok: ${url} opened in a Browser tab, its title and favicon in the list, closed with a middle click and reopened with ⌘⇧T`;
+  return `ok: ${url} opened in a Browser tab, its title and favicon in the list, moved by a drag and ⌥↓, closed with a middle click and reopened with ⌘⇧T`;
 }
 
 /**

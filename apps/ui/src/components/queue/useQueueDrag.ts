@@ -10,6 +10,10 @@ export interface QueueDragSource {
   move(id: string, to: number): void | Promise<unknown>;
   /** Keeps a drag from another list from dropping here. */
   mime: string;
+  /** A row (`y`, the default) or a strip of tabs (`x`): which half of the item, top or left, puts it before. */
+  axis?: 'x' | 'y';
+  /** Whether the dragged item may land next to this one (a pinned tab only among the pinned ones). */
+  canDrop?(dragged: string, target: string): boolean;
 }
 
 /** Where a dragged item would land: before or after this item. */
@@ -17,12 +21,16 @@ export type DropMark = { id: string; after: boolean } | null;
 
 /**
  * Drag to reorder: the item is dragged by its grip (the whole row is the drag source), and dropping on another item
- * puts it before or after that one, by which half of the row the pointer is over. The keyboard does the same with ⌥↑ ⌥↓.
+ * puts it before or after that one, by which half of the row (or, along `axis: 'x'`, of the tab) the pointer is over. The keyboard does the same with ⌥↑ ⌥↓.
  */
 export function useQueueDrag(source?: QueueDragSource) {
   const mime = source?.mime ?? MIME;
   const [mark, setMark] = useState<DropMark>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  const past = (event: DragEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return source?.axis === 'x' ? event.clientX > rect.left + rect.width / 2 : event.clientY > rect.top + rect.height / 2;
+  };
 
   const props = (id: string) => ({
     draggable: true,
@@ -37,10 +45,11 @@ export function useQueueDrag(source?: QueueDragSource) {
     },
     onDragOver: (event: DragEvent<HTMLElement>) => {
       if (!event.dataTransfer.types.includes(mime)) return;
+      // The dragged id can't be read until the drop: `dragging` knows it for a drag that started in this list.
+      if (dragging && source?.canDrop && !source.canDrop(dragging, id)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
-      const rect = event.currentTarget.getBoundingClientRect();
-      const after = event.clientY > rect.top + rect.height / 2;
+      const after = past(event);
       setMark((current) => (current?.id === id && current.after === after ? current : { id, after }));
     },
     onDragLeave: (event: DragEvent<HTMLElement>) => {
@@ -48,10 +57,9 @@ export function useQueueDrag(source?: QueueDragSource) {
     },
     onDrop: (event: DragEvent<HTMLElement>) => {
       const dragged = event.dataTransfer.getData(mime);
-      if (!dragged) return;
+      if (!dragged || (source?.canDrop && !source.canDrop(dragged, id))) return;
       event.preventDefault();
-      const rect = event.currentTarget.getBoundingClientRect();
-      const to = dropIndex(source ? source.ids() : useLater.getState().items.map((i) => i.id), dragged, id, event.clientY > rect.top + rect.height / 2);
+      const to = dropIndex(source ? source.ids() : useLater.getState().items.map((i) => i.id), dragged, id, past(event));
       setMark(null);
       setDragging(null);
       if (to === null) return;

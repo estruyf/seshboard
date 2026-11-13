@@ -987,6 +987,16 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser-tab-order",
+      "name": "Drag browser tabs to reorder them, in the Browser view's list and a session's tab strip",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.move-tab",
+      "name": "Move the tab up or down, or left or right",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "shortcut:browser.close-tab",
       "name": "Close the tab",
       "page": "sessions/web-preview"

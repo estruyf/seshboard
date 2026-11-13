@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSER_OWNER, cleanTabName, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
+import { BROWSER_OWNER, cleanTabName, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, sameGroup, stepTab, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
 
 let n = 0;
 const open = (state: TabsState, owner: string, url: string | null, focus = true) => openTab(state, owner, url, { id: `t${++n}`, now: ++n, seq: n, focus });
@@ -92,6 +92,22 @@ describe('pin, unpin and move', () => {
     expect(ids(moveTab(pinned, made[1]!, 0), 's1')).toEqual([made[2], made[1], made[0]]);
     // A pinned tab can't go after an unpinned one.
     expect(ids(moveTab(pinned, made[2]!, 5), 's1')).toEqual([made[2], made[0], made[1]]);
+  });
+
+  it('steps a tab one place, staying put at the end of its group', () => {
+    const { state, made } = three();
+    expect(ids(stepTab(state, made[0]!, 1), 's1')).toEqual([made[1], made[0], made[2]]);
+    expect(ids(stepTab(state, made[2]!, -1), 's1')).toEqual([made[0], made[2], made[1]]);
+    expect(ids(stepTab(state, made[2]!, 1), 's1')).toEqual(made);
+    const pinned = pinTab(state, made[2]!);
+    // The first unpinned tab doesn't step in among the pinned ones.
+    expect(ids(stepTab(pinned, made[0]!, -1), 's1')).toEqual([made[2], made[0], made[1]]);
+  });
+
+  it('lets a dragged tab land only among its own kind', () => {
+    expect(sameGroup({ pinned: true }, { pinned: true })).toBe(true);
+    expect(sameGroup({ pinned: false }, { pinned: true })).toBe(false);
+    expect(sameGroup(undefined, { pinned: false })).toBe(false);
   });
 });
 

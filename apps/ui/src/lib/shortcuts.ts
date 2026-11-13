@@ -272,7 +272,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab";
 
 export interface ShortcutDef {
   id: string;
@@ -1060,6 +1060,16 @@ export const SHORTCUTS = [
     context: "In the Browser view, or while a page has focus",
     note: "Elsewhere it opens Activity",
     when: (ctx) => ctx.view === "browser",
+  },
+  {
+    id: "browser.move-tab",
+    keys: ["alt+arrowup", "alt+arrowdown", "alt+arrowleft", "alt+arrowright"],
+    action: "Move the tab up or down, or left or right",
+    section: "general",
+    context: "On a tab, in the Browser view's list or a session's tab strip",
+    note: "Or drag it. Pinned tabs stay before the others",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+    where: "tab",
   },
   {
     id: "browser.close-tab",

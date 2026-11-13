@@ -9,6 +9,7 @@ import {
   dropOwner,
   frontTab,
   moveTab,
+  stepTab,
   NO_TABS,
   openTab,
   ownerTabs,
@@ -80,6 +81,8 @@ interface WebPreviewState extends TabsState {
   pin(id: string): void;
   unpin(id: string): void;
   move(id: string, index: number): void;
+  /** Moves a tab one place earlier (-1) or later (1), inside its group (⌥ and an arrow on the tab). */
+  step(id: string, step: 1 | -1): void;
   /** Asks a tab's page to load `url` (the address bar). */
   navigate(id: string, url: string): void;
   /** The page moved on by itself (a link, back): remembered, not loaded again. */
@@ -208,6 +211,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     pin: (id) => tabs((s) => pinTab(s, id)),
     unpin: (id) => tabs((s) => unpinTab(s, id)),
     move: (id, index) => tabs((s) => moveTab(s, id, index)),
+    step: (id, step) => tabs((s) => stepTab(s, id, step)),
     navigate: (id, url) => tabs((s) => showTab(updateTab(s, id, { url, title: url, favicon: null, seq: ++seq }), id, Date.now())),
     shown: (id, url) => tabs((s) => updateTab(s, id, { url })),
     titled: (id, title) => tabs((s) => updateTab(s, id, { title })),

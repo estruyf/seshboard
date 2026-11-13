@@ -182,6 +182,17 @@ export function moveTab(state: TabsState, id: string, index: number): TabsState 
   return { tabs: renumber(state.tabs, tab.owner, own), active: state.active };
 }
 
+/** Moves a tab one place earlier (-1) or later (1) among its owner's tabs; at the end of its group it stays. */
+export function stepTab(state: TabsState, id: string, step: 1 | -1): TabsState {
+  const tab = state.tabs.find((t) => t.id === id);
+  if (!tab) return state;
+  const index = ownerTabs(state, tab.owner).findIndex((t) => t.id === id);
+  return moveTab(state, id, index + step);
+}
+
+/** A dragged tab lands only among tabs of its own kind: pinned among pinned, the others among the others. */
+export const sameGroup = (a: Pick<BrowserTab, 'pinned'> | undefined, b: Pick<BrowserTab, 'pinned'> | undefined): boolean => !!a && !!b && a.pinned === b.pinned;
+
 /** Changes what a tab shows (its address, title, name, icon, width) without moving it. */
 export function updateTab(state: TabsState, id: string, change: Partial<Pick<BrowserTab, 'url' | 'title' | 'name' | 'favicon' | 'phone' | 'zoom' | 'muted' | 'audible' | 'seq'>>): TabsState {
   let changed = false;

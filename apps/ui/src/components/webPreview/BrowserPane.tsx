@@ -1,16 +1,17 @@
 import { ArrowLeft, ArrowRight, ChevronLeft, Code, Copy, Ellipsis, ExternalLink, Globe, LogOut, Pencil, Pin, Plus, RotateCw, Smartphone, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { addressBarUrl, browserNavigation, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
-import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
+import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { askClearData, askRename, copyAddress, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
 import { toggleFavorite, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
+import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
-import { tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
+import { sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
 import { FavoriteTiles } from './FavoriteTiles.tsx';
 import type { ServerOffer } from './serverOffers.ts';
 import { previewPage, registerSlot, usePageState } from './webPreviewPages.ts';
@@ -279,21 +280,41 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   );
 }
 
-/** The session's tabs under the toolbar: pinned ones first, each with × on hover, then +. A double click renames one. Scrolls sideways, keeping the tab in front in view. */
+/**
+ * The session's tabs under the toolbar: pinned ones first, each with × on hover, then +. A double click renames one.
+ * Drag a tab (or ⌥← ⌥→ on it) to move it, inside its group. Scrolls sideways, keeping the tab in front in view.
+ */
 function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; activeId: string | null; onNewTab?(): void }) {
   const strip = useRef<HTMLDivElement>(null);
   const confirming = useWebPreview((s) => s.confirming);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const drag = useQueueDrag({
+    ids: () => tabsRef.current.map((t) => t.id),
+    move: (id, to) => useWebPreview.getState().move(id, to),
+    mime: 'application/x-seshboard-browser-tab',
+    axis: 'x',
+    canDrop: (dragged, target) => sameGroup(tabsRef.current.find((t) => t.id === dragged), tabsRef.current.find((t) => t.id === target)),
+  });
+  const focusTab = (id: string) => requestAnimationFrame(() => strip.current?.querySelector<HTMLElement>(`[data-browser-tab="${CSS.escape(id)}"]`)?.focus());
   useEffect(() => {
     strip.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeId]);
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    const moving = (event.target as HTMLElement).closest<HTMLElement>('[data-browser-tab]')?.dataset.browserTab;
+    if (moving && matches(event.nativeEvent, 'browser.move-tab')) {
+      event.preventDefault();
+      useWebPreview.getState().step(moving, event.key === 'ArrowLeft' ? -1 : 1);
+      focusTab(moving);
+      return;
+    }
     const index = tabs.findIndex((t) => t.id === activeId);
     const next = tabs[(index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
     if (!next) return;
     event.preventDefault();
     useWebPreview.getState().selectTab(next.id);
-    requestAnimationFrame(() => strip.current?.querySelector<HTMLElement>(`[data-browser-tab="${CSS.escape(next.id)}"]`)?.focus());
+    focusTab(next.id);
   };
   return (
     <div className="flex shrink-0 items-center gap-0.5 border-b border-border px-1.5 py-1">
@@ -301,8 +322,10 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
         {tabs.map((t) => {
           const selected = t.id === activeId;
           const asking = confirming === t.id;
+          const mark = drag.markFor(t.id);
           return (
-            <div key={t.id} className={`group relative flex h-7 max-w-44 min-w-24 shrink-0 items-center rounded-md ${selected ? 'bg-selected text-text' : 'text-muted hover:bg-border/45 hover:text-text'}`}>
+            <div key={t.id} className={`group relative flex h-7 max-w-44 min-w-24 shrink-0 items-center rounded-md ${selected ? 'bg-selected text-text' : 'text-muted hover:bg-border/45 hover:text-text'} ${drag.dragging === t.id ? 'opacity-50' : ''}`} {...drag.props(t.id)}>
+              {mark && <span aria-hidden className={`pointer-events-none absolute inset-y-1 w-0.5 rounded-full bg-accent-ink ${mark === 'before' ? '-left-px' : '-right-px'}`} data-browser-tab-drop={mark} />}
               <button
                 type="button"
                 role="tab"

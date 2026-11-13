@@ -1,23 +1,26 @@
 import { Copy, Ellipsis, ExternalLink, Pencil, Pin, PinOff, Plus, Volume2, VolumeX, X } from 'lucide-react';
 import { Fragment } from 'react';
-import { useState, type MouseEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { shortUrl } from '@seshboard/protocol/client';
 import type { BrowserFavorite } from '@seshboard/protocol/client';
+import { matches } from '../../lib/shortcuts.ts';
 import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
 import { askRename, copyAddress, openInSystemBrowser, toggleMute } from '../../state/browserActions.ts';
 import { newBrowserTab, openFavorite } from '../../state/browserViewStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
+import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { Button } from '../ui/Button.tsx';
 import { middleClose, middleDown, SoundMark, TabIcon, tabLabel, TabTitle } from '../webPreview/BrowserPane.tsx';
-import { BROWSER_OWNER, ownerTabs, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
+import { BROWSER_OWNER, ownerTabs, sameGroup, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
 import { favoriteMenu, menuAt } from '../webPreview/FavoriteTiles.tsx';
 
 /**
  * The Browser view's tabs in the sidebar, in place of the sessions, under your favourites (a click opens one in a tab):
  * pinned ones first, above a line, then the others, each with its icon and title and a ⋯ menu (Pin tab, Rename tab,
- * Copy address, Open in browser, Close tab), then Open tab. It scrolls on its own.
+ * Copy address, Open in browser, Close tab), then Open tab. It scrolls on its own. Drag a tab (or ⌥↑ ⌥↓ on it) to move
+ * it, inside its group: pinned tabs stay above the line.
  */
 export function BrowserTabList() {
   const all = useWebPreview((s) => s.tabs);
@@ -28,6 +31,14 @@ export function BrowserTabList() {
   const [menu, setMenu] = useState<{ x: number; y: number; tab: BrowserTab } | null>(null);
   const favorites = useBrowserFavorites((s) => s.favorites);
   const [favoriteMenuAt, setFavoriteMenuAt] = useState<{ x: number; y: number; favorite: BrowserFavorite } | null>(null);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const drag = useQueueDrag({
+    ids: () => tabsRef.current.map((t) => t.id),
+    move: (id, to) => useWebPreview.getState().move(id, to),
+    mime: 'application/x-seshboard-browser-tab',
+    canDrop: (dragged, target) => sameGroup(tabsRef.current.find((t) => t.id === dragged), tabsRef.current.find((t) => t.id === target)),
+  });
 
   const show = (tab: BrowserTab) => {
     useWebPreview.getState().selectTab(tab.id);
@@ -37,6 +48,13 @@ export function BrowserTabList() {
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
     setMenu({ x: event.clientX || rect.left, y: event.clientY || rect.bottom, tab });
+  };
+  const onKey = (event: KeyboardEvent<HTMLButtonElement>, tab: BrowserTab) => {
+    if (!matches(event.nativeEvent, 'browser.move-tab') || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+    event.preventDefault();
+    useWebPreview.getState().step(tab.id, event.key === 'ArrowUp' ? -1 : 1);
+    // React moves the row in the DOM, which can drop focus: keep it on the tab.
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-browser-tab-list] [data-browser-tab="${CSS.escape(tab.id)}"]`)?.focus());
   };
   const entries = (tab: BrowserTab): MenuEntry[] => [
     tab.pinned
@@ -84,9 +102,11 @@ export function BrowserTabList() {
             const selected = atBrowser && tab.id === activeId;
             // A line under the pinned tabs sets them apart, in place of a pin on each.
             const lastPinned = tab.pinned && !tabs[index + 1]?.pinned;
+            const mark = drag.markFor(tab.id);
             return (
               <Fragment key={tab.id}>
-              <li className="group relative min-w-0">
+              <li className={`group relative min-w-0 ${drag.dragging === tab.id ? 'opacity-50' : ''}`} {...drag.props(tab.id)}>
+                {mark && <span aria-hidden className={`pointer-events-none absolute inset-x-2 h-0.5 rounded-full bg-accent-ink ${mark === 'before' ? '-top-px' : '-bottom-px'}`} data-browser-tab-drop={mark} />}
                 <button
                   type="button"
                   onClick={() => show(tab)}
@@ -96,6 +116,7 @@ export function BrowserTabList() {
                   aria-current={selected ? 'page' : undefined}
                   aria-label={tabLabel(tab, confirming === tab.id)}
                   onDoubleClick={() => askRename(tab)}
+                  onKeyDown={(e) => onKey(e, tab)}
                   data-tooltip={tab.url ? `${tabName(tab)}\n${shortUrl(tab.url)}` : tabName(tab)}
                   className={`flex h-8 w-full min-w-0 items-center gap-2 rounded-lg pr-8 pl-2.5 text-left text-ui ${selected ? 'bg-selected font-medium text-text' : 'text-text/90 hover:bg-border/45'}`}
                   data-browser-tab={tab.id}
