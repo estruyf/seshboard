@@ -45,6 +45,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **A prompt queued at the focus limit starts when a slot frees.** It used to wait for its project to be free too, so it didn't start while another session worked in that project. **Wait for › A free slot** is the new choice, and the one Start picks at the focus limit. Scheduled runs and triggered sessions held at a limit wait for a slot the same way.
 - **Auto's estimate follows today's prices.** The Why popover said Haiku uses about a fifth of what Opus does. It now says under a tenth, and Sonnet about half. Usage also prices Sonnet 5.5's cache reads and Fable 5.2 at their current list prices.
 - **Remote: an edit's diff stays coloured when you scroll it sideways.** On the phone, the green and red lines of an Edit in the conversation stopped at the edge of the box once you scrolled to a long line.
 - **Compacting no longer looks stuck.** The patch panel next to **Compacting the conversation** now pulses, so a long compact shows it is still going.

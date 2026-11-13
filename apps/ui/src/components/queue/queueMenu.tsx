@@ -1,10 +1,11 @@
-import { Check, ListEnd } from 'lucide-react';
+import { Check, Gauge, ListEnd } from 'lucide-react';
 import type { LaterItem, QueueWaitFor } from '@seshboard/protocol/client';
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { contextMenuPoint, isContextMenuKey } from '../../lib/contextMenu.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { moveInQueue, removeFromQueue, setAutoStart, setWaitFor, startQueued, useLater } from '../../state/laterStore.ts';
 import { autoStartBlock, busyInProject, moveTarget, promptLabel, queueSession, sameWait, type QueueEntry } from '../../state/queue.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
 import { rowStatus } from '../../state/sidebarRows.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -14,10 +15,12 @@ const checked = <Check size={13} className="text-accent-ink" aria-hidden />;
 
 /**
  * "Wait for…": any session in the project (the default), each busy session there, the item above (when there is
- * one) and nothing. The current choice has a check. New session uses it before the item exists.
+ * one), a free slot (while the focus limit is on) and nothing. The current choice has a check. New session uses it
+ * before the item exists.
  */
 export function waitForEntries(options: { current: QueueWaitFor; busy: readonly SessionRowData[]; above: LaterItem | null; onPick(waitFor: QueueWaitFor): void }): MenuEntry[] {
   const { current, busy, above, onPick } = options;
+  const slots = usePreferences.getState().prefs.focusLimit !== null || current.kind === 'slot';
   const choice = (label: string, waitFor: QueueWaitFor, icon: ReactNode, data: string): MenuEntry => ({
     label,
     icon: sameWait(current, waitFor) ? checked : icon,
@@ -32,6 +35,7 @@ export function waitForEntries(options: { current: QueueWaitFor; busy: readonly 
       choice(promptLabel(row.title || 'Untitled session', 40), { kind: 'session', sessionId: row.id }, dot(rowStatus(row) === 'needs-you' ? 'bg-warn' : 'bg-accent-ink'), `session:${row.id}`),
     ),
     ...(above ? [choice('The item above it', { kind: 'item', itemId: above.id }, <ListEnd size={13} aria-hidden />, 'item')] : []),
+    ...(slots ? [choice('A free slot (focus limit)', { kind: 'slot' }, <Gauge size={13} aria-hidden />, 'slot')] : []),
     choice('Nothing (start it myself)', { kind: 'none' }, null, 'none'),
   ];
 }

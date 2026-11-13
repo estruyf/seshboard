@@ -997,7 +997,9 @@ function LocalNewSession() {
     if (!draft) throw new Error('Choose a folder first');
     const queuedFrom = fromLater && useLater.getState().items.some((i) => i.id === fromLater.id) ? fromLater : null;
     forgetUnsavedQueued();
-    await addToQueue({ ...draft, autoStart: queueAutoOn && !queueAutoBlocked }, { waitFor: queueWait ?? undefined, replacing: queuedFrom });
+    // Queued because of the focus limit: it waits for a free slot, not for its project.
+    const waitFor = queueWait ?? (queuesAtLimit && !queuedFrom ? ({ kind: 'slot' } as const) : undefined);
+    await addToQueue({ ...draft, autoStart: queueAutoOn && !queueAutoBlocked }, { waitFor, replacing: queuedFrom });
     if (fromLater || fromSchedule) leaveQueued();
     else useDrafts.getState().removeDraft(newDraftKey(cwd));
     setQueueWait(null);
@@ -1369,7 +1371,8 @@ function LocalNewSession() {
   const busyHere = useMemo(() => (cwd ? busyInProject(rows, cwd) : []), [rows, cwd]);
   const queueItems = useLater((s) => s.items);
   const lastQueued = queueItems.filter((i) => i.id !== fromLater?.id).at(-1) ?? null;
-  const wait: QueueWaitFor = queueWait ?? (fromLater ? (queuedNow ?? fromLater).waitFor : { kind: 'project' });
+  // At the focus limit, Start queues the prompt for a free slot; otherwise it waits for its project.
+  const wait: QueueWaitFor = queueWait ?? (fromLater ? (queuedNow ?? fromLater).waitFor : queuesAtLimit ? { kind: 'slot' } : { kind: 'project' });
   const waitTitle = (id: string) => `“${promptLabel(rows.find((r) => r.id === id)?.title || 'Untitled session', 60)}”`;
   const queueStarted = useLater((s) => s.started);
   /** Start by itself: what was picked here, else the open item's, else off. */
@@ -1384,17 +1387,21 @@ function LocalNewSession() {
         ? waitTitle(wait.sessionId)
         : wait.kind === 'item'
           ? 'The item above it'
-          : busyHere.length === 1
-            ? waitTitle(busyHere[0]!.id)
-            : 'Any session in this project';
+          : wait.kind === 'slot'
+            ? 'A free slot'
+            : busyHere.length === 1
+              ? waitTitle(busyHere[0]!.id)
+              : 'Any session in this project';
   // Nothing is held until Add to queue, so say "if" before the prompt is in the queue.
   const lead = queuedNow ? 'In the queue,' : 'If you add it to the queue,';
   const waitText =
     wait.kind === 'none'
       ? `${lead} you start it yourself.`
-      : `${lead} it waits for ${waitLabel.startsWith('“') ? waitLabel : waitLabel.toLowerCase()} to finish, then ${startsByItself ? 'starts by itself' : 'waits for you to start it'}.`;
-  // Shown while the project has a session working, or once Wait for names a session or the item above.
-  const queueLine = cwd && projectName && (busyHere.length > 0 || wait.kind === 'session' || wait.kind === 'item') && (
+      : wait.kind === 'slot'
+        ? `${lead} it waits for a free slot, then ${startsByItself ? 'starts by itself' : 'waits for you to start it'}.`
+        : `${lead} it waits for ${waitLabel.startsWith('“') ? waitLabel : waitLabel.toLowerCase()} to finish, then ${startsByItself ? 'starts by itself' : 'waits for you to start it'}.`;
+  // Shown while the project has a session working, once Wait for names a session or the item above, or at the focus limit.
+  const queueLine = cwd && projectName && (busyHere.length > 0 || wait.kind === 'session' || wait.kind === 'item' || wait.kind === 'slot') && (
     <div className="flex min-w-0 shrink-0 items-center gap-1.5 px-2 text-meta text-muted" data-queue-busy-line>
       {startsByItself ? <Play size={11} fill="currentColor" className="shrink-0 text-link" aria-hidden /> : <Clock size={12} className="shrink-0 text-faint" aria-hidden />}
       <span className="min-w-0 truncate">

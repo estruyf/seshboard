@@ -44,12 +44,14 @@ export type LaterDraft = z.input<typeof LaterDraft>;
  * - `project`: no session is busy in its project (or a worktree of it).
  * - `session`: that session isn't busy, or is closed.
  * - `item`: another queued item has been started and its session isn't busy.
+ * - `slot`: a free slot under the focus limit, whatever project the sessions run in (ready while the limit is off).
  * - `none`: nothing; it stays queued until you start it.
  */
 export const QueueWaitFor = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('project') }),
   z.object({ kind: z.literal('session'), sessionId: z.string().min(1).max(100) }),
   z.object({ kind: z.literal('item'), itemId: z.string().min(1).max(100) }),
+  z.object({ kind: z.literal('slot') }),
   z.object({ kind: z.literal('none') }),
 ]);
 export type QueueWaitFor = z.infer<typeof QueueWaitFor>;

@@ -1806,9 +1806,9 @@ export function createEngine(options: EngineOptions): Engine {
     applyTitles([sessionId]);
     return sessionId;
   };
-  /** At a limit, a run or a triggered session goes to the queue as an item that starts by itself (#172). */
+  /** At a limit, a run or a triggered session goes to the queue as an item that starts by itself (#172), once a slot is free. */
   const queueHeld = (draft: LaterDraft) => {
-    const item = later.add({ ...draft, autoStart: true }, { waitFor: { kind: 'project' } });
+    const item = later.add({ ...draft, autoStart: true }, { waitFor: { kind: 'slot' } });
     laterBroadcast();
     autoStarter?.armForLimit(item.id);
     return item.id;
@@ -3761,6 +3761,8 @@ export function createEngine(options: EngineOptions): Engine {
     'later.add': ({ draft, id, createdAt, index, waitFor }) => {
       const item = later.add(draft, { id, createdAt, index, waitFor });
       laterChanged();
+      // Queued for a free slot: it starts once one is free, even when one already is by the time it is seen.
+      if (item.autoStart && item.waitFor.kind === 'slot') autoStarter?.armForLimit(item.id);
       return { item };
     },
     'later.remove': ({ id, startedAs }) => {
@@ -3788,6 +3790,7 @@ export function createEngine(options: EngineOptions): Engine {
       const item = later.update(id, { waitFor, autoStart, draft });
       if (!item) throw new RpcError('NOT_FOUND', 'That item is no longer in the queue');
       laterChanged();
+      if (item.autoStart && item.waitFor.kind === 'slot') autoStarter?.armForLimit(item.id);
       return { item };
     },
     'later.start': async ({ id }) => {
