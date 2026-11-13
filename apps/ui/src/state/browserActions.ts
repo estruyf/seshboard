@@ -1,4 +1,4 @@
-import { shortUrl } from '@seshboard/protocol/client';
+import { shortUrl, type BrowserFavorite } from '@seshboard/protocol/client';
 import { BROWSER_OWNER, livePages, nextZoom, type BrowserTab } from '../components/webPreview/browserTabs.ts';
 import { previewPage } from '../components/webPreview/webPreviewPages.ts';
 import { currentPageTab, openBrowserView, openFavorite } from './browserViewStore.ts';
@@ -28,6 +28,11 @@ export function openInSystemBrowser(tab: Pick<BrowserTab, 'url'>): void {
 /** Rename tab…: its dialog (`PaletteDialogs`). */
 export function askRename(tab: Pick<BrowserTab, 'id'>): void {
   usePaletteBus.getState().showDialog({ kind: 'rename-tab', tabId: tab.id });
+}
+
+/** Edit favourite…: its dialog (`PaletteDialogs`). */
+export function askEditFavorite(favorite: Pick<BrowserFavorite, 'id'>): void {
+  usePaletteBus.getState().showDialog({ kind: 'edit-favorite', id: favorite.id });
 }
 
 /** Clear data for this site… (a tab given) or Clear all browsing data… (null): asks first (`PaletteDialogs`). */

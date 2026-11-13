@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { noteVisit } from '../../state/browserHistory.ts';
 import { nextZoom } from './browserTabs.ts';
 import { crashReloadDelay } from './crashRecovery.ts';
 
@@ -23,6 +24,7 @@ interface WebviewElement extends HTMLElement {
   reload(): void;
   stop(): void;
   getWebContentsId(): number;
+  getURL(): string;
   openDevTools(): void;
   closeDevTools(): void;
   isDevToolsOpened(): boolean;
@@ -128,9 +130,14 @@ class PreviewPage {
       element.addEventListener(name, listener as EventListener);
       this.off.push(() => element.removeEventListener(name, listener as EventListener));
     };
-    const title = throttled<string>(NOTE_MS, (text) => useWebPreview.getState().titled(sessionId, text));
+    // Each also goes in the history (`noteVisit`): an address opened counts as a visit, a new title only names it.
+    const title = throttled<string>(NOTE_MS, (text) => {
+      useWebPreview.getState().titled(sessionId, text);
+      noteVisit(this.pageUrl(), text, false);
+    });
     const address = throttled<string>(NOTE_MS, (url) => {
       useWebPreview.getState().shown(sessionId, url);
+      noteVisit(url, '', true);
       this.sync();
     });
     this.off.push(title.cancel, address.cancel);
@@ -192,6 +199,15 @@ class PreviewPage {
   /** When it stopped lately (`render-process-gone`), for `crashReloadDelay`. */
   private crashes: number[] = [];
   private restart: ReturnType<typeof setTimeout> | undefined;
+
+  /** The address the page is on now, which the tab's own may not have caught up with yet. */
+  private pageUrl(): string | null {
+    try {
+      return this.element.getURL() || null;
+    } catch {
+      return null;
+    }
+  }
 
   private tab() {
     return useWebPreview.getState().tabs.find((t) => t.id === this.sessionId);

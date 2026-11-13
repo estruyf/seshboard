@@ -1,16 +1,19 @@
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { addressBarUrl, browserNavigation, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
+import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject, type MouseEvent, type ReactNode } from 'react';
+import { addressBarUrl, browserNavigation, type BrowserHistoryEntry, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { askClearData, askRename, copyAddress, findInPage, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
-import { toggleFavorite, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
+import { toggleFavorite, useBrowserFavorites, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
+import { searchHistory } from '../../state/browserHistory.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
+import { Popover } from '../ui/Popover.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { addressSuggestions, autoPick, type AddressSuggestion } from './addressSuggestions.ts';
 import { sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
 import { FavoriteTiles } from './FavoriteTiles.tsx';
 import type { ServerOffer } from './serverOffers.ts';
@@ -65,9 +68,32 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
     if (tab) registerSlot(tab.id, element);
   }, [tab?.id]);
   const address = useRef<HTMLInputElement>(null);
+  const listId = useId();
   const tabId = tab?.id ?? null;
   const favorite = useFavoriteOf(tab?.url ?? null) !== undefined;
   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
+  // The suggestions under the address bar (the browser on): open while typing, and the row picked with ↑↓ (null: the
+  // first one if Enter should open it, `autoPick`; -1: what was typed).
+  const [listOpen, setListOpen] = useState(false);
+  const [picked, setPicked] = useState<number | null>(null);
+  const [history, setHistory] = useState<readonly BrowserHistoryEntry[]>([]);
+  const favorites = useBrowserFavorites((s) => s.favorites);
+  useEffect(() => {
+    if (!browser || !draft?.trim()) return;
+    let current = true;
+    void searchHistory(draft).then((entries) => current && setHistory(entries));
+    return () => {
+      current = false;
+    };
+  }, [draft, browser]);
+  const suggestions = useMemo(() => {
+    if (!browser || !tab || !draft?.trim()) return [];
+    // Pages from the last search still count while the next one runs: those that no longer match drop out.
+    const owned = useWebPreview.getState().tabs.filter((t) => t.owner === tab.owner);
+    return addressSuggestions(draft, { tabs: owned, favorites, history, currentTabId: tab.id });
+  }, [browser, tab?.id, tab?.owner, draft, favorites, history]);
+  const showList = listOpen && suggestions.length > 0;
+  const highlighted = !showList ? -1 : (picked ?? (autoPick(suggestions, 'url' in readAddress(draft ?? '', browser)) ? 0 : -1));
 
   // A new, empty tab starts in the address bar.
   useEffect(() => {
@@ -76,9 +102,24 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   // Leaving with the address bar focused: main stops keeping ⌘W for it.
   useEffect(() => () => window.seshboard?.setAddressFocus(false), []);
 
+  const closeList = () => {
+    setListOpen(false);
+    setPicked(null);
+  };
+  const open = (suggestion: AddressSuggestion) => {
+    if (!tab) return;
+    closeList();
+    setRefused(null);
+    setDraft(null);
+    if (suggestion.tabId) useWebPreview.getState().selectTab(suggestion.tabId);
+    else useWebPreview.getState().navigate(tab.id, suggestion.url);
+  };
   const go = (event: FormEvent) => {
     event.preventDefault();
     if (!tab) return;
+    const suggestion = suggestions[highlighted];
+    if (suggestion) return open(suggestion);
+    closeList();
     const read = readAddress(draft ?? '', browser);
     if ('refused' in read) return setRefused(read.refused);
     setRefused(null);
@@ -86,6 +127,18 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
     useWebPreview.getState().navigate(tab.id, read.url);
   };
   const onAddressKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (showList && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      setPicked(Math.max(-1, Math.min(suggestions.length - 1, highlighted + step)));
+      return;
+    }
+    // The first Escape closes the suggestions.
+    if (event.key === 'Escape' && showList) {
+      event.preventDefault();
+      event.stopPropagation();
+      return closeList();
+    }
     // Escape gives back the page's own address first; a second one closes the panel (the aside's handler).
     if (event.key !== 'Escape' || (draft === null && !refused)) return;
     event.preventDefault();
@@ -113,7 +166,21 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
         ) : (
           <Button variant="quiet" size="sm" iconOnly icon={<RotateCw size={12} aria-hidden />} aria-label="Reload" disabled={!tab?.url} onClick={reload} data-web-preview-reload="" />
         )}
-        <form onSubmit={go} className="mx-1 min-w-0 flex-1">
+        <form onSubmit={go} className="relative mx-1 min-w-0 flex-1">
+          {/* The page's address to the clipboard in one click, from inside the bar. */}
+          {browser && tab?.url && (
+            <Button
+              variant="quiet"
+              size="sm"
+              iconOnly
+              icon={<Link size={12} aria-hidden />}
+              aria-label="Copy address"
+              data-tooltip="Copy address"
+              onClick={() => copyAddress(tab)}
+              className="absolute top-0.5 left-0.5 z-1"
+              data-browser-copy-address=""
+            />
+          )}
           <input
             ref={address}
             type="text"
@@ -122,6 +189,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             onChange={(e) => {
               setDraft(e.target.value);
               setRefused(null);
+              setListOpen(true);
+              setPicked(null);
             }}
             onFocus={(e) => {
               e.currentTarget.select();
@@ -129,6 +198,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             }}
             onBlur={() => {
               window.seshboard?.setAddressFocus(false);
+              closeList();
               if (!refused) setDraft(null);
             }}
             onKeyDown={onAddressKey}
@@ -136,12 +206,18 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             spellCheck={false}
             aria-label="Address"
             aria-invalid={refused ? true : undefined}
+            role={browser ? 'combobox' : undefined}
+            aria-autocomplete={browser ? 'list' : undefined}
+            aria-expanded={browser ? showList : undefined}
+            aria-controls={showList ? listId : undefined}
+            aria-activedescendant={showList && highlighted >= 0 ? `${listId}-${highlighted}` : undefined}
             aria-keyshortcuts={browser ? formatKeys(keysFor('browser.address')) : undefined}
-            className={`h-7 w-full rounded-md border bg-card px-2 font-mono text-ui text-text outline-none placeholder:text-faint focus:border-link ${refused ? 'border-error' : 'border-edge'}`}
+            className={`h-7 w-full rounded-md border bg-card px-2 font-mono text-ui text-text outline-none placeholder:text-faint focus:border-link ${browser && tab?.url ? 'pl-7' : ''} ${refused ? 'border-error' : 'border-edge'}`}
             data-web-preview-address=""
             data-browser-address=""
             data-tab-id={tab?.id}
           />
+          {showList && <SuggestionList id={listId} anchor={address} suggestions={suggestions} highlighted={highlighted} onPick={open} onHighlight={setPicked} onClose={closeList} />}
         </form>
         {browser && tab && (
           <Button
@@ -319,7 +395,7 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
   };
   return (
     <div className="flex shrink-0 items-center gap-0.5 border-b border-border px-1.5 py-1">
-      <div ref={strip} role="tablist" aria-label="Tabs" onKeyDown={onKey} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" data-web-preview-tabs="">
+      <div ref={strip} role="tablist" aria-label="Tabs" onKeyDown={onKey} className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" data-web-preview-tabs="">
         {tabs.map((t) => {
           const selected = t.id === activeId;
           const asking = confirming === t.id;
@@ -360,9 +436,55 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
           );
         })}
       </div>
-      {onNewTab && <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} aria-hidden />} aria-label="New tab" shortcut="browser.new-tab" onClick={onNewTab} data-browser-new-tab="" />}
+      {onNewTab && <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} aria-hidden />} aria-label="New tab" shortcut="browser.new-tab" onClick={onNewTab} className="shrink-0" data-browser-new-tab="" />}
     </div>
   );
+}
+
+/**
+ * The address bar's suggestions under it: open tabs (Switch to tab), favourites and pages from the history. The rows
+ * keep the focus in the address bar (a press doesn't take it), so typing goes on and ↑↓ move the highlight.
+ */
+function SuggestionList({ id, anchor, suggestions, highlighted, onPick, onHighlight, onClose }: {
+  id: string;
+  anchor: RefObject<HTMLInputElement | null>;
+  suggestions: readonly AddressSuggestion[];
+  highlighted: number;
+  onPick(suggestion: AddressSuggestion): void;
+  onHighlight(index: number): void;
+  onClose(): void;
+}) {
+  const rect = anchor.current?.getBoundingClientRect();
+  if (!rect) return null;
+  return (
+    <Popover id={id} x={rect.left} y={rect.bottom + 4} width={rect.width} anchor={anchor} closeOnEscape={false} onClose={onClose} role="listbox" aria-label="Suggestions" data-browser-suggestions="">
+      {suggestions.map((s, i) => (
+        <div
+          key={s.url}
+          id={`${id}-${i}`}
+          role="option"
+          aria-selected={i === highlighted}
+          onMouseDown={(e) => e.preventDefault()}
+          onMouseMove={() => i !== highlighted && onHighlight(i)}
+          onClick={() => onPick(s)}
+          className={`flex cursor-default items-center gap-2 px-3 py-1 text-ui ${i === highlighted ? 'bg-accent/15' : ''}`}
+          data-browser-suggestion={s.kind}
+        >
+          <SuggestionIcon suggestion={s} />
+          {s.title && <span className="max-w-[60%] min-w-0 shrink-0 truncate text-text">{s.title}</span>}
+          <span className="min-w-0 flex-1 truncate font-mono text-meta text-muted">{shortUrl(s.url)}</span>
+          {s.kind === 'tab' && <span className="shrink-0 pl-2 text-meta text-faint">Switch to tab</span>}
+        </div>
+      ))}
+    </Popover>
+  );
+}
+
+/** A suggestion's page icon when it has one, else what it is: an open tab, a favourite or a page from the history. */
+function SuggestionIcon({ suggestion }: { suggestion: AddressSuggestion }) {
+  if (suggestion.favicon) return <TabIcon tab={suggestion} />;
+  const Icon = suggestion.kind === 'tab' ? AppWindow : suggestion.kind === 'favorite' ? Star : History;
+  return <Icon size={12} aria-hidden className="shrink-0 text-faint" />;
 }
 
 /** A speaker on a tab whose page plays sound, crossed out while it is muted. */

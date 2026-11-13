@@ -86,6 +86,9 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the local page did not load in the Browser view';
   const listed = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser'))`;
   if (!(await waitInPage(win, listed, 3_000))) return "the page's title is not in the tab list";
+  // Copy address sits inside the bar, before the text (not clicked: the clipboard is the user's).
+  const copy = q('[data-browser-view] [data-browser-copy-address]');
+  if (!(await js(`!!${copy} && ${copy}.getBoundingClientRect().right <= ${q('[data-browser-view] [data-browser-address]')}.getBoundingClientRect().left + parseFloat(getComputedStyle(${q('[data-browser-view] [data-browser-address]')}).paddingLeft)`))) return 'no Copy address button in the address bar, or it covers the address';
   if (!(await waitInPage(win, `${listed}?.querySelector('img[src]')?.complete && ${listed}.querySelector('img').naturalWidth > 0`, 5_000))) return `the page's favicon is not on its tab (${String(await js(`${listed}?.innerHTML`)).slice(0, 300)})`;
   // A large icon (this one is over 30KB) is kept shrunk to a small PNG.
   if (!(await js(`${listed}.querySelector('img').src.startsWith('data:image/png') && ${listed}.querySelector('img').naturalWidth <= 40`))) return 'the large favicon was not shrunk to a small PNG';
@@ -128,7 +131,39 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   if (!(await waitInPage(win, `${listed} && ${q('[data-browser-view] [data-browser-address]')}`, 3_000))) return '⌘⇧T did not reopen the closed tab';
   if (await js(`!!${q('[data-activity]')}`)) return '⌘⇧T opened Activity in the Browser view';
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the reopened tab did not load its page';
-  return `ok: ${url} opened in a Browser tab, its title and favicon in the list, moved by a drag and ⌥↓, closed with a middle click and reopened with ⌘⇧T`;
+  return `ok: ${url} opened in a Browser tab with Copy address in its bar, its title and favicon in the list, moved by a drag and ⌥↓, closed with a middle click and reopened with ⌘⇧T`;
+}
+
+/**
+ * "browser suggestions": typing in the address bar lists the open tab (Switch to tab) and pages from the history; ↓ and
+ * Enter open one. Needs "browser view" first: its tab on the local page, and its pages in the history.
+ */
+export async function runBrowserSuggestionsStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const address = '[data-browser-view] [data-browser-address]';
+  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
+  if (!(await waitInPage(win, q('[data-browser-tab-list] [data-browser-open-tab]'), 3_000))) return 'no Browser view (run "browser view" first)';
+  await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
+  if (!(await waitInPage(win, `${q(address)} && !${q(address)}.value`, 3_000))) return 'Open tab gave no empty address bar';
+  await setFieldValue(win, address, 'smoke');
+  const rows = `[...document.querySelectorAll('[data-browser-suggestions] [data-browser-suggestion]')]`;
+  if (!(await waitInPage(win, `${rows}.some((r) => r.dataset.browserSuggestion === 'tab' && r.textContent.includes('Switch to tab'))`, 3_000))) return `typing "smoke" did not offer the open tab (rows: ${String(await js(`${rows}.map((r) => r.textContent).join(' | ')`))})`;
+  // The shot changes the theme, and the window may lose the focus, which closes the list: typing again opens it.
+  await deps.shot('browser-suggestions');
+  await setFieldValue(win, address, 'smoke browser long');
+  const long = `${rows}.find((r) => r.dataset.browserSuggestion === 'history' && r.textContent.includes('/long'))`;
+  if (!(await waitInPage(win, long, 3_000))) return `typing "smoke browser long" did not offer the page from the history (rows: ${String(await js(`${rows}.map((r) => r.textContent).join(' | ')`))})`;
+  // A title match is not opened by Enter alone: ↓ picks it.
+  if (await js(`${rows}.some((r) => r.getAttribute('aria-selected') === 'true')`)) return 'a suggestion was picked before ↓';
+  await js(`${q(address)}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true, cancelable: true }))`);
+  if (!(await waitInPage(win, `${long}?.getAttribute('aria-selected') === 'true'`, 2_000))) return '↓ did not pick the suggestion';
+  await js(`${q(address)}.form.requestSubmit()`);
+  if (!(await waitInPage(win, `${q(address)}.value.endsWith('/long')`, 5_000))) return `Enter on the suggestion did not open its page (address: ${String(await js(`${q(address)}.value`))})`;
+  if (await js(`!!${q('[data-browser-suggestions]')}`)) return 'the suggestions stayed open after Enter';
+  // Closed again, so later steps find the short page's tab alone.
+  const longRow = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser long'))`;
+  if (await waitInPage(win, longRow, 3_000)) await js(`${longRow}.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
+  return 'ok: the open tab and a page from the history offered, ↓ and Enter opened it';
 }
 
 /**
@@ -309,6 +344,29 @@ export async function runBrowserFavoritesStep(win: BrowserWindow, deps: BrowserS
   await js(`${listed}.click()`);
   if (!(await waitInPage(win, `${address}?.value && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`, 5_000))) return "the sidebar's favourite did not show its page";
 
+  // Browsing on keeps the favourite's address. Use current page's address takes the page's; Edit favourite… sets it back.
+  await setFieldValue(win, `${V} [data-browser-address]`, `${url.replace('http://', '')}two`);
+  await js(`${address}.form.requestSubmit()`);
+  if (!(await waitInPage(win, `${address}.value.endsWith('/two')`, 5_000))) return 'the second page did not load';
+  if (!(await js(`!!${listed}`))) return 'browsing on changed the favourite\'s address';
+  const menuOf = (row: string) => js(`(() => { const r = ${row}.getBoundingClientRect(); ${row}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 10, clientY: r.top + 5 })); })()`);
+  await menuOf(listed);
+  if (!(await waitInPage(win, q('[data-browser-favorite-use-page]'), 2_000))) return "the favourite's menu has no Use current page's address";
+  await js(`${q('[data-browser-favorite-use-page]')}.click()`);
+  const moved = q(`[data-browser-favorites-list] [data-browser-favorite="${url}two"]`);
+  if (!(await waitInPage(win, `${moved} && !${listed}`, 3_000))) return "Use current page's address did not change the favourite";
+  await menuOf(moved);
+  if (!(await waitInPage(win, q('[data-browser-favorite-edit]'), 2_000))) return "the favourite's menu has no Edit favourite…";
+  await js(`${q('[data-browser-favorite-edit]')}.click()`);
+  if (!(await waitInPage(win, q('[data-edit-favorite-dialog] [data-edit-favorite-address]'), 2_000))) return 'Edit favourite… did not open its dialog';
+  await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-address]', 'not an address');
+  await js(`${q('[data-edit-favorite-save]')}.click()`);
+  if (!(await waitInPage(win, q('[data-edit-favorite-problem]'), 2_000))) return 'Edit favourite… saved an address that is none';
+  await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-address]', url);
+  await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-title]', 'Smoke favourite');
+  await js(`${q('[data-edit-favorite-save]')}.click()`);
+  if (!(await waitInPage(win, `!${q('[data-edit-favorite-dialog]')} && ${listed}?.textContent.includes('Smoke favourite')`, 3_000))) return 'Edit favourite… did not save the address and name';
+
   // An empty tab offers it as a tile, which loads it there.
   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
   const tile = q(`${V} [data-web-preview-empty] [data-browser-favorite="${url}"]`);
@@ -319,7 +377,7 @@ export async function runBrowserFavoritesStep(win: BrowserWindow, deps: BrowserS
   // ⌘D in the address bar takes it off the favourites.
   await js(`${address}.focus(); ${address}.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
   if (!(await waitInPage(win, `!${q('[data-browser-favorites-list]')} && ${q(`${V} [data-web-preview-favorite]`)}.getAttribute('aria-pressed') === 'false'`, 3_000))) return '⌘D did not remove the favourite';
-  return 'ok: starred with its icon in the sidebar, kept after a reload, opened from the sidebar and an empty tab, removed with ⌘D';
+  return "ok: starred with its icon in the sidebar, kept after a reload, opened from the sidebar and an empty tab, kept its address while browsing, changed by Use current page's address and Edit favourite…, removed with ⌘D";
 }
 
 function escape(win: BrowserWindow): void {

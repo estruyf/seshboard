@@ -1,4 +1,4 @@
-import type { BrowserFavorite } from '@seshboard/protocol/client';
+import { addressBarUrl, type BrowserFavorite } from '@seshboard/protocol/client';
 
 /*
  * Browser favourites as plain data: which favourite a page is, adding one at the end, and the icon kept with it. Pure,
@@ -37,4 +37,12 @@ export function keptFavicon(favicon: string | null): string | null {
 export function newFavorite(favorites: readonly BrowserFavorite[], page: { url: string; title: string; favicon: string | null }, id: string, now: number): BrowserFavorite {
   const position = favorites.reduce((max, f) => Math.max(max, f.position + 1), 0);
   return { id, url: page.url, title: page.title.slice(0, 500) || page.url, favicon: keptFavicon(page.favicon), position, createdAt: now };
+}
+
+/** Why Edit favourite… can't save `text` as the address of favourite `id`, or null when it can. */
+export function favoriteAddressProblem(text: string, favorites: readonly BrowserFavorite[], id: string): string | null {
+  const url = addressBarUrl(text, { anyHost: true });
+  if (!url) return 'Type an address, such as github.com';
+  const other = favoriteOf(favorites, url);
+  return other && other.id !== id ? `Already a favourite: ${other.title}` : null;
 }

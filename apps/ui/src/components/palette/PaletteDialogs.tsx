@@ -6,7 +6,9 @@ import { useDrafts } from '../../state/draftsStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { clearBrowsingData, siteName } from '../../state/browserActions.ts';
+import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { EditFavoriteDialog } from '../webPreview/EditFavoriteDialog.tsx';
 import { RenameTabDialog } from '../webPreview/RenameTabDialog.tsx';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
@@ -34,12 +36,15 @@ export function PaletteDialogs() {
   const live = useSessions((s) => (dialog?.kind === 'delete-session' ? (s.live.get(dialog.sessionId) ?? null) : null));
   const host = useHosts((s) => (dialog?.kind === 'delete-session' ? s.hosts.get(dialog.sessionId) : undefined));
   const renaming = useWebPreview((s) => (dialog?.kind === 'rename-tab' ? (s.tabs.find((t) => t.id === dialog.tabId) ?? null) : null));
+  const editing = useBrowserFavorites((s) => (dialog?.kind === 'edit-favorite' ? (s.favorites.find((f) => f.id === dialog.id) ?? null) : null));
   const close = () => usePaletteBus.getState().showDialog(null);
   if (!dialog) return null;
 
   switch (dialog.kind) {
     case 'rename-tab':
       return renaming ? <RenameTabDialog tab={renaming} onClose={close} /> : null;
+    case 'edit-favorite':
+      return editing ? <EditFavoriteDialog favorite={editing} onClose={close} /> : null;
     case 'clear-browser-data':
       return dialog.origin ? (
         <ConfirmDialog

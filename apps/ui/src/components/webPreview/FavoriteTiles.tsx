@@ -1,18 +1,30 @@
-import { Copy, ExternalLink, StarOff } from 'lucide-react';
+import { Copy, ExternalLink, Link, Pencil, StarOff } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
 import type { BrowserFavorite } from '@seshboard/protocol/client';
 import { shortUrl } from '@seshboard/protocol/client';
-import { removeFavorite, useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
-import { copyAddress, openInSystemBrowser } from '../../state/browserActions.ts';
+import { removeFavorite, updateFavorite, useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
+import { askEditFavorite, copyAddress, openInSystemBrowser } from '../../state/browserActions.ts';
+import { currentPageTab } from '../../state/browserViewStore.ts';
+import { favoriteOf } from './favorites.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { TabIcon } from './BrowserPane.tsx';
 
-/** A favourite's right-click menu: Copy address, Open in browser, Remove from favourites. */
+/**
+ * A favourite's right-click menu: Copy address, Open in browser, Edit favourite…, Use current page's address (when the
+ * page on screen is another one, and no favourite yet), Remove from favourites. A favourite keeps its address as you
+ * browse: only these two change it.
+ */
 export function favoriteMenu(favorite: BrowserFavorite): MenuEntry[] {
+  const page = currentPageTab()?.url ?? null;
+  const usePage = page && !favoriteOf(useBrowserFavorites.getState().favorites, page) ? page : null;
   return [
     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, onSelect: () => copyAddress(favorite) },
     { label: 'Open in browser', icon: <ExternalLink size={13} aria-hidden />, onSelect: () => openInSystemBrowser(favorite) },
     'separator',
+    { label: 'Edit favourite…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askEditFavorite(favorite), data: { 'data-browser-favorite-edit': true } },
+    ...(usePage
+      ? [{ label: "Use current page's address", detail: shortUrl(usePage), icon: <Link size={13} aria-hidden />, onSelect: () => updateFavorite(favorite.id, { url: usePage }), data: { 'data-browser-favorite-use-page': true } }]
+      : []),
     { label: 'Remove from favourites', icon: <StarOff size={13} aria-hidden />, onSelect: () => removeFavorite(favorite.id), data: { 'data-browser-favorite-remove': true } },
   ];
 }

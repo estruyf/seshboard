@@ -41,6 +41,8 @@ export type PaletteDialog =
   | { kind: 'remember'; text: string; from: 'user' | 'claude'; sessionId: string | null; root: string | null }
   /** Rename tab… on a browser tab, from its menu, a double click or the palette. */
   | { kind: 'rename-tab'; tabId: string }
+  /** Edit favourite… from a favourite's menu: its title and address. */
+  | { kind: 'edit-favorite'; id: string }
   /** Clear data for this site (`origin`) or, with null, all browsing data: asks first. */
   | { kind: 'clear-browser-data'; origin: string | null }
   /** New session from an issue or pull request: the # list on its own, for `root`. */

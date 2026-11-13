@@ -216,6 +216,15 @@ export const BrowserFavorite = z.object({
 });
 export type BrowserFavorite = z.infer<typeof BrowserFavorite>;
 
+/** A page in the browser's history: its address, its last title, how often and when last it was opened. */
+export const BrowserHistoryEntry = z.object({
+  url: z.string().min(1).max(8000),
+  title: z.string().max(500),
+  visits: z.number().int().min(0),
+  lastVisit: z.number().int(),
+});
+export type BrowserHistoryEntry = z.infer<typeof BrowserHistoryEntry>;
+
 export const contract = {
   requests: {
     'system.info': {
@@ -519,6 +528,10 @@ export const contract = {
     /** Adds a favourite, or updates one (its title, icon, place). */
     'browser.favorites.save': { params: z.object({ favorite: BrowserFavorite.omit({ createdAt: true }) }), result: z.object({}) },
     'browser.favorites.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** A page opened in the browser (`counted`), or its title as it changes (not counted again), for the history. */
+    'browser.history.visit': { params: z.object({ url: z.string().min(1).max(8000), title: z.string().max(500), counted: z.boolean() }), result: z.object({}) },
+    /** The pages in the history whose address or title holds `query`, most opened and most recent first. */
+    'browser.history.search': { params: z.object({ query: z.string().max(500), limit: z.number().int().min(1).max(100) }), result: z.object({ entries: z.array(BrowserHistoryEntry) }) },
     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
     /**

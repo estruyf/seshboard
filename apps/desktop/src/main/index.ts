@@ -35,7 +35,7 @@ import { installBrowserAgent } from './browserAgent.ts';
 import { runBrowserAgentStep, runBrowserServerStep } from './browserAgentSmoke.ts';
 import { runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
-import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
+import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -14177,6 +14177,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('browser control: open, snapshot, type, click, screenshot and console on a local page, in the session’s own tab', () =>
     runBrowserAgentStep(win, { run: (request) => browserAgent.run(request), setPrefs: updatePreferences, prefs: () => preferences.get(), shot: bothSchemes }),
   );
+  // Needs "browser view" first: its tab and its pages in the history.
+  await step('browser suggestions: the address bar offers open tabs and pages from the history', () => runBrowserSuggestionsStep(win, browserDeps));
   await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser favorites: star a page, kept after a reload, opened from the sidebar and an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });

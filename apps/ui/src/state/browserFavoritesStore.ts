@@ -67,6 +67,21 @@ export function noteFavicon(url: string | null, favicon: string): void {
   );
 }
 
+/**
+ * Edit favourite… and Use current page's address: a new address or title, only ever from you. Nothing else changes a
+ * favourite's address. A new address drops the icon, which the page gives again once it loads (`noteFavicon`).
+ */
+export function updateFavorite(id: string, edit: { url?: string; title?: string }): void {
+  const { favorites } = useBrowserFavorites.getState();
+  const existing = favorites.find((f) => f.id === id);
+  if (!existing) return;
+  const url = edit.url ?? existing.url;
+  const title = (edit.title ?? existing.title).trim().slice(0, 500) || url;
+  const next = { ...existing, url, title, favicon: url === existing.url ? existing.favicon : null };
+  const { createdAt: _, ...saved } = next;
+  change(favorites.map((f) => (f.id === id ? next : f)), (c) => c.call('browser.favorites.save', { favorite: saved }), "Couldn't save the favourite");
+}
+
 export function removeFavorite(id: string): void {
   const { favorites } = useBrowserFavorites.getState();
   change(

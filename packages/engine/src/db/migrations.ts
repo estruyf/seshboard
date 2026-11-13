@@ -961,4 +961,14 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE browser_tabs ADD COLUMN favicon TEXT;
   `,
+  // v60: The browser's history, the pages you opened, for the address bar's suggestions. Nothing else has it: keep it when rebuilding.
+  `
+  CREATE TABLE browser_history (
+    url        TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    visits     INTEGER NOT NULL,
+    last_visit INTEGER NOT NULL
+  );
+  CREATE INDEX browser_history_last_visit ON browser_history (last_visit);
+  `,
 ];

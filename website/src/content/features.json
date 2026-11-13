@@ -827,6 +827,21 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser-copy-address",
+      "name": "Copy address: the link icon in the browser's address bar copies the page's address",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-favorite-edit",
+      "name": "Edit a favourite's name and address, or give it the address of the page on screen, from its right-click menu",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-address-suggestions",
+      "name": "Address bar suggestions: open tabs, favourites and pages you opened before, as you type",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "palette:browser-favorite-add",
       "name": "Add page to favourites",
       "page": "sessions/web-preview"

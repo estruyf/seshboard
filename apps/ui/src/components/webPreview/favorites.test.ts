@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BrowserFavorite } from '@seshboard/protocol/client';
-import { favoriteOf, FAVICON_KEEP_MAX, keptFavicon, newFavorite } from './favorites.ts';
+import { favoriteAddressProblem, favoriteOf, FAVICON_KEEP_MAX, keptFavicon, newFavorite } from './favorites.ts';
 
 const fav = (id: string, url: string, position: number): BrowserFavorite => ({ id, url, title: id, favicon: null, position, createdAt: position });
 
@@ -19,6 +19,14 @@ describe('favourites', () => {
     const added = newFavorite(list, { url: 'https://new.test/', title: '', favicon: null }, 'n', 50);
     expect(added).toMatchObject({ id: 'n', url: 'https://new.test/', title: 'https://new.test/', position: 4, createdAt: 50 });
     expect(newFavorite([], { url: 'https://a.test/', title: 'A', favicon: null }, 'a', 1).position).toBe(0);
+  });
+
+  it("saves an edited address only when it is one, and not another favourite's", () => {
+    expect(favoriteAddressProblem('github.com/pulls?q=mine', list, 'gh')).toBeNull();
+    // Its own address again is fine.
+    expect(favoriteAddressProblem('https://github.com/pulls', list, 'gh')).toBeNull();
+    expect(favoriteAddressProblem('not an address', list, 'gh')).toBe('Type an address, such as github.com');
+    expect(favoriteAddressProblem('docs.test/guide?v=2', list, 'gh')).toBe('Already a favourite: docs');
   });
 
   it('keeps only a small data: image as the icon', () => {

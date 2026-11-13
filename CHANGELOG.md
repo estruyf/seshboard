@@ -7,6 +7,9 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 ### Added
 
 - **Agents can use the browser** to check their work: Claude Code, Copilot and Codex open your dev server in the session's Browser panel, read the page, type and click, take a picture and read the console. Pages on this computer need no approval. Any other site asks first, and **Always allow** keeps it for the project. The project's settings list its **Browser sites**. Turn it off in **Settings › General › Browser › Allow Seshboard to control the browser**.
+- **Copy a page's address in one click.** The link icon at the start of the browser's address bar copies the address of the page.
+- **Edit a favourite.** Right-click a favourite and pick **Edit favourite…** to change its name or address, or **Use current page's address** to give it the address of the page on screen. A favourite keeps its address as you browse: only you change it.
+- **Suggestions in the browser's address bar.** As you type, it lists your open tabs, your favourites and pages you opened before, matched on the address or the title. Pick one with ↑↓ and Enter, or click it. Enter opens the first one when what you typed is the start of its address.
 - **Find in a browser page.** ⌘F in the browser (a page, its address bar or the Browser view) opens a find bar with the match count, next and previous (Enter and ⇧Enter), and Esc to close it. It is also in the toolbar's **⋯** menu and the command palette.
 - Group the sidebar by project: the View button picks State or Project, the order, and whether to show Done or compact rows.
 - A rail at the right edge holds a session's tools: Changes, Terminal, Browser, Preview, Ask, Agents, Commands and mods, with what's in them as badges.
