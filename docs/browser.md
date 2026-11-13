@@ -58,3 +58,19 @@ VS Code's approach is the guide for a move: a page manager in main, a placeholde
 - Smoke steps query main for views instead of `[data-web-preview-page]` elements.
 
 Start with a spike behind a setting, in the Browser view only, and check three things: typing after ⌘K reaches the palette without key routing, the palette and menus look right over a page with the screenshot swap, and the page keeps up while the sidebar folds.
+
+## Agents in the browser
+
+A session's agent can drive its own Browser panel to check its work: open the dev server, read the page, type and click as a person would. It works for every agent Seshboard runs: Claude Code, Copilot and Codex. Settings › General › Browser › **Allow Seshboard to control the browser** turns it on (with the browser on); sessions started or resumed after a change get it.
+
+**The server.** Each agent process starts Seshboard's `browser` MCP server over stdio (`apps/desktop/src/browserMcp/`), as Seshboard's own binary run as Node, like `visualize`. Its tools are `open`, `snapshot`, `click`, `type`, `press`, `screenshot` and `console` (`BROWSER_TOOL_SPECS` in `packages/protocol/src/browserSites.ts`). It holds no state: each call goes to the engine's bridge over a local socket (a named pipe on Windows), with a token for its session in its environment (`SESHBOARD_BROWSER_SOCKET`, `SESHBOARD_BROWSER_TOKEN`). The bridge (`packages/engine/src/browser/browserBridge.ts`) reads the token's session when a call comes, so a fork or a pre-warmed process taken over by a session works. A read-only pipeline step gets no server.
+
+**Which sites.** The bridge checks every call, whatever the agent. A page on this computer (`localhost`, `*.localhost`, loopback) and a site the project allows (`ProjectDefaults.browserSites`, origins) run at once. Any other site shows the session's permission card, naming the site and saying the agent acts there with your login (`askBrowserSite`, in `HostManager` for Claude Code and `ProviderHosts` for the others); the session shows as needing you meanwhile. **Always allow** adds the site to the project, whose settings list them under Browser sites. Sites match by origin (`siteAllowed`), so allowing `app.example.com` never allows `admin.example.com`. A session outside an added project can only allow once. Claude Code gets the tools in `allowedTools`, and Copilot approves Seshboard's own servers, so the agent's own prompt never asks a second time.
+
+**The path of a call.** Bridge → main (`browser-tool` on the parent port, `apps/desktop/src/engine/index.ts`) → `main/browserAgent.ts`. Main asks the window that shows the session (its pop-out, else the main window) which page to use (`BrowserAgentTargetRequest`, answered by `browserAgentTarget.ts` in the renderer). The agent works in a tab of its own in the session's panel, so your tabs keep their pages; `open` makes it (or loads the address in it) and shows the panel. Main checks the page is one of that window's browser pages, then:
+
+- `snapshot` runs `SNAPSHOT_SCRIPT` in the page: headings, text, and each element you can act on with its role, name, state and a ref (`e12`). Refs live in a map on the page (`__seshboardRefs`), so the DOM never changes. Open shadow roots are read; frames are named, not read.
+- `click` scrolls the element into view and sends a real mouse click at its middle (`sendInputEvent`, scaled by the page's zoom). `type` focuses the field, selects what it holds and inserts the text; `press` sends a key.
+- `screenshot` is `capturePage`, at most 1280px wide, as JPEG. `console` lists the page's last 100 messages, errors first, collected from the moment the page exists.
+
+Every result says where the page is after the call, and text from a page is marked as data, not instructions.

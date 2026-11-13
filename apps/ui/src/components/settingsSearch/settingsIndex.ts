@@ -7,7 +7,7 @@ import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
-import { BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -86,6 +86,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: BROWSER_DETAIL,
       keywords: 'web page tabs pin github pull request url internet',
       target: '[data-browser-setting]',
+    },
+    {
+      id: 'browser-control',
+      page: 'general',
+      label: 'Allow Seshboard to control the browser',
+      detail: BROWSER_CONTROL_DETAIL,
+      keywords: 'agent claude copilot codex browser tools control click type test check page sites dev server',
+      target: '[data-browser-control-setting]',
     },
     { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
 

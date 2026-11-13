@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent } from '@seshboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -164,6 +164,14 @@ const bridge: SeshboardBridge = {
     const handler = (_event: unknown, event: WebPreviewEvent) => listener(event);
     ipcRenderer.on(IpcChannel.webPreviewEvent, handler);
     return () => ipcRenderer.off(IpcChannel.webPreviewEvent, handler);
+  },
+  onBrowserAgentTarget(listener) {
+    const handler = (_event: unknown, request: BrowserAgentTargetRequest) => {
+      const reply = (target: BrowserAgentTarget) => ipcRenderer.send(IpcChannel.browserAgentTargetReply, { ...target, requestId: request.requestId });
+      listener(request).then(reply, (error: Error) => reply({ contentsId: null, url: null, error: error.message }));
+    };
+    ipcRenderer.on(IpcChannel.browserAgentTarget, handler);
+    return () => ipcRenderer.off(IpcChannel.browserAgentTarget, handler);
   },
   setAddressFocus: (focused) => ipcRenderer.send(IpcChannel.webPreviewAddressFocus, focused === true),
   keysToWindow: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewKeysToWindow, typeof contentsId === 'number' ? contentsId : null),

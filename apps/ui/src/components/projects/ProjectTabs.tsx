@@ -41,6 +41,7 @@ import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
+import { BrowserSitesEditor } from './BrowserSitesEditor.tsx';
 import { defaultChips, overviewWorktrees, recentSessions, sessionState } from './projectOverview.ts';
 
 /** Re-renders relative ages once a minute. */
@@ -441,11 +442,14 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   // A project on a Copilot profile picks Copilot's models for its defaults.
   const provider = useProviderChoices(profile);
   const fallback = profiles.find((p) => p.isDefault);
+  // "Always allow" on a site's prompt changes the project's sites in the engine: read them again when this opens.
+  useEffect(() => reload(), [reload]);
+  const browserOn = usePreferences((s) => s.prefs.browserEnabled && s.prefs.browserControl);
   const save = async (defaults: ProjectDefaults) => {
     if (!client) return;
     try {
       setError(null);
-      await client.call('projects.setDefaults', { root: project.root, defaults });
+      await client.call('projects.setDefaults', { root: project.root, defaults: { ...defaults, browserSites: project.defaults.browserSites } });
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -509,6 +513,18 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
           )}
         </div>
       </SettingRow>
+      {browserOn && (
+        <SettingRow label="Browser sites" hint="The agent can use these sites in the browser here without asking. Pages on this computer always can. Any other site asks first." data-project-browser-sites>
+          <BrowserSitesEditor
+            sites={project.defaults.browserSites ?? []}
+            onSave={async (browserSites) => {
+              if (!client) return;
+              await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, browserSites } });
+              reload();
+            }}
+          />
+        </SettingRow>
+      )}
       <SettingRow
         label="Remove"
         hint="Removing a project only takes it off Seshboard's lists: nothing on disk changes, and its sessions stay in search and under sessions from other apps."

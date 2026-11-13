@@ -17,6 +17,9 @@ import {
   type SessionHostInfo,
   type SlashCommand,
   type StreamDelta,
+  PROVIDER_NAMES,
+  siteLabel,
+  type BrowserTool,
 } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
@@ -28,6 +31,10 @@ import { mcpAppToolPolicy } from './mcpApps.ts';
 export interface ProviderHostsDeps {
   /** The allowed providers that can run sessions (have a driver). */
   providers(): ProviderAdapter[];
+  /** The browser tools: Seshboard's `browser` MCP server for one session (null while they are off), as Claude Code's get. */
+  browserServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
+  /** "Always allow" on a browser site's prompt: the session's project allows that site from now on. */
+  allowBrowserSite?(sessionId: string, site: string): void;
   /** The provider profile a session belongs to (to resume it with that profile's login). */
   profileOf(sessionId: string): string | undefined;
   /** The folder a session ran in. */
@@ -96,6 +103,8 @@ export class ProviderHosts {
   private readonly hosts = new Map<string, Host>();
   /** Permission request id → session. */
   private readonly requests = new Map<string, string>();
+  /** Prompts Seshboard raised itself (a browser site to allow), not the provider: their answer, and the site. */
+  private readonly ownPrompts = new Map<string, { site: string; resolve(allowed: boolean): void }>();
 
   constructor(private readonly deps: ProviderHostsDeps) {}
 
@@ -136,7 +145,7 @@ export class ProviderHosts {
     host.readOnly = params.readOnly === true;
     let session: DriverSession;
     try {
-      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly, ...this.ownServers(host.readOnly), ...this.appended() }, this.eventsFor(host));
+      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly, ...(await this.ownServers(host)), ...this.appended() }, this.eventsFor(host));
     } catch (error) {
       throw new RpcError('PROVIDER_FAILED', (error as Error).message);
     }
@@ -305,9 +314,44 @@ export class ProviderHosts {
     this.visualize = server;
   }
 
-  /** Seshboard's own MCP servers for a session it starts; a read-only one gets none. */
-  private ownServers(readOnly: boolean | undefined): Pick<DriverSessionConfig, 'mcpServers'> {
-    return this.visualize && !readOnly ? { mcpServers: { visualize: this.visualize } } : {};
+  /** Seshboard's own MCP servers for a session it starts (visuals, the browser tools); a read-only one gets none. */
+  private async ownServers(host: Host): Promise<Pick<DriverSessionConfig, 'mcpServers'>> {
+    if (host.readOnly) return {};
+    const browser = (await this.deps.browserServer?.(() => host.info.sessionId || null)) ?? null;
+    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { browser } : {}) };
+    return Object.keys(servers).length ? { mcpServers: servers } : {};
+  }
+
+  /**
+   * The browser tools want a site the session's project doesn't allow: asks in the session's permission card, as the
+   * provider's own prompts do. True when you allowed it; "Always allow" also keeps the site for the project.
+   */
+  askBrowserSite(sessionId: string, site: string, tool: BrowserTool, input: Record<string, unknown>): Promise<boolean> {
+    const host = this.hosts.get(sessionId);
+    if (!host) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const requestId = randomUUID();
+      const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
+      const request: PermissionRequest = {
+        requestId,
+        sessionId,
+        toolName: `mcp__browser__${tool}`,
+        toolUseId: null,
+        input: JSON.parse(JSON.stringify(input)) as PermissionRequest['input'],
+        title: `${agent} wants to use ${siteLabel(site)} in the browser`,
+        description: 'It clicks and types there as you, with your login on that site.',
+        decisionReason: null,
+        blockedPath: null,
+        alwaysLabel: `${siteLabel(site)} in this project`,
+        agentId: null,
+        createdAt: Date.now(),
+      };
+      this.ownPrompts.set(requestId, { site, resolve });
+      host.permissions.set(requestId, request);
+      this.requests.set(requestId, sessionId);
+      this.update(host, { state: 'needs-you' });
+      this.deps.onPermission(request);
+    });
   }
 
   /** An MCP App's page, or another resource it reads, from the session's MCP server. */
@@ -339,6 +383,18 @@ export class ProviderHosts {
   respond(requestId: string, decision: PermissionDecision): boolean {
     const sessionId = this.requests.get(requestId);
     const host = sessionId ? this.hosts.get(sessionId) : undefined;
+    const own = this.ownPrompts.get(requestId);
+    if (own && host && sessionId) {
+      this.ownPrompts.delete(requestId);
+      host.permissions.delete(requestId);
+      this.requests.delete(requestId);
+      this.deps.onPermissionResolved(requestId, sessionId);
+      if (host.info.state === 'needs-you' && host.permissions.size === 0) this.update(host, { state: host.inTurn ? 'running' : 'idle' });
+      const allowed = decision.behavior === 'allow';
+      if (allowed && decision.always) this.deps.allowBrowserSite?.(sessionId, own.site);
+      own.resolve(allowed);
+      return true;
+    }
     if (!host?.session) return false;
     host.session.respond(requestId, decision);
     return true;
@@ -409,7 +465,7 @@ export class ProviderHosts {
     const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting', effort);
     host.readOnly = this.deps.readOnly?.(sessionId) ?? false;
     try {
-      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly, ...this.ownServers(host.readOnly), ...this.appended() }, this.eventsFor(host));
+      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly, ...(await this.ownServers(host)), ...this.appended() }, this.eventsFor(host));
     } catch (error) {
       this.hosts.delete(sessionId);
       this.update(host, { state: 'closed' });

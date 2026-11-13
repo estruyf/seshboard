@@ -25,6 +25,8 @@ import {
   type ModPromptAnswer,
   type ModPromptAsk,
   type ModsSnapshot,
+  siteLabel,
+  type BrowserTool,
 } from '@seshboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -143,6 +145,13 @@ export interface HostManagerDeps {
    * without you); null shows it as usual.
    */
   autoAnswer?: (request: PermissionRequest) => PermissionDecision | null;
+  /**
+   * The browser tools (docs/browser.md): Seshboard's `browser` MCP server for one process, tied to the session
+   * `sessionId` names when a call comes; null while Settings › General › Browser has them off.
+   */
+  browserServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
+  /** "Always allow" on a browser site's prompt: the session's project allows that site from now on. */
+  allowBrowserSite?: (sessionId: string, site: string) => void;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -164,6 +173,8 @@ interface Pending {
   suggestions: PermissionUpdate[] | undefined;
   /** A user's ask rule forced this prompt, so no mode answers it. */
   matchedAskRule: boolean;
+  /** A browser tool's prompt: the site that "Always allow" adds to the project. */
+  browserSite?: string;
   resolve: (result: PermissionResult) => void;
 }
 
@@ -174,8 +185,8 @@ interface Warm {
   effort: Effort | null;
   sessionId: string;
   warm: Promise<WarmQuery>;
-  /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process. */
-  route: { canUseTool: CanUseTool | null };
+  /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process, as do the browser tools. */
+  route: { canUseTool: CanUseTool | null; sessionId: (() => string) | null };
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -668,7 +679,8 @@ export class HostManager {
         behavior: 'allow',
         updatedInput: decision.updatedInput ?? pending.input,
       };
-      if (decision.always && pending.suggestions) result.updatedPermissions = pending.suggestions;
+      if (decision.always && pending.suggestions && !pending.browserSite) result.updatedPermissions = pending.suggestions;
+      if (decision.always && pending.browserSite) this.deps.allowBrowserSite?.(pending.request.sessionId, pending.browserSite);
       this.settle(requestId, result);
       // "Always" can switch the mode too (Accept edits for this session), which the other waiting prompts miss.
       const mode = result.updatedPermissions?.findLast((u) => u.type === 'setMode');
@@ -942,6 +954,12 @@ export class HostManager {
     this.discardWarm();
   }
 
+  /** The browser tools on or off (`browserServer`). As with the visualize server, running sessions keep what they started with. */
+  browserChanged(): void {
+    this.discardWarm();
+  }
+
+
   /**
    * Let the agent mark its key sentences, on or off. Claude Code reads its system prompt at startup, so running
    * sessions keep what they started with, and the warm process is dropped.
@@ -1031,7 +1049,10 @@ export class HostManager {
     const sessionId = randomUUID();
     // Until a new session takes it over, the waiting process is no session: keep its registry entry out of the list.
     this.deps.ephemeral?.add(sessionId);
-    const route: Warm['route'] = { canUseTool: null };
+    const route: Warm['route'] = { canUseTool: null, sessionId: null };
+    const browser = (await this.deps.browserServer?.(() => route.sessionId?.() ?? null)) ?? null;
+    // Settings changed while the server started: this process would start with the old ones.
+    if (generation !== this.warmGeneration) return;
     const options = buildOptions(
       {
         sessionId,
@@ -1044,6 +1065,7 @@ export class HostManager {
         worktree: null,
         chrome: this.chrome,
         visualize: this.visualize,
+        browser,
         skimMarks: this.skimMarks,
         env,
         claudePath,
@@ -1124,6 +1146,7 @@ export class HostManager {
     const startQuery: StartQuery = warm
       ? async (args) => {
           warm.route.canUseTool = canUseTool;
+          warm.route.sessionId = () => hostRef!.sessionId;
           // It failed after this session took it: start a fresh process, which fails with its own reason if Claude Code can't run.
           const started = await warm.warm.catch((error: Error) => {
             this.deps.log('info', `Pre-warmed process failed (${error.message}); starting a fresh one`);
@@ -1133,7 +1156,19 @@ export class HostManager {
         }
       : (args) => sdk.query(args);
     const host = new SessionHost(
-      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods, chrome: this.chrome, visualize: this.visualize, skimMarks: this.skimMarks },
+      {
+        ...config,
+        env,
+        claudePath,
+        canUseTool,
+        limitPrefixes: limitPrefixes(sdk),
+        showMods: this.showMods,
+        chrome: this.chrome,
+        visualize: this.visualize,
+        // A pre-warmed process has its tools already; a new one gets them here.
+        browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
+        skimMarks: this.skimMarks,
+      },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
@@ -1193,6 +1228,25 @@ export class HostManager {
   }
 
   private ask(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2]): Promise<PermissionResult> {
+    return this.prompt(sessionId, toolName, input, options);
+  }
+
+  /**
+   * The browser tools want a site this session's project doesn't allow (the bridge, `BrowserBridge`): asks in the
+   * session's permission card, naming the site. True when you allowed it; "Always allow" also keeps it for the project.
+   */
+  async askBrowserSite(sessionId: string, site: string, tool: BrowserTool, input: Record<string, unknown>): Promise<boolean> {
+    const host = this.hosts.get(sessionId);
+    host?.waitingOnYou(true);
+    try {
+      const result = await this.prompt(sessionId, `mcp__browser__${tool}`, input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], site);
+      return result.behavior === 'allow';
+    } finally {
+      host?.waitingOnYou(false);
+    }
+  }
+
+  private prompt(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2], browserSite?: string): Promise<PermissionResult> {
     // Once per call: Claude's new attempt has a new id, so it can't come back here again.
     const before = this.callsBeforeMode.get(sessionId);
     if (before?.toolUseIds.delete(options.toolUseID) && recheckAfterModeChange({ toolName, matchedAskRule: Boolean(options.matchedAskRule) }, before.mode)) {
@@ -1209,15 +1263,15 @@ export class HostManager {
         toolUseId: str(options.toolUseID),
         input: clipped.value,
         ...(clipped.truncated ? { truncated: true } : {}),
-        title: str((options as { title?: unknown }).title),
-        description: str((options as { description?: unknown }).description),
+        title: browserSite ? `Claude Code wants to use ${siteLabel(browserSite)} in the browser` : str((options as { title?: unknown }).title),
+        description: browserSite ? 'It clicks and types there as you, with your login on that site.' : str((options as { description?: unknown }).description),
         decisionReason: str(options.decisionReason),
         blockedPath: str(options.blockedPath),
-        alwaysLabel: describeSuggestions(options.suggestions),
+        alwaysLabel: browserSite ? `${siteLabel(browserSite)} in this project` : describeSuggestions(options.suggestions),
         agentId: str(options.agentID),
         createdAt: Date.now(),
       };
-      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), resolve });
+      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), ...(browserSite ? { browserSite } : {}), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });
       // Answered for you: through `respond`, so an approved plan goes through `planApproved` as a click would.
       const auto = this.deps.autoAnswer?.(request) ?? null;

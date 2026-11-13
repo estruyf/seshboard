@@ -19,6 +19,7 @@ import type { McpAppCsp } from "./visuals.ts";
 export * from "./retention.ts";
 export * from "./autoModel.ts";
 export * from "./appIcons.ts";
+export * from "./browserSites.ts";
 export { channelOf } from "./appUpdate.ts";
 export * from "./notificationPause.ts";
 
@@ -92,6 +93,8 @@ export const IpcChannel = {
   webPreviewAddressFocus: "seshboard:web-preview-address-focus",
   webPreviewClearData: "seshboard:web-preview-clear-data",
   webPreviewKeysToWindow: "seshboard:web-preview-keys-to-window",
+  browserAgentTarget: "seshboard:browser-agent-target",
+  browserAgentTargetReply: "seshboard:browser-agent-target-reply",
   showInMain: "seshboard:show-in-main",
   mainRequested: "seshboard:main-requested",
   popoutsChanged: "seshboard:popouts-changed",
@@ -189,6 +192,25 @@ export type WebPreviewEvent =
   | { kind: 'favicon'; contentsId: number; url: string }
   /** The page started or stopped playing sound. */
   | { kind: 'audio'; contentsId: number; audible: boolean };
+
+/**
+ * The browser tools ask a window for the page a session's tools work on (main/browserAgent.ts). `open`: load this
+ * address in the session's agent tab (made, and its panel shown, when needed). `ensure`: make the page live (show the
+ * panel) when it was dropped. Without either, only say which page it is.
+ */
+export interface BrowserAgentTargetRequest {
+  requestId: number;
+  sessionId: string;
+  open: string | null;
+  ensure: boolean;
+}
+
+/** The page's contents id (null: no page yet) and the address its tab shows; `error` when the window can't. */
+export interface BrowserAgentTarget {
+  contentsId: number | null;
+  url: string | null;
+  error?: string;
+}
 
 /**
  * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
@@ -421,6 +443,13 @@ export interface Preferences {
    */
   agentVisuals: boolean;
   /**
+   * Settings › General › Browser: "Allow Seshboard to control the browser". On (with the browser on), the sessions
+   * Seshboard starts or resumes get its `browser` tools, whatever their agent (Claude Code, Copilot, Codex): open,
+   * read, click and type in the session's Browser panel. Pages on this computer need no approval; other sites ask
+   * first, or are allowed per project.
+   */
+  browserControl: boolean;
+  /**
    * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
    * Seshboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
    * runs `caffeinate -s` (on power only), Windows and Linux use Electron's sleep blocker. Off by default.
@@ -595,6 +624,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   newSessionEffort: "",
   chrome: false,
   agentVisuals: true,
+  browserControl: true,
   keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
@@ -786,6 +816,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.newSessionEffort = raw.newSessionEffort;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
   if (typeof raw.agentVisuals === "boolean") out.agentVisuals = raw.agentVisuals;
+  if (typeof raw.browserControl === "boolean") out.browserControl = raw.browserControl;
   if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "beta"] as const, raw.updateChannel))
@@ -1203,6 +1234,8 @@ export interface SeshboardBridge {
   forwardKeys(keys: ForwardedKeys): void;
   /** A browser page opened a window or a download was refused (the browser on). */
   onWebPreviewEvent(listener: (event: WebPreviewEvent) => void): () => void;
+  /** The browser tools: main asks for (and, to open, makes) the page a session's tools work on. */
+  onBrowserAgentTarget(listener: (request: BrowserAgentTargetRequest) => Promise<BrowserAgentTarget>): () => void;
   /**
    * The browser's address bar has focus (or lost it): main then hands ⌘W (Ctrl+W) to the window as keys, for Close tab,
    * instead of closing the window.
