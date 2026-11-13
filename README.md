@@ -315,6 +315,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧M | Comment on the selected lines (in a diff in Changes; Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box) |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |
 | ⌘⇧E | Show or hide Commands (The commands Claude runs in the background, with their output) |
+| ⌥↑ or ⌥↓ | Move a tool or an app on the rail up or down (on a button on the rail at the session's right edge; Or drag it. A button moves only inside its group) |
 | ⌘⇧B | Show or hide the session's browser (Your running dev server, or with the browser on any page, beside the conversation) |
 |  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |
 | Esc | Restore the terminal (while it fills the view, outside the shell) |

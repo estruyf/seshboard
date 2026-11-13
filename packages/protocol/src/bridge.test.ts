@@ -63,6 +63,19 @@ describe('sidebar view and rail preferences', () => {
     expect(sanitizePreferences({ railHidden: ['ask', 'changes', 'ask', 'nope', 3] })).toEqual({ railHidden: ['changes', 'ask'] });
     expect(sanitizePreferences({ railHidden: 'ask' })).toEqual({});
   });
+
+  it("keeps the rail's order with every tool once, a missing one at its own place", () => {
+    expect(DEFAULT_PREFERENCES.railOrder).toEqual(['changes', 'terminal', 'web', 'preview', 'ask', 'agents', 'commands']);
+    expect(sanitizePreferences({ railOrder: ['web', 'changes', 'terminal', 'preview', 'commands', 'agents', 'ask'] })).toEqual({ railOrder: ['web', 'changes', 'terminal', 'preview', 'commands', 'agents', 'ask'] });
+    expect(sanitizePreferences({ railOrder: ['terminal', 'changes', 'mods', 'nope', 'terminal'] })).toEqual({ railOrder: ['terminal', 'changes', 'web', 'preview', 'ask', 'agents', 'commands'] });
+    expect(sanitizePreferences({ railOrder: 'web' })).toEqual({});
+  });
+
+  it('keeps the apps pinned to the rail as editor ids, once each, in their order', () => {
+    expect(DEFAULT_PREFERENCES.railApps).toEqual([]);
+    expect(sanitizePreferences({ railApps: ['finder', 'vscode', 'finder', 'Bad Id', 3, '../x'] })).toEqual({ railApps: ['finder', 'vscode'] });
+    expect(sanitizePreferences({ railApps: 'finder' })).toEqual({});
+  });
 });
 
 describe('fileLinkClick preference', () => {

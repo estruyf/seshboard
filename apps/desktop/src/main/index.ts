@@ -33,7 +33,7 @@ import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
 import { installBrowserAgent } from './browserAgent.ts';
 import { runBrowserAgentStep, runBrowserServerStep } from './browserAgentSmoke.ts';
-import { runToolRailBadgesStep, runToolRailStep } from './toolRailSmoke.ts';
+import { runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
 import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
@@ -480,6 +480,23 @@ ipcMain.handle(IpcChannel.mcpAppDocument, (_event, html: unknown, csp: unknown) 
 });
 
 ipcMain.handle(IpcChannel.listSounds, () => sounds.list());
+/** Apps' icons for the rail, read once each. Only an app's bundle or program, the files `EditorInfo.icon` names. */
+const appIcons = new Map<string, Promise<string | null>>();
+ipcMain.handle(IpcChannel.appIcon, (_event, path: unknown) => {
+  if (typeof path !== 'string' || !isLocalAbsolutePath(path, process.platform) || !/\.(app|exe)$/i.test(path)) return null;
+  let icon = appIcons.get(path);
+  if (!icon) {
+    // The system's thumbnail is sharp on a Retina screen; the file icon (32px at most) is the fallback.
+    icon = existsSync(path)
+      ? nativeImage
+          .createThumbnailFromPath(path, { width: 64, height: 64 })
+          .catch(() => app.getFileIcon(path, { size: 'normal' }))
+          .then((image) => (image.isEmpty() ? null : image.toDataURL()), () => null)
+      : Promise.resolve(null);
+    appIcons.set(path, icon);
+  }
+  return icon;
+});
 ipcMain.on(IpcChannel.playSound, (_event, id: unknown, volume: unknown) => {
   if (isSoundId(id) && typeof volume === 'number' && Number.isFinite(volume)) sounds.play(id, volume);
 });
@@ -3309,12 +3326,12 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     await js(`${view}.querySelector('[data-more-menu]').click()`);
     const menuOk = await waitInPage(
       win,
-      "!!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !!document.querySelector('[role=\"menu\"] [data-rename-session]') && !!document.querySelector('[role=\"menu\"] [data-agents-button]') && !document.querySelector('[data-menu-note]')",
+      "!!document.querySelector('[role=\"menu\"] [data-open-in]') && !!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !!document.querySelector('[role=\"menu\"] [data-rename-session]') && !!document.querySelector('[role=\"menu\"] [data-agents-button]') && !document.querySelector('[data-menu-note]')",
       3_000,
     );
     await shot(win, 'copilot-session-menu.png');
     pressKey(win, 'Escape');
-    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Agents and Done, with no Claude Code only line)";
+    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in with Copilot CLI, Rename, Agents and Done, with no Claude Code only line)";
     // Copilot's own fork and rewind on its messages (in its words), and Rename… and Delete… in its row's menu. Nothing is
     // picked: the demo's Copilot can't run them.
     const toolbar = (await js(
@@ -3484,11 +3501,11 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     // Codex CLI. Nothing is picked but Tools.
     await js(`${view}.querySelector('[data-more-menu]').click()`);
     const menuItems = "[...document.querySelectorAll('[role=menu] [data-provider-compact], [role=menu] [data-provider-tools], [role=menu] [data-rename-session], [role=menu] [data-open-provider-cli=\"codex\"]')].map((e) => Object.keys(e.dataset).find((k) => ['providerCompact', 'providerTools', 'renameSession', 'openProviderCli'].includes(k)))";
-    const menuOk = await waitInPage(win, `${menuItems}.length === 4`, 3_000);
+    const menuOk = await waitInPage(win, `${menuItems}.length === 4 && !!document.querySelector('[role=menu] [data-open-in]')`, 3_000);
     const menuSeen = (await js(menuItems)) as string[];
     if (!menuOk) {
       pressKey(win, 'Escape');
-      return `the Codex session's ⋯ menu has ${JSON.stringify(menuSeen)}, not Compact, Tools, Rename and Open in Codex CLI`;
+      return `the Codex session's ⋯ menu has ${JSON.stringify(menuSeen)}${(await js("!!document.querySelector('[role=menu] [data-open-in]')")) ? '' : ' and no Open in'}, not Open in, Compact, Tools, Rename and Codex CLI`;
     }
     // Tools: the session doesn't run here (the demo's Codex runs nothing), so it reads Codex's config for the folder: the
     // demo's github and linear servers, with no switch to turn one on or off (Codex keeps that in its config.toml), and
@@ -14106,6 +14123,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('sidebar compact: View › Compact rows makes rows one line', () => runSidebarCompactStep(win, sidebarDeps));
   await step('tool rail: a toolbar at the right edge, Changes opens in front and closes again', () => runToolRailStep(win, shotBoth, smokeSessionId));
   await step('tool rail badges: the Changes badge counts the changed files', () => runToolRailBadgesStep(win, smokeSessionId));
+  await step('tool rail apps: an app checked in the menu is pinned to the rail with its icon', () => runToolRailAppsStep(win, shotBoth, smokeSessionId));
+  await step('tool rail order: ⌥↑ and ⌥↓ move a tool inside its group', () => runToolRailOrderStep(win, smokeSessionId));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
   await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));

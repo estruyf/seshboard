@@ -1,4 +1,4 @@
-import { Blocks, Bot, Check, Code, Coffee, Copy, Ellipsis, Minimize2, NotebookPen, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope, SquareTerminal } from 'lucide-react';
+import { Blocks, Bot, Check, Code, Coffee, Copy, Ellipsis, Minimize2, NotebookPen, Pencil, Play, ScrollText, Square, Stethoscope } from 'lucide-react';
 import { claudeOnlyLine, PROVIDER_SHORT_NAMES, type OptionalProvider, type ProviderFeature } from '@seshboard/protocol/client';
 import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -11,6 +11,9 @@ import { startAfter } from '../../state/startAfterStore.ts';
 import { openTerminal } from '../../state/terminalsStore.ts';
 import type { ActionsMenu } from '../actions/useActionsMenu.tsx';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
+import { AppIcon } from '../AppIcon.tsx';
+import { ClaudeIcon } from '../providers/ClaudeIcon.tsx';
+import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { useOpenInEntries } from '../OpenInButton.tsx';
 import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { sessionMemoryEntries, useSessionMemories } from '../memory/sessionMemories.tsx';
@@ -41,11 +44,28 @@ export interface ProviderMenu {
   agents?: { total: number; running: number };
 }
 
-/** The ⋯ menu of another provider's session: Compact, Tools, Copy the last reply, Rename (when it can), its Agents, Open in its CLI and Archive. */
-export function providerEntries(provider: ProviderMenu): MenuEntry[] {
+/**
+ * The ⋯ menu of another provider's session: Open in (the editors, terminals and Finder, with its CLI in the terminal
+ * panel where Claude Code's sits), then Compact, Tools, Copy the last reply, Rename (when it can), its Agents and Done.
+ * Without a folder to open, its CLI stays in the list as Open in its CLI.
+ */
+export function providerEntries(provider: ProviderMenu, openIn: readonly MenuEntry[] = []): MenuEntry[] {
   const short = PROVIDER_SHORT_NAMES[provider.id];
   const line = claudeOnlyLine(provider.supports);
+  const CliIcon = PROVIDER_ICONS[provider.id];
+  const cli: MenuEntry = {
+    label: openIn.length ? `${short} CLI` : `Open in ${short} CLI`,
+    icon: <CliIcon size={13} />,
+    hint: 'Terminal',
+    disabled: !provider.onOpenCli,
+    onSelect: () => provider.onOpenCli?.(),
+    data: { 'data-open-provider-cli': provider.id, ...(provider.onOpenCli ? {} : { 'data-tooltip': `Stop it here first: ${short} can't run it in two places` }) },
+  };
+  // As in a Claude Code session: its CLI with the apps under Open in, before Copy path.
+  const copyPath = openIn.findIndex((e) => typeof e === 'object' && 'data' in e && e.data?.['data-copy-path']);
+  const top = openIn.length ? [...openIn.slice(0, copyPath < 0 ? openIn.length : copyPath), cli, ...(copyPath < 0 ? [] : openIn.slice(copyPath)), 'separator' as const] : [];
   return [
+    ...top,
     { label: 'Compact', icon: <Minimize2 size={13} />, disabled: !provider.onCompact, onSelect: () => provider.onCompact?.(), data: { 'data-provider-compact': true, ...(provider.onCompact ? {} : { 'data-tooltip': `Only while ${short} runs it here` }) } },
     { label: 'Tools', icon: <Blocks size={13} />, disabled: !provider.onTools, onSelect: () => provider.onTools?.(), data: { 'data-provider-tools': true } },
     {
@@ -68,14 +88,7 @@ export function providerEntries(provider: ProviderMenu): MenuEntry[] {
           } satisfies MenuEntry,
         ]
       : []),
-    {
-      label: `Open in ${short} CLI`,
-      icon: <SquareTerminal size={13} />,
-      hint: 'Terminal',
-      disabled: !provider.onOpenCli,
-      onSelect: () => provider.onOpenCli?.(),
-      data: { 'data-open-provider-cli': provider.id, ...(provider.onOpenCli ? {} : { 'data-tooltip': `Stop it here first: ${short} can't run it in two places` }) },
-    },
+    ...(openIn.length ? [] : [cli]),
     { label: 'Done', icon: <Check size={13} />, onSelect: provider.onArchive, data: { 'data-archive-session': true } },
     // Plain text, not a disabled item: screen readers don't land on it as an action.
     ...(line ? (['separator', { note: line, tone: 'faint' }] as MenuEntry[]) : []),
@@ -139,7 +152,8 @@ export function MoreMenu({
 
   const memories = useSessionMemories(sessionId, !!menu.at);
   const openIn = useOpenInEntries(cwd);
-  const hasVSCode = useHosts((s) => s.editors.some((e) => e.id === 'vscode'));
+  const vscode = useHosts((s) => s.editors.find((e) => e.id === 'vscode'));
+  const hasVSCode = vscode !== undefined;
   const busy = useHosts((s) => {
     const state = s.hosts.get(sessionId)?.state;
     return state === 'starting' || state === 'running' || state === 'needs-you';
@@ -153,7 +167,7 @@ export function MoreMenu({
   // Claude Code's own terminal interface on this session, in the terminal panel: with the editors under "Open in", before Copy path.
   const claudeTui: MenuEntry = {
     label: openIn.entries.length ? 'Claude Code' : 'Open in Claude Code',
-    icon: <Sparkles size={13} />,
+    icon: <ClaudeIcon size={13} />,
     hint: 'Terminal',
     disabled: !client || !cwd,
     onSelect: () => void (client && cwd && openTerminal(client, sessionId, cwd, 'claude')),
@@ -166,7 +180,7 @@ export function MoreMenu({
   if (hasVSCode) {
     entries.splice(entries.indexOf(claudeTui) + 1, 0, {
       label: 'Continue in VS Code',
-      icon: <Code size={13} />,
+      icon: vscode ? <AppIcon editor={vscode} size={15} /> : <Code size={13} />,
       disabled: !client || !cwd || title === null || busy,
       onSelect: () =>
         void client
@@ -269,8 +283,8 @@ export function MoreMenu({
     },
   );
 
-  const shownEntries = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null, onAgents, agents }) : entries;
-  const label = provider ? 'More: compact, tools, copy, open in the CLI, done' : `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
+  const shownEntries = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null, onAgents, agents }, openIn.entries) : entries;
+  const label = provider ? 'More: open in, compact, tools, copy, done' : `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
   const error = actions.error ?? openIn.error;
   return (
     <div className="no-drag relative flex shrink-0 items-center" data-actions-bar>

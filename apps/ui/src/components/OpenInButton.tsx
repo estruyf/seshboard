@@ -1,9 +1,11 @@
 import { fileManagerName } from '../lib/platform.ts';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ChevronDown, Code, Copy, ExternalLink, Folder, Globe, SquareTerminal } from 'lucide-react';
+import { ChevronDown, Copy } from 'lucide-react';
 import type { EditorInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useHosts } from '../state/hostsStore.ts';
+import { AppIcon } from './AppIcon.tsx';
+import { GitHubIcon } from './GitHubIcon.tsx';
 import type { MenuEntry } from './Menu.tsx';
 import { Popover } from './ui/Popover.tsx';
 import { ariaKeysFor, formatKeys, keysFor } from '../lib/shortcuts.ts';
@@ -14,11 +16,11 @@ export function useOpenIn() {
   const setEditors = useHosts((s) => s.setEditors);
   const client = connection.status === 'connected' ? connection.client : null;
   return useCallback(
-    async (path: string, options: { line?: number; editorId?: string } = {}) => {
+    async (path: string, options: { line?: number; editorId?: string; keepDefault?: boolean } = {}) => {
       if (!client) return;
       await client.call('editors.open', { path, ...options });
       // Picking an editor from the menu makes it the default; refresh so the button follows.
-      if (options.editorId) {
+      if (options.editorId && !options.keepDefault) {
         const { editors, defaultId } = await client.call('editors.list', {});
         setEditors(editors, defaultId);
       }
@@ -34,7 +36,7 @@ const GROUPS: Array<{ kind: EditorInfo['kind']; label: string }> = [
 ];
 
 /** The folder's page on GitHub, or null when it has no GitHub remote (or the engine isn't connected). */
-function useGithubPage(path: string | null) {
+export function useGithubPage(path: string | null) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [page, setPage] = useState<{ repo: string; url: string } | null>(null);
@@ -56,12 +58,6 @@ function useGithubPage(path: string | null) {
 const MENU_WIDTH = 208;
 const item = 'flex w-full items-center justify-between px-3 py-1 text-left text-ui hover:bg-accent/15 focus-visible:bg-accent/15';
 const heading = 'px-3 pt-1.5 pb-0.5 text-meta tracking-wide text-faint uppercase';
-
-const KIND_ICON: Record<EditorInfo['kind'], ReactNode> = {
-  editor: <Code size={13} />,
-  terminal: <SquareTerminal size={13} />,
-  finder: <Folder size={13} />,
-};
 
 /**
  * The "Open in" part of the session header's ⋯ menu: every editor, terminal and Finder (the default
@@ -99,8 +95,8 @@ export function useOpenInEntries(path: string | null): { entries: MenuEntry[]; e
   const others = GROUPS.flatMap((group) => editors.filter((e) => e.kind === group.kind && e.id !== current.id));
   const entries: MenuEntry[] = [
     { heading: 'Open in' },
-    { label: current.name, icon: KIND_ICON[current.kind], hint: formatKeys(keysFor('editor.open')), onSelect: () => run(), data: { 'data-open-in': true, 'data-open-in-editor': current.id, 'data-tooltip': `Open ${path} in ${current.name}` } },
-    ...others.map((editor): MenuEntry => ({ label: editor.name, icon: KIND_ICON[editor.kind], onSelect: () => run(editor.id), data: { 'data-open-in-editor': editor.id } })),
+    { label: current.name, icon: <AppIcon editor={current} size={15} />, hint: formatKeys(keysFor('editor.open')), onSelect: () => run(), data: { 'data-open-in': true, 'data-open-in-editor': current.id, 'data-tooltip': `Open ${path} in ${current.name}` } },
+    ...others.map((editor): MenuEntry => ({ label: editor.name, icon: <AppIcon editor={editor} size={15} />, onSelect: () => run(editor.id), data: { 'data-open-in-editor': editor.id } })),
     {
       label: 'Copy path',
       icon: <Copy size={12} />,
@@ -118,7 +114,7 @@ export function useOpenInEntries(path: string | null): { entries: MenuEntry[]; e
   if (github) {
     entries.push({
       label: 'GitHub',
-      icon: <Globe size={13} />,
+      icon: <GitHubIcon size={13} />,
       hint: github.repo,
       // The main process opens http(s) links from window.open in the browser.
       onSelect: () => void window.open(github.url, '_blank'),
@@ -205,7 +201,7 @@ export function OpenInButton({ path, shortcut = true }: { path: string | null; /
         aria-keyshortcuts={shortcut ? ariaKeysFor('editor.open') : undefined}
         data-open-in
       >
-        <ExternalLink size={13} className="shrink-0 text-muted" aria-hidden />
+        <AppIcon editor={current} size={15} />
         {/* In a narrow pane (container query on the session view) only the icon stays. */}
         <span className="@max-[860px]:hidden">{current.name}</span>
       </button>
@@ -246,7 +242,10 @@ export function OpenInButton({ path, shortcut = true }: { path: string | null; /
                 </p>
                 {items.map((editor) => (
                   <button key={editor.id} type="button" role="menuitem" onClick={() => run(editor.id)} className={item}>
-                    {editor.name}
+                    <span className="flex items-center gap-2">
+                      <AppIcon editor={editor} size={15} />
+                      {editor.name}
+                    </span>
                     {editor.id === defaultId && <span className="text-meta text-muted">default</span>}
                   </button>
                 ))}
@@ -294,7 +293,10 @@ export function OpenInButton({ path, shortcut = true }: { path: string | null; /
                 data-tooltip={github.url}
                 data-open-github={github.url}
               >
-                GitHub
+                <span className="flex items-center gap-2">
+                  <GitHubIcon size={13} className="text-muted" aria-hidden />
+                  GitHub
+                </span>
                 <span className="min-w-0 truncate pl-2 text-meta text-muted">{github.repo}</span>
               </button>
             </div>

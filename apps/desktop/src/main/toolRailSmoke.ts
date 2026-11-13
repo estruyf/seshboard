@@ -70,3 +70,66 @@ export async function runToolRailBadgesStep(win: BrowserWindow, sessionId: strin
   if (!(await js(`${CHANGES}.querySelector('[data-rail-badge]')?.getAttribute('aria-hidden') !== 'false'`))) return 'the badge is read out';
   return count ? `ok: the badge says ${badge}, as the panel's ${count} files, label "${label}"` : 'ok: no changed files, no badge';
 }
+
+/**
+ * Tool rail apps: the rail's right-click menu lists the apps that open a folder (Finder at least) and GitHub, and checking one pins
+ * it to the rail by its own icon as a plain button, not a toggle. It never clicks the app, which would open it, and
+ * unpins it again.
+ */
+export async function runToolRailAppsStep(win: BrowserWindow, shot: (name: string) => Promise<void>, sessionId: string | null): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await showSession(win, sessionId);
+  const rail = q('[data-tool-rail]');
+  if (!(await waitInPage(win, `!!${rail}`, 5_000))) return 'the session has no rail of tools';
+  const app = q('[data-tool-rail] [data-rail-tool="app:finder"]');
+  const menuItem = `document.querySelector('[data-rail-menu-app="finder"]')`;
+  const openMenu = async () => {
+    await js(`(() => { const r = ${rail}.getBoundingClientRect(); ${rail}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 10, clientY: r.top + 40 })); })()`);
+    return waitInPage(win, `!!${menuItem}`, 3_000);
+  };
+  if (await js(`!!${app}`)) return 'Finder is on the rail before the step pinned it';
+  if (!(await openMenu())) return "the rail's menu lists no Finder under Open in";
+  if (!(await js(`!!document.querySelector('[data-rail-menu-app="github"]')`))) return "the rail's menu lists no GitHub under Open in";
+  if ((await js(`${menuItem}.getAttribute('aria-checked')`)) !== 'false') return 'Finder shows as pinned before it was';
+  await js(`${menuItem}.click()`);
+  if (!(await waitInPage(win, `!!${app}`, 3_000))) return 'checking Finder in the menu did not pin it to the rail';
+  // Main reads the icon from the app after the button shows. Linux has none to read: there the kind's own icon shows.
+  if (process.platform !== 'linux') await waitInPage(win, `!!${app}.querySelector('img[data-app-icon="finder"]')?.complete`, 3_000);
+  const button = (await js(`({ label: ${app}.getAttribute('aria-label'), pressed: ${app}.getAttribute('aria-pressed'), icon: !!${app}.querySelector('img[data-app-icon="finder"]'), last: [...document.querySelectorAll(${JSON.stringify(`${S} [data-rail-button]:not([data-rail-hide])`)})].at(-1) === ${app} })`)) as Record<string, unknown>;
+  await shot('tool-rail-apps');
+  // The pin is a preference: take it off again whatever the checks found.
+  if (await openMenu()) await js(`${menuItem}.click()`);
+  if (!(await waitInPage(win, `!${app}`, 3_000))) return 'unchecking Finder did not take it off the rail';
+  if (!String(button.label).startsWith('Open in ')) return `the app's button is named "${button.label}"`;
+  if (button.pressed !== null) return 'the app is a toggle button (aria-pressed)';
+  if (!button.last) return "the app is not the rail's last button";
+  if (process.platform !== 'linux' && !button.icon) return "the app shows no icon of its own";
+  return `ok: Finder pinned last as "${button.label}"${button.icon ? ' with its own icon' : ''}, and unpinned`;
+}
+
+/**
+ * Tool rail order: ⌥↑ on Terminal moves it above Changes, keeps the focus on it and the order after a render; ⌥↓ puts
+ * it back. ⌥↑ on the first button of a group leaves it where it is (a button moves only inside its group).
+ */
+export async function runToolRailOrderStep(win: BrowserWindow, sessionId: string | null): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await showSession(win, sessionId);
+  if (!(await waitInPage(win, `!!${q('[data-tool-rail]')}`, 5_000))) return 'the session has no rail of tools';
+  if (!(await js(`!!${CHANGES}`))) return 'ok: skipped, the session is not on a git checkout (no Changes to move past)';
+  const order = `[...document.querySelectorAll(${JSON.stringify(`${S} [data-rail-tool]`)})].map((b) => b.dataset.railTool).join(' ')`;
+  const press = (tool: string, key: 'ArrowUp' | 'ArrowDown') =>
+    js(`(() => { const b = ${q(`[data-tool-rail] [data-rail-tool="${tool}"]`)}; b.focus(); b.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, code: ${JSON.stringify(key)}, altKey: true, bubbles: true })); })()`);
+  const before = (await js(order)) as string;
+  if (!before.startsWith('changes terminal')) return `the rail does not start with Changes and Terminal (${before})`;
+  await press('changes', 'ArrowUp');
+  if ((await js(order)) !== before) return `⌥↑ on the group's first button moved it (${await js(order)})`;
+  await press('terminal', 'ArrowUp');
+  const moved = await waitInPage(win, `(${order}).startsWith('terminal changes')`, 3_000);
+  const focused = (await js(`document.activeElement?.dataset.railTool ?? null`)) as string | null;
+  await press('terminal', 'ArrowDown');
+  const back = await waitInPage(win, `(${order}) === ${JSON.stringify(before)}`, 3_000);
+  if (!moved) return `⌥↑ on Terminal did not move it above Changes (${await js(order)})`;
+  if (!back) return `⌥↓ did not put Terminal back (${await js(order)})`;
+  if (focused !== 'terminal') return `the focus left Terminal after it moved (on ${focused})`;
+  return `ok: ⌥↑ moved Terminal above Changes with the focus on it, ⌥↓ put it back (${before})`;
+}

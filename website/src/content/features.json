@@ -4133,7 +4133,17 @@
     },
     {
       "id": "feature:tool-rail",
-      "name": "The rail at a session's right edge: Changes, Terminal, Browser, Preview, Ask, Agents, Commands and mods, with what is in them as badges; right-click to hide a tool",
+      "name": "The rail at a session's right edge: Changes, Terminal, Browser, Preview, Ask, Agents, Commands and mods, with what is in them as badges; right-click to hide a tool, drag one to move it in its group",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:tool-rail-apps",
+      "name": "Apps on the rail: right-click it and check VS Code, Finder, a terminal or GitHub under Open in, and a click on its icon opens the session's folder there (GitHub: its page)",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:rail.move",
+      "name": "Move a tool or an app on the rail up or down",
       "page": "sessions/conversation"
     },
     {

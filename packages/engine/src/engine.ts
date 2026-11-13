@@ -3662,7 +3662,7 @@ export function createEngine(options: EngineOptions): Engine {
       const defaultId = typeof stored === 'string' && editors.some((e) => e.id === stored) ? stored : (editors.find((e) => e.kind === 'editor')?.id ?? null);
       return { editors, defaultId };
     },
-    'editors.open': async ({ path, line, editorId }) => {
+    'editors.open': async ({ path, line, editorId, keepDefault }) => {
       const env = await editorEnv();
       const stored = appState.get(defaultEditorKey);
       const id = editorId ?? (typeof stored === 'string' ? stored : detectEditors(env).find((e) => e.kind === 'editor')?.id);
@@ -3672,7 +3672,7 @@ export function createEngine(options: EngineOptions): Engine {
       const location = resolver.resolve(dirname(path));
       const folder = location.gitDir ? (location.worktree?.path ?? location.root) : undefined;
       openInEditor(id, path, line, env, folder);
-      if (editorId && (detectEditors(env).find((e) => e.id === editorId)?.kind === 'editor')) appState.set(defaultEditorKey, editorId);
+      if (editorId && !keepDefault && detectEditors(env).find((e) => e.id === editorId)?.kind === 'editor') appState.set(defaultEditorKey, editorId);
       return {};
     },
     'editors.setDefault': ({ editorId }) => {

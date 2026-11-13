@@ -135,7 +135,10 @@ import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
 import { ToolRail, type RailItem } from './ToolRail.tsx';
-import { railEntries, railLabel, railToolState, type RailToolId } from './toolRail.ts';
+import { AppIcon } from '../AppIcon.tsx';
+import { GitHubIcon } from '../GitHubIcon.tsx';
+import { useGithubPage, useOpenIn } from '../OpenInButton.tsx';
+import { RAIL_GITHUB, railEntries, railLabel, railToolState, type RailAppId, type RailToolId } from './toolRail.ts';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
@@ -1499,6 +1502,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The rail at the view's right edge: every tool of the session, each with its toggle, shortcut and what is in it. A
   // tool that doesn't apply is left out (`railEntries`). Docked below, the terminal shows in front while it is open.
   const railHidden = usePreferences((s) => s.prefs.railHidden);
+  const railApps = usePreferences((s) => s.prefs.railApps);
+  const railOrder = usePreferences((s) => s.prefs.railOrder);
+  const editors = useHosts((s) => s.editors);
+  const openIn = useOpenIn();
+  // Only asked for while GitHub is pinned: the rail shows it where the folder has a GitHub remote.
+  const githubPage = useGithubPage(railApps.includes(RAIL_GITHUB) ? cwd : null);
   const webTabs = useTabCount(sessionId);
   const railCounts = { changes: changedCount, terminal: terminalCount, web: browserPreview ? webTabs : 0, agents: agentsRunning, commands: commandsRunning };
   const railState = (id: RailToolId) => (id === 'terminal' && !terminalOnRight ? (panelOpen ? 'front' : 'closed') : railToolState(id, right.open, right.tab));
@@ -1539,6 +1548,33 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       },
     };
   };
+  /** An app pinned to the rail: opens the session's folder in it, and leaves the default editor as it was. */
+  const railApp = (id: RailAppId): RailItem => {
+    if (id === `app:${RAIL_GITHUB}` && githubPage) {
+      return {
+        id,
+        icon: <GitHubIcon size={18} aria-hidden />,
+        label: `Open ${githubPage.repo} on GitHub`,
+        ariaLabel: `Open ${githubPage.repo} on GitHub`,
+        state: 'closed',
+        data: { 'data-rail-app': true },
+        // The main process opens http(s) links from window.open in the browser.
+        onClick: () => void window.open(githubPage.url, '_blank'),
+      };
+    }
+    const editor = editors.find((e) => `app:${e.id}` === id)!;
+    return {
+      id,
+      icon: <AppIcon editor={editor} size={20} />,
+      label: `Open in ${editor.name}`,
+      ariaLabel: `Open in ${editor.name}`,
+      state: 'closed',
+      data: { 'data-rail-app': true },
+      onClick: () => {
+        if (cwd) void openIn(cwd, { editorId: editor.id, keepDefault: true }).catch((e: Error) => setActionError(`Couldn't open the folder in ${editor.name}: ${e.message}`));
+      },
+    };
+  };
   const railItems: RailItem[] = railEntries(
     {
       changes: Boolean(cwd && isRepo),
@@ -1551,9 +1587,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       agents: agents.length > 0 || agentsState.open,
       commands: backgroundCommands.length > 0 || commandsState.open,
       mods: modPanes.map((p) => p.id),
+      apps: cwd ? railApps.filter((id) => (id === RAIL_GITHUB ? githubPage !== null : editors.some((e) => e.id === id))) : [],
     },
     railHidden,
-  ).map((entry) => (entry.kind === 'divider' ? 'divider' : railTool(entry.id)));
+    railOrder,
+  ).map((entry) => (entry.kind === 'divider' ? 'divider' : entry.kind === 'app' ? railApp(entry.id) : railTool(entry.id)));
   /** Hide panel: closes whatever the right side shows. */
   const hidePanels = () => {
     if (whyRequest) useWhy.getState().close();

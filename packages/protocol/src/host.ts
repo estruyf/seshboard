@@ -287,5 +287,7 @@ export const EditorInfo = z.object({
   id: z.string(),
   name: z.string(),
   kind: z.enum(['editor', 'terminal', 'finder']),
+  /** The app's bundle (macOS) or program (Windows), whose icon the app shows next to its name. Left out when there is none to show. */
+  icon: z.string().optional(),
 });
 export type EditorInfo = z.infer<typeof EditorInfo>;

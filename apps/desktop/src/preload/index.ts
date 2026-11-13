@@ -96,6 +96,7 @@ const bridge: SeshboardBridge = {
   openThemesFolder: () => void theme({ kind: 'open-folder' }),
   showThemeFile: (id) => void theme({ kind: 'show-file', id }),
   listSounds: () => ipcRenderer.invoke(IpcChannel.listSounds) as Promise<SoundList>,
+  appIcon: (path: string) => ipcRenderer.invoke(IpcChannel.appIcon, path) as Promise<string | null>,
   playSound: (id, volume) => ipcRenderer.send(IpcChannel.playSound, id, volume),
   notificationPermission: () => ipcRenderer.invoke(IpcChannel.notificationPermission) as Promise<NotificationPermission>,
   openNotificationSettings: () => ipcRenderer.send(IpcChannel.openNotificationSettings),

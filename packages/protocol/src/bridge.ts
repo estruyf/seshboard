@@ -73,6 +73,7 @@ export const IpcChannel = {
   windowButtons: "seshboard:window-buttons",
   focusWindow: "seshboard:focus-window",
   listSounds: "seshboard:list-sounds",
+  appIcon: "seshboard:app-icon",
   playSound: "seshboard:play-sound",
   notificationPermission: "seshboard:notification-permission",
   openNotificationSettings: "seshboard:open-notification-settings",
@@ -284,6 +285,11 @@ export type SidebarGroup = "state" | "project";
 /** The session tools the rail at a session's right edge can show (a mod's panes go under `mods`). */
 export const RAIL_TOOLS = ["changes", "terminal", "web", "preview", "ask", "agents", "commands", "mods"] as const;
 export type RailTool = (typeof RAIL_TOOLS)[number];
+/** The rail's tools in their default order, as `railOrder` starts (the mods' panes keep their own place). */
+export const RAIL_ORDER: readonly Exclude<RailTool, "mods">[] = RAIL_TOOLS.filter((tool): tool is Exclude<RailTool, "mods"> => tool !== "mods");
+/** An editor id as `editors.list` gives it, for `railApps`. */
+const RAIL_APP_ID = /^[a-z0-9-]{1,40}$/;
+const RAIL_APPS_MAX = 20;
 /** Which buttons a session row shows under the pointer: only Archive, or Mark as read, Pin and Archive. */
 export type QuickActionsShow = "archive" | "all";
 
@@ -587,6 +593,10 @@ export interface Preferences {
   sidebarShowDone: boolean;
   /** Tools left off the rail (its right-click menu). They keep their shortcuts and palette commands. */
   railHidden: RailTool[];
+  /** The rail's tools in the order you dragged them to: every tool once, each group's in its own order. */
+  railOrder: Exclude<RailTool, "mods">[];
+  /** Apps pinned to the rail (its right-click menu), by editor id (`editors.list`), top to bottom. A click opens the session's folder in one. */
+  railApps: string[];
   /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
   quickActions: boolean;
   /** Settings › Sidebar: which quick actions show ("Show"). Working rows keep Stop either way. */
@@ -669,6 +679,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarGroup: "state",
   sidebarShowDone: true,
   railHidden: [],
+  railOrder: [...RAIL_ORDER],
+  railApps: [],
   quickActions: true,
   quickActionsShow: "all",
   githubStar: "ask",
@@ -895,6 +907,13 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.sidebarShowDone === "boolean") out.sidebarShowDone = raw.sidebarShowDone;
   if (Array.isArray(raw.railHidden))
     out.railHidden = RAIL_TOOLS.filter((tool) => (raw.railHidden as unknown[]).includes(tool));
+  // Every tool once: the ones the list leaves out (a tool added later) go where they are by default.
+  if (Array.isArray(raw.railOrder)) {
+    const known = RAIL_ORDER.filter((tool) => (raw.railOrder as unknown[]).includes(tool)).sort((a, b) => (raw.railOrder as unknown[]).indexOf(a) - (raw.railOrder as unknown[]).indexOf(b));
+    out.railOrder = RAIL_ORDER.reduce((order, tool) => (order.includes(tool) ? order : [...order.slice(0, RAIL_ORDER.indexOf(tool)), tool, ...order.slice(RAIL_ORDER.indexOf(tool))]), known);
+  }
+  if (Array.isArray(raw.railApps))
+    out.railApps = [...new Set(raw.railApps.filter((id): id is string => typeof id === "string" && RAIL_APP_ID.test(id)))].slice(0, RAIL_APPS_MAX);
   if (typeof raw.quickActions === "boolean") out.quickActions = raw.quickActions;
   if (oneOf(["archive", "all"] as const, raw.quickActionsShow))
     out.quickActionsShow = raw.quickActionsShow;
@@ -1163,6 +1182,8 @@ export interface SeshboardBridge {
   showThemeFile(id: string): void;
   /** The system sounds to pick from in Settings › Notifications. */
   listSounds(): Promise<SoundList>;
+  /** An app's icon as a PNG data URL, from its bundle (`.app`) or program (`.exe`) as `EditorInfo.icon` names it; null when there is none. */
+  appIcon(path: string): Promise<string | null>;
   /** Plays a sound once at a volume (0 to 1), to try it. Only sounds from `listSounds`. */
   playSound(id: string, volume: number): void;
   /** Whether the system lets Seshboard show notifications (System Settings, or Windows settings). */

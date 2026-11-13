@@ -264,6 +264,7 @@ describe('the shortcut registry', () => {
       'composer.send-other': [{ ...SESSION, running: true }, SESSION],
       'upnext.edit': [{ ...SESSION, running: true }, SESSION],
       'upnext.move': [{ ...SESSION, running: true }, SESSION],
+      'rail.move': [SESSION, HOME],
       'upnext.remove': [{ ...SESSION, running: true }, SESSION],
       'mode.cycle': [SESSION, HOME],
       'composer.send': [at({ view: 'new-session' }), HOME],

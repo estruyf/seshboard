@@ -756,9 +756,12 @@ export const contract = {
       result: z.object({ mediaType: z.string(), data: z.string() }),
     },
     'editors.list': { params: z.object({}), result: z.object({ editors: z.array(EditorInfo), defaultId: z.string().nullable() }) },
-    /** Opens a folder or file (optionally at a line) in an editor; `editorId` defaults to the user's default. */
+    /**
+     * Opens a folder or file (optionally at a line) in an editor; `editorId` defaults to the user's default. Picking an
+     * editor makes it the default, unless `keepDefault` (an app pinned to the rail).
+     */
     'editors.open': {
-      params: z.object({ path: AbsolutePath, line: z.number().int().positive().optional(), editorId: z.string().optional() }),
+      params: z.object({ path: AbsolutePath, line: z.number().int().positive().optional(), editorId: z.string().optional(), keepDefault: z.boolean().optional() }),
       result: z.object({}),
     },
     'editors.setDefault': { params: z.object({ editorId: z.string() }), result: z.object({}) },
