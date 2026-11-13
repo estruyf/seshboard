@@ -143,18 +143,18 @@ export async function runVisualizeServerStep(
     const page = (await ask('resources/read', { uri: 'ui://visualize/widget' }))?.contents as Array<{ mimeType: string; text: string }> | undefined;
     if (page?.[0]?.mimeType !== 'text/html;profile=mcp-app' || !page[0].text.includes('ui/initialize')) return 'the server has no MCP App page';
 
-    // The switch, off by default, saved when turned on.
+    // The switch, on by default, saved when turned off.
     await win.webContents.executeJavaScript("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
     if (!(await waitInPage(win, "document.querySelector('[data-settings] [data-settings-section=\"general\"]')", 3_000))) return 'no General page in Settings';
     await win.webContents.executeJavaScript("document.querySelector('[data-settings] [data-settings-section=\"general\"]').click()");
     const toggle = "document.querySelector('[data-agent-visuals-setting] [role=switch]') ?? document.querySelector('[data-agent-visuals-setting]')";
     if (!(await waitInPage(win, `!!(${toggle})`, 3_000))) return 'no Visuals in replies switch in Settings › General';
-    if (was) return 'Visuals in replies is on by default';
+    if (!was) return 'Visuals in replies is off by default';
     await win.webContents.executeJavaScript(`(${toggle}).click()`);
     const started = performance.now();
-    while (!options.enabled() && performance.now() - started < 3_000) await new Promise((resolve) => setTimeout(resolve, 25));
-    if (!options.enabled()) return 'turning on Visuals in replies was not saved';
-    return 'ok: the server ran as this app, listed read_me and show_widget, gave the guide and its MCP App page; the switch is off by default and saves';
+    while (options.enabled() && performance.now() - started < 3_000) await new Promise((resolve) => setTimeout(resolve, 25));
+    if (options.enabled()) return 'turning off Visuals in replies was not saved';
+    return 'ok: the server ran as this app, listed read_me and show_widget, gave the guide and its MCP App page; the switch is on by default and saves';
   } finally {
     child.kill();
     options.setEnabled(was);
