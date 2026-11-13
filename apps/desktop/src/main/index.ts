@@ -2582,6 +2582,32 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     // .native also turns Windows' short names (RUNNER~1) into the long ones the shell prints.
     if (folder && realpathSync.native(read()) !== realpathSync.native(folder)) return `failed: the shell started in ${read()}, not ${folder}`;
     await shot(win, 'terminal.png');
+    const ranIn = read();
+    // With the browser on (a smoke run starts with it off), a web link printed in the terminal opens in the session's
+    // browser on a click. `clear` puts it on the first row, so the click lands on it whatever the renderer draws with.
+    updatePreferences({ browserEnabled: true });
+    const link = 'http://127.0.0.1:9/smoke-terminal-link';
+    rmSync(marker, { force: true });
+    const printed =
+      process.platform === 'win32'
+        ? `Clear-Host; echo '${link}'; New-Item -ItemType File '${marker.replace(/'/g, "''")}' | Out-Null`
+        : `clear && echo ${link} && touch ${JSON.stringify(marker)}`;
+    if (!(await typeInShell(win, printed, () => existsSync(marker)))) return 'failed: the shell did not print the link';
+    const at = (await js(`(() => {
+      const r = [...document.querySelectorAll('[data-terminal-panel] .xterm-screen')].find((el) => el.checkVisibility()).getBoundingClientRect();
+      return { x: Math.round(r.left + 40), y: Math.round(r.top + 6) };
+    })()`)) as { x: number; y: number };
+    const address = "document.querySelector('[data-current-session] [data-web-preview] [data-browser-address]')";
+    for (let attempt = 0; attempt < 3 && !(await js(`${address}?.value.includes('smoke-terminal-link')`)); attempt++) {
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: at.x, y: at.y });
+      // The link shows once the pointer rests on it: wait for xterm's underline before the click.
+      await waitInPage(win, "!!document.querySelector('[data-terminal-panel] .xterm-cursor-pointer')", 1_500);
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+      await waitInPage(win, `${address}?.value.includes('smoke-terminal-link')`, 2_000);
+    }
+    if (!(await js(`${address}?.value.includes('smoke-terminal-link')`))) return 'failed: a click on a link in the terminal did not open it in the session\'s browser';
+    await js("document.querySelector('[data-current-session] [data-web-preview-close]')?.click()");
     // Middle-click on a tab closes it.
     const tabs = "document.querySelectorAll('[data-terminal-panel] [role=tab]')";
     const before = (await js(`${tabs}.length`)) as number;
@@ -2589,9 +2615,10 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${tabs}.length === ${before + 1}`, 5_000))) return 'failed: a second tab did not open';
     await js(`${tabs}[${before}].dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }))`);
     if (!(await waitInPage(win, `${tabs}.length === ${before}`, 3_000))) return 'failed: middle-click did not close the tab';
-    return `ok: ran a command in ${read()}, and middle-click closed a tab`;
+    return `ok: ran a command in ${ranIn}, a link opened in the session's browser, and middle-click closed a tab`;
   } finally {
     rmSync(marker, { force: true });
+    updatePreferences({ browserEnabled: false });
     // Leave the next run's panel closed again.
     await js("document.querySelector('[data-terminal-panel]') && document.querySelector('[data-toggle-terminal]')?.click()");
   }

@@ -12,6 +12,7 @@ import { currentPlatform } from '../../lib/platform.ts';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
+import { openTerminalLink } from './terminalLinks.ts';
 import { terminalPrompt } from './terminalPrompt.ts';
 import { releaseWebglContexts } from './releaseWebgl.ts';
 import { terminalFontFamily, type DetectedFont } from './terminalFont.ts';
@@ -70,6 +71,8 @@ export function XTerm({ id, sessionId, active, exited, onClose }: { id: string; 
   exitedRef.current = exited;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
   const [menu, setMenu] = useState<(ContextMenuPoint & { selection: string }) | null>(null);
 
   useEffect(() => {
@@ -89,7 +92,7 @@ export function XTerm({ id, sessionId, active, exited, onClose }: { id: string; 
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, '_blank')));
+    term.loadAddon(new WebLinksAddon((event, uri) => openTerminalLink(event, uri, sessionIdRef.current)));
     term.open(host);
     host.dataset.renderer = 'dom';
     // For the smoke test, which checks a row's width against its cells.

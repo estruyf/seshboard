@@ -193,7 +193,8 @@ export async function runBrowserIntroStep(win: BrowserWindow, deps: BrowserSmoke
 }
 
 /**
- * "browser pin" (favourites in the Browser view): Add to favourites moves the Smoke browser tab to a tile, with a dot
+ * "browser pin" (pins and favourites in the Browser view): Pin tab keeps the tab pinned across a reload, and Unpin tab
+ * takes it off; Bookmark tab… shows the bookmark and keeps the tab; Add to favourites moves the Smoke browser tab to a tile, with a dot
  * while open; Edit favourite… names the tile; after a reload the tile is still there with its name and icon, and opens its
  * page. Browsing on in its tab keeps the favourite's address, until Use current page's address takes the tab's; Edit
  * favourite… refuses what is no address and sets it back. A middle click closes its tab; Remove from favourites takes it
@@ -206,9 +207,28 @@ export async function runBrowserPinStep(win: BrowserWindow, deps: BrowserSmokeDe
   const tile = q(`[data-browser-favorites-bar] [data-browser-favorite="${url}"]`);
   const menuOn = (target: string) => js(`(() => { const t = ${target}; const r = t.getBoundingClientRect(); t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.bottom })); })()`);
   if (!(await waitInPage(win, listed, 3_000))) return 'no Smoke browser tab in the list (run "browser view" first)';
-  // No pin in the Browser view: a favourite is what keeps a page there.
-  if (await js(`!!${q('[data-browser-view] [data-web-preview-pin]')}`)) return 'the Browser view still offers Pin tab';
+  // Pinned from the toolbar: first in the list above a line, and still a pinned tab (not a tile) after a reload.
+  const pin = q('[data-browser-view] [data-web-preview-pin]');
+  const pinnedRow = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].find((t) => t.textContent.includes('Smoke browser'))`;
+  if (!(await waitInPage(win, `${pin} && !${pin}.disabled`, 3_000))) return 'the Browser view offers no Pin tab';
+  await js(`${pin}.click()`);
+  if (!(await waitInPage(win, `${pinnedRow} && ${q('[data-browser-tab-list] [data-browser-pinned-line]')}`, 3_000))) return 'Pin tab did not pin the tab in the list';
+  // The engine saves a new pin at once; give the call a moment to land before the window goes.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  deps.reload();
+  if (!(await waitInPage(win, `${q('[data-browser-tab-list]')} && ${pinnedRow}`, 15_000))) return 'after the reload the pinned tab is gone, or turned into a favourite';
+  await js(`${pinnedRow}.click()`);
+  if (!(await waitInPage(win, `${pin}?.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'the restored pinned tab does not show its pin pressed';
+  await js(`${pin}.click()`);
+  if (!(await waitInPage(win, `!${pinnedRow} && ${listed}`, 3_000))) return 'Unpin tab left the pin';
   const tabId = (await js(`${listed}.dataset.browserTab`)) as string;
+  // Bookmark tab… shows the bookmark to name and file, and the tab stays in the list. Removed again for what follows.
+  await js(`${q(`[data-browser-tab-menu="${tabId}"]`)}.click()`);
+  if (!(await waitInPage(win, q('[data-browser-tab-bookmark]'), 2_000))) return 'the tab menu has no Bookmark tab…';
+  await js(`${q('[data-browser-tab-bookmark]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-bookmark-dialog] [data-bookmark-name]')} && ${listed}`, 3_000))) return 'Bookmark tab… did not show the bookmark, or the tab left the list';
+  await js(`${q('[data-bookmark-remove]')}.click()`);
+  if (!(await waitInPage(win, `!${q('[data-bookmark-dialog]')}`, 2_000))) return 'Remove did not close the bookmark';
   await js(`${q(`[data-browser-tab-menu="${tabId}"]`)}.click()`);
   if (!(await waitInPage(win, q('[data-browser-tab-favorite]'), 2_000))) return 'the tab menu has no Add to favourites';
   await js(`${q('[data-browser-tab-favorite]')}.click()`);
@@ -263,7 +283,7 @@ export async function runBrowserPinStep(win: BrowserWindow, deps: BrowserSmokeDe
   if (!(await waitInPage(win, q('[data-browser-favorite-remove]'), 2_000))) return "the tile's menu has no Remove from favourites";
   await js(`${q('[data-browser-favorite-remove]')}.click()`);
   if (!(await waitInPage(win, `!${tile}`, 3_000))) return 'Remove from favourites left the tile';
-  return "ok: Add to favourites moved the tab to an open tile, named, kept with its name and icon across a reload, opened its page, kept its address while browsing, changed by Use current page's address and Edit favourite…, closed on a middle click, removed";
+  return "ok: pinned across a reload and unpinned, Add to favourites moved the tab to an open tile, named, kept with its name and icon across a reload, opened its page, kept its address while browsing, changed by Use current page's address and Edit favourite…, closed on a middle click, removed";
 }
 
 /**
@@ -299,6 +319,19 @@ export async function runSessionBrowserStep(win: BrowserWindow, deps: BrowserSmo
   await setFieldValue(win, `${P} [data-browser-address]`, url.replace('http://', ''));
   await js(`${q(`${P} [data-browser-address]`)}.form.requestSubmit()`);
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the local page did not load in the second tab';
+  // A right click on a tab in the strip shows its menu.
+  const stripTab = q(`${P} [data-web-preview-tabs] [data-browser-tab]`);
+  await js(`(() => { const t = ${stripTab}; const r = t.getBoundingClientRect(); t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.bottom })); })()`);
+  if (!(await waitInPage(win, `${q('[role="menu"] [data-browser-tab-bookmark]')} && ${q('[role="menu"] [data-browser-tab-pin]')}`, 2_000))) return 'a right click on a tab in the strip showed no tab menu';
+  escape(win);
+  if (!(await waitInPage(win, `!${q('[role="menu"] [data-browser-tab-bookmark]')}`, 2_000))) return 'Esc did not close the tab menu';
+  // A session's tab can be pinned from the toolbar: pressed, marked in the strip, then unpinned again.
+  const pin = q(`${P} [data-web-preview-pin]`);
+  if (!(await waitInPage(win, `${pin} && !${pin}.disabled`, 3_000))) return 'no Pin tab in the session\'s browser panel';
+  await js(`${pin}.click()`);
+  if (!(await waitInPage(win, `${pin}.getAttribute('aria-pressed') === 'true' && !!${q(`${P} [data-web-preview-tabs] [data-browser-pinned]`)}`, 3_000))) return 'Pin tab did not pin the tab';
+  await js(`${pin}.click()`);
+  if (!(await waitInPage(win, `${pin}.getAttribute('aria-pressed') === 'false' && !${q(`${P} [data-web-preview-tabs] [data-browser-pinned]`)}`, 3_000))) return 'Unpin tab did not unpin the tab';
 
   // ⌘⇧B hides the panel and shows it again as it was: both tabs, the local page in front, the same page still running.
   const loaded = webContents.getAllWebContents().filter((c) => c.getType() === 'webview' && !c.isDestroyed() && c.getTitle() === 'Smoke browser');
@@ -355,6 +388,12 @@ export async function runBrowserFavoritesStep(win: BrowserWindow, deps: BrowserS
   await js(`${star}.click()`);
   if (!(await waitInPage(win, `${q('[data-bookmark-dialog]')} && ${q('[data-bookmark-name]')}`, 3_000))) return 'the star did not show the bookmark';
   await setFieldValue(win, '[data-bookmark-folder]', 'Smoke');
+  // Also add to favourites can be checked, and unchecked again (no favourite left for later steps).
+  const also = q('[data-bookmark-dialog] [data-bookmark-favorite]');
+  await js(`${also}.click()`);
+  if (!(await waitInPage(win, `${also}.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Also add to favourites could not be checked';
+  await js(`${also}.click()`);
+  if (!(await waitInPage(win, `${also}.getAttribute('aria-checked') === 'false'`, 2_000))) return 'Also add to favourites could not be unchecked';
   await deps.shot('browser-bookmark');
   await js(`${q('[data-bookmark-done]')}.click()`);
   if (!(await waitInPage(win, `!${q('[data-bookmark-dialog]')} && ${star}.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'Done did not keep the bookmark (the star is not pressed)';

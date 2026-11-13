@@ -16,7 +16,8 @@ import { Notice } from '../ui/Notice.tsx';
 import { Popover } from '../ui/Popover.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { addressSuggestions, autoPick, type AddressSuggestion } from './addressSuggestions.ts';
-import { BROWSER_OWNER, sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
+import { tabMenu } from './tabMenu.tsx';
+import { sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
 import { NewTabSections } from './NewTabPage.tsx';
 import { openFavoriteInTab } from '../../state/browserViewStore.ts';
 import type { ServerOffer } from './serverOffers.ts';
@@ -222,8 +223,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           />
           {showList && <SuggestionList id={listId} anchor={address} suggestions={suggestions} highlighted={highlighted} onPick={open} onHighlight={setPicked} onClose={closeList} />}
         </form>
-        {/* A session's tab can be pinned; in the Browser view, a favourite's tile is what keeps a page. */}
-        {browser && tab && tab.owner !== BROWSER_OWNER && (
+        {browser && tab && (
           <Button
             variant="quiet"
             size="sm"
@@ -362,12 +362,20 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
 }
 
 /**
- * The session's tabs under the toolbar: pinned ones first, each with × on hover, then +. A double click renames one.
+ * The session's tabs under the toolbar: pinned ones first, each with × on hover, then +. A double click renames one, a
+ * right click shows its menu (`tabMenu`).
  * Drag a tab (or ⌥← ⌥→ on it) to move it, inside its group. Scrolls sideways, keeping the tab in front in view.
  */
 function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; activeId: string | null; onNewTab?(): void }) {
   const strip = useRef<HTMLDivElement>(null);
   const confirming = useWebPreview((s) => s.confirming);
+  // A tab's menu (`tabMenu`), at the pointer, or under the tab from the keyboard (Shift+F10).
+  const [menu, setMenu] = useState<{ x: number; y: number; tab: BrowserTab } | null>(null);
+  const openMenu = (event: MouseEvent<HTMLElement>, tab: BrowserTab) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenu({ x: event.clientX || rect.left, y: event.clientY || rect.bottom, tab });
+  };
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const drag = useQueueDrag({
@@ -417,6 +425,7 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
                 onDoubleClick={() => askRename(t)}
                 onMouseDown={middleDown}
                 onAuxClick={(e) => middleClose(e, t.id)}
+                onContextMenu={(e) => openMenu(e, t)}
                 className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-6 pl-2 text-left text-ui"
                 data-browser-tab={t.id}
                 data-browser-pinned={t.pinned ? '' : undefined}
@@ -441,6 +450,7 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
         })}
       </div>
       {onNewTab && <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} aria-hidden />} aria-label="New tab" shortcut="browser.new-tab" onClick={onNewTab} className="shrink-0" data-browser-new-tab="" />}
+      {menu && <Menu x={menu.x} y={menu.y} entries={tabMenu(menu.tab)} label={`${tabName(menu.tab)} menu`} onClose={() => setMenu(null)} />}
     </div>
   );
 }

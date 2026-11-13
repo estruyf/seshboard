@@ -1,24 +1,24 @@
-import { Copy, Ellipsis, ExternalLink, Pencil, Plus, Star, Volume2, VolumeX, X } from 'lucide-react';
+import { Ellipsis, Plus } from 'lucide-react';
 import { Fragment } from 'react';
 import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { shortUrl } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
-import { addFavorite } from '../../state/browserFavoritesStore.ts';
-import { askRename, copyAddress, openInSystemBrowser, toggleMute } from '../../state/browserActions.ts';
+import { askRename } from '../../state/browserActions.ts';
 import { newBrowserTab } from '../../state/browserViewStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
-import { Menu, type MenuEntry } from '../Menu.tsx';
+import { Menu } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { Button } from '../ui/Button.tsx';
 import { middleClose, middleDown, SoundMark, TabIcon, tabLabel, TabTitle } from '../webPreview/BrowserPane.tsx';
 import { BROWSER_OWNER, listedTabs, sameGroup, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
 import { FavoriteBar } from '../webPreview/FavoriteTiles.tsx';
+import { tabMenu } from '../webPreview/tabMenu.tsx';
 
 /**
  * The Browser view's tabs in the sidebar, in place of the sessions, under your favourites' tiles (`FavoriteBar`): pinned
- * ones first, above a line, then the others, each with its icon and title and a ⋯ menu (Add to favourites, Rename tab,
- * Copy address, Open in browser, Close tab), then Open tab. None open, one line says so. It scrolls on its own. Drag a
+ * ones first, above a line, then the others, each with its icon and title and a ⋯ menu (Add to favourites, Bookmark tab, Pin tab, Rename tab,
+ * Copy address, Open in browser, Close tab), then Open tab. It scrolls on its own. Drag a
  * tab (or ⌥↑ ⌥↓ on it) to move it, inside its group: pinned tabs stay above the line.
  */
 export function BrowserTabList() {
@@ -54,19 +54,6 @@ export function BrowserTabList() {
     // React moves the row in the DOM, which can drop focus: keep it on the tab.
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-browser-tab-list] [data-browser-tab="${CSS.escape(tab.id)}"]`)?.focus());
   };
-  const entries = (tab: BrowserTab): MenuEntry[] => [
-    // A favourite is how a Browser tab lasts: it moves to a tile, which keeps its page.
-    { label: 'Add to favourites', icon: <Star size={13} aria-hidden />, disabled: !tab.url, onSelect: () => addFavorite(tab), data: { 'data-browser-tab-favorite': true } },
-    { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-browser-tab-rename': true } },
-    tab.muted
-      ? { label: 'Unmute tab', icon: <Volume2 size={13} aria-hidden />, onSelect: () => toggleMute(tab) }
-      : { label: 'Mute tab', icon: <VolumeX size={13} aria-hidden />, disabled: !tab.url, onSelect: () => toggleMute(tab) },
-    { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: !tab.url, onSelect: () => copyAddress(tab) },
-    { label: 'Open in browser', icon: <ExternalLink size={13} aria-hidden />, disabled: !tab.url, onSelect: () => openInSystemBrowser(tab) },
-    'separator',
-    { label: 'Close tab', icon: <X size={13} aria-hidden />, onSelect: () => useWebPreview.getState().askClose(tab.id), data: { 'data-browser-tab-close': true } },
-  ];
-
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-browser-tab-list>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -119,13 +106,12 @@ export function BrowserTabList() {
             );
           })}
         </ul>
-        {tabs.length === 0 && <p className="px-2.5 pt-1 text-ui text-faint" data-browser-no-tabs="">No tabs open</p>}
         <button type="button" onClick={newBrowserTab} className="mt-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-ui text-muted hover:bg-border/45 hover:text-text" data-browser-open-tab>
           <Plus size={14} aria-hidden />
           Open tab
         </button>
       </div>
-      {menu && <Menu x={menu.x} y={menu.y} entries={entries(menu.tab)} label={`${tabName(menu.tab)} menu`} onClose={() => setMenu(null)} />}
+      {menu && <Menu x={menu.x} y={menu.y} entries={tabMenu(menu.tab)} label={`${tabName(menu.tab)} menu`} onClose={() => setMenu(null)} />}
     </div>
   );
 }

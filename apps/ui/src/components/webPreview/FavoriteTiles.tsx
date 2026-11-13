@@ -45,8 +45,8 @@ export function menuAt(event: MouseEvent<HTMLElement>): { x: number; y: number }
 /**
  * Your favourites as icon tiles, four to a row, at the top of the Browser view's list (as in Arc or Zen). A tile opens
  * its favourite's own tab, which then shows in the tile (a dot under it) and not in the list. Its name is in the
- * tooltip. A middle click closes its tab. The last tile adds the Browser tab in front. No favourites and no page to
- * add, nothing.
+ * tooltip. A middle click closes its tab. The last tile adds the Browser tab in front, shown only while there is one
+ * to add. No favourites and no page to add, nothing.
  */
 export function FavoriteBar() {
   const favorites = useBrowserFavorites((s) => s.favorites);
@@ -91,19 +91,20 @@ export function FavoriteBar() {
             </li>
           );
         })}
-        <li className="min-w-0">
-          <button
-            type="button"
-            disabled={!addable}
-            onClick={() => addable && addFavorite(addable)}
-            aria-label={addable ? 'Add the page in front to favourites' : 'Add to favourites: open a page first'}
-            data-tooltip={addable ? 'Add the page in front to favourites' : 'Open a page, then add it here'}
-            className="flex h-11 w-full items-center justify-center rounded-lg border border-dashed border-border text-faint enabled:hover:bg-border/45 enabled:hover:text-text disabled:opacity-50"
-            data-browser-favorite-add=""
-          >
-            <Plus size={15} aria-hidden />
-          </button>
-        </li>
+        {addable && (
+          <li className="min-w-0">
+            <button
+              type="button"
+              onClick={() => addFavorite(addable)}
+              aria-label="Add the page in front to favourites"
+              data-tooltip="Add the page in front to favourites"
+              className="flex h-11 w-full items-center justify-center rounded-lg border border-dashed border-border text-faint hover:bg-border/45 hover:text-text"
+              data-browser-favorite-add=""
+            >
+              <Plus size={15} aria-hidden />
+            </button>
+          </li>
+        )}
       </ul>
       {menu && <Menu x={menu.x} y={menu.y} entries={favoriteMenu(menu.favorite, favoriteTab(state, menu.favorite.id) ?? null)} label={`${menu.favorite.title} menu`} onClose={() => setMenu(null)} />}
     </div>

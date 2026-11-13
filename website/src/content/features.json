@@ -852,6 +852,11 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser-terminal-links",
+      "name": "Terminal links open in Seshboard's browser: the session's, or the Browser view from the window's terminal",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "feature:browser-copy-address",
       "name": "Copy address: the link icon in the browser's address bar copies the page's address",
       "page": "sessions/web-preview"

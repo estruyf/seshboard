@@ -5,7 +5,6 @@ import { useEngineConnection } from '../engine/useEngine.ts';
 import { popoutSession } from './popoutsStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useWebPreview } from './webPreviewStore.ts';
-import { adoptPinnedTabs } from './browserFavoritesStore.ts';
 
 /** A pinned tab's address and title change as you browse: saved at most this often per tab. */
 const SAVE_MS = 1_000;
@@ -66,8 +65,6 @@ export function useBrowserTabsSync(): void {
     void client.call('browser.pinned.list', {}).then(
       ({ tabs }) => {
         useWebPreview.getState().restorePinned(tabs);
-        // Pinned Browser tabs are favourites now: they move to their tiles (and off this list) once the favourites are here.
-        adoptPinnedTabs();
         // What the engine has is what is saved; anything pinned meanwhile is saved by the first sync.
         saved = new Map(tabs.map((t) => [t.id, { id: t.id, owner: t.owner, url: t.url, title: t.title, name: t.name ?? null, favicon: t.favicon ?? null, position: t.position }]));
         ready = true;

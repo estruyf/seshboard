@@ -116,7 +116,7 @@ export function BookmarkDialog({ tab, bookmark, bookmarks, onClose }: { tab: Bro
             ))}
           </datalist>
         </label>
-        <Checkbox checked={favorite || alsoFavorite} disabled={favorite} disabledReason="It is a favourite already" onChange={setAlsoFavorite} dataAttrs={{ 'data-bookmark-favorite': true }}>
+        <Checkbox checked={favorite || alsoFavorite} disabled={favorite} disabledReason={favorite ? 'It is a favourite already' : undefined} onChange={setAlsoFavorite} dataAttrs={{ 'data-bookmark-favorite': true }}>
           Also add to favourites
         </Checkbox>
       </form>

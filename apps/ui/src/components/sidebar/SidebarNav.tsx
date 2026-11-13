@@ -73,7 +73,7 @@ export function SidebarNav({ now, needsYou }: { now: number; needsYou: number })
           variant="quiet"
           size="lg"
           iconOnly
-          icon={<Badged icon={<Globe size={16} aria-hidden />} count={tabs} data={{ 'data-nav-browser-count': true }} />}
+          icon={<Globe size={16} aria-hidden />}
           aria-label={browserTip}
           shortcut="browser.view"
           selected={atBrowser}

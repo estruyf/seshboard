@@ -1,0 +1,2515 @@
+From 6f666f3a76d606a7a6c5de08838ed986df6e557c Mon Sep 17 00:00:00 2001
+From: Elio Struyf <elio@struyfconsulting.be>
+Date: Fri, 13 Nov 2026 15:54:57 +0100
+Subject: [PATCH] feat(browser): favourites as tiles, bookmarks per project,
+ and panels at half width
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Favourites are icon tiles at the top of the Browser view's list. A tile opens
+  its own tab, which shows in the tile (a dot while open) and not in the list.
+  Its menu has Open, Rename…, Copy address, Open in browser, Go back to its
+  address, Close and Remove from favourites. They replace pinned tabs in the
+  Browser view: pinned Browser tabs become favourites. A session's tabs can
+  still be pinned.
+- ⌘D and the star save a bookmark (browser_bookmarks, migration v60): for the
+  session's project or everywhere, in a folder, with Also add to favourites.
+  A new tab lists favourites, the project's bookmarks, everywhere's and the
+  tabs closed lately. Open bookmark… in the palette.
+- Favourites and bookmarks get short names (shortTitle).
+- Side, Half and Full for the browser panel, and Panels at half width in the
+  rail's menu: Half shares the session area 50/50 for every right panel.
+- Smoke steps "browser pin" and "browser favorites" follow the new behaviour.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RwbQ4p3tx1K7YFzxtnwACx
+---
+ AGENTS.md                                     |   2 +-
+ CHANGELOG.md                                  |   2 +
+ README.md                                     |   2 +-
+ apps/desktop/src/main/browserSmoke.ts         | 137 +++++++++---------
+ apps/desktop/src/main/index.ts                |   4 +-
+ apps/ui/src/App.tsx                           |   8 +-
+ apps/ui/src/components/ask/askWidth.test.ts   |  13 +-
+ apps/ui/src/components/ask/askWidth.ts        |  12 ++
+ .../ui/src/components/browser/BrowserView.tsx |  10 +-
+ .../src/components/palette/CommandPalette.tsx |  14 +-
+ .../src/components/palette/PaletteDialogs.tsx |  14 +-
+ apps/ui/src/components/palette/commands.ts    |   9 +-
+ apps/ui/src/components/palette/paletteApi.ts  |   5 +
+ .../src/components/palette/paletteContext.ts  |   4 +
+ .../ui/src/components/palette/paletteState.ts |   2 +-
+ .../src/components/palette/popoutCommands.ts  |   4 +
+ .../components/palette/usePaletteContext.ts   |   6 +-
+ .../src/components/sidebar/BrowserTabList.tsx |  53 ++-----
+ .../ui/src/components/transcript/ToolRail.tsx |   5 +
+ .../components/transcript/TranscriptView.tsx  |  22 +--
+ .../components/webPreview/BookmarkDialog.tsx  | 125 ++++++++++++++++
+ .../src/components/webPreview/BrowserPane.tsx |  56 ++++---
+ .../components/webPreview/FavoriteTiles.tsx   |  96 +++++++++++-
+ .../src/components/webPreview/NewTabPage.tsx  |  98 +++++++++++++
+ .../components/webPreview/RenameTabDialog.tsx |  53 +++++++
+ .../components/webPreview/WebPreviewHost.tsx  |   2 +
+ .../components/webPreview/bookmarks.test.ts   |  45 ++++++
+ .../ui/src/components/webPreview/bookmarks.ts |  78 ++++++++++
+ .../components/webPreview/browserTabs.test.ts |  29 +++-
+ .../src/components/webPreview/browserTabs.ts  |  35 ++++-
+ .../components/webPreview/favorites.test.ts   |  19 ++-
+ .../ui/src/components/webPreview/favorites.ts |  43 +++++-
+ apps/ui/src/lib/shortcuts.ts                  |   4 +-
+ apps/ui/src/state/browserBookmarksStore.ts    | 127 ++++++++++++++++
+ apps/ui/src/state/browserFavoritesStore.ts    |  59 +++++++-
+ apps/ui/src/state/browserTabsSync.ts          |   3 +
+ apps/ui/src/state/browserViewStore.ts         |  34 ++++-
+ apps/ui/src/state/paletteBus.ts               |   4 +
+ apps/ui/src/state/rightPanelStore.ts          |  15 +-
+ apps/ui/src/state/webPreviewStore.ts          |   9 +-
+ packages/engine/src/browser/bookmarks.test.ts |  34 +++++
+ packages/engine/src/browser/bookmarks.ts      |  68 +++++++++
+ packages/engine/src/db/migrations.ts          |  15 ++
+ packages/engine/src/engine.ts                 |   5 +
+ packages/protocol/src/contract.ts             |  21 +++
+ website/src/content/features.json             |  31 +++-
+ 46 files changed, 1244 insertions(+), 192 deletions(-)
+ create mode 100644 apps/ui/src/components/webPreview/BookmarkDialog.tsx
+ create mode 100644 apps/ui/src/components/webPreview/NewTabPage.tsx
+ create mode 100644 apps/ui/src/components/webPreview/bookmarks.test.ts
+ create mode 100644 apps/ui/src/components/webPreview/bookmarks.ts
+ create mode 100644 apps/ui/src/state/browserBookmarksStore.ts
+ create mode 100644 packages/engine/src/browser/bookmarks.test.ts
+ create mode 100644 packages/engine/src/browser/bookmarks.ts
+
+diff --git a/AGENTS.md b/AGENTS.md
+index 1e233b95..bc2e1d38 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -85,7 +85,7 @@ Most of the time in a feature goes into rerunning slow checks and re-reading the
+   Linux takes the POSIX side of each (paths, `$SHELL`, the Ctrl keys of Windows); where macOS calls an app by its bundle (`open -a`), Linux uses a command on `PATH` or `xdg-open`.
+ 
+   Pure helpers take the platform as a parameter, so the macOS tests run on Windows and the other way round.
+-- **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings`, `project_actions`, `provider_notes` and `browser_tabs` hold user choices or what nothing else has, and must survive.
++- **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings`, `project_actions`, `provider_notes`, `browser_tabs`, `browser_favorites` and `browser_bookmarks` hold user choices or what nothing else has, and must survive.
+ 
+ ### UI
+ 
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index abc57d4d..38a78ea1 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
+ 
+ ### Added
+ 
++- **Favourites as tiles, bookmarks for everything else.** In the Browser view, favourites are a row of icons at the top of the list, as in Arc or Zen. A tile opens its page and keeps it, with a dot while it's open, and its menu has **Rename…**, **Go back to its address** and **Close**. Favourites take the place of pinned tabs there: pinned Browser tabs become favourites. ⌘D and the star now save a **bookmark**, shown for the session's project or **Everywhere**, in a folder if you like, with **Also add to favourites**. A new tab lists your favourites, the project's bookmarks, the ones for everywhere and the tabs closed lately. **Open bookmark…** in the palette finds any of them. Favourites and bookmarks get short names ("Seshboard | Seshboard" is "Seshboard").
++- **Panels at half width.** The browser panel's size is **Side**, **Half** or **Full**, and the rail's menu has **Panels at half width**. Half shares the session 50/50 with the conversation, for every panel on the right, and keeps doing so as the window resizes. Dragging the edge goes back to Side.
+ - Group the sidebar by project: the View button picks State or Project, the order, and whether to show Done or compact rows.
+ - A rail at the right edge holds a session's tools: Changes, Terminal, Browser, Preview, Ask, Agents, Commands and mods, with what's in them as badges.
+ - **A browser for your sessions:** open any page, such as a pull request on GitHub, beside a session or on its own, keep several tabs, and pin the ones you want back after a restart. It is on from the start: a card in the sidebar tells about it once, and **Settings › General › Browser** turns it off. A pinned tab closes on the second middle click or ×, so one slip doesn't lose it. **Rename tab…** in a tab's menu (or a double click on it) gives it a name of your own, and a pinned tab keeps it after a restart. **Favourites** keep the sites you open often: the star in the toolbar (⌘D) adds the page, and the Browser view's sidebar, an empty tab and the empty Browser view list them, one click away. Every browser action is in the command palette too, with **Go to tab…** and **Open favourite…** to jump straight to a page. The toolbar's **⋯** menu has **Developer tools**, zoom, **Clear data for this site…** (signs you out of it) and **Clear all browsing data…**, which both ask first. Right-click in a page for its menu (open or copy a link, copy an image, spelling, Inspect). Sign-in windows (Sign in with Google and the like) open as real windows, so the sign-in finishes. A page that stops loads again by itself, a page that plays sound shows a speaker (Mute tab), zoom stays with each tab and shows in the toolbar, the mouse's back and forward buttons work in pages, a page's Copy buttons and fullscreen video work, and a page asks before it opens another app. Typing AltGr characters such as @ and { in a page on Windows and Linux works. The Browser button hides the panel and shows it again with its tabs as you left them; × in the panel closes them. **Allow browser previews** in **Settings › General › New sessions** turns off the preview of a session's dev server.
+diff --git a/README.md b/README.md
+index 96930967..67345bf6 100644
+--- a/README.md
++++ b/README.md
+@@ -239,7 +239,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
+ | ⌘L | Go to the address bar (with a browser on screen) |
+ | ⌘⇧T | Reopen the closed tab (in the Browser view, or while a page has focus; Elsewhere it opens Activity) |
+ | ⌘W | Close the tab (while a page or its address bar has focus) |
+-| ⌘D | Add the page to favourites, or remove it (while a page or its address bar has focus) |
++| ⌘D | Bookmark the page, or edit its bookmark (while a page or its address bar has focus) |
+ | ⌘[ | Back in the page (while a page has focus) |
+ | ⌘] | Forward in the page (while a page has focus) |
+ | ⌘J or ⌃` | Show or hide the terminal |
+diff --git a/apps/desktop/src/main/browserSmoke.ts b/apps/desktop/src/main/browserSmoke.ts
+index e3257e81..19295701 100644
+--- a/apps/desktop/src/main/browserSmoke.ts
++++ b/apps/desktop/src/main/browserSmoke.ts
+@@ -137,50 +137,52 @@ export async function runBrowserIntroStep(win: BrowserWindow, deps: BrowserSmoke
+   return `ok: ${session ? 'no page with the browser and previews off, ' : ''}the card told about the browser, Open browser opened the Browser view`;
+ }
+ 
+-/** "browser pin": pinned, the tab is still in the list with its pin after the window reloads. Needs "browser view" first. */
++/**
++ * "browser pin" (favourites in the Browser view): Add to favourites moves the Smoke browser tab to a tile, with a dot
++ * while open; Rename… names the tile; after a reload the tile is still there with its name and icon, and opens its page;
++ * a middle click closes its tab; Remove from favourites takes it away. Needs "browser view" first.
++ */
+ export async function runBrowserPinStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+   const js = (code: string) => win.webContents.executeJavaScript(code);
+-  const listed = (pinned: boolean) => `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]${pinned ? '[data-browser-pinned]' : ''}')].some((t) => t.textContent.includes('Smoke browser'))`;
+-  if (!(await waitInPage(win, `${q('[data-browser-view] [data-web-preview-pin]')} && ${listed(false)}`, 3_000))) return 'no Smoke browser tab to pin (run "browser view" first)';
+-  await js(`${q('[data-browser-view] [data-web-preview-pin]')}.click()`);
+-  if (!(await waitInPage(win, listed(true), 3_000))) return 'Pin tab did not mark the tab pinned in the list';
+-  // A line under the pinned tabs, and no pin on the row.
+-  if (!(await js(`!!${q('[data-browser-tab-list] [data-browser-pinned-line]')} && !${q('[data-browser-tab-list] [data-browser-pinned] svg.lucide-pin')}`))) return 'no line under the pinned tabs, or a pin icon still on the row';
+-  // Renamed from its menu: the name shows in place of the page's title, and comes back with the pin.
+-  const named = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].some((t) => t.textContent.includes('Smoke browser renamed'))`;
+-  const tabId = (await js(`[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].find((t) => t.textContent.includes('Smoke browser')).dataset.browserTab`)) as string;
++  const url = await site();
++  const listed = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser'))`;
++  const tile = q(`[data-browser-favorites-bar] [data-browser-favorite="${url}"]`);
++  const menuOn = (target: string) => js(`(() => { const t = ${target}; const r = t.getBoundingClientRect(); t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.bottom })); })()`);
++  if (!(await waitInPage(win, listed, 3_000))) return 'no Smoke browser tab in the list (run "browser view" first)';
++  // No pin in the Browser view: a favourite is what keeps a page there.
++  if (await js(`!!${q('[data-browser-view] [data-web-preview-pin]')}`)) return 'the Browser view still offers Pin tab';
++  const tabId = (await js(`${listed}.dataset.browserTab`)) as string;
+   await js(`${q(`[data-browser-tab-menu="${tabId}"]`)}.click()`);
+-  if (!(await waitInPage(win, q('[data-browser-tab-rename]'), 2_000))) return 'the tab menu has no Rename tab';
+-  await js(`${q('[data-browser-tab-rename]')}.click()`);
+-  if (!(await waitInPage(win, q('[data-rename-tab-input]'), 2_000))) return 'Rename tab did not open its dialog';
+-  await setFieldValue(win, '[data-rename-tab-input]', 'Smoke browser renamed');
+-  await js(`${q('[data-rename-tab-save]')}.click()`);
+-  if (!(await waitInPage(win, `!${q('[data-rename-tab-dialog]')} && ${named}`, 2_000))) return 'the tab does not show the name it was given';
+-  // The engine saves a new pin at once; give the call a moment to land before the window goes.
++  if (!(await waitInPage(win, q('[data-browser-tab-favorite]'), 2_000))) return 'the tab menu has no Add to favourites';
++  await js(`${q('[data-browser-tab-favorite]')}.click()`);
++  if (!(await waitInPage(win, `${tile}?.hasAttribute('data-browser-favorite-open') && !${listed}`, 3_000))) return 'Add to favourites did not move the tab to an open tile';
++  await deps.shot('browser-favorite-tiles');
++  // Renamed from the tile's menu: the name is the tile's label.
++  await menuOn(tile);
++  if (!(await waitInPage(win, q('[data-browser-favorite-rename]'), 2_000))) return "the tile's menu has no Rename…";
++  await js(`${q('[data-browser-favorite-rename]')}.click()`);
++  if (!(await waitInPage(win, q('[data-rename-favorite-input]'), 2_000))) return 'Rename… did not open its dialog';
++  await setFieldValue(win, '[data-rename-favorite-input]', 'Smoke tile');
++  await js(`${q('[data-rename-favorite-save]')}.click()`);
++  if (!(await waitInPage(win, `!${q('[data-rename-favorite-dialog]')} && ${tile}?.getAttribute('aria-label')?.startsWith('Smoke tile')`, 2_000))) return 'the tile does not carry the name it was given';
++  // The engine saves it at once; give the call a moment to land before the window goes.
+   await new Promise((resolve) => setTimeout(resolve, 500));
+   deps.reload();
+-  if (!(await waitInPage(win, `${q('[data-nav="browser"]')} && ${q('[data-browser-tab-list]')}`, 15_000))) return 'after the reload the sidebar does not list the Browser tabs again';
+-  if (!(await waitInPage(win, listed(true), 5_000))) return `after the reload the pinned tab is gone (${String(await js(`[...document.querySelectorAll('[data-browser-tab]')].map((t) => t.textContent).join(', ')`))})`;
+-  if (!(await js(named))) return 'after the reload the pinned tab lost its name';
+-  // Its icon comes back with it, before its page loads.
+-  const pinnedIcon = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].find((t) => t.textContent.includes('Smoke browser'))?.querySelector('img')`;
+-  if (!(await waitInPage(win, `${pinnedIcon}?.naturalWidth > 0`, 3_000))) return 'after the reload the pinned tab has no icon until its page loads';
+-  // Shown again, its page loads only now.
+-  await js(`[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser')).click()`);
+-  if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the restored tab did not load its page when shown';
+-  // A pinned tab takes two middle clicks to close: the first asks, the second closes. ⌘⇧T brings it back pinned.
+-  const pinnedRow = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].find((t) => t.textContent.includes('Smoke browser') || t.hasAttribute('data-browser-confirm-close'))`;
+-  const middle = `${pinnedRow}.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`;
+-  await js(middle);
+-  if (!(await waitInPage(win, `${pinnedRow}?.hasAttribute('data-browser-confirm-close')`, 3_000))) return 'a middle click on a pinned tab closed it or asked nothing';
+-  await js(middle);
+-  if (!(await waitInPage(win, `!${pinnedRow}`, 3_000))) return 'a second middle click did not close the pinned tab';
+-  await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', shiftKey: true, ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
+-  if (!(await waitInPage(win, `${listed(true)} && ${q('[data-browser-view] [data-web-preview-pin]')}`, 3_000))) return '⌘⇧T did not bring the pinned tab back';
+-  // Leave nothing pinned for later runs on the same profile.
+-  await js(`${q('[data-browser-view] [data-web-preview-pin]')}.click()`);
+-  if (!(await waitInPage(win, `!(${listed(true)})`, 3_000))) return 'Unpin tab left the pin';
+-  return 'ok: pinned, renamed, kept with its name and icon across a reload, loaded when shown, closed only on a second middle click, reopened, unpinned';
++  if (!(await waitInPage(win, `${q('[data-browser-tab-list]')} && ${tile}`, 15_000))) return 'after the reload the favourite is gone';
++  if (!(await js(`${tile}.getAttribute('aria-label').startsWith('Smoke tile') && !${tile}.hasAttribute('data-browser-favorite-open')`))) return 'after the reload the tile lost its name, or shows a tab still open';
++  if (!(await waitInPage(win, `${tile}.querySelector('img')?.naturalWidth > 0`, 3_000))) return 'after the reload the tile has no icon';
++  await js(`${tile}.click()`);
++  if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the tile did not load its page';
++  if (!(await waitInPage(win, `${tile}.hasAttribute('data-browser-favorite-open') && ${tile}.getAttribute('aria-current') === 'page'`, 3_000))) return 'the tile does not show its tab open and in front';
++  // A middle click closes its tab; the tile stays.
++  await js(`${tile}.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
++  if (!(await waitInPage(win, `${tile} && !${tile}.hasAttribute('data-browser-favorite-open')`, 3_000))) return "a middle click did not close the tile's tab";
++  // Leave no favourite for later runs on the same profile.
++  await menuOn(tile);
++  if (!(await waitInPage(win, q('[data-browser-favorite-remove]'), 2_000))) return "the tile's menu has no Remove from favourites";
++  await js(`${q('[data-browser-favorite-remove]')}.click()`);
++  if (!(await waitInPage(win, `!${tile}`, 3_000))) return 'Remove from favourites left the tile';
++  return 'ok: Add to favourites moved the tab to an open tile, renamed, kept with its name and icon across a reload, opened its page, closed on a middle click, removed';
+ }
+ 
+ /**
+@@ -247,9 +249,8 @@ export async function runSessionBrowserStep(win: BrowserWindow, deps: BrowserSmo
+ }
+ 
+ /**
+- * "browser favorites": the star adds the local page to the favourites, listed in the sidebar with its icon and kept
+- * after a reload. The sidebar's favourite shows its page, an empty tab offers it as a tile, and ⌘D in the address bar
+- * removes it again.
++ * "browser favorites" (bookmarks now): the star bookmarks the local page and shows its bookmark; kept after a reload,
++ * listed on an empty tab, which loads it; ⌘D in the address bar shows it again, and Remove takes it away.
+  */
+ export async function runBrowserFavoritesStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+   const js = (code: string) => win.webContents.executeJavaScript(code);
+@@ -260,44 +261,40 @@ export async function runBrowserFavoritesStep(win: BrowserWindow, deps: BrowserS
+   if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'Browser did not show the Browser view';
+   const V = '[data-browser-view]';
+   const address = q(`${V} [data-browser-address]`);
+-  const open = async (where: string) => {
+-    await setFieldValue(win, `${V} [data-browser-address]`, url.replace('http://', ''));
+-    await js(`${address}.form.requestSubmit()`);
+-    return (await waitInPage(win, `${address}?.value && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`, 5_000)) ? null : `the local page did not load ${where}`;
+-  };
++  const star = q(`${V} [data-web-preview-bookmark]`);
++  const loaded = `${address}?.value && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`;
+   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
+   if (!(await waitInPage(win, `${address} && !${address}.disabled`, 3_000))) return 'Open tab gave no address bar';
+-  const failed = await open('in a new tab');
+-  if (failed) return failed;
++  await setFieldValue(win, `${V} [data-browser-address]`, url.replace('http://', ''));
++  await js(`${address}.form.requestSubmit()`);
++  if (!(await waitInPage(win, loaded, 5_000))) return 'the local page did not load in a new tab';
+   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the local page did not load';
+ 
+-  // The star: pressed, and the page in the sidebar's favourites with its icon.
+-  await js(`${q(`${V} [data-web-preview-favorite]`)}.click()`);
+-  const listed = q(`[data-browser-favorites-list] [data-browser-favorite="${url}"]`);
+-  if (!(await waitInPage(win, `${q(`${V} [data-web-preview-favorite]`)}.getAttribute('aria-pressed') === 'true' && ${listed}`, 3_000))) return 'the star did not add the page to the favourites in the sidebar';
+-  if (!(await waitInPage(win, `${listed}.querySelector('img')?.naturalWidth > 0`, 5_000))) return "the favourite has no icon";
+-  await deps.shot('browser-favorites');
++  // The star: a bookmark, shown at once to name and place.
++  await js(`${star}.click()`);
++  if (!(await waitInPage(win, `${q('[data-bookmark-dialog]')} && ${q('[data-bookmark-name]')}`, 3_000))) return 'the star did not show the bookmark';
++  await setFieldValue(win, '[data-bookmark-folder]', 'Smoke');
++  await deps.shot('browser-bookmark');
++  await js(`${q('[data-bookmark-done]')}.click()`);
++  if (!(await waitInPage(win, `!${q('[data-bookmark-dialog]')} && ${star}.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'Done did not keep the bookmark (the star is not pressed)';
+ 
+-  // Kept by the engine: still there after the window reloads.
++  // Kept by the engine: still there after the window reloads, on an empty tab, in its folder.
+   await new Promise((resolve) => setTimeout(resolve, 300));
+   deps.reload();
+-  if (!(await waitInPage(win, `${q('[data-browser-tab-list]')} && ${listed}`, 15_000))) return 'after the reload the favourite is gone';
+-
+-  // The sidebar's favourite shows its page.
+-  await js(`${listed}.click()`);
+-  if (!(await waitInPage(win, `${address}?.value && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`, 5_000))) return "the sidebar's favourite did not show its page";
+-
+-  // An empty tab offers it as a tile, which loads it there.
++  if (!(await waitInPage(win, q('[data-browser-tab-list]'), 15_000))) return 'after the reload the Browser list is gone';
+   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
+-  const tile = q(`${V} [data-web-preview-empty] [data-browser-favorite="${url}"]`);
+-  if (!(await waitInPage(win, tile, 3_000))) return 'an empty tab does not offer the favourite';
+-  await js(`${tile}.click()`);
+-  if (!(await waitInPage(win, `!${tile} && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`, 5_000))) return "the empty tab's favourite did not load there";
++  const listed = q(`${V} [data-web-preview-empty] [data-new-tab-bookmarks] [data-bookmark="${url}"]`);
++  if (!(await waitInPage(win, listed, 5_000))) return 'after the reload an empty tab does not list the bookmark';
++  if (!(await js(`${q(`${V} [data-web-preview-empty] [data-new-tab-bookmarks]`)}.textContent.includes('Smoke')`))) return 'the bookmark is not in its folder';
++  await js(`${listed}.click()`);
++  if (!(await waitInPage(win, `!${listed} && ${loaded}`, 5_000))) return "the empty tab's bookmark did not load there";
+ 
+-  // ⌘D in the address bar takes it off the favourites.
++  // ⌘D in the address bar shows the bookmark again; Remove takes it away.
+   await js(`${address}.focus(); ${address}.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
+-  if (!(await waitInPage(win, `!${q('[data-browser-favorites-list]')} && ${q(`${V} [data-web-preview-favorite]`)}.getAttribute('aria-pressed') === 'false'`, 3_000))) return '⌘D did not remove the favourite';
+-  return 'ok: starred with its icon in the sidebar, kept after a reload, opened from the sidebar and an empty tab, removed with ⌘D';
++  if (!(await waitInPage(win, q('[data-bookmark-remove]'), 3_000))) return '⌘D did not show the bookmark';
++  await js(`${q('[data-bookmark-remove]')}.click()`);
++  if (!(await waitInPage(win, `!${q('[data-bookmark-dialog]')} && ${star}.getAttribute('aria-pressed') === 'false'`, 3_000))) return 'Remove did not take the bookmark away';
++  return 'ok: bookmarked from the star into a folder, kept after a reload, listed and opened on an empty tab, removed from ⌘D';
+ }
+ 
+ function escape(win: BrowserWindow): void {
+diff --git a/apps/desktop/src/main/index.ts b/apps/desktop/src/main/index.ts
+index b3d651f1..586529fe 100644
+--- a/apps/desktop/src/main/index.ts
++++ b/apps/desktop/src/main/index.ts
+@@ -14128,8 +14128,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
+   const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
+   await step('browser intro: the sidebar card opens the browser, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
+   await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
+-  await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
+-  await step('browser favorites: star a page, kept after a reload, opened from the sidebar and an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
++  await step('browser pin: a favourite tile keeps its page, its name and icon after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
++  await step('browser favorites: the star bookmarks a page into a folder, kept after a reload, opened from an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
+   await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
+   await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
+   await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
+diff --git a/apps/ui/src/App.tsx b/apps/ui/src/App.tsx
+index 7e242f7b..40128769 100644
+--- a/apps/ui/src/App.tsx
++++ b/apps/ui/src/App.tsx
+@@ -42,7 +42,8 @@ import { BrowserView } from './components/browser/BrowserView.tsx';
+ import { BROWSER_OWNER } from './components/webPreview/browserTabs.ts';
+ import { followDeletedSessions, followView, newBrowserTab, openBrowserView } from './state/browserViewStore.ts';
+ import { useBrowserTabsSync } from './state/browserTabsSync.ts';
+-import { toggleFavorite, useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
++import { useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
++import { bookmarkPage, useBrowserBookmarksSync } from './state/browserBookmarksStore.ts';
+ import { browserOn, useWebPreview } from './state/webPreviewStore.ts';
+ import { useReadyReport } from './engine/useReadyReport.ts';
+ import { useLaterSync } from './state/laterStore.ts';
+@@ -150,12 +151,12 @@ function browserKey(event: KeyboardEvent): boolean {
+     if (view === 'browser' && !useWebPreview.getState().active.get(BROWSER_OWNER)) document.querySelector<HTMLElement>('[data-browser-view]')?.focus();
+     return true;
+   }
+-  if (matches(event, 'browser.favorite')) {
++  if (matches(event, 'browser.bookmark')) {
+     const target = event.target instanceof HTMLElement ? event.target : null;
+     const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address]')?.dataset.tabId;
+     const tab = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId) : undefined;
+     if (!tab?.url) return false;
+-    toggleFavorite(tab);
++    bookmarkPage(tab);
+     return true;
+   }
+   // ⌘⇧T: in a page or its address bar, that owner's closed tab; in the Browser view, its own. Elsewhere it is Activity's.
+@@ -322,6 +323,7 @@ export function App() {
+   useNavHistorySync();
+   useBrowserTabsSync();
+   useBrowserFavoritesSync();
++  useBrowserBookmarksSync();
+   useEffect(followView, []);
+   useEffect(followDeletedSessions, []);
+   // Listen for links before telling main the window is ready: main hands over waiting links then.
+diff --git a/apps/ui/src/components/ask/askWidth.test.ts b/apps/ui/src/components/ask/askWidth.test.ts
+index c9f5e181..801c9d32 100644
+--- a/apps/ui/src/components/ask/askWidth.test.ts
++++ b/apps/ui/src/components/ask/askWidth.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest';
+-import { ASK_DEFAULT_WIDTH, ASK_MIN_WIDTH, askWidthForKey, clampAskWidth, readTab, rightPanel } from './askWidth.ts';
++import { ASK_DEFAULT_WIDTH, ASK_MIN_WIDTH, askWidthForKey, clampAskWidth, panelWidthFor, readTab, rightPanel } from './askWidth.ts';
+ 
+ describe('Ask panel width', () => {
+   it('starts at 380px and stays between the minimum and 70% of the window', () => {
+@@ -68,3 +68,14 @@ describe('the right panel', () => {
+     expect(readTab('junk')).toBe('changes');
+   });
+ });
++
++describe('Half', () => {
++  it('splits the session area 50/50, and keeps the dragged width at Side or before the area is measured', () => {
++    expect(panelWidthFor('half', 480, 1400)).toBe(700);
++    expect(panelWidthFor('half', 480, 1401)).toBe(700);
++    expect(panelWidthFor('side', 480, 1400)).toBe(480);
++    expect(panelWidthFor('half', 480, null)).toBe(480);
++    // A narrow area still gives the panel its minimum.
++    expect(panelWidthFor('half', 480, 400)).toBe(ASK_MIN_WIDTH);
++  });
++});
+diff --git a/apps/ui/src/components/ask/askWidth.ts b/apps/ui/src/components/ask/askWidth.ts
+index 0310009d..b84b7604 100644
+--- a/apps/ui/src/components/ask/askWidth.ts
++++ b/apps/ui/src/components/ask/askWidth.ts
+@@ -16,6 +16,18 @@ export function clampAskWidth(width: number, windowWidth: number): number {
+   return Math.round(Math.min(Math.max(value, ASK_MIN_WIDTH), max));
+ }
+ 
++/** How the right side's panels are sized: a width you drag (`side`), or half the session area (`half`). */
++export type PanelSizing = 'side' | 'half';
++
++/**
++ * The right panel's width: the dragged one, or at Half half of the session area `body` wide (conversation and panel
++ * share it 50/50, and keep doing so as the window resizes). Before the area is measured, the dragged width.
++ */
++export function panelWidthFor(sizing: PanelSizing, side: number, body: number | null): number {
++  if (sizing !== 'half' || body === null || !(body > 0)) return side;
++  return Math.max(ASK_MIN_WIDTH, Math.floor(body / 2));
++}
++
+ /** The width after a resize key: ← widens the panel (its edge is on the left), → narrows it. Null for other keys. */
+ export function askWidthForKey(key: string, width: number, windowWidth: number): number | null {
+   const step = key === 'ArrowLeft' ? ASK_KEY_STEP : key === 'ArrowRight' ? -ASK_KEY_STEP : null;
+diff --git a/apps/ui/src/components/browser/BrowserView.tsx b/apps/ui/src/components/browser/BrowserView.tsx
+index 6dda8598..8d8cfc7f 100644
+--- a/apps/ui/src/components/browser/BrowserView.tsx
++++ b/apps/ui/src/components/browser/BrowserView.tsx
+@@ -4,7 +4,7 @@ import { newBrowserTab, openFavorite } from '../../state/browserViewStore.ts';
+ import { useWebPreview } from '../../state/webPreviewStore.ts';
+ import { Button } from '../ui/Button.tsx';
+ import { BrowserPane } from '../webPreview/BrowserPane.tsx';
+-import { FavoriteTiles } from '../webPreview/FavoriteTiles.tsx';
++import { NewTabSections } from '../webPreview/NewTabPage.tsx';
+ import { BROWSER_OWNER } from '../webPreview/browserTabs.ts';
+ import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
+ 
+@@ -43,18 +43,18 @@ export function BrowserView() {
+   );
+ }
+ 
+-/** No tab in front: what to do, and the favourites. */
++/** No tab in front: what to do, then favourites, bookmarks and closed tabs. */
+ function NoPage() {
+   return (
+-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto px-6 py-4 text-center" data-browser-empty="">
++    <div className="absolute inset-0 flex flex-col items-center justify-center-safe gap-3 overflow-y-auto px-6 py-8 text-center" data-browser-empty="">
+       <Globe size={26} aria-hidden className="text-faint" />
+       <p className="text-body font-semibold text-text">No page selected</p>
+       <p className="text-ui text-muted">Pick a page from the list, or open a new tab.</p>
+       <Button variant="primary" size="sm" icon={<Plus size={12} aria-hidden />} shortcut="browser.new-tab" onClick={newBrowserTab} data-browser-open-tab="">
+         Open tab
+       </Button>
+-      <div className="mt-3 flex w-full justify-center text-left">
+-        <FavoriteTiles onOpen={openFavorite} />
++      <div className="mt-3 flex w-full justify-center">
++        <NewTabSections owner={BROWSER_OWNER} onOpen={(url) => useWebPreview.getState().openTab(BROWSER_OWNER, url)} onFavorite={openFavorite} />
+       </div>
+     </div>
+   );
+diff --git a/apps/ui/src/components/palette/CommandPalette.tsx b/apps/ui/src/components/palette/CommandPalette.tsx
+index dbe94bd9..f959d3f4 100644
+--- a/apps/ui/src/components/palette/CommandPalette.tsx
++++ b/apps/ui/src/components/palette/CommandPalette.tsx
+@@ -32,6 +32,7 @@ import { useProjects } from '../../state/projectsStore.ts';
+ import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+ import { goToTab, openFavoriteHere } from '../../state/browserActions.ts';
+ import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
++import { useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
+ import { useWebPreview } from '../../state/webPreviewStore.ts';
+ import { BROWSER_OWNER, tabName } from '../webPreview/browserTabs.ts';
+ import { markFromOthers } from '../../state/remoteRows.ts';
+@@ -120,6 +121,7 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
+   'run-pipeline': 'Pick a pipeline to run',
+   'browser-tabs': 'Pick a tab',
+   favorites: 'Pick a favourite',
++  bookmarks: 'Pick a bookmark',
+ };
+ /** Run pipeline…'s last choice, Edit pipelines… (pipeline ids never start with a line break). */
+ const EDIT_PIPELINES = '\nedit';
+@@ -192,6 +194,9 @@ export function CommandPalette() {
+   const pipelines = usePipelines((s) => s.pipelines);
+   const browserTabs = useWebPreview((s) => s.tabs);
+   const favorites = useBrowserFavorites((s) => s.favorites);
++  const bookmarks = useBrowserBookmarks((s) => s.bookmarks);
++  const pageProject = useSessions((s) => (s.view === 'session' && s.selectedId ? (s.sessions.get(s.selectedId)?.projectRoot ?? null) : null));
++  const rank = (root: string | null) => (root !== null && root === pageProject ? 0 : root === null ? 1 : 2);
+   const sessionSummaries = useSessions((s) => s.sessions);
+   // The current project's memories, read when the Share memory step shows.
+   const memoryRoot = step?.kind === 'pick' && step.list === 'memory' ? (ctx.currentProject?.root ?? null) : null;
+@@ -305,7 +310,7 @@ export function CommandPalette() {
+       return rows.length ? [{ id: list, label: PICK_PLACEHOLDER[list].replace(/^Pick (a |an )?/, ''), rows }] : [];
+     }
+     // The pick lists and project rows read these; the functions above are only called from here.
+-  }, [state, step, ctx, sessionRows, othersFound, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers, pipelines, browserTabs, favorites, sessionSummaries]);
++  }, [state, step, ctx, sessionRows, othersFound, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers, pipelines, browserTabs, favorites, bookmarks, pageProject, sessionSummaries]);
+ 
+   /** The choices of a pick step, the current one marked. */
+   function pickOptions(list: PickList): Option[] {
+@@ -395,6 +400,11 @@ export function CommandPalette() {
+           }));
+       case 'favorites':
+         return favorites.map((favorite) => ({ value: favorite.url, title: favorite.title, detail: shortUrl(favorite.url) }));
++      case 'bookmarks':
++        // This project's first, then everywhere's, then other projects'; the folder and the address as the detail.
++        return [...bookmarks]
++          .sort((a, b) => rank(a.projectRoot) - rank(b.projectRoot) || a.position - b.position)
++          .map((bookmark) => ({ value: bookmark.url, title: bookmark.title, detail: [bookmark.folder, shortUrl(bookmark.url)].filter(Boolean).join(' · ') }));
+       case 'run-pipeline':
+         // The ones the session's project can run, then the way to change them.
+         return [
+@@ -495,6 +505,8 @@ export function CommandPalette() {
+         return goToTab(value);
+       case 'favorites':
+         return openFavoriteHere(value);
++      case 'bookmarks':
++        return openFavoriteHere(value);
+       case 'run-pipeline': {
+         if (value === EDIT_PIPELINES) return openPipelinesSettings(null);
+         const pipeline = pipelines.find((p) => p.id === value);
+diff --git a/apps/ui/src/components/palette/PaletteDialogs.tsx b/apps/ui/src/components/palette/PaletteDialogs.tsx
+index 72545b43..6c89656e 100644
+--- a/apps/ui/src/components/palette/PaletteDialogs.tsx
++++ b/apps/ui/src/components/palette/PaletteDialogs.tsx
+@@ -7,7 +7,11 @@ import { usePaletteBus } from '../../state/paletteBus.ts';
+ import { useSessions } from '../../state/sessionsStore.ts';
+ import { clearBrowsingData, siteName } from '../../state/browserActions.ts';
+ import { useWebPreview } from '../../state/webPreviewStore.ts';
+-import { RenameTabDialog } from '../webPreview/RenameTabDialog.tsx';
++import { RenameFavoriteDialog, RenameTabDialog } from '../webPreview/RenameTabDialog.tsx';
++import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
++import { projectOfTab, useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
++import { BookmarkDialog } from '../webPreview/BookmarkDialog.tsx';
++import { bookmarkOf } from '../webPreview/bookmarks.ts';
+ import { ConfirmDialog } from '../ConfirmDialog.tsx';
+ import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
+ import { CopySectionDialog } from '../memory/CopySectionDialog.tsx';
+@@ -34,12 +38,20 @@ export function PaletteDialogs() {
+   const live = useSessions((s) => (dialog?.kind === 'delete-session' ? (s.live.get(dialog.sessionId) ?? null) : null));
+   const host = useHosts((s) => (dialog?.kind === 'delete-session' ? s.hosts.get(dialog.sessionId) : undefined));
+   const renaming = useWebPreview((s) => (dialog?.kind === 'rename-tab' ? (s.tabs.find((t) => t.id === dialog.tabId) ?? null) : null));
++  const favorite = useBrowserFavorites((s) => (dialog?.kind === 'rename-favorite' ? (s.favorites.find((f) => f.id === dialog.favoriteId) ?? null) : null));
++  const bookmarking = useWebPreview((s) => (dialog?.kind === 'bookmark' ? (s.tabs.find((t) => t.id === dialog.tabId) ?? null) : null));
++  const bookmarks = useBrowserBookmarks((s) => s.bookmarks);
++  const bookmarkHere = bookmarking ? bookmarkOf(bookmarks, bookmarking.url, projectOfTab(bookmarking)) : undefined;
+   const close = () => usePaletteBus.getState().showDialog(null);
+   if (!dialog) return null;
+ 
+   switch (dialog.kind) {
+     case 'rename-tab':
+       return renaming ? <RenameTabDialog tab={renaming} onClose={close} /> : null;
++    case 'bookmark':
++      return bookmarking && bookmarkHere ? <BookmarkDialog key={bookmarkHere.id} tab={bookmarking} bookmark={bookmarkHere} bookmarks={bookmarks} onClose={close} /> : null;
++    case 'rename-favorite':
++      return favorite ? <RenameFavoriteDialog favorite={favorite} onClose={close} /> : null;
+     case 'clear-browser-data':
+       return dialog.origin ? (
+         <ConfirmDialog
+diff --git a/apps/ui/src/components/palette/commands.ts b/apps/ui/src/components/palette/commands.ts
+index 2375ebc0..b0927cb8 100644
+--- a/apps/ui/src/components/palette/commands.ts
++++ b/apps/ui/src/components/palette/commands.ts
+@@ -237,6 +237,8 @@ export interface PaletteApi {
+   newBrowserTab(): void;
+   /** The browser: adds the page on screen to the favourites, or removes it. */
+   toggleFavorite(): void;
++  /** The browser: bookmarks the page on screen, or shows its bookmark (`bookmarkPage`). */
++  bookmarkPage(): void;
+   /** The browser: something done to the tab on screen (`currentPageTab`), or Reopen closed tab, Clear all browsing data. */
+   browserAction(action: BrowserAction): void;
+   showTools(): void;
+@@ -904,8 +906,11 @@ export const COMMANDS: PaletteCommand[] = [
+   { id: 'open-session-browser', title: 'Open browser', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'web preview page tab github pull request localhost dev server site', when: (ctx) => hasSession(ctx) && !!ctx.browser, run: (api) => api.openWeb() },
+   { id: 'reload-browser-page', title: 'Reload page', group: 'session', icon: RotateCw, keywords: 'refresh browser web preview tab', when: (ctx) => hasSession(ctx) && ctx.session!.web && !!ctx.browser, run: (api) => api.reloadWeb() },
+   { id: 'browser-new-tab', title: 'New tab', group: 'general', shortcut: keysFor('browser.new-tab'), icon: Plus, keywords: 'browser web page open', when: (ctx) => !!ctx.browser && (ctx.view === 'browser' || hasSession(ctx)), run: (api) => api.newBrowserTab() },
+-  { id: 'browser-favorite-add', title: 'Add page to favourites', group: 'general', shortcut: keysFor('browser.favorite'), icon: Star, keywords: 'favorite bookmark star site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === false, run: (api) => api.toggleFavorite() },
+-  { id: 'browser-favorite-remove', title: 'Remove page from favourites', group: 'general', shortcut: keysFor('browser.favorite'), icon: StarOff, keywords: 'favorite bookmark star unstar site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === true, run: (api) => api.toggleFavorite() },
++  { id: 'browser-bookmark', title: 'Bookmark this page', group: 'general', shortcut: keysFor('browser.bookmark'), icon: Bookmark, keywords: 'bookmark save link star folder browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.url === true && !ctx.browserPage.bookmarked, run: (api) => api.bookmarkPage() },
++  { id: 'browser-bookmark-edit', title: 'Edit bookmark', group: 'general', shortcut: keysFor('browser.bookmark'), icon: Bookmark, keywords: 'bookmark rename folder remove browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.bookmarked === true, run: (api) => api.bookmarkPage() },
++  { id: 'browser-open-bookmark', title: 'Open bookmark…', group: 'general', icon: Bookmark, keywords: 'bookmark link site browser web', when: (ctx) => !!ctx.browser && (ctx.bookmarks ?? 0) > 0, next: () => ({ kind: 'pick', list: 'bookmarks', chip: 'Open bookmark' }) },
++  { id: 'browser-favorite-add', title: 'Add page to favourites', group: 'general', icon: Star, keywords: 'favorite bookmark star site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === false, run: (api) => api.toggleFavorite() },
++  { id: 'browser-favorite-remove', title: 'Remove page from favourites', group: 'general', icon: StarOff, keywords: 'favorite bookmark star unstar site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === true, run: (api) => api.toggleFavorite() },
+   { id: 'browser-go-to-tab', title: 'Go to tab…', group: 'general', icon: AppWindow, keywords: 'browser switch tabs pages web', when: (ctx) => !!ctx.browser && (ctx.browserTabs ?? 0) > 0, next: () => ({ kind: 'pick', list: 'browser-tabs', chip: 'Go to tab' }) },
+   { id: 'browser-open-favorite', title: 'Open favourite…', group: 'general', icon: Star, keywords: 'favorite bookmark site browser web', when: (ctx) => !!ctx.browser && (ctx.favorites ?? 0) > 0, next: () => ({ kind: 'pick', list: 'favorites', chip: 'Open favourite' }) },
+   { id: 'browser-address', title: 'Go to address', group: 'general', shortcut: keysFor('browser.address'), icon: Globe, keywords: 'browser url type location open page', when: onPage, run: (api) => api.browserAction('address') },
+diff --git a/apps/ui/src/components/palette/paletteApi.ts b/apps/ui/src/components/palette/paletteApi.ts
+index f8acf418..d120358e 100644
+--- a/apps/ui/src/components/palette/paletteApi.ts
++++ b/apps/ui/src/components/palette/paletteApi.ts
+@@ -18,6 +18,7 @@ import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelSt
+ import { showWebPanel, useWebPreview } from '../../state/webPreviewStore.ts';
+ import { currentPageTab, newBrowserTab, openBrowserView } from '../../state/browserViewStore.ts';
+ import { toggleFavorite } from '../../state/browserFavoritesStore.ts';
++import { bookmarkPage } from '../../state/browserBookmarksStore.ts';
+ import { runBrowserAction } from '../../state/browserActions.ts';
+ import { sessionServerOffers } from '../webPreview/serverOffers.ts';
+ import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
+@@ -242,6 +243,10 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
+       const tab = currentPageTab();
+       if (tab) toggleFavorite(tab);
+     },
++    bookmarkPage: () => {
++      const tab = currentPageTab();
++      if (tab) bookmarkPage(tab);
++    },
+     newBrowserTab: () => {
+       const { view, selectedId } = useSessions.getState();
+       if (view === 'browser' || !selectedId) return newBrowserTab();
+diff --git a/apps/ui/src/components/palette/paletteContext.ts b/apps/ui/src/components/palette/paletteContext.ts
+index 9eeead32..6d4d9d3d 100644
+--- a/apps/ui/src/components/palette/paletteContext.ts
++++ b/apps/ui/src/components/palette/paletteContext.ts
+@@ -78,6 +78,8 @@ export interface BrowserPageContext {
+   /** It shows a page (a new tab has none yet). */
+   url: boolean;
+   favorite: boolean;
++  /** Its page has a bookmark (Bookmark this page says Edit bookmark). Optional for older callers. */
++  bookmarked?: boolean;
+   pinned: boolean;
+   back: boolean;
+   forward: boolean;
+@@ -127,6 +129,8 @@ export interface PaletteContext {
+   browserClosed?: boolean;
+   /** How many favourites there are (Open favourite…). */
+   favorites?: number;
++  /** How many bookmarks there are (Open bookmark…). */
++  bookmarks?: number;
+   /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
+   catchUpFolded: boolean | null;
+   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */
+diff --git a/apps/ui/src/components/palette/paletteState.ts b/apps/ui/src/components/palette/paletteState.ts
+index 948adf56..534d3cef 100644
+--- a/apps/ui/src/components/palette/paletteState.ts
++++ b/apps/ui/src/components/palette/paletteState.ts
+@@ -26,7 +26,7 @@ export function modeForPrefix(char: string | undefined): Exclude<PaletteMode, 'g
+ }
+ 
+ /** Lists a `pick` step chooses from. */
+-export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt' | 'schedules' | 'schedule-action' | 'triggers' | 'trigger-action' | 'pipelines' | 'run-pipeline' | 'browser-tabs' | 'favorites';
++export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt' | 'schedules' | 'schedule-action' | 'triggers' | 'trigger-action' | 'pipelines' | 'run-pipeline' | 'browser-tabs' | 'favorites' | 'bookmarks';
+ 
+ /**
+  * One step of a command that needs more input. `chip` is how it shows in the input; `from` is the
+diff --git a/apps/ui/src/components/palette/popoutCommands.ts b/apps/ui/src/components/palette/popoutCommands.ts
+index 320dba79..e0386b62 100644
+--- a/apps/ui/src/components/palette/popoutCommands.ts
++++ b/apps/ui/src/components/palette/popoutCommands.ts
+@@ -159,6 +159,10 @@ const PLANS: Record<string, Plan> = {
+   'browser-favorite-remove': 'here',
+   // The session's browser panel in the pop-out: its page commands work there, and a favourite opens in it.
+   'browser-open-favorite': 'here',
++  // Bookmarks are the same list in every window, saved in the engine; one opens in the pop-out's panel.
++  'browser-bookmark': 'here',
++  'browser-bookmark-edit': 'here',
++  'browser-open-bookmark': 'here',
+   'browser-address': 'here',
+   'browser-back': 'here',
+   'browser-forward': 'here',
+diff --git a/apps/ui/src/components/palette/usePaletteContext.ts b/apps/ui/src/components/palette/usePaletteContext.ts
+index f4dd2ee4..cea2d9ac 100644
+--- a/apps/ui/src/components/palette/usePaletteContext.ts
++++ b/apps/ui/src/components/palette/usePaletteContext.ts
+@@ -44,6 +44,7 @@ import { localSessionId } from '../../state/remoteSelection.ts';
+ import { popoutSession } from '../../state/popoutsStore.ts';
+ import { useWebPreview } from '../../state/webPreviewStore.ts';
+ import { useBrowserFavorites, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
++import { useBookmarkOf, useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
+ import { usePageState } from '../webPreview/webPreviewPages.ts';
+ import { pageOwner } from '../../state/browserViewStore.ts';
+ import { frontTab } from '../webPreview/browserTabs.ts';
+@@ -144,6 +145,8 @@ export function usePaletteContext(): PaletteContext {
+   const pageFull = useWebPreview((s) => (id ? s.full.has(id) : false));
+   const pageState = usePageState(pageTab?.id ?? null);
+   const pageFavorite = useFavoriteOf(pageTab?.url ?? null) !== undefined;
++  const pageBookmarked = useBookmarkOf(pageTab ?? null) !== undefined;
++  const bookmarks = useBrowserBookmarks((s) => s.bookmarks.length);
+   const browserTabs = useWebPreview((s) => s.tabs.length);
+   const browserClosed = useWebPreview((s) => s.closed.length > 0);
+   const favorites = useBrowserFavorites((s) => s.favorites.length);
+@@ -221,11 +224,12 @@ export function usePaletteContext(): PaletteContext {
+     webPreview: prefs.webPreview,
+     browserPage:
+       prefs.browserEnabled && pageTab
+-        ? { url: !!pageTab.url, favorite: pageFavorite, pinned: pageTab.pinned, back: pageState.back, forward: pageState.forward, loading: pageState.loading, owner: view === 'browser' ? 'view' : 'session', full: pageFull, muted: pageTab.muted }
++        ? { url: !!pageTab.url, favorite: pageFavorite, bookmarked: pageBookmarked, pinned: pageTab.pinned, back: pageState.back, forward: pageState.forward, loading: pageState.loading, owner: view === 'browser' ? 'view' : 'session', full: pageFull, muted: pageTab.muted }
+         : null,
+     browserTabs,
+     browserClosed,
+     favorites,
++    bookmarks,
+     sounds: prefs.sounds.enabled,
+     catchUpFolded: prefs.catchUpSummaries ? prefs.catchUpFolded : null,
+     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },
+diff --git a/apps/ui/src/components/sidebar/BrowserTabList.tsx b/apps/ui/src/components/sidebar/BrowserTabList.tsx
+index 86961f1e..71910e5d 100644
+--- a/apps/ui/src/components/sidebar/BrowserTabList.tsx
++++ b/apps/ui/src/components/sidebar/BrowserTabList.tsx
+@@ -1,33 +1,31 @@
+-import { Copy, Ellipsis, ExternalLink, Pencil, Pin, PinOff, Plus, Volume2, VolumeX, X } from 'lucide-react';
++import { Copy, Ellipsis, ExternalLink, Pencil, Plus, Star, Volume2, VolumeX, X } from 'lucide-react';
+ import { Fragment } from 'react';
+ import { useState, type MouseEvent } from 'react';
+ import { shortUrl } from '@seshboard/protocol/client';
+-import type { BrowserFavorite } from '@seshboard/protocol/client';
+-import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
++import { addFavorite } from '../../state/browserFavoritesStore.ts';
+ import { askRename, copyAddress, openInSystemBrowser, toggleMute } from '../../state/browserActions.ts';
+-import { newBrowserTab, openFavorite } from '../../state/browserViewStore.ts';
++import { newBrowserTab } from '../../state/browserViewStore.ts';
+ import { useSessions } from '../../state/sessionsStore.ts';
+ import { useWebPreview } from '../../state/webPreviewStore.ts';
+ import { Menu, type MenuEntry } from '../Menu.tsx';
+ import { Button } from '../ui/Button.tsx';
+ import { middleClose, middleDown, SoundMark, TabIcon, tabLabel, TabTitle } from '../webPreview/BrowserPane.tsx';
+-import { BROWSER_OWNER, ownerTabs, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
+-import { favoriteMenu, menuAt } from '../webPreview/FavoriteTiles.tsx';
++import { BROWSER_OWNER, listedTabs, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
++import { FavoriteBar } from '../webPreview/FavoriteTiles.tsx';
+ 
+ /**
+- * The Browser view's tabs in the sidebar, in place of the sessions, under your favourites (a click opens one in a tab):
+- * pinned ones first, above a line, then the others, each with its icon and title and a ⋯ menu (Pin tab, Rename tab,
+- * Copy address, Open in browser, Close tab), then Open tab. It scrolls on its own.
++ * The Browser view's tabs in the sidebar, in place of the sessions, under your favourites' tiles (`FavoriteBar`): each
++ * with its icon and title and a ⋯ menu (Add to favourites, Rename tab, Copy address, Open in browser, Close tab), then
++ * Open tab. None open, one line says so. It scrolls on its own.
+  */
+ export function BrowserTabList() {
+   const all = useWebPreview((s) => s.tabs);
+   const activeId = useWebPreview((s) => s.active.get(BROWSER_OWNER) ?? null);
+   const confirming = useWebPreview((s) => s.confirming);
+   const atBrowser = useSessions((s) => s.view === 'browser');
+-  const tabs = ownerTabs({ tabs: all, active: new Map() }, BROWSER_OWNER);
++  // A favourite's tab shows in its tile, not here.
++  const tabs = listedTabs({ tabs: all, active: new Map() }, BROWSER_OWNER);
+   const [menu, setMenu] = useState<{ x: number; y: number; tab: BrowserTab } | null>(null);
+-  const favorites = useBrowserFavorites((s) => s.favorites);
+-  const [favoriteMenuAt, setFavoriteMenuAt] = useState<{ x: number; y: number; favorite: BrowserFavorite } | null>(null);
+ 
+   const show = (tab: BrowserTab) => {
+     useWebPreview.getState().selectTab(tab.id);
+@@ -39,9 +37,8 @@ export function BrowserTabList() {
+     setMenu({ x: event.clientX || rect.left, y: event.clientY || rect.bottom, tab });
+   };
+   const entries = (tab: BrowserTab): MenuEntry[] => [
+-    tab.pinned
+-      ? { label: 'Unpin tab', icon: <PinOff size={13} aria-hidden />, onSelect: () => useWebPreview.getState().unpin(tab.id), data: { 'data-browser-tab-unpin': true } }
+-      : { label: 'Pin tab', icon: <Pin size={13} aria-hidden />, disabled: !tab.url, onSelect: () => useWebPreview.getState().pin(tab.id), data: { 'data-browser-tab-pin': true } },
++    // A favourite is how a Browser tab lasts: it moves to a tile, which keeps its page.
++    { label: 'Add to favourites', icon: <Star size={13} aria-hidden />, disabled: !tab.url, onSelect: () => addFavorite(tab), data: { 'data-browser-tab-favorite': true } },
+     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-browser-tab-rename': true } },
+     tab.muted
+       ? { label: 'Unmute tab', icon: <Volume2 size={13} aria-hidden />, onSelect: () => toggleMute(tab) }
+@@ -55,29 +52,7 @@ export function BrowserTabList() {
+   return (
+     <div className="flex min-h-0 flex-1 flex-col" data-browser-tab-list>
+       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+-        {favorites.length > 0 && (
+-          <>
+-            <h2 className="px-2.5 pt-1 pb-1 text-meta font-semibold text-muted">Favourites</h2>
+-            <ul aria-label="Favourites" className="mb-3 grid grid-cols-[minmax(0,1fr)] gap-0.5" data-browser-favorites-list="">
+-              {favorites.map((favorite) => (
+-                <li key={favorite.id} className="min-w-0">
+-                  <button
+-                    type="button"
+-                    onClick={() => openFavorite(favorite.url)}
+-                    onContextMenu={(e) => setFavoriteMenuAt({ ...menuAt(e), favorite })}
+-                    data-tooltip={`${favorite.title}\n${shortUrl(favorite.url)}`}
+-                    className="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-ui text-text/90 hover:bg-border/45"
+-                    data-browser-favorite={favorite.url}
+-                  >
+-                    <TabIcon tab={favorite} size={14} />
+-                    <span className="min-w-0 flex-1 truncate">{favorite.title}</span>
+-                  </button>
+-                </li>
+-              ))}
+-            </ul>
+-            <h2 className="px-2.5 pb-1 text-meta font-semibold text-muted">Tabs</h2>
+-          </>
+-        )}
++        <FavoriteBar />
+         {/* One column no wider than the sidebar: a long title is cut, instead of widening every row past the edge. */}
+         <ul aria-label="Browser tabs" className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+           {tabs.map((tab, index) => {
+@@ -123,13 +98,13 @@ export function BrowserTabList() {
+             );
+           })}
+         </ul>
++        {tabs.length === 0 && <p className="px-2.5 pt-1 text-ui text-faint" data-browser-no-tabs="">No tabs open</p>}
+         <button type="button" onClick={newBrowserTab} className="mt-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-ui text-muted hover:bg-border/45 hover:text-text" data-browser-open-tab>
+           <Plus size={14} aria-hidden />
+           Open tab
+         </button>
+       </div>
+       {menu && <Menu x={menu.x} y={menu.y} entries={entries(menu.tab)} label={`${tabName(menu.tab)} menu`} onClose={() => setMenu(null)} />}
+-      {favoriteMenuAt && <Menu x={favoriteMenuAt.x} y={favoriteMenuAt.y} entries={favoriteMenu(favoriteMenuAt.favorite)} label={`${favoriteMenuAt.favorite.title} menu`} onClose={() => setFavoriteMenuAt(null)} />}
+     </div>
+   );
+ }
+diff --git a/apps/ui/src/components/transcript/ToolRail.tsx b/apps/ui/src/components/transcript/ToolRail.tsx
+index b16bdf11..f548f019 100644
+--- a/apps/ui/src/components/transcript/ToolRail.tsx
++++ b/apps/ui/src/components/transcript/ToolRail.tsx
+@@ -1,6 +1,7 @@
+ import { PanelRight } from 'lucide-react';
+ import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+ import { usePreferences } from '../../state/preferencesStore.ts';
++import { useRightPanel } from '../../state/rightPanelStore.ts';
+ import { Menu, type MenuEntry } from '../Menu.tsx';
+ import { Badged } from '../ui/Badged.tsx';
+ import { RAIL_MENU, toggleRailTool, type RailToolId, type RailToolState } from './toolRail.ts';
+@@ -33,6 +34,7 @@ export type RailItem = RailButton | 'divider';
+  */
+ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide: (() => void) | null }) {
+   const hidden = usePreferences((s) => s.prefs.railHidden);
++  const sizing = useRightPanel((s) => s.sizing);
+   const update = usePreferences((s) => s.update);
+   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+   const [focus, setFocus] = useState(0);
+@@ -66,6 +68,9 @@ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide
+       ({ tool, label }): MenuEntry => ({ label, checkbox: true, checked: !hidden.includes(tool), data: { 'data-rail-menu-tool': tool }, onSelect: () => update({ railHidden: toggleRailTool(hidden, tool) }) }),
+     ),
+     'separator',
++    // Every panel on the right at half the session area, kept as the window resizes; dragging its edge is Side again.
++    { label: 'Panels at half width', checkbox: true, checked: sizing === 'half', data: { 'data-rail-menu-half': true }, onSelect: () => useRightPanel.getState().setSizing(sizing === 'half' ? 'side' : 'half') },
++    'separator',
+     { label: 'Reset', data: { 'data-rail-menu-reset': true }, onSelect: () => update({ railHidden: [] }) },
+   ];
+ 
+diff --git a/apps/ui/src/components/transcript/TranscriptView.tsx b/apps/ui/src/components/transcript/TranscriptView.tsx
+index a7c9ed58..18a3de32 100644
+--- a/apps/ui/src/components/transcript/TranscriptView.tsx
++++ b/apps/ui/src/components/transcript/TranscriptView.tsx
+@@ -133,7 +133,7 @@ import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
+ import { ProviderSessionControls } from '../providers/ProviderSessionControls.tsx';
+ import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
+ import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
+-import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
++import { modPaneTab, paneOfTab, rightPanel, type RightTab, panelWidthFor } from '../ask/askWidth.ts';
+ import { ToolRail, type RailItem } from './ToolRail.tsx';
+ import { railEntries, railLabel, railToolState, type RailToolId } from './toolRail.ts';
+ import { itemCount } from '../../state/ask.ts';
+@@ -594,6 +594,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
+   const terminalShown = panelOpen;
+   const bodyRef = useRef<HTMLDivElement>(null);
+   const bodyWidth = useWidth(bodyRef);
++  // Half: the panels on the right take half the session area, as the window resizes; Side: the width you dragged.
++  const panelSizing = useRightPanel((s) => s.sizing);
++  const halfPanel = panelSizing === 'half';
++  const panelWidth = panelWidthFor(panelSizing, rightWidth, bodyWidth);
+   const bodyHeight = useHeight(bodyRef);
+   // "Why?" takes the whole right side while it is open.
+   const terminalBlocked = rightBlocked(whyRequest ? 'changes' : null, bodyWidth);
+@@ -1578,7 +1582,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
+         rightBlocked={terminalBlocked}
+         viewWidth={bodyWidth}
+         viewHeight={bodyHeight}
+-        shared={terminalOnRight && right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
++        shared={terminalOnRight && (right.tabs || halfPanel) ? { width: panelWidth, setWidth: setRightWidth } : undefined}
+       />
+     </Suspense>
+   );
+@@ -2256,7 +2260,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
+             onRefresh={refreshChanges}
+             onClose={() => closeChanges(sessionId)}
+             outside={catchUp?.signals.outOfScope}
+-            shared={right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
++            shared={right.tabs || halfPanel ? { width: panelWidth, setWidth: setRightWidth } : undefined}
+           />
+         )}
+         {!whyRequest && right.tab === 'ask' && !terminalMaximized && (
+@@ -2264,7 +2268,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
+             sessionId={sessionId}
+             state={ask}
+             working={working}
+-            width={rightWidth}
++            width={panelWidth}
+             onWidth={setRightWidth}
+             onAsk={askHere}
+             onRetry={(threadId, item) => client && void retryAsk(client, sessionId, threadId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
+@@ -2280,7 +2284,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
+             key={frontPane.id}
+             sessionId={sessionId}
+             pane={frontPane}
+-            width={rightWidth}
++            width={panelWidth}
+             onWidth={setRightWidth}
+             onClose={() => closeModPane(frontPane.id)}
+             focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
+@@ -2296,7 +2300,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
+             picked={agentsState.picked}
+             onPick={(agent) => pickAgent(sessionId, agent)}
+             onStop={stopTask}
+-            width={rightWidth}
++            width={panelWidth}
+             onWidth={setRightWidth}
+             onClose={() => closeAgents(sessionId)}
+           />
+@@ -2309,14 +2313,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
+             picked={commandsState.picked}
+             onPick={(taskId) => pickCommand(sessionId, taskId)}
+             onStop={stopTask}
+-            width={rightWidth}
++            width={panelWidth}
+             onWidth={setRightWidth}
+             onClose={() => closeCommands(sessionId)}
+           />
+         )}
+         {!whyRequest && right.tab === 'preview' && previewTarget && !terminalMaximized && (
+           <PreviewOpenerContext.Provider value={openPreviewHere}>
+-            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={rightWidth} onWidth={setRightWidth} />
++            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={panelWidth} onWidth={setRightWidth} />
+           </PreviewOpenerContext.Provider>
+         )}
+         {/* Its page lives outside this view (webPreviewPages.ts), so it keeps running while another tab is in front. */}
+@@ -2325,7 +2329,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
+             sessionId={sessionId}
+             web={web}
+             offers={serverOffers}
+-            width={rightWidth}
++            width={panelWidth}
+             onWidth={setRightWidth}
+           />
+         )}
+diff --git a/apps/ui/src/components/webPreview/BookmarkDialog.tsx b/apps/ui/src/components/webPreview/BookmarkDialog.tsx
+new file mode 100644
+index 00000000..16e77f99
+--- /dev/null
++++ b/apps/ui/src/components/webPreview/BookmarkDialog.tsx
+@@ -0,0 +1,125 @@
++import { useEffect, useId, useRef, useState } from 'react';
++import type { BrowserBookmark } from '@seshboard/protocol/client';
++import { basename } from '../../lib/format.ts';
++import { projectOfTab, removeBookmark, updateBookmark } from '../../state/browserBookmarksStore.ts';
++import { addFavorite, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
++import { useProjects } from '../../state/projectsStore.ts';
++import { Button } from '../ui/Button.tsx';
++import { Checkbox } from '../ui/Checkbox.tsx';
++import { Dialog } from '../ui/Dialog.tsx';
++import { SegmentedControl } from '../ui/SegmentedControl.tsx';
++import { bookmarkFolders, FOLDER_MAX } from './bookmarks.ts';
++import type { BrowserTab } from './browserTabs.ts';
++
++/**
++ * A page's bookmark, just added by ⌘D or the star (or the one it had): its name, where it shows (this session's
++ * project, or everywhere) and its folder, and also a favourite on request. Done saves; Remove takes the bookmark away.
++ * Closing keeps it as it is, as a browser's bookmark bubble does.
++ */
++export function BookmarkDialog({ tab, bookmark, bookmarks, onClose }: { tab: BrowserTab; bookmark: BrowserBookmark; bookmarks: readonly BrowserBookmark[]; onClose(): void }) {
++  const [title, setTitle] = useState(bookmark.title);
++  const [folder, setFolder] = useState(bookmark.folder);
++  const project = projectOfTab(tab);
++  const [scope, setScope] = useState<'project' | 'everywhere'>(bookmark.projectRoot && bookmark.projectRoot === project ? 'project' : 'everywhere');
++  const projectName = useProjects((s) => (project ? (s.projects.get(project)?.name ?? basename(project)) : null));
++  const favorite = useFavoriteOf(tab.url) !== undefined;
++  const [alsoFavorite, setAlsoFavorite] = useState(false);
++  const inputRef = useRef<HTMLInputElement>(null);
++  const id = useId();
++  // Added just now (in this second): its title is the page's; an older one says Edit bookmark.
++  const [added] = useState(() => Date.now() - bookmark.createdAt < 2_000);
++  useEffect(() => inputRef.current?.select(), []);
++
++  const done = () => {
++    // Without a project here (the Browser view), where it shows stays as it was.
++    const projectRoot = !projectName ? bookmark.projectRoot : scope === 'project' ? project : null;
++    updateBookmark(bookmark.id, { title, folder, projectRoot });
++    if (alsoFavorite && !favorite) addFavorite(tab);
++    onClose();
++  };
++  const remove = () => {
++    removeBookmark(bookmark.id);
++    onClose();
++  };
++
++  return (
++    <Dialog
++      width="sm"
++      title={added ? 'Bookmark added' : 'Edit bookmark'}
++      onClose={onClose}
++      onSubmit={done}
++      initialFocus={inputRef}
++      data-bookmark-dialog
++      footer={
++        <>
++          <Button variant="danger" onClick={remove} className="mr-auto" data-bookmark-remove>
++            Remove
++          </Button>
++          <Button variant="primary" kbd="↵" onClick={done} data-bookmark-done>
++            Done
++          </Button>
++        </>
++      }
++    >
++      <form
++        className="grid gap-3"
++        onSubmit={(e) => {
++          e.preventDefault();
++          done();
++        }}
++      >
++        <label className="grid gap-1 text-ui text-muted" htmlFor={`${id}-name`}>
++          Name
++          <input
++            ref={inputRef}
++            id={`${id}-name`}
++            value={title}
++            maxLength={500}
++            onChange={(e) => setTitle(e.target.value)}
++            placeholder={bookmark.url}
++            className="h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink"
++            data-bookmark-name
++          />
++        </label>
++        {projectName && (
++          <div className="grid gap-1 text-ui text-muted">
++            <span id={`${id}-scope`}>Show it in</span>
++            <SegmentedControl
++              mode="radio"
++              size="sm"
++              fill
++              label="Show it in"
++              value={scope}
++              onChange={(value: 'project' | 'everywhere') => setScope(value)}
++              segments={[
++                { value: 'project', label: projectName, data: { 'data-bookmark-scope': 'project' } },
++                { value: 'everywhere', label: 'Everywhere', data: { 'data-bookmark-scope': 'everywhere' } },
++              ]}
++            />
++          </div>
++        )}
++        <label className="grid gap-1 text-ui text-muted" htmlFor={`${id}-folder`}>
++          Folder
++          <input
++            id={`${id}-folder`}
++            value={folder}
++            maxLength={FOLDER_MAX}
++            list={`${id}-folders`}
++            onChange={(e) => setFolder(e.target.value)}
++            placeholder="None"
++            className="h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink"
++            data-bookmark-folder
++          />
++          <datalist id={`${id}-folders`}>
++            {bookmarkFolders(bookmarks).map((f) => (
++              <option key={f} value={f} />
++            ))}
++          </datalist>
++        </label>
++        <Checkbox checked={favorite || alsoFavorite} disabled={favorite} disabledReason="It is a favourite already" onChange={setAlsoFavorite} dataAttrs={{ 'data-bookmark-favorite': true }}>
++          Also add to favourites
++        </Checkbox>
++      </form>
++    </Dialog>
++  );
++}
+diff --git a/apps/ui/src/components/webPreview/BrowserPane.tsx b/apps/ui/src/components/webPreview/BrowserPane.tsx
+index 1745d012..6909dc6e 100644
+--- a/apps/ui/src/components/webPreview/BrowserPane.tsx
++++ b/apps/ui/src/components/webPreview/BrowserPane.tsx
+@@ -3,15 +3,17 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
+ import { addressBarUrl, browserNavigation, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
+ import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
+ import { askClearData, askRename, copyAddress, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
+-import { toggleFavorite, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
++import { bookmarkPage, useBookmarkOf } from '../../state/browserBookmarksStore.ts';
+ import { Menu, type MenuEntry } from '../Menu.tsx';
+ import { usePreferences } from '../../state/preferencesStore.ts';
+ import { useWebPreview } from '../../state/webPreviewStore.ts';
++import { useRightPanel } from '../../state/rightPanelStore.ts';
+ import { Button } from '../ui/Button.tsx';
+ import { Notice } from '../ui/Notice.tsx';
+ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+-import { tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
+-import { FavoriteTiles } from './FavoriteTiles.tsx';
++import { BROWSER_OWNER, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
++import { NewTabSections } from './NewTabPage.tsx';
++import { openFavoriteInTab } from '../../state/browserViewStore.ts';
+ import type { ServerOffer } from './serverOffers.ts';
+ import { previewPage, registerSlot, usePageState } from './webPreviewPages.ts';
+ 
+@@ -65,7 +67,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
+   }, [tab?.id]);
+   const address = useRef<HTMLInputElement>(null);
+   const tabId = tab?.id ?? null;
+-  const favorite = useFavoriteOf(tab?.url ?? null) !== undefined;
++  const bookmarked = useBookmarkOf(tab) !== undefined;
+   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
+ 
+   // A new, empty tab starts in the address bar.
+@@ -142,7 +144,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
+             data-tab-id={tab?.id}
+           />
+         </form>
+-        {browser && tab && (
++        {/* A session's tab can be pinned; in the Browser view, a favourite's tile is what keeps a page. */}
++        {browser && tab && tab.owner !== BROWSER_OWNER && (
+           <Button
+             variant="quiet"
+             size="sm"
+@@ -162,15 +165,15 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
+             variant="quiet"
+             size="sm"
+             iconOnly
+-            icon={<Star size={13} aria-hidden className={favorite ? 'fill-current' : undefined} />}
+-            aria-label={favorite ? 'Remove from favourites' : 'Add to favourites'}
+-            data-tooltip={favorite ? 'Remove from favourites' : 'Add to favourites'}
+-            shortcut="browser.favorite"
+-            aria-pressed={favorite}
+-            selected={favorite}
++            icon={<Star size={13} aria-hidden className={bookmarked ? 'fill-current' : undefined} />}
++            aria-label={bookmarked ? 'Edit bookmark' : 'Bookmark this page'}
++            data-tooltip={bookmarked ? 'Edit bookmark' : 'Bookmark this page'}
++            shortcut="browser.bookmark"
++            aria-pressed={bookmarked}
++            selected={bookmarked}
+             disabled={!tab.url}
+-            onClick={() => toggleFavorite(tab)}
+-            data-web-preview-favorite=""
++            onClick={() => bookmarkPage(tab)}
++            data-web-preview-bookmark=""
+           />
+         )}
+         {!browser && <Button
+@@ -237,7 +240,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
+           />
+         )}
+         {!tab && empty}
+-        {tab && !tab.url && <EmptyTab tabId={tab.id} offers={offers} browser={browser} />}
++        {tab && !tab.url && <EmptyTab tabId={tab.id} owner={tab.owner} offers={offers} browser={browser} />}
+         <div aria-live="polite" className="contents">
+           {failure && !page.crashed && (
+             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-sidebar px-6 text-center" data-web-preview-unreachable="">
+@@ -400,10 +403,10 @@ export function TabIcon({ tab, size = 12 }: { tab: Pick<BrowserTab, 'favicon'>;
+   return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" onError={() => setBroken(tab.favicon)} />;
+ }
+ 
+-/** An empty tab: the servers running in the session, or where to type, and the favourites (the browser on). */
+-function EmptyTab({ tabId, offers, browser }: { tabId: string; offers: readonly ServerOffer[]; browser: boolean }) {
++/** An empty tab: the servers running in the session, or where to type, then favourites, bookmarks and closed tabs (the browser on). */
++function EmptyTab({ tabId, owner, offers, browser }: { tabId: string; owner: string; offers: readonly ServerOffer[]; browser: boolean }) {
+   return (
+-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-sidebar px-6 py-4 text-center" data-web-preview-empty="">
++    <div className="absolute inset-0 flex flex-col items-center justify-center-safe gap-3 overflow-y-auto bg-sidebar px-6 py-8 text-center" data-web-preview-empty="">
+       <Globe size={22} aria-hidden className="text-faint" />
+       {offers.length > 0 ? (
+         <>
+@@ -423,25 +426,34 @@ function EmptyTab({ tabId, offers, browser }: { tabId: string; offers: readonly
+         </p>
+       )}
+       {browser && (
+-        <div className="mt-3 flex w-full justify-center text-left">
+-          <FavoriteTiles onOpen={(url) => useWebPreview.getState().navigate(tabId, url)} />
++        <div className="mt-3 flex w-full justify-center">
++          <NewTabSections owner={owner} onOpen={(url) => useWebPreview.getState().navigate(tabId, url)} onFavorite={(url) => openFavoriteInTab(tabId, url)} />
+         </div>
+       )}
+     </div>
+   );
+ }
+ 
+-/** The panel's sizes: beside the conversation, or the whole session area. */
++/**
++ * The panel's sizes: beside the conversation at the width you dragged (Side), sharing the session area 50/50 (Half,
++ * for every panel on the right, `useRightPanel().sizing`), or the whole session area (Full, this panel).
++ */
+ export function PanelSize({ full, onChange }: { full: boolean; onChange(full: boolean): void }) {
++  const sizing = useRightPanel((s) => s.sizing);
++  const pick = (value: 'side' | 'half' | 'full') => {
++    if (value !== 'full') useRightPanel.getState().setSizing(value);
++    onChange(value === 'full');
++  };
+   return (
+     <SegmentedControl
+       mode="radio"
+       size="sm"
+       label="Panel size"
+-      value={full ? 'full' : 'side'}
+-      onChange={(value: 'side' | 'full') => onChange(value === 'full')}
++      value={full ? 'full' : sizing}
++      onChange={pick}
+       segments={[
+         { value: 'side', label: 'Side', data: { 'data-web-preview-size': 'side' } },
++        { value: 'half', label: 'Half', data: { 'data-web-preview-size': 'half' } },
+         { value: 'full', label: 'Full', data: { 'data-web-preview-size': 'full' } },
+       ]}
+       className="ml-1"
+diff --git a/apps/ui/src/components/webPreview/FavoriteTiles.tsx b/apps/ui/src/components/webPreview/FavoriteTiles.tsx
+index f0a4d5a9..670c74b0 100644
+--- a/apps/ui/src/components/webPreview/FavoriteTiles.tsx
++++ b/apps/ui/src/components/webPreview/FavoriteTiles.tsx
+@@ -1,17 +1,31 @@
+-import { Copy, ExternalLink, StarOff } from 'lucide-react';
++import { Copy, ExternalLink, Globe, Pencil, Plus, RotateCcw, StarOff, X } from 'lucide-react';
+ import { useState, type MouseEvent } from 'react';
+ import type { BrowserFavorite } from '@seshboard/protocol/client';
+ import { shortUrl } from '@seshboard/protocol/client';
+-import { removeFavorite, useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
++import { addFavorite, removeFavorite, useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
+ import { copyAddress, openInSystemBrowser } from '../../state/browserActions.ts';
++import { openFavorite } from '../../state/browserViewStore.ts';
++import { usePaletteBus } from '../../state/paletteBus.ts';
++import { useSessions } from '../../state/sessionsStore.ts';
++import { useWebPreview } from '../../state/webPreviewStore.ts';
+ import { Menu, type MenuEntry } from '../Menu.tsx';
+ import { TabIcon } from './BrowserPane.tsx';
++import { BROWSER_OWNER, favoriteTab, frontTab, sameAddress, type BrowserTab } from './browserTabs.ts';
+ 
+-/** A favourite's right-click menu: Copy address, Open in browser, Remove from favourites. */
+-export function favoriteMenu(favorite: BrowserFavorite): MenuEntry[] {
++/**
++ * A favourite's menu, on its tile (right click or ⋯) and on an empty tab's: Open, Rename…, Copy address, Open in browser,
++ * then, while its tab is open, Go back to its address and Close, then Remove from favourites.
++ */
++export function favoriteMenu(favorite: BrowserFavorite, open: BrowserTab | null = null): MenuEntry[] {
++  const away = open?.url ? !sameAddress(open.url, favorite.url) : false;
+   return [
++    { label: 'Open', icon: <Globe size={13} aria-hidden />, onSelect: () => openFavorite(favorite.url) },
++    { label: 'Rename…', icon: <Pencil size={13} aria-hidden />, onSelect: () => usePaletteBus.getState().showDialog({ kind: 'rename-favorite', favoriteId: favorite.id }), data: { 'data-browser-favorite-rename': true } },
+     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, onSelect: () => copyAddress(favorite) },
+     { label: 'Open in browser', icon: <ExternalLink size={13} aria-hidden />, onSelect: () => openInSystemBrowser(favorite) },
++    ...(open
++      ? (['separator', ...(away ? [{ label: 'Go back to its address', icon: <RotateCcw size={13} aria-hidden />, onSelect: () => useWebPreview.getState().navigate(open.id, favorite.url), data: { 'data-browser-favorite-home': true } }] : []), { label: 'Close', icon: <X size={13} aria-hidden />, onSelect: () => useWebPreview.getState().closeTab(open.id), data: { 'data-browser-favorite-close': true } }] as MenuEntry[])
++      : []),
+     'separator',
+     { label: 'Remove from favourites', icon: <StarOff size={13} aria-hidden />, onSelect: () => removeFavorite(favorite.id), data: { 'data-browser-favorite-remove': true } },
+   ];
+@@ -24,15 +38,83 @@ export function menuAt(event: MouseEvent<HTMLElement>): { x: number; y: number }
+   return { x: event.clientX || rect.left, y: event.clientY || rect.bottom };
+ }
+ 
+-/** The favourites as tiles, for an empty tab and the empty Browser view: a click opens one (`onOpen`), a right click shows its menu. None, nothing. */
++/**
++ * Your favourites as icon tiles, four to a row, at the top of the Browser view's list (as in Arc or Zen). A tile opens
++ * its favourite's own tab, which then shows in the tile (a dot under it) and not in the list. Its name is in the
++ * tooltip. A middle click closes its tab. The last tile adds the Browser tab in front. No favourites and no page to
++ * add, nothing.
++ */
++export function FavoriteBar() {
++  const favorites = useBrowserFavorites((s) => s.favorites);
++  const tabs = useWebPreview((s) => s.tabs);
++  const activeId = useWebPreview((s) => s.active.get(BROWSER_OWNER) ?? null);
++  const atBrowser = useSessions((s) => s.view === 'browser');
++  const front = useWebPreview((s) => frontTab(s, BROWSER_OWNER) ?? null);
++  const [menu, setMenu] = useState<{ x: number; y: number; favorite: BrowserFavorite } | null>(null);
++  // The + tile: the page in front, while it isn't a favourite's already.
++  const addable = front?.url && !front.favoriteId ? front : null;
++  if (!favorites.length && !addable) return null;
++  const state = { tabs, active: new Map<string, string>() };
++  return (
++    <div className="px-2 pb-2" data-browser-favorites-bar="">
++      <ul aria-label="Favourites" className="grid grid-cols-4 gap-1.5">
++        {favorites.map((favorite) => {
++          const open = favoriteTab(state, favorite.id) ?? null;
++          const current = atBrowser && !!open && open.id === activeId;
++          const label = `${favorite.title}${open ? ', open' : ''}`;
++          return (
++            <li key={favorite.id} className="min-w-0">
++              <button
++                type="button"
++                onClick={() => openFavorite(favorite.url)}
++                onContextMenu={(e) => setMenu({ ...menuAt(e), favorite })}
++                onMouseDown={(e) => e.button === 1 && e.preventDefault()}
++                onAuxClick={(e) => {
++                  if (e.button !== 1 || !open) return;
++                  e.preventDefault();
++                  useWebPreview.getState().closeTab(open.id);
++                }}
++                aria-label={label}
++                aria-current={current ? 'page' : undefined}
++                data-tooltip={`${favorite.title}\n${shortUrl(open?.url ?? favorite.url)}`}
++                className={`relative flex h-11 w-full items-center justify-center rounded-lg ${current ? 'bg-selected ring-1 ring-border' : 'bg-text/6 hover:bg-border/45'}`}
++                data-browser-favorite={favorite.url}
++                data-browser-favorite-open={open ? '' : undefined}
++              >
++                <TabIcon tab={open?.favicon ? open : favorite} size={18} />
++                {open && <span aria-hidden className={`absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full ${current ? 'bg-text' : 'bg-muted'}`} />}
++              </button>
++            </li>
++          );
++        })}
++        <li className="min-w-0">
++          <button
++            type="button"
++            disabled={!addable}
++            onClick={() => addable && addFavorite(addable)}
++            aria-label={addable ? 'Add the page in front to favourites' : 'Add to favourites: open a page first'}
++            data-tooltip={addable ? 'Add the page in front to favourites' : 'Open a page, then add it here'}
++            className="flex h-11 w-full items-center justify-center rounded-lg border border-dashed border-border text-faint enabled:hover:bg-border/45 enabled:hover:text-text disabled:opacity-50"
++            data-browser-favorite-add=""
++          >
++            <Plus size={15} aria-hidden />
++          </button>
++        </li>
++      </ul>
++      {menu && <Menu x={menu.x} y={menu.y} entries={favoriteMenu(menu.favorite, favoriteTab(state, menu.favorite.id) ?? null)} label={`${menu.favorite.title} menu`} onClose={() => setMenu(null)} />}
++    </div>
++  );
++}
++
++/** The favourites as tiles with their names, for a new tab and the empty Browser view: a click opens one (`onOpen`), a right click shows its menu. None, nothing. */
+ export function FavoriteTiles({ onOpen }: { onOpen(url: string): void }) {
+   const favorites = useBrowserFavorites((s) => s.favorites);
+   const [menu, setMenu] = useState<{ x: number; y: number; favorite: BrowserFavorite } | null>(null);
+   if (!favorites.length) return null;
+   return (
+-    <section aria-label="Favourites" className="w-full max-w-xl" data-browser-favorites="">
++    <section aria-label="Favourites" className="w-full" data-browser-favorites="">
+       <h2 className="mb-2 text-meta font-semibold text-muted">Favourites</h2>
+-      <div className="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2">
++      <div className="grid grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] gap-2">
+         {favorites.map((favorite) => (
+           <button
+             key={favorite.id}
+diff --git a/apps/ui/src/components/webPreview/NewTabPage.tsx b/apps/ui/src/components/webPreview/NewTabPage.tsx
+new file mode 100644
+index 00000000..ed33d04e
+--- /dev/null
++++ b/apps/ui/src/components/webPreview/NewTabPage.tsx
+@@ -0,0 +1,98 @@
++import { Copy, ExternalLink, Folder, History, Trash2 } from 'lucide-react';
++import { useState } from 'react';
++import type { BrowserBookmark } from '@seshboard/protocol/client';
++import { shortUrl } from '@seshboard/protocol/client';
++import { basename } from '../../lib/format.ts';
++import { removeBookmark, useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
++import { copyAddress, openInSystemBrowser } from '../../state/browserActions.ts';
++import { useProjects } from '../../state/projectsStore.ts';
++import { useSessions } from '../../state/sessionsStore.ts';
++import { useWebPreview } from '../../state/webPreviewStore.ts';
++import { Menu, type MenuEntry } from '../Menu.tsx';
++import { bookmarksFor, type BookmarkGroup } from './bookmarks.ts';
++import { TabIcon } from './BrowserPane.tsx';
++import { BROWSER_OWNER, tabName } from './browserTabs.ts';
++import { FavoriteTiles, menuAt } from './FavoriteTiles.tsx';
++
++/** How many closed tabs a new tab lists. */
++const RECENT = 5;
++
++/**
++ * What a new tab offers under its address bar: your favourites as tiles, then bookmarks (this session's project
++ * first, then everywhere's, each by folder), then the tabs closed lately. `onOpen` loads a page; `onFavorite` opens a
++ * favourite (its own tab in the Browser view). Nothing to offer, nothing.
++ */
++export function NewTabSections({ owner, onOpen, onFavorite }: { owner: string; onOpen(url: string): void; onFavorite(url: string): void }) {
++  const project = useSessions((s) => (owner === BROWSER_OWNER ? null : (s.sessions.get(owner)?.projectRoot ?? null)));
++  const projectName = useProjects((s) => (project ? (s.projects.get(project)?.name ?? basename(project)) : null));
++  const bookmarks = useBrowserBookmarks((s) => s.bookmarks);
++  const closed = useWebPreview((s) => s.closed);
++  const recent = closed.filter((t) => t.owner === owner && t.url).slice(-RECENT).reverse();
++  const { project: own, everywhere } = bookmarksFor(bookmarks, project);
++  const [menu, setMenu] = useState<{ x: number; y: number; bookmark: BrowserBookmark } | null>(null);
++  const entries = (bookmark: BrowserBookmark): MenuEntry[] => [
++    { label: 'Copy address', icon: <Copy size={13} aria-hidden />, onSelect: () => copyAddress(bookmark) },
++    { label: 'Open in browser', icon: <ExternalLink size={13} aria-hidden />, onSelect: () => openInSystemBrowser(bookmark) },
++    'separator',
++    { label: 'Remove bookmark', icon: <Trash2 size={13} aria-hidden />, onSelect: () => removeBookmark(bookmark.id), data: { 'data-bookmark-menu-remove': true } },
++  ];
++  const groups = (title: string, list: BookmarkGroup[], data: string) =>
++    list.length > 0 && (
++      <section aria-label={title} className="w-full" data-new-tab-bookmarks={data}>
++        <h2 className="mb-1 text-meta font-semibold text-muted">{title}</h2>
++        <div className="grid gap-2">
++          {list.map((group) => (
++            <div key={group.folder || '-'}>
++              {group.folder && (
++                <p className="flex items-center gap-1.5 px-2 pt-1 pb-0.5 text-meta text-faint">
++                  <Folder size={12} aria-hidden />
++                  {group.folder}
++                </p>
++              )}
++              <ul className="grid grid-cols-[minmax(0,1fr)]">
++                {group.bookmarks.map((bookmark) => (
++                  <li key={bookmark.id} className="min-w-0">
++                    <button
++                      type="button"
++                      onClick={() => onOpen(bookmark.url)}
++                      onContextMenu={(e) => setMenu({ ...menuAt(e), bookmark })}
++                      className="flex h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-ui text-text hover:bg-border/45"
++                      data-bookmark={bookmark.url}
++                    >
++                      <TabIcon tab={bookmark} size={14} />
++                      <span className="min-w-0 flex-1 truncate">{bookmark.title}</span>
++                      <span className="max-w-[45%] shrink-0 truncate text-meta text-faint">{shortUrl(bookmark.url)}</span>
++                    </button>
++                  </li>
++                ))}
++              </ul>
++            </div>
++          ))}
++        </div>
++      </section>
++    );
++  return (
++    <div className="flex w-full max-w-xl flex-col gap-5 text-left" data-new-tab-sections="">
++      <FavoriteTiles onOpen={onFavorite} />
++      {groups(projectName ? `For ${projectName}` : 'Bookmarks', own, 'project')}
++      {groups(own.length ? 'Everywhere' : 'Bookmarks', everywhere, 'everywhere')}
++      {recent.length > 0 && (
++        <section aria-label="Recently closed" className="w-full" data-new-tab-recent="">
++          <h2 className="mb-1 text-meta font-semibold text-muted">Recently closed</h2>
++          <ul className="grid grid-cols-[minmax(0,1fr)]">
++            {recent.map((tab) => (
++              <li key={tab.id} className="min-w-0">
++                <button type="button" onClick={() => tab.url && onOpen(tab.url)} className="flex h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-ui text-text hover:bg-border/45">
++                  <History size={14} aria-hidden className="shrink-0 text-faint" />
++                  <span className="min-w-0 flex-1 truncate">{tabName(tab)}</span>
++                  <span className="max-w-[45%] shrink-0 truncate text-meta text-faint">{tab.url ? shortUrl(tab.url) : ''}</span>
++                </button>
++              </li>
++            ))}
++          </ul>
++        </section>
++      )}
++      {menu && <Menu x={menu.x} y={menu.y} entries={entries(menu.bookmark)} label={`${menu.bookmark.title} menu`} onClose={() => setMenu(null)} />}
++    </div>
++  );
++}
+diff --git a/apps/ui/src/components/webPreview/RenameTabDialog.tsx b/apps/ui/src/components/webPreview/RenameTabDialog.tsx
+index 26d10524..210c2053 100644
+--- a/apps/ui/src/components/webPreview/RenameTabDialog.tsx
++++ b/apps/ui/src/components/webPreview/RenameTabDialog.tsx
+@@ -1,4 +1,6 @@
+ import { useEffect, useId, useRef, useState } from 'react';
++import type { BrowserFavorite } from '@seshboard/protocol/client';
++import { renameFavorite } from '../../state/browserFavoritesStore.ts';
+ import { useWebPreview } from '../../state/webPreviewStore.ts';
+ import { Button } from '../ui/Button.tsx';
+ import { Dialog } from '../ui/Dialog.tsx';
+@@ -59,3 +61,54 @@ export function RenameTabDialog({ tab, onClose }: { tab: BrowserTab; onClose():
+     </Dialog>
+   );
+ }
++
++/** Rename… on a favourite's tile: the name the tile and its tooltip show. Empty gives the address back. */
++export function RenameFavoriteDialog({ favorite, onClose }: { favorite: BrowserFavorite; onClose(): void }) {
++  const [value, setValue] = useState(favorite.title);
++  const inputRef = useRef<HTMLInputElement>(null);
++  const id = useId();
++  useEffect(() => inputRef.current?.select(), []);
++  const save = () => {
++    renameFavorite(favorite.id, value);
++    onClose();
++  };
++  return (
++    <Dialog
++      width="sm"
++      title="Rename favourite"
++      onClose={onClose}
++      onSubmit={save}
++      initialFocus={inputRef}
++      data-rename-favorite-dialog
++      footer={
++        <>
++          <Button onClick={onClose}>Cancel</Button>
++          <Button variant="primary" kbd="↵" data-rename-favorite-save onClick={save}>
++            Rename
++          </Button>
++        </>
++      }
++    >
++      <form
++        onSubmit={(e) => {
++          e.preventDefault();
++          save();
++        }}
++      >
++        <label htmlFor={`${id}-name`} className="sr-only">
++          Favourite name
++        </label>
++        <input
++          ref={inputRef}
++          id={`${id}-name`}
++          value={value}
++          maxLength={500}
++          onChange={(e) => setValue(e.target.value)}
++          placeholder={favorite.url}
++          className="h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink"
++          data-rename-favorite-input
++        />
++      </form>
++    </Dialog>
++  );
++}
+diff --git a/apps/ui/src/components/webPreview/WebPreviewHost.tsx b/apps/ui/src/components/webPreview/WebPreviewHost.tsx
+index 606a3e54..42ed379a 100644
+--- a/apps/ui/src/components/webPreview/WebPreviewHost.tsx
++++ b/apps/ui/src/components/webPreview/WebPreviewHost.tsx
+@@ -5,6 +5,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
+ import { toast } from '../../state/toastStore.ts';
+ import { browserOn, useWebPreview } from '../../state/webPreviewStore.ts';
+ import { noteFavicon } from '../../state/browserFavoritesStore.ts';
++import { noteBookmarkFavicon } from '../../state/browserBookmarksStore.ts';
+ import { localPreviewUrl } from '@seshboard/protocol/client';
+ import { usePreferences } from '../../state/preferencesStore.ts';
+ import { BROWSER_OWNER, LIVE_PAGES, livePages } from './browserTabs.ts';
+@@ -135,6 +136,7 @@ export function WebPreviewHost() {
+             if (!icon || !now || now.seq !== tab.seq) return;
+             useWebPreview.getState().iconed(now.id, icon);
+             noteFavicon(now.url, icon);
++            noteBookmarkFavicon(now.url, icon);
+           });
+           return;
+         }
+diff --git a/apps/ui/src/components/webPreview/bookmarks.test.ts b/apps/ui/src/components/webPreview/bookmarks.test.ts
+new file mode 100644
+index 00000000..9288a823
+--- /dev/null
++++ b/apps/ui/src/components/webPreview/bookmarks.test.ts
+@@ -0,0 +1,45 @@
++import { describe, expect, it } from 'vitest';
++import type { BrowserBookmark } from '@seshboard/protocol/client';
++import { bookmarkFolders, bookmarkOf, bookmarksFor, byFolder, cleanFolder, newBookmark } from './bookmarks.ts';
++
++const bm = (id: string, url: string, position: number, projectRoot: string | null = null, folder = ''): BrowserBookmark => ({ id, url, title: id, favicon: null, folder, projectRoot, position, createdAt: position });
++const ROOT = '/work/intranet';
++
++describe('bookmarks', () => {
++  const list = [
++    bm('repo', 'https://github.com/involv-intranet/intranet', 0, ROOT),
++    bm('staging', 'https://staging.test/', 1, ROOT, 'Sites'),
++    bm('devops', 'https://dev.azure.com/', 2, null, 'Docs'),
++    bm('sdk', 'https://github.com/anthropics/sdk', 3),
++    bm('other', 'https://staging.test/', 4, '/work/other'),
++  ];
++
++  it("finds a page's bookmark: this project's first, then everywhere's, then another project's", () => {
++    expect(bookmarkOf(list, 'https://staging.test/#top', ROOT)?.id).toBe('staging');
++    expect(bookmarkOf(list, 'https://staging.test/', '/work/other')?.id).toBe('other');
++    expect(bookmarkOf(list, 'https://staging.test/', null)?.id).toBe('staging');
++    expect(bookmarkOf(list, 'https://dev.azure.com/', ROOT)?.id).toBe('devops');
++    expect(bookmarkOf(list, 'https://nowhere.test/', ROOT)).toBeUndefined();
++    expect(bookmarkOf(list, null)).toBeUndefined();
++  });
++
++  it('lists the project first, then everywhere, each by folder with no folder first', () => {
++    const { project, everywhere } = bookmarksFor(list, ROOT);
++    expect(project.map((g) => [g.folder, g.bookmarks.map((b) => b.id)])).toEqual([['', ['repo']], ['Sites', ['staging']]]);
++    expect(everywhere.map((g) => [g.folder, g.bookmarks.map((b) => b.id)])).toEqual([['', ['sdk']], ['Docs', ['devops']]]);
++    expect(bookmarksFor(list, null).project).toEqual([]);
++  });
++
++  it('adds a page at the end under its short title, for a project or everywhere', () => {
++    const added = newBookmark(list, { url: 'https://seshboard.app/', title: 'Seshboard | Seshboard', favicon: null }, ROOT, 'n', 9);
++    expect(added).toMatchObject({ id: 'n', title: 'Seshboard', folder: '', projectRoot: ROOT, position: 5, createdAt: 9 });
++    expect(newBookmark([], { url: 'https://a.test/', title: '', favicon: null }, null, 'a', 1)).toMatchObject({ title: 'https://a.test/', position: 0, projectRoot: null });
++  });
++
++  it('names folders cleanly and lists the ones in use', () => {
++    expect(cleanFolder('  Read   later ')).toBe('Read later');
++    expect(cleanFolder('   ')).toBe('');
++    expect(bookmarkFolders(list)).toEqual(['Docs', 'Sites']);
++    expect(byFolder([])).toEqual([]);
++  });
++});
+diff --git a/apps/ui/src/components/webPreview/bookmarks.ts b/apps/ui/src/components/webPreview/bookmarks.ts
+new file mode 100644
+index 00000000..6ae139a9
+--- /dev/null
++++ b/apps/ui/src/components/webPreview/bookmarks.ts
+@@ -0,0 +1,78 @@
++import type { BrowserBookmark } from '@seshboard/protocol/client';
++import { keptFavicon, shortTitle } from './favorites.ts';
++
++/*
++ * Browser bookmarks as plain data: links to find again, in folders, for one project or everywhere. Pure, so the rules
++ * (which bookmark a page is, what a new tab lists for a project, the folders) are tested on their own;
++ * `browserBookmarksStore.ts` holds the list and saves it in the engine.
++ */
++
++/** How long a folder's name may be. */
++export const FOLDER_MAX = 200;
++
++/** The same page for a bookmark: the same address, whatever its `#`. */
++function samePage(a: string, b: string): boolean {
++  try {
++    const x = new URL(a);
++    const y = new URL(b);
++    x.hash = '';
++    y.hash = '';
++    return x.href === y.href;
++  } catch {
++    return a === b;
++  }
++}
++
++/**
++ * The bookmark for a page's address, if it has one: the one for `projectRoot` first, then one for everywhere, then
++ * another project's (a page is one bookmark wherever you look, so the star shows it).
++ */
++export function bookmarkOf(bookmarks: readonly BrowserBookmark[], url: string | null, projectRoot: string | null = null): BrowserBookmark | undefined {
++  if (!url) return undefined;
++  const same = bookmarks.filter((b) => samePage(b.url, url));
++  return same.find((b) => b.projectRoot === projectRoot) ?? same.find((b) => b.projectRoot === null) ?? same[0];
++}
++
++/** A folder's name as kept: spaces folded, cut to `FOLDER_MAX`; empty is no folder. */
++export function cleanFolder(text: string): string {
++  return text.replace(/\s+/g, ' ').trim().slice(0, FOLDER_MAX);
++}
++
++/** A page bookmarked at the end, under its short title (or the name you gave its tab), for `projectRoot` or everywhere. */
++export function newBookmark(
++  bookmarks: readonly BrowserBookmark[],
++  page: { url: string; title: string; name?: string | null; favicon: string | null },
++  projectRoot: string | null,
++  id: string,
++  now: number,
++): BrowserBookmark {
++  const position = bookmarks.reduce((max, b) => Math.max(max, b.position + 1), 0);
++  const title = (page.name || shortTitle(page.title, page.url)).slice(0, 500) || page.url;
++  return { id, url: page.url, title, favicon: keptFavicon(page.favicon), folder: '', projectRoot, position, createdAt: now };
++}
++
++/** The folders in use, by name; no folder is left out. */
++export function bookmarkFolders(bookmarks: readonly BrowserBookmark[]): string[] {
++  return [...new Set(bookmarks.map((b) => b.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
++}
++
++/** Bookmarks in a folder: '' for those in none, which come first. */
++export interface BookmarkGroup {
++  folder: string;
++  bookmarks: BrowserBookmark[];
++}
++
++/** Bookmarks by folder, in their order: no folder first, then the folders by name. */
++export function byFolder(bookmarks: readonly BrowserBookmark[]): BookmarkGroup[] {
++  const groups = new Map<string, BrowserBookmark[]>();
++  for (const b of [...bookmarks].sort((x, y) => x.position - y.position)) groups.set(b.folder, [...(groups.get(b.folder) ?? []), b]);
++  return [...groups.entries()].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))).map(([folder, list]) => ({ folder, bookmarks: list }));
++}
++
++/** What a new tab lists: the project's bookmarks (for a session's tab), then the ones for everywhere, each by folder. */
++export function bookmarksFor(bookmarks: readonly BrowserBookmark[], projectRoot: string | null): { project: BookmarkGroup[]; everywhere: BookmarkGroup[] } {
++  return {
++    project: projectRoot ? byFolder(bookmarks.filter((b) => b.projectRoot === projectRoot)) : [],
++    everywhere: byFolder(bookmarks.filter((b) => b.projectRoot === null)),
++  };
++}
+diff --git a/apps/ui/src/components/webPreview/browserTabs.test.ts b/apps/ui/src/components/webPreview/browserTabs.test.ts
+index 41e6f504..5ba6210d 100644
+--- a/apps/ui/src/components/webPreview/browserTabs.test.ts
++++ b/apps/ui/src/components/webPreview/browserTabs.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest';
+-import { BROWSER_OWNER, cleanTabName, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
++import { BROWSER_OWNER, cleanTabName, favoriteTab, linkFavorite, listedTabs, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
+ 
+ let n = 0;
+ const open = (state: TabsState, owner: string, url: string | null, focus = true) => openTab(state, owner, url, { id: `t${++n}`, now: ++n, seq: n, focus });
+@@ -205,3 +205,30 @@ describe('zoom', () => {
+     expect(zoomLabel(1.1)).toBe('110%');
+   });
+ });
++
++describe('favourite tabs', () => {
++  it("opens a favourite's own tab, brings it back wherever it browsed, and keeps it out of the list", () => {
++    let state = open(NO_TABS, BROWSER_OWNER, 'https://github.com/pulls').state;
++    const fav = openTab(state, BROWSER_OWNER, 'https://github.com/pulls', { id: 'f1', now: 1, seq: 1, favoriteId: 'gh' });
++    // A plain tab on the same address is not the favourite's: the tile gets a tab of its own.
++    expect(fav.id).toBe('f1');
++    state = updateTab(fav.state, 'f1', { url: 'https://github.com/estruyf/seshboard' });
++    const again = openTab(state, BROWSER_OWNER, 'https://github.com/pulls', { id: 'f2', now: 2, seq: 2, favoriteId: 'gh' });
++    expect(again.id).toBe('f1');
++    expect(favoriteTab(again.state, 'gh')?.url).toBe('https://github.com/estruyf/seshboard');
++    expect(listedTabs(again.state, BROWSER_OWNER).map((t) => t.favoriteId)).toEqual([null]);
++    // And opening the address the plain way shows the plain tab, not the favourite's.
++    expect(open(again.state, BROWSER_OWNER, 'https://github.com/pulls').id).not.toBe('f1');
++  });
++
++  it('links a tab to a favourite (unpinned: the tile keeps it now) and back', () => {
++    let state = open(NO_TABS, BROWSER_OWNER, 'https://a.test/').state;
++    const id = state.tabs[0]!.id;
++    state = pinTab(state, id);
++    state = linkFavorite(state, id, 'fa');
++    expect(state.tabs[0]).toMatchObject({ favoriteId: 'fa', pinned: false });
++    expect(listedTabs(state, BROWSER_OWNER)).toEqual([]);
++    state = linkFavorite(state, id, null);
++    expect(listedTabs(state, BROWSER_OWNER).map((t) => t.id)).toEqual([id]);
++  });
++});
+diff --git a/apps/ui/src/components/webPreview/browserTabs.ts b/apps/ui/src/components/webPreview/browserTabs.ts
+index d5893fbd..c62f6f1c 100644
+--- a/apps/ui/src/components/webPreview/browserTabs.ts
++++ b/apps/ui/src/components/webPreview/browserTabs.ts
+@@ -23,6 +23,11 @@ export interface BrowserTab {
+   /** The page's icon, when it has one. */
+   favicon: string | null;
+   pinned: boolean;
++  /**
++   * The favourite it was opened from (a tile in the Browser view's sidebar): it shows in that tile, not in the list of
++   * tabs, and the tile brings it back however far it browsed. Null for any other tab.
++   */
++  favoriteId: string | null;
+   /** Its place among its owner's tabs, pinned ones first. */
+   position: number;
+   /** When it was last in front; 0 for a tab restored at start and not shown yet, which has no page until then. */
+@@ -87,6 +92,23 @@ export function ownerTabs(state: TabsState, owner: string): BrowserTab[] {
+   return state.tabs.filter((t) => t.owner === owner).sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.position - b.position);
+ }
+ 
++/** The tabs an owner lists: its tabs in order, less those a favourite's tile shows. */
++export function listedTabs(state: TabsState, owner: string): BrowserTab[] {
++  return ownerTabs(state, owner).filter((t) => !t.favoriteId);
++}
++
++/** The tab a favourite's tile shows, if it is open. */
++export function favoriteTab(state: TabsState, favoriteId: string): BrowserTab | undefined {
++  return state.tabs.find((t) => t.favoriteId === favoriteId);
++}
++
++/** A tab becomes a favourite's (its page stays as it is), or no longer one (null). */
++export function linkFavorite(state: TabsState, id: string, favoriteId: string | null): TabsState {
++  const tab = state.tabs.find((t) => t.id === id);
++  if (!tab || tab.favoriteId === favoriteId) return state;
++  return { tabs: state.tabs.map((t) => (t.id === id ? { ...t, favoriteId, pinned: favoriteId ? false : t.pinned } : t)), active: state.active };
++}
++
+ /** An owner's tab in front, if it has one. */
+ export function frontTab(state: TabsState, owner: string): BrowserTab | undefined {
+   const id = state.active.get(owner);
+@@ -122,6 +144,8 @@ export interface OpenOptions {
+   now: number;
+   /** The load number for the new address (`BrowserTab.seq`). */
+   seq: number;
++  /** Opened from this favourite: the tab it already has comes forward, wherever it is now. */
++  favoriteId?: string | null;
+ }
+ 
+ /**
+@@ -130,10 +154,15 @@ export interface OpenOptions {
+  */
+ export function openTab(state: TabsState, owner: string, url: string | null, options: OpenOptions): { state: TabsState; id: string } {
+   const focus = options.focus ?? true;
+-  const existing = url ? ownerTabs(state, owner).find((t) => sameAddress(t.url, url)) : undefined;
++  const favoriteId = options.favoriteId ?? null;
++  const existing = favoriteId
++    ? state.tabs.find((t) => t.owner === owner && t.favoriteId === favoriteId)
++    : url
++      ? ownerTabs(state, owner).find((t) => !t.favoriteId && sameAddress(t.url, url))
++      : undefined;
+   if (existing) return { state: focus ? showTab(state, existing.id, options.now) : state, id: existing.id };
+   const own = ownerTabs(state, owner);
+-  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, zoom: 1, muted: false, audible: false, seq: options.seq };
++  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, favoriteId, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, zoom: 1, muted: false, audible: false, seq: options.seq };
+   const tabs = [...state.tabs, tab];
+   return { state: { tabs, active: focus || !state.active.has(owner) ? withActive(state.active, owner, tab.id) : state.active }, id: tab.id };
+ }
+@@ -200,7 +229,7 @@ export function restore(state: TabsState, saved: readonly SavedTab[]): TabsState
+   const added: BrowserTab[] = [...saved]
+     .filter((s) => !have.has(s.id))
+     .sort((a, b) => a.position - b.position)
+-    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, position: s.position, lastShownAt: 0, phone: false, zoom: 1, muted: false, audible: false, seq: 0 }));
++    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, favoriteId: null, position: s.position, lastShownAt: 0, phone: false, zoom: 1, muted: false, audible: false, seq: 0 }));
+   if (!added.length) return state;
+   let tabs = [...state.tabs, ...added];
+   for (const owner of new Set(added.map((t) => t.owner))) tabs = renumber(tabs, owner, ownerTabs({ tabs, active: state.active }, owner));
+diff --git a/apps/ui/src/components/webPreview/favorites.test.ts b/apps/ui/src/components/webPreview/favorites.test.ts
+index c28790d6..0a996045 100644
+--- a/apps/ui/src/components/webPreview/favorites.test.ts
++++ b/apps/ui/src/components/webPreview/favorites.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest';
+ import type { BrowserFavorite } from '@seshboard/protocol/client';
+-import { favoriteOf, FAVICON_KEEP_MAX, keptFavicon, newFavorite } from './favorites.ts';
++import { favoriteOf, FAVICON_KEEP_MAX, keptFavicon, newFavorite, shortTitle } from './favorites.ts';
+ 
+ const fav = (id: string, url: string, position: number): BrowserFavorite => ({ id, url, title: id, favicon: null, position, createdAt: position });
+ 
+@@ -27,4 +27,21 @@ describe('favourites', () => {
+     expect(keptFavicon(`data:image/png;base64,${'A'.repeat(FAVICON_KEEP_MAX)}`)).toBeNull();
+     expect(keptFavicon(null)).toBeNull();
+   });
++
++  it('shortens a title for a favourite: a repeated part once, without the site, a repository by its name', () => {
++    expect(shortTitle('Seshboard | Seshboard', 'https://seshboard.app/')).toBe('Seshboard');
++    expect(shortTitle('involv-intranet/intranet', 'https://github.com/involv-intranet/intranet')).toBe('intranet');
++    expect(shortTitle('GitHub - estruyf/seshboard: Manage your Claude Code sessions', 'https://github.com/estruyf/seshboard')).toBe('seshboard');
++    expect(shortTitle('Workers · Cloudflare Dashboard', 'https://dash.cloudflare.com/workers')).toBe('Workers');
++    expect(shortTitle('Pull requests · involv-intranet/intranet · GitHub', 'https://github.com/involv-intranet/intranet/pulls')).toBe('Pull requests · involv-intranet/intranet');
++    // Nothing to take away: as it was.
++    expect(shortTitle('My Dashboard', 'https://intranet.test/')).toBe('My Dashboard');
++    expect(shortTitle('GitHub', 'https://github.com/')).toBe('GitHub');
++    expect(shortTitle('  ', null)).toBe('');
++  });
++
++  it('adds a page under its short title, or the name you gave its tab', () => {
++    expect(newFavorite([], { url: 'https://seshboard.app/', title: 'Seshboard | Seshboard', favicon: null }, 's', 1).title).toBe('Seshboard');
++    expect(newFavorite([], { url: 'https://seshboard.app/', title: 'Seshboard | Seshboard', name: 'Docs', favicon: null }, 's', 1).title).toBe('Docs');
++  });
+ });
+diff --git a/apps/ui/src/components/webPreview/favorites.ts b/apps/ui/src/components/webPreview/favorites.ts
+index 3e321848..8ce3751f 100644
+--- a/apps/ui/src/components/webPreview/favorites.ts
++++ b/apps/ui/src/components/webPreview/favorites.ts
+@@ -33,8 +33,45 @@ export function keptFavicon(favicon: string | null): string | null {
+   return favicon && favicon.length <= FAVICON_KEEP_MAX && DATA_IMAGE.test(favicon) ? favicon : null;
+ }
+ 
+-/** A page added at the end of the favourites. */
+-export function newFavorite(favorites: readonly BrowserFavorite[], page: { url: string; title: string; favicon: string | null }, id: string, now: number): BrowserFavorite {
++/** The words between a title's parts: "Docs | Site", "Workers · Cloudflare", "GitHub - owner/repo". */
++const TITLE_PARTS = /\s+[|·•\-–—]\s+/;
++
++/** The site's own name in an address, as a title says it: `dash.cloudflare.com` is "cloudflare". */
++function siteWord(url: string | null): string | null {
++  if (!url) return null;
++  try {
++    const labels = new URL(url).hostname.replace(/^www\./, '').split('.');
++    return labels.length >= 2 ? labels[labels.length - 2]!.toLowerCase() : (labels[0] ?? null);
++  } catch {
++    return null;
++  }
++}
++
++/**
++ * A page's title, short enough for a favourite or a bookmark: a part said twice once ("Seshboard | Seshboard"), the
++ * site's own name left out ("Workers · Cloudflare Dashboard" on cloudflare.com), and a repository's name alone
++ * ("involv-intranet/intranet", "GitHub - estruyf/seshboard: Manage your sessions"). Nothing left, the title as it was.
++ */
++export function shortTitle(title: string, url: string | null): string {
++  const text = title.trim();
++  const site = siteWord(url);
++  let parts = text.split(TITLE_PARTS).map((p) => p.trim()).filter(Boolean);
++  parts = parts.filter((p, i) => i === 0 || p.toLowerCase() !== parts[i - 1]!.toLowerCase());
++  if (site && parts.length > 1) {
++    const kept = parts.filter((p) => !p.toLowerCase().includes(site));
++    if (kept.length) parts = kept;
++  }
++  const short = parts.join(' · ');
++  const repo = /^[\w.-]+\/([\w.-]+)(?::\s.*)?$/.exec(short);
++  return (repo ? repo[1]! : short) || text;
++}
++
++/** A page added at the end of the favourites, under its short title (`shortTitle`) unless it has a name of yours. */
++export function newFavorite(favorites: readonly BrowserFavorite[], page: { url: string; title: string; name?: string | null; favicon: string | null }, id: string, now: number): BrowserFavorite {
+   const position = favorites.reduce((max, f) => Math.max(max, f.position + 1), 0);
+-  return { id, url: page.url, title: page.title.slice(0, 500) || page.url, favicon: keptFavicon(page.favicon), position, createdAt: now };
++  const title = page.name || shortTitle(page.title, page.url);
++  return { id, url: page.url, title: title.slice(0, 500) || page.url, favicon: keptFavicon(page.favicon), position, createdAt: now };
+ }
++
++/** How many favourites the sidebar shows in a row, as tiles. */
++export const FAVORITE_COLUMNS = 4;
+diff --git a/apps/ui/src/lib/shortcuts.ts b/apps/ui/src/lib/shortcuts.ts
+index 8c260690..ddcddb3d 100644
+--- a/apps/ui/src/lib/shortcuts.ts
++++ b/apps/ui/src/lib/shortcuts.ts
+@@ -1069,9 +1069,9 @@ export const SHORTCUTS = [
+     context: "While a page or its address bar has focus",
+   },
+   {
+-    id: "browser.favorite",
++    id: "browser.bookmark",
+     keys: ["mod+d"],
+-    action: "Add the page to favourites, or remove it",
++    action: "Bookmark the page, or edit its bookmark",
+     section: "general",
+     context: "While a page or its address bar has focus",
+   },
+diff --git a/apps/ui/src/state/browserBookmarksStore.ts b/apps/ui/src/state/browserBookmarksStore.ts
+new file mode 100644
+index 00000000..1994e3e6
+--- /dev/null
++++ b/apps/ui/src/state/browserBookmarksStore.ts
+@@ -0,0 +1,127 @@
++import { useEffect } from 'react';
++import { create } from 'zustand';
++import type { BrowserBookmark } from '@seshboard/protocol/client';
++import { bookmarkOf, cleanFolder, newBookmark } from '../components/webPreview/bookmarks.ts';
++import { keptFavicon } from '../components/webPreview/favorites.ts';
++import { BROWSER_OWNER, type BrowserTab } from '../components/webPreview/browserTabs.ts';
++import type { EngineClient } from '../engine/connection.ts';
++import { useEngineConnection } from '../engine/useEngine.ts';
++import { usePaletteBus } from './paletteBus.ts';
++import { usePreferences } from './preferencesStore.ts';
++import { useSessions } from './sessionsStore.ts';
++import { toast } from './toastStore.ts';
++
++/** Your browser bookmarks, in order, as the engine keeps them (`browser.bookmarks.*`): every project's and everywhere's. */
++export const useBrowserBookmarks = create<{ bookmarks: readonly BrowserBookmark[] }>()(() => ({ bookmarks: [] }));
++
++let client: EngineClient | null = null;
++let ids = 0;
++const newId = () => `bm-${Date.now().toString(36)}-${(++ids).toString(36)}`;
++
++async function load(): Promise<void> {
++  if (!client) return;
++  try {
++    const { bookmarks } = await client.call('browser.bookmarks.list', {});
++    useBrowserBookmarks.setState({ bookmarks });
++  } catch {
++    // The list stays as it was; the next focus tries again.
++  }
++}
++
++/** A change shown at once and saved; if saving fails, it says so and shows the engine's list again. */
++function change(next: readonly BrowserBookmark[], save: (client: EngineClient) => Promise<unknown>, failure: string): void {
++  useBrowserBookmarks.setState({ bookmarks: next });
++  if (!client) return;
++  save(client).catch(() => {
++    toast(failure, { tone: 'error' });
++    void load();
++  });
++}
++
++const saved = (b: BrowserBookmark) => {
++  const { createdAt: _, ...rest } = b;
++  return rest;
++};
++
++/** The project a tab's bookmarks belong to: its session's, or none for a Browser tab (or a session not known here). */
++export function projectOfTab(tab: Pick<BrowserTab, 'owner'>): string | null {
++  if (tab.owner === BROWSER_OWNER) return null;
++  return useSessions.getState().sessions.get(tab.owner)?.projectRoot ?? null;
++}
++
++/** The bookmark a tab's page has, if any (its project's first). */
++export function useBookmarkOf(tab: Pick<BrowserTab, 'url' | 'owner'> | null): BrowserBookmark | undefined {
++  const project = tab ? projectOfTab(tab) : null;
++  return useBrowserBookmarks((s) => (tab ? bookmarkOf(s.bookmarks, tab.url, project) : undefined));
++}
++
++/**
++ * ⌘D, the star and the palette: bookmarks the tab's page (for its session's project, or everywhere in the Browser
++ * view) if it has none, then shows its bookmark to name, place or remove (`BookmarkDialog`).
++ */
++export function bookmarkPage(tab: Pick<BrowserTab, 'id' | 'url' | 'title' | 'name' | 'favicon' | 'owner'>): void {
++  if (!tab.url) return;
++  const { bookmarks } = useBrowserBookmarks.getState();
++  const project = projectOfTab(tab);
++  if (!bookmarkOf(bookmarks, tab.url, project)) {
++    const bookmark = newBookmark(bookmarks, { url: tab.url, title: tab.title, name: tab.name, favicon: tab.favicon }, project, newId(), Date.now());
++    change([...bookmarks, bookmark], (c) => c.call('browser.bookmarks.save', { bookmark: saved(bookmark) }), "Couldn't add the bookmark");
++  }
++  usePaletteBus.getState().showDialog({ kind: 'bookmark', tabId: tab.id });
++}
++
++/** The bookmark dialog's Done: its name, folder and where it shows. An empty name gives the address back. */
++export function updateBookmark(id: string, change_: { title?: string; folder?: string; projectRoot?: string | null }): void {
++  const { bookmarks } = useBrowserBookmarks.getState();
++  const existing = bookmarks.find((b) => b.id === id);
++  if (!existing) return;
++  const title = change_.title === undefined ? existing.title : change_.title.replace(/\s+/g, ' ').trim().slice(0, 500) || existing.url;
++  const folder = change_.folder === undefined ? existing.folder : cleanFolder(change_.folder);
++  const projectRoot = change_.projectRoot === undefined ? existing.projectRoot : change_.projectRoot;
++  if (title === existing.title && folder === existing.folder && projectRoot === existing.projectRoot) return;
++  const next = { ...existing, title, folder, projectRoot };
++  change(
++    bookmarks.map((b) => (b.id === id ? next : b)),
++    (c) => c.call('browser.bookmarks.save', { bookmark: saved(next) }),
++    "Couldn't save the bookmark",
++  );
++}
++
++export function removeBookmark(id: string): void {
++  const { bookmarks } = useBrowserBookmarks.getState();
++  change(
++    bookmarks.filter((b) => b.id !== id),
++    (c) => c.call('browser.bookmarks.remove', { id }),
++    "Couldn't remove the bookmark",
++  );
++}
++
++/** A page's icon came: its bookmarks take it, so one added before its icon still gets one. */
++export function noteBookmarkFavicon(url: string | null, favicon: string): void {
++  const kept = keptFavicon(favicon);
++  if (!url || !kept) return;
++  const { bookmarks } = useBrowserBookmarks.getState();
++  const stale = bookmarks.filter((b) => b.favicon !== kept && bookmarkOf([b], url));
++  if (!stale.length) return;
++  const ids_ = new Set(stale.map((b) => b.id));
++  change(
++    bookmarks.map((b) => (ids_.has(b.id) ? { ...b, favicon: kept } : b)),
++    (c) => Promise.all(stale.map((b) => c.call('browser.bookmarks.save', { bookmark: saved({ ...b, favicon: kept }) }))),
++    "Couldn't save the bookmark's icon",
++  );
++}
++
++/** Loads the bookmarks once the engine is connected with the browser on, and again when the window comes to the front. */
++export function useBrowserBookmarksSync(): void {
++  const connection = useEngineConnection();
++  const connected = connection.status === 'connected' ? connection.client : null;
++  const on = usePreferences((s) => s.prefs.browserEnabled);
++  useEffect(() => {
++    client = on ? connected : null;
++    if (!client) return;
++    void load();
++    const refresh = () => void load();
++    window.addEventListener('focus', refresh);
++    return () => window.removeEventListener('focus', refresh);
++  }, [connected, on]);
++}
+diff --git a/apps/ui/src/state/browserFavoritesStore.ts b/apps/ui/src/state/browserFavoritesStore.ts
+index 826951d6..83c48c93 100644
+--- a/apps/ui/src/state/browserFavoritesStore.ts
++++ b/apps/ui/src/state/browserFavoritesStore.ts
+@@ -2,18 +2,20 @@ import { useEffect } from 'react';
+ import { create } from 'zustand';
+ import type { BrowserFavorite } from '@seshboard/protocol/client';
+ import { favoriteOf, keptFavicon, newFavorite } from '../components/webPreview/favorites.ts';
+-import type { BrowserTab } from '../components/webPreview/browserTabs.ts';
+-import { tabName } from '../components/webPreview/browserTabs.ts';
++import { BROWSER_OWNER, favoriteTab, type BrowserTab } from '../components/webPreview/browserTabs.ts';
+ import type { EngineClient } from '../engine/connection.ts';
+ import { useEngineConnection } from '../engine/useEngine.ts';
+ import { usePreferences } from './preferencesStore.ts';
+ import { toast } from './toastStore.ts';
++import { useWebPreview } from './webPreviewStore.ts';
+ 
+ /** Your browser favourites, in order, as the engine keeps them (`browser.favorites.*`). */
+ export const useBrowserFavorites = create<{ favorites: readonly BrowserFavorite[] }>()(() => ({ favorites: [] }));
+ 
+ let client: EngineClient | null = null;
+ let ids = 0;
++/** The engine's list has arrived at least once, so a page that is no favourite really isn't one. */
++let loaded = false;
+ const newId = () => `fav-${Date.now().toString(36)}-${(++ids).toString(36)}`;
+ 
+ /** The list as the engine has it. */
+@@ -22,6 +24,8 @@ async function load(): Promise<void> {
+   try {
+     const { favorites } = await client.call('browser.favorites.list', {});
+     useBrowserFavorites.setState({ favorites });
++    loaded = true;
++    adoptPinnedTabs();
+   } catch {
+     // The list stays as it was; the next focus tries again.
+   }
+@@ -42,15 +46,55 @@ export function useFavoriteOf(url: string | null): BrowserFavorite | undefined {
+   return useBrowserFavorites((s) => favoriteOf(s.favorites, url));
+ }
+ 
+-/** The toolbar's star, the palette and ⌘D: adds the tab's page to the favourites, or removes it. */
+-export function toggleFavorite(tab: Pick<BrowserTab, 'url' | 'title' | 'name' | 'favicon'>): void {
++/** The palette's Add page to favourites, or Remove: adds the tab's page to the favourites, or removes it. */
++export function toggleFavorite(tab: Pick<BrowserTab, 'id' | 'url' | 'title' | 'name' | 'favicon' | 'owner'>): void {
+   if (!tab.url) return;
++  const existing = favoriteOf(useBrowserFavorites.getState().favorites, tab.url);
++  if (existing) return removeFavorite(existing.id);
++  addFavorite(tab);
++}
++
++/**
++ * Adds a tab's page to the favourites (Add to favourites, the + tile, the bookmark's checkbox), under its short title or
++ * the name you gave it. A Browser tab becomes the favourite's own: its tile shows it from now on. Already one, nothing.
++ */
++export function addFavorite(tab: Pick<BrowserTab, 'id' | 'url' | 'title' | 'name' | 'favicon' | 'owner'>): BrowserFavorite | null {
++  if (!tab.url) return null;
+   const { favorites } = useBrowserFavorites.getState();
+   const existing = favoriteOf(favorites, tab.url);
+-  if (existing) return removeFavorite(existing.id);
+-  const favorite = newFavorite(favorites, { url: tab.url, title: tabName(tab), favicon: tab.favicon }, newId(), Date.now());
++  if (existing) return existing;
++  const favorite = newFavorite(favorites, { url: tab.url, title: tab.title, name: tab.name, favicon: tab.favicon }, newId(), Date.now());
+   const { createdAt: _, ...saved } = favorite;
+   change([...favorites, favorite], (c) => c.call('browser.favorites.save', { favorite: saved }), "Couldn't add the favourite");
++  if (tab.owner === BROWSER_OWNER) useWebPreview.getState().linkFavorite(tab.id, favorite.id);
++  return favorite;
++}
++
++/** Rename… in a tile's menu: the name the tile and its tooltip show. Empty: the page's short title again. */
++export function renameFavorite(id: string, title: string): void {
++  const { favorites } = useBrowserFavorites.getState();
++  const existing = favorites.find((f) => f.id === id);
++  const name = title.replace(/\s+/g, ' ').trim().slice(0, 500) || existing?.url;
++  if (!existing || !name || name === existing.title) return;
++  const { createdAt: _, ...saved } = { ...existing, title: name };
++  change(
++    favorites.map((f) => (f.id === id ? { ...f, title: name } : f)),
++    (c) => c.call('browser.favorites.save', { favorite: saved }),
++    "Couldn't rename the favourite",
++  );
++}
++
++/**
++ * Pinned tabs in the Browser view became favourites (a tile keeps its page now): each is added as one, unless its page
++ * already is, and its tab goes to the tile. A session's pinned tabs stay pinned. Runs once both lists are here.
++ */
++export function adoptPinnedTabs(): void {
++  if (!loaded) return;
++  for (const tab of useWebPreview.getState().tabs) {
++    if (tab.owner !== BROWSER_OWNER || !tab.pinned || !tab.url) continue;
++    const favorite = favoriteOf(useBrowserFavorites.getState().favorites, tab.url) ?? addFavorite(tab);
++    if (favorite) useWebPreview.getState().linkFavorite(tab.id, favorite.id);
++  }
+ }
+ 
+ /** A page's icon came (main, `favicon`): a favourite on that page takes it, so one starred before its icon still gets one. */
+@@ -67,7 +111,10 @@ export function noteFavicon(url: string | null, favicon: string): void {
+   );
+ }
+ 
++/** Remove from favourites: the tile goes; its tab, if open, stays as a plain tab in the list. */
+ export function removeFavorite(id: string): void {
++  const open = favoriteTab(useWebPreview.getState(), id);
++  if (open) useWebPreview.getState().linkFavorite(open.id, null);
+   const { favorites } = useBrowserFavorites.getState();
+   change(
+     favorites.filter((f) => f.id !== id),
+diff --git a/apps/ui/src/state/browserTabsSync.ts b/apps/ui/src/state/browserTabsSync.ts
+index 3494939e..d948698e 100644
+--- a/apps/ui/src/state/browserTabsSync.ts
++++ b/apps/ui/src/state/browserTabsSync.ts
+@@ -5,6 +5,7 @@ import { useEngineConnection } from '../engine/useEngine.ts';
+ import { popoutSession } from './popoutsStore.ts';
+ import { usePreferences } from './preferencesStore.ts';
+ import { useWebPreview } from './webPreviewStore.ts';
++import { adoptPinnedTabs } from './browserFavoritesStore.ts';
+ 
+ /** A pinned tab's address and title change as you browse: saved at most this often per tab. */
+ const SAVE_MS = 1_000;
+@@ -65,6 +66,8 @@ export function useBrowserTabsSync(): void {
+     void client.call('browser.pinned.list', {}).then(
+       ({ tabs }) => {
+         useWebPreview.getState().restorePinned(tabs);
++        // Pinned Browser tabs are favourites now: they move to their tiles (and off this list) once the favourites are here.
++        adoptPinnedTabs();
+         // What the engine has is what is saved; anything pinned meanwhile is saved by the first sync.
+         saved = new Map(tabs.map((t) => [t.id, { id: t.id, owner: t.owner, url: t.url, title: t.title, name: t.name ?? null, favicon: t.favicon ?? null, position: t.position }]));
+         ready = true;
+diff --git a/apps/ui/src/state/browserViewStore.ts b/apps/ui/src/state/browserViewStore.ts
+index 26bd1f37..731aee2e 100644
+--- a/apps/ui/src/state/browserViewStore.ts
++++ b/apps/ui/src/state/browserViewStore.ts
+@@ -1,5 +1,7 @@
+ import { create } from 'zustand';
+-import { BROWSER_OWNER, frontTab, type BrowserTab } from '../components/webPreview/browserTabs.ts';
++import { favoriteOf } from '../components/webPreview/favorites.ts';
++import { useBrowserFavorites } from './browserFavoritesStore.ts';
++import { BROWSER_OWNER, favoriteTab, frontTab, type BrowserTab } from '../components/webPreview/browserTabs.ts';
+ import { showInMain } from './popoutsStore.ts';
+ import { useSessions } from './sessionsStore.ts';
+ import { browserOn, useWebPreview } from './webPreviewStore.ts';
+@@ -53,12 +55,38 @@ export function newBrowserTab(): void {
+   if (useSessions.getState().view !== 'browser') openBrowserView();
+ }
+ 
+-/** A favourite from the sidebar or the empty Browser view: in a Browser tab, the one already on it if there is one. */
++/**
++ * A favourite from its tile, a new tab or the palette: in the Browser view, its own tab (`favoriteId`), which comes
++ * back however far it browsed; an address that is no favourite opens in a Browser tab, the one already on it if any.
++ */
+ export function openFavorite(url: string): void {
+-  useWebPreview.getState().openTab(BROWSER_OWNER, url);
++  const favorite = favoriteOf(useBrowserFavorites.getState().favorites, url);
++  useWebPreview.getState().openTab(BROWSER_OWNER, url, { favoriteId: favorite?.id ?? null });
+   if (useSessions.getState().view !== 'browser') openBrowserView();
+ }
+ 
++/**
++ * A favourite picked on an empty tab: a session's tab loads it there. In the Browser view the empty tab becomes the
++ * favourite's own, or, when the favourite's tab is open already, that one comes forward and the empty tab goes.
++ */
++export function openFavoriteInTab(tabId: string, url: string): void {
++  const web = useWebPreview.getState();
++  const tab = web.tabs.find((t) => t.id === tabId);
++  const favorite = favoriteOf(useBrowserFavorites.getState().favorites, url);
++  if (!tab || tab.owner !== BROWSER_OWNER || !favorite) {
++    web.navigate(tabId, url);
++    return;
++  }
++  const own = favoriteTab(web, favorite.id);
++  if (own) {
++    web.selectTab(own.id);
++    web.closeTab(tabId);
++    return;
++  }
++  web.navigate(tabId, url);
++  web.linkFavorite(tabId, favorite.id);
++}
++
+ /** Whose page is on screen: the Browser view's, or the session's whose browser panel is open; null for none. */
+ export function pageOwner(view: string, sessionId: string | null, panels: ReadonlySet<string>): string | null {
+   if (view === 'browser') return BROWSER_OWNER;
+diff --git a/apps/ui/src/state/paletteBus.ts b/apps/ui/src/state/paletteBus.ts
+index 5ee5df78..fb1d885f 100644
+--- a/apps/ui/src/state/paletteBus.ts
++++ b/apps/ui/src/state/paletteBus.ts
+@@ -41,6 +41,10 @@ export type PaletteDialog =
+   | { kind: 'remember'; text: string; from: 'user' | 'claude'; sessionId: string | null; root: string | null }
+   /** Rename tab… on a browser tab, from its menu, a double click or the palette. */
+   | { kind: 'rename-tab'; tabId: string }
++  /** Rename… on a favourite's tile: the name its tile shows. */
++  | { kind: 'rename-favorite'; favoriteId: string }
++  /** ⌘D or the star on a page: its bookmark, just added (or the one it had), to name, place or remove. */
++  | { kind: 'bookmark'; tabId: string }
+   /** Clear data for this site (`origin`) or, with null, all browsing data: asks first. */
+   | { kind: 'clear-browser-data'; origin: string | null }
+   /** New session from an issue or pull request: the # list on its own, for `root`. */
+diff --git a/apps/ui/src/state/rightPanelStore.ts b/apps/ui/src/state/rightPanelStore.ts
+index 3408c97f..aaa206df 100644
+--- a/apps/ui/src/state/rightPanelStore.ts
++++ b/apps/ui/src/state/rightPanelStore.ts
+@@ -1,9 +1,10 @@
+ import { create } from 'zustand';
+-import { clampAskWidth, readTab, type RightTab } from '../components/ask/askWidth.ts';
++import { clampAskWidth, readTab, type PanelSizing, type RightTab } from '../components/ask/askWidth.ts';
+ import { useTerminals } from './terminalsStore.ts';
+ 
+ const TAB_KEY = 'ui.rightPanelTab';
+ const WIDTH_KEY = 'ui.askWidth';
++const SIZING_KEY = 'ui.rightPanelSizing';
+ 
+ // Per window: kept in sessionStorage, so a reload keeps it and another window has its own.
+ const read = (key: string): string | null => {
+@@ -32,8 +33,12 @@ interface RightPanelLayout {
+   tabs: ReadonlyMap<string, RightTab>;
+   /** The Ask panel's width, also of both panels as tabs. */
+   width: number;
++  /** Side: the dragged `width`. Half: half the session area, whatever the window's width (`panelWidthFor`). */
++  sizing: PanelSizing;
++  setSizing(sizing: PanelSizing): void;
+   /** `owner` is the session, or the window's own terminal. */
+   setTab(owner: string, tab: RightTab): void;
++  /** Dragging the edge (or a resize key) is Side again, at that width. */
+   setWidth(width: number): void;
+ }
+ 
+@@ -41,6 +46,11 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
+   tab: readTab(read(TAB_KEY)),
+   tabs: new Map(),
+   width: clampAskWidth(Number(read(WIDTH_KEY)), window.innerWidth),
++  sizing: read(SIZING_KEY) === 'half' ? 'half' : 'side',
++  setSizing: (sizing) => {
++    write(SIZING_KEY, sizing);
++    set({ sizing });
++  },
+   setTab: (owner, tab) => {
+     write(TAB_KEY, tab);
+     set((s) => ({ tab, tabs: new Map(s.tabs).set(owner, tab) }));
+@@ -48,7 +58,8 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
+   setWidth: (width) => {
+     const next = clampAskWidth(width, window.innerWidth);
+     write(WIDTH_KEY, String(next));
+-    set({ width: next });
++    write(SIZING_KEY, 'side');
++    set({ width: next, sizing: 'side' });
+   },
+ }));
+ 
+diff --git a/apps/ui/src/state/webPreviewStore.ts b/apps/ui/src/state/webPreviewStore.ts
+index fda4e51e..8899b4df 100644
+--- a/apps/ui/src/state/webPreviewStore.ts
++++ b/apps/ui/src/state/webPreviewStore.ts
+@@ -10,6 +10,7 @@ import {
+   frontTab,
+   moveTab,
+   NO_TABS,
++  linkFavorite,
+   openTab,
+   ownerTabs,
+   pinTab,
+@@ -66,7 +67,10 @@ interface WebPreviewState extends TabsState {
+   /** Hides a session's panel (its Browser button, Escape): every tab stays as it was, for when it is shown again. */
+   hide(sessionId: string): void;
+   /** Opens `url` (null: an empty tab) for an owner, or shows the tab it has on that address. The tab's id. */
+-  openTab(owner: string, url: string | null, options?: { focus?: boolean }): string;
++  /** Opens `url` for an owner (or shows the tab already on it); `favoriteId`: the favourite's own tab, wherever it browsed. */
++  openTab(owner: string, url: string | null, options?: { focus?: boolean; favoriteId?: string | null }): string;
++  /** A tab becomes a favourite's (shown in its tile), or a plain tab again (null). */
++  linkFavorite(id: string, favoriteId: string | null): void;
+   selectTab(id: string): void;
+   closeTab(id: string): void;
+   /** The pinned tab asked to close once (a middle click, its ×, ⌘W), for `CONFIRM_CLOSE_MS`: the next ask closes it. */
+@@ -165,7 +169,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
+     openTab: (owner, url, options = {}) => {
+       let id = '';
+       tabs((s) => {
+-        const result = openTab(s, owner, url, { id: newId(), now: Date.now(), seq: ++seq, focus: options.focus });
++        const result = openTab(s, owner, url, { id: newId(), now: Date.now(), seq: ++seq, focus: options.focus, favoriteId: options.favoriteId });
+         id = result.id;
+         return result.state;
+       });
+@@ -205,6 +209,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
+       if (tab.owner !== BROWSER_OWNER) set((s) => ({ panels: withValue(s.panels, tab.owner) }));
+       return tab.owner;
+     },
++    linkFavorite: (id, favoriteId) => tabs((s) => linkFavorite(s, id, favoriteId)),
+     pin: (id) => tabs((s) => pinTab(s, id)),
+     unpin: (id) => tabs((s) => unpinTab(s, id)),
+     move: (id, index) => tabs((s) => moveTab(s, id, index)),
+diff --git a/packages/engine/src/browser/bookmarks.test.ts b/packages/engine/src/browser/bookmarks.test.ts
+new file mode 100644
+index 00000000..4f8e0e51
+--- /dev/null
++++ b/packages/engine/src/browser/bookmarks.test.ts
+@@ -0,0 +1,34 @@
++import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { afterEach, describe, expect, it } from 'vitest';
++import { openCacheDatabase } from '../db/database.ts';
++import { BrowserBookmarks } from './bookmarks.ts';
++
++const cleanups: Array<() => void> = [];
++afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
++
++function tempCache() {
++  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-bookmarks-')));
++  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
++  return join(dir, 'cache.sqlite');
++}
++
++const bookmark = (id: string, position: number, projectRoot: string | null = null) => ({ id, url: `https://${id}.test/`, title: id, favicon: null, folder: '', projectRoot, position });
++
++describe('BrowserBookmarks', () => {
++  it('adds, updates, lists in order and removes bookmarks in a real database', () => {
++    const cache = openCacheDatabase(tempCache());
++    cleanups.unshift(() => cache.close());
++    const bookmarks = new BrowserBookmarks(cache.db);
++    bookmarks.save({ ...bookmark('b', 1, '/work/intranet'), createdAt: 20 });
++    bookmarks.save({ ...bookmark('a', 0), createdAt: 10 });
++    expect(bookmarks.list().map((b) => b.id)).toEqual(['a', 'b']);
++    expect(bookmarks.list().find((b) => b.id === 'b')).toMatchObject({ projectRoot: '/work/intranet', folder: '' });
++    // Renamed, moved to a folder and to everywhere: the time it was added stays.
++    bookmarks.save({ ...bookmark('b', 1), title: 'Staging', folder: 'Sites' });
++    expect(bookmarks.list().find((b) => b.id === 'b')).toMatchObject({ title: 'Staging', folder: 'Sites', projectRoot: null, createdAt: 20 });
++    bookmarks.remove('a');
++    expect(bookmarks.list().map((b) => b.id)).toEqual(['b']);
++  });
++});
+diff --git a/packages/engine/src/browser/bookmarks.ts b/packages/engine/src/browser/bookmarks.ts
+new file mode 100644
+index 00000000..6145dccc
+--- /dev/null
++++ b/packages/engine/src/browser/bookmarks.ts
+@@ -0,0 +1,68 @@
++import type { DatabaseSync } from 'node:sqlite';
++
++/**
++ * A browser bookmark as it is kept: a link to find again (⌘D or the star), in a folder ('' for none), for one project
++ * (its root) or everywhere (null). `favicon` is a `data:` image or null.
++ */
++export interface BrowserBookmark {
++  id: string;
++  url: string;
++  title: string;
++  favicon: string | null;
++  folder: string;
++  projectRoot: string | null;
++  position: number;
++  createdAt: number;
++}
++
++interface Row {
++  id: string;
++  url: string;
++  title: string;
++  favicon: string | null;
++  folder: string;
++  project_root: string | null;
++  position: number;
++  created_at: number;
++}
++
++const toBookmark = (row: Row): BrowserBookmark => ({
++  id: row.id,
++  url: row.url,
++  title: row.title,
++  favicon: row.favicon,
++  folder: row.folder,
++  projectRoot: row.project_root,
++  position: row.position,
++  createdAt: row.created_at,
++});
++
++/** Your browser bookmarks (`browser_bookmarks`). Nothing else has these: a cache rebuild keeps them. */
++export class BrowserBookmarks {
++  private readonly statements;
++
++  constructor(db: DatabaseSync) {
++    this.statements = {
++      list: db.prepare('SELECT * FROM browser_bookmarks ORDER BY position, created_at'),
++      save: db.prepare(
++        `INSERT INTO browser_bookmarks (id, url, title, favicon, folder, project_root, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
++         ON CONFLICT (id) DO UPDATE SET url = excluded.url, title = excluded.title, favicon = excluded.favicon, folder = excluded.folder,
++           project_root = excluded.project_root, position = excluded.position`,
++      ),
++      remove: db.prepare('DELETE FROM browser_bookmarks WHERE id = ?'),
++    };
++  }
++
++  list(): BrowserBookmark[] {
++    return (this.statements.list.all() as unknown as Row[]).map(toBookmark);
++  }
++
++  /** Adds a bookmark, or updates one (its name, folder, project, icon, place); the time it was added stays. */
++  save(bookmark: Omit<BrowserBookmark, 'createdAt'> & { createdAt?: number }): void {
++    this.statements.save.run(bookmark.id, bookmark.url, bookmark.title, bookmark.favicon, bookmark.folder, bookmark.projectRoot, bookmark.position, bookmark.createdAt ?? Date.now());
++  }
++
++  remove(id: string): void {
++    this.statements.remove.run(id);
++  }
++}
+diff --git a/packages/engine/src/db/migrations.ts b/packages/engine/src/db/migrations.ts
+index a6c2ab69..1d5ff934 100644
+--- a/packages/engine/src/db/migrations.ts
++++ b/packages/engine/src/db/migrations.ts
+@@ -961,4 +961,19 @@ export const migrations: readonly string[] = [
+   `
+   ALTER TABLE browser_tabs ADD COLUMN favicon TEXT;
+   `,
++  // v60: Browser bookmarks: links to find again, in folders, for one project (its root) or everywhere (null). Your own
++  // choices that nothing else has: keep them when rebuilding.
++  `
++  CREATE TABLE browser_bookmarks (
++    id           TEXT PRIMARY KEY,
++    url          TEXT NOT NULL,
++    title        TEXT NOT NULL,
++    favicon      TEXT,
++    folder       TEXT NOT NULL DEFAULT '',
++    project_root TEXT,
++    position     INTEGER NOT NULL,
++    created_at   INTEGER NOT NULL
++  );
++  CREATE INDEX browser_bookmarks_project ON browser_bookmarks (project_root);
++  `,
+ ];
+diff --git a/packages/engine/src/engine.ts b/packages/engine/src/engine.ts
+index d8703796..1d84cf83 100644
+--- a/packages/engine/src/engine.ts
++++ b/packages/engine/src/engine.ts
+@@ -173,6 +173,7 @@ import { ProviderHosts } from './providers/providerHosts.ts';
+ import { ProviderNotes } from './providers/providerNotes.ts';
+ import { ProviderForks } from './providers/providerForks.ts';
+ import { BrowserFavorites } from './browser/favorites.ts';
++import { BrowserBookmarks } from './browser/bookmarks.ts';
+ import { PinnedTabs } from './browser/pinnedTabs.ts';
+ import { RoutedHostManager } from './providers/routedHosts.ts';
+ import { ProviderSources } from './providers/providerSources.ts';
+@@ -547,6 +548,7 @@ export function createEngine(options: EngineOptions): Engine {
+   const providerForks = new ProviderForks(cache.db);
+   const pinnedTabs = new PinnedTabs(cache.db);
+   const browserFavorites = new BrowserFavorites(cache.db);
++  const browserBookmarks = new BrowserBookmarks(cache.db);
+   const providerOptions: ProviderOptions = {
+     env: process.env,
+     home: homedir(),
+@@ -3385,6 +3387,9 @@ export function createEngine(options: EngineOptions): Engine {
+     'browser.favorites.list': () => ({ favorites: browserFavorites.list() }),
+     'browser.favorites.save': ({ favorite }) => (browserFavorites.save(favorite), {}),
+     'browser.favorites.remove': ({ id }) => (browserFavorites.remove(id), {}),
++    'browser.bookmarks.list': () => ({ bookmarks: browserBookmarks.list() }),
++    'browser.bookmarks.save': ({ bookmark }) => (browserBookmarks.save(bookmark), {}),
++    'browser.bookmarks.remove': ({ id }) => (browserBookmarks.remove(id), {}),
+     'limits.state': () => limits.state(),
+     'limits.resume': async ({ sessionId }) => {
+       await limits.resumeNow(sessionId);
+diff --git a/packages/protocol/src/contract.ts b/packages/protocol/src/contract.ts
+index 8dbe0a35..75fb8189 100644
+--- a/packages/protocol/src/contract.ts
++++ b/packages/protocol/src/contract.ts
+@@ -216,6 +216,22 @@ export const BrowserFavorite = z.object({
+ });
+ export type BrowserFavorite = z.infer<typeof BrowserFavorite>;
+ 
++/**
++ * A browser bookmark: a link to find again (⌘D or the star), in a folder ('' for none), shown for one project (its
++ * root) or everywhere (null). Not kept open, unlike a favourite. `favicon` as a favourite's.
++ */
++export const BrowserBookmark = z.object({
++  id: z.string().min(1).max(100),
++  url: z.string().min(1).max(8000),
++  title: z.string().max(500),
++  favicon: z.string().max(65_536).regex(/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i).nullable(),
++  folder: z.string().max(200),
++  projectRoot: z.string().max(4096).nullable(),
++  position: z.number().int().min(0),
++  createdAt: z.number().int(),
++});
++export type BrowserBookmark = z.infer<typeof BrowserBookmark>;
++
+ export const contract = {
+   requests: {
+     'system.info': {
+@@ -519,6 +535,11 @@ export const contract = {
+     /** Adds a favourite, or updates one (its title, icon, place). */
+     'browser.favorites.save': { params: z.object({ favorite: BrowserFavorite.omit({ createdAt: true }) }), result: z.object({}) },
+     'browser.favorites.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
++    /** Your browser bookmarks, in order: every project's and the ones for everywhere. */
++    'browser.bookmarks.list': { params: z.object({}), result: z.object({ bookmarks: z.array(BrowserBookmark) }) },
++    /** Adds a bookmark, or updates one (its name, folder, project, icon, place). */
++    'browser.bookmarks.save': { params: z.object({ bookmark: BrowserBookmark.omit({ createdAt: true }) }), result: z.object({}) },
++    'browser.bookmarks.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
+     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
+     /**
+diff --git a/website/src/content/features.json b/website/src/content/features.json
+index ac22ee7a..96e2f3e6 100644
+--- a/website/src/content/features.json
++++ b/website/src/content/features.json
+@@ -823,7 +823,32 @@
+     },
+     {
+       "id": "feature:browser-favorites",
+-      "name": "Browser favourites: star a page, then open it from the sidebar, an empty tab or the Browser view",
++      "name": "Browser favourites: icon tiles at the top of the Browser view that keep their page, in place of pinned tabs there",
++      "page": "sessions/web-preview"
++    },
++    {
++      "id": "feature:browser-bookmarks",
++      "name": "Browser bookmarks: ⌘D or the star saves a page for this project or everywhere, in folders, listed on every new tab",
++      "page": "sessions/web-preview"
++    },
++    {
++      "id": "palette:browser-bookmark",
++      "name": "Bookmark this page",
++      "page": "sessions/web-preview"
++    },
++    {
++      "id": "palette:browser-bookmark-edit",
++      "name": "Edit bookmark",
++      "page": "sessions/web-preview"
++    },
++    {
++      "id": "palette:browser-open-bookmark",
++      "name": "Open bookmark…",
++      "page": "sessions/web-preview"
++    },
++    {
++      "id": "feature:panel-half",
++      "name": "Panels at half width: Side, Half or Full, the panel and the conversation sharing the session 50/50",
+       "page": "sessions/web-preview"
+     },
+     {
+@@ -962,8 +987,8 @@
+       "page": "sessions/web-preview"
+     },
+     {
+-      "id": "shortcut:browser.favorite",
+-      "name": "Browser: add the page to favourites, or remove it",
++      "id": "shortcut:browser.bookmark",
++      "name": "Browser: bookmark the page, or edit its bookmark",
+       "page": "sessions/web-preview"
+     },
+     {
+-- 
+2.43.0
+

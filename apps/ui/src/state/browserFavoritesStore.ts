@@ -14,8 +14,6 @@ export const useBrowserFavorites = create<{ favorites: readonly BrowserFavorite[
 
 let client: EngineClient | null = null;
 let ids = 0;
-/** The engine's list has arrived at least once, so a page that is no favourite really isn't one. */
-let loaded = false;
 const newId = () => `fav-${Date.now().toString(36)}-${(++ids).toString(36)}`;
 
 /** The list as the engine has it. */
@@ -24,8 +22,6 @@ async function load(): Promise<void> {
   try {
     const { favorites } = await client.call('browser.favorites.list', {});
     useBrowserFavorites.setState({ favorites });
-    loaded = true;
-    adoptPinnedTabs();
   } catch {
     // The list stays as it was; the next focus tries again.
   }
@@ -68,19 +64,6 @@ export function addFavorite(tab: Pick<BrowserTab, 'id' | 'url' | 'title' | 'name
   change([...favorites, favorite], (c) => c.call('browser.favorites.save', { favorite: saved }), "Couldn't add the favourite");
   if (tab.owner === BROWSER_OWNER) useWebPreview.getState().linkFavorite(tab.id, favorite.id);
   return favorite;
-}
-
-/**
- * Pinned tabs in the Browser view became favourites (a tile keeps its page now): each is added as one, unless its page
- * already is, and its tab goes to the tile. A session's pinned tabs stay pinned. Runs once both lists are here.
- */
-export function adoptPinnedTabs(): void {
-  if (!loaded) return;
-  for (const tab of useWebPreview.getState().tabs) {
-    if (tab.owner !== BROWSER_OWNER || !tab.pinned || !tab.url) continue;
-    const favorite = favoriteOf(useBrowserFavorites.getState().favorites, tab.url) ?? addFavorite(tab);
-    if (favorite) useWebPreview.getState().linkFavorite(tab.id, favorite.id);
-  }
 }
 
 /** A page's icon came (main, `favicon`): a favourite on that page takes it, so one starred before its icon still gets one. */
