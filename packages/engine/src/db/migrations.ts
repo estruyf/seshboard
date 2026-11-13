@@ -971,4 +971,19 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX browser_history_last_visit ON browser_history (last_visit);
   `,
+  // v61: Browser bookmarks: links to find again, in folders, for one project (its root) or everywhere (null). Your own
+  // choices that nothing else has: keep them when rebuilding.
+  `
+  CREATE TABLE browser_bookmarks (
+    id           TEXT PRIMARY KEY,
+    url          TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    favicon      TEXT,
+    folder       TEXT NOT NULL DEFAULT '',
+    project_root TEXT,
+    position     INTEGER NOT NULL,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX browser_bookmarks_project ON browser_bookmarks (project_root);
+  `,
 ];

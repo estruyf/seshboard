@@ -4,7 +4,7 @@ import { newBrowserTab, openFavorite } from '../../state/browserViewStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { BrowserPane } from '../webPreview/BrowserPane.tsx';
-import { FavoriteTiles } from '../webPreview/FavoriteTiles.tsx';
+import { NewTabSections } from '../webPreview/NewTabPage.tsx';
 import { BROWSER_OWNER } from '../webPreview/browserTabs.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 
@@ -43,18 +43,18 @@ export function BrowserView() {
   );
 }
 
-/** No tab in front: what to do, and the favourites. */
+/** No tab in front: what to do, then favourites, bookmarks and closed tabs. */
 function NoPage() {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto px-6 py-4 text-center" data-browser-empty="">
+    <div className="absolute inset-0 flex flex-col items-center justify-center-safe gap-3 overflow-y-auto px-6 py-8 text-center" data-browser-empty="">
       <Globe size={26} aria-hidden className="text-faint" />
       <p className="text-body font-semibold text-text">No page selected</p>
       <p className="text-ui text-muted">Pick a page from the list, or open a new tab.</p>
       <Button variant="primary" size="sm" icon={<Plus size={12} aria-hidden />} shortcut="browser.new-tab" onClick={newBrowserTab} data-browser-open-tab="">
         Open tab
       </Button>
-      <div className="mt-3 flex w-full justify-center text-left">
-        <FavoriteTiles onOpen={openFavorite} />
+      <div className="mt-3 flex w-full justify-center">
+        <NewTabSections owner={BROWSER_OWNER} onOpen={(url) => useWebPreview.getState().openTab(BROWSER_OWNER, url)} onFavorite={openFavorite} />
       </div>
     </div>
   );

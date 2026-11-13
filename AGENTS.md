@@ -86,7 +86,7 @@ Most of the time in a feature goes into rerunning slow checks and re-reading the
   Linux takes the POSIX side of each (paths, `$SHELL`, the Ctrl keys of Windows); where macOS calls an app by its bundle (`open -a`), Linux uses a command on `PATH` or `xdg-open`.
 
   Pure helpers take the platform as a parameter, so the macOS tests run on Windows and the other way round.
-- **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings`, `project_actions`, `provider_notes` and `browser_tabs` hold user choices or what nothing else has, and must survive.
+- **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings`, `project_actions`, `provider_notes`, `browser_tabs`, `browser_favorites` and `browser_bookmarks` hold user choices or what nothing else has, and must survive.
 
 ### UI
 

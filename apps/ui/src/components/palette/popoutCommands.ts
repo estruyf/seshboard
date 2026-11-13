@@ -159,6 +159,10 @@ const PLANS: Record<string, Plan> = {
   'browser-favorite-remove': 'here',
   // The session's browser panel in the pop-out: its page commands work there, and a favourite opens in it.
   'browser-open-favorite': 'here',
+  // Bookmarks are the same list in every window, saved in the engine; one opens in the pop-out's panel.
+  'browser-bookmark': 'here',
+  'browser-bookmark-edit': 'here',
+  'browser-open-bookmark': 'here',
   'browser-address': 'here',
   'browser-find': 'here',
   'browser-back': 'here',

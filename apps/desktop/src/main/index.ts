@@ -14179,8 +14179,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   );
   // Needs "browser view" first: its tab and its pages in the history.
   await step('browser suggestions: the address bar offers open tabs and pages from the history', () => runBrowserSuggestionsStep(win, browserDeps));
-  await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
-  await step('browser favorites: star a page, kept after a reload, opened from the sidebar and an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser pin: a favourite tile keeps its page, its name and icon after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser favorites: the star bookmarks a page into a folder, kept after a reload, opened from an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
   await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
   await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));

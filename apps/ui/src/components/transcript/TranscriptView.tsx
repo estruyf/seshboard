@@ -133,7 +133,7 @@ import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { ProviderSessionControls } from '../providers/ProviderSessionControls.tsx';
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
-import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
+import { modPaneTab, paneOfTab, rightPanel, type RightTab, panelWidthFor } from '../ask/askWidth.ts';
 import { ToolRail, type RailItem } from './ToolRail.tsx';
 import { AppIcon } from '../AppIcon.tsx';
 import { GitHubIcon } from '../GitHubIcon.tsx';
@@ -597,6 +597,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const terminalShown = panelOpen;
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useWidth(bodyRef);
+  // Half: the panels on the right take half the session area, as the window resizes; Side: the width you dragged.
+  const panelSizing = useRightPanel((s) => s.sizing);
+  const halfPanel = panelSizing === 'half';
+  const panelWidth = panelWidthFor(panelSizing, rightWidth, bodyWidth);
   const bodyHeight = useHeight(bodyRef);
   // "Why?" takes the whole right side while it is open.
   const terminalBlocked = rightBlocked(whyRequest ? 'changes' : null, bodyWidth);
@@ -1616,7 +1620,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         rightBlocked={terminalBlocked}
         viewWidth={bodyWidth}
         viewHeight={bodyHeight}
-        shared={terminalOnRight && right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
+        shared={terminalOnRight && (right.tabs || halfPanel) ? { width: panelWidth, setWidth: setRightWidth } : undefined}
       />
     </Suspense>
   );
@@ -2294,7 +2298,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onRefresh={refreshChanges}
             onClose={() => closeChanges(sessionId)}
             outside={catchUp?.signals.outOfScope}
-            shared={right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
+            shared={right.tabs || halfPanel ? { width: panelWidth, setWidth: setRightWidth } : undefined}
           />
         )}
         {!whyRequest && right.tab === 'ask' && !terminalMaximized && (
@@ -2302,7 +2306,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             sessionId={sessionId}
             state={ask}
             working={working}
-            width={rightWidth}
+            width={panelWidth}
             onWidth={setRightWidth}
             onAsk={askHere}
             onRetry={(threadId, item) => client && void retryAsk(client, sessionId, threadId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
@@ -2318,7 +2322,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             key={frontPane.id}
             sessionId={sessionId}
             pane={frontPane}
-            width={rightWidth}
+            width={panelWidth}
             onWidth={setRightWidth}
             onClose={() => closeModPane(frontPane.id)}
             focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
@@ -2334,7 +2338,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             picked={agentsState.picked}
             onPick={(agent) => pickAgent(sessionId, agent)}
             onStop={stopTask}
-            width={rightWidth}
+            width={panelWidth}
             onWidth={setRightWidth}
             onClose={() => closeAgents(sessionId)}
           />
@@ -2347,14 +2351,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             picked={commandsState.picked}
             onPick={(taskId) => pickCommand(sessionId, taskId)}
             onStop={stopTask}
-            width={rightWidth}
+            width={panelWidth}
             onWidth={setRightWidth}
             onClose={() => closeCommands(sessionId)}
           />
         )}
         {!whyRequest && right.tab === 'preview' && previewTarget && !terminalMaximized && (
           <PreviewOpenerContext.Provider value={openPreviewHere}>
-            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={rightWidth} onWidth={setRightWidth} />
+            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={panelWidth} onWidth={setRightWidth} />
           </PreviewOpenerContext.Provider>
         )}
         {/* Its page lives outside this view (webPreviewPages.ts), so it keeps running while another tab is in front. */}
@@ -2363,7 +2367,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             sessionId={sessionId}
             web={web}
             offers={serverOffers}
-            width={rightWidth}
+            width={panelWidth}
             onWidth={setRightWidth}
           />
         )}

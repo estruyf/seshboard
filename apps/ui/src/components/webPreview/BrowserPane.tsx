@@ -3,19 +3,22 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { addressBarUrl, browserNavigation, type BrowserHistoryEntry, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { askClearData, askRename, copyAddress, findInPage, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
-import { toggleFavorite, useBrowserFavorites, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
+import { bookmarkPage, useBookmarkOf } from '../../state/browserBookmarksStore.ts';
+import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
 import { searchHistory } from '../../state/browserHistory.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Popover } from '../ui/Popover.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { addressSuggestions, autoPick, type AddressSuggestion } from './addressSuggestions.ts';
-import { sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
-import { FavoriteTiles } from './FavoriteTiles.tsx';
+import { BROWSER_OWNER, sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
+import { NewTabSections } from './NewTabPage.tsx';
+import { openFavoriteInTab } from '../../state/browserViewStore.ts';
 import type { ServerOffer } from './serverOffers.ts';
 import { previewPage, registerSlot, usePageState } from './webPreviewPages.ts';
 
@@ -70,7 +73,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   const address = useRef<HTMLInputElement>(null);
   const listId = useId();
   const tabId = tab?.id ?? null;
-  const favorite = useFavoriteOf(tab?.url ?? null) !== undefined;
+  const bookmarked = useBookmarkOf(tab) !== undefined;
   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
   // The suggestions under the address bar (the browser on): open while typing, and the row picked with ↑↓ (null: the
   // first one if Enter should open it, `autoPick`; -1: what was typed).
@@ -219,7 +222,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           />
           {showList && <SuggestionList id={listId} anchor={address} suggestions={suggestions} highlighted={highlighted} onPick={open} onHighlight={setPicked} onClose={closeList} />}
         </form>
-        {browser && tab && (
+        {/* A session's tab can be pinned; in the Browser view, a favourite's tile is what keeps a page. */}
+        {browser && tab && tab.owner !== BROWSER_OWNER && (
           <Button
             variant="quiet"
             size="sm"
@@ -239,15 +243,15 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             variant="quiet"
             size="sm"
             iconOnly
-            icon={<Star size={13} aria-hidden className={favorite ? 'fill-current' : undefined} />}
-            aria-label={favorite ? 'Remove from favourites' : 'Add to favourites'}
-            data-tooltip={favorite ? 'Remove from favourites' : 'Add to favourites'}
-            shortcut="browser.favorite"
-            aria-pressed={favorite}
-            selected={favorite}
+            icon={<Star size={13} aria-hidden className={bookmarked ? 'fill-current' : undefined} />}
+            aria-label={bookmarked ? 'Edit bookmark' : 'Bookmark this page'}
+            data-tooltip={bookmarked ? 'Edit bookmark' : 'Bookmark this page'}
+            shortcut="browser.bookmark"
+            aria-pressed={bookmarked}
+            selected={bookmarked}
             disabled={!tab.url}
-            onClick={() => toggleFavorite(tab)}
-            data-web-preview-favorite=""
+            onClick={() => bookmarkPage(tab)}
+            data-web-preview-bookmark=""
           />
         )}
         {!browser && <Button
@@ -315,7 +319,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           />
         )}
         {!tab && empty}
-        {tab && !tab.url && <EmptyTab tabId={tab.id} offers={offers} browser={browser} />}
+        {tab && !tab.url && <EmptyTab tabId={tab.id} owner={tab.owner} offers={offers} browser={browser} />}
         <div aria-live="polite" className="contents">
           {failure && !page.crashed && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-sidebar px-6 text-center" data-web-preview-unreachable="">
@@ -595,10 +599,10 @@ export function TabIcon({ tab, size = 12 }: { tab: Pick<BrowserTab, 'favicon'>; 
   return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" onError={() => setBroken(tab.favicon)} />;
 }
 
-/** An empty tab: the servers running in the session, or where to type, and the favourites (the browser on). */
-function EmptyTab({ tabId, offers, browser }: { tabId: string; offers: readonly ServerOffer[]; browser: boolean }) {
+/** An empty tab: the servers running in the session, or where to type, then favourites, bookmarks and closed tabs (the browser on). */
+function EmptyTab({ tabId, owner, offers, browser }: { tabId: string; owner: string; offers: readonly ServerOffer[]; browser: boolean }) {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-sidebar px-6 py-4 text-center" data-web-preview-empty="">
+    <div className="absolute inset-0 flex flex-col items-center justify-center-safe gap-3 overflow-y-auto bg-sidebar px-6 py-8 text-center" data-web-preview-empty="">
       <Globe size={22} aria-hidden className="text-faint" />
       {offers.length > 0 ? (
         <>
@@ -618,25 +622,34 @@ function EmptyTab({ tabId, offers, browser }: { tabId: string; offers: readonly 
         </p>
       )}
       {browser && (
-        <div className="mt-3 flex w-full justify-center text-left">
-          <FavoriteTiles onOpen={(url) => useWebPreview.getState().navigate(tabId, url)} />
+        <div className="mt-3 flex w-full justify-center">
+          <NewTabSections owner={owner} onOpen={(url) => useWebPreview.getState().navigate(tabId, url)} onFavorite={(url) => openFavoriteInTab(tabId, url)} />
         </div>
       )}
     </div>
   );
 }
 
-/** The panel's sizes: beside the conversation, or the whole session area. */
+/**
+ * The panel's sizes: beside the conversation at the width you dragged (Side), sharing the session area 50/50 (Half,
+ * for every panel on the right, `useRightPanel().sizing`), or the whole session area (Full, this panel).
+ */
 export function PanelSize({ full, onChange }: { full: boolean; onChange(full: boolean): void }) {
+  const sizing = useRightPanel((s) => s.sizing);
+  const pick = (value: 'side' | 'half' | 'full') => {
+    if (value !== 'full') useRightPanel.getState().setSizing(value);
+    onChange(value === 'full');
+  };
   return (
     <SegmentedControl
       mode="radio"
       size="sm"
       label="Panel size"
-      value={full ? 'full' : 'side'}
-      onChange={(value: 'side' | 'full') => onChange(value === 'full')}
+      value={full ? 'full' : sizing}
+      onChange={pick}
       segments={[
         { value: 'side', label: 'Side', data: { 'data-web-preview-size': 'side' } },
+        { value: 'half', label: 'Half', data: { 'data-web-preview-size': 'half' } },
         { value: 'full', label: 'Full', data: { 'data-web-preview-size': 'full' } },
       ]}
       className="ml-1"

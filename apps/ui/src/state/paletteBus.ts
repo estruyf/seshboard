@@ -43,6 +43,8 @@ export type PaletteDialog =
   | { kind: 'rename-tab'; tabId: string }
   /** Edit favourite… from a favourite's menu: its title and address. */
   | { kind: 'edit-favorite'; id: string }
+  /** ⌘D or the star on a page: its bookmark, just added (or the one it had), to name, place or remove. */
+  | { kind: 'bookmark'; tabId: string }
   /** Clear data for this site (`origin`) or, with null, all browsing data: asks first. */
   | { kind: 'clear-browser-data'; origin: string | null }
   /** New session from an issue or pull request: the # list on its own, for `root`. */

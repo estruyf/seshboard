@@ -23,6 +23,11 @@ export interface BrowserTab {
   /** The page's icon, when it has one. */
   favicon: string | null;
   pinned: boolean;
+  /**
+   * The favourite it was opened from (a tile in the Browser view's sidebar): it shows in that tile, not in the list of
+   * tabs, and the tile brings it back however far it browsed. Null for any other tab.
+   */
+  favoriteId: string | null;
   /** Its place among its owner's tabs, pinned ones first. */
   position: number;
   /** When it was last in front; 0 for a tab restored at start and not shown yet, which has no page until then. */
@@ -87,6 +92,23 @@ export function ownerTabs(state: TabsState, owner: string): BrowserTab[] {
   return state.tabs.filter((t) => t.owner === owner).sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.position - b.position);
 }
 
+/** The tabs an owner lists: its tabs in order, less those a favourite's tile shows. */
+export function listedTabs(state: TabsState, owner: string): BrowserTab[] {
+  return ownerTabs(state, owner).filter((t) => !t.favoriteId);
+}
+
+/** The tab a favourite's tile shows, if it is open. */
+export function favoriteTab(state: TabsState, favoriteId: string): BrowserTab | undefined {
+  return state.tabs.find((t) => t.favoriteId === favoriteId);
+}
+
+/** A tab becomes a favourite's (its page stays as it is), or no longer one (null). */
+export function linkFavorite(state: TabsState, id: string, favoriteId: string | null): TabsState {
+  const tab = state.tabs.find((t) => t.id === id);
+  if (!tab || tab.favoriteId === favoriteId) return state;
+  return { tabs: state.tabs.map((t) => (t.id === id ? { ...t, favoriteId, pinned: favoriteId ? false : t.pinned } : t)), active: state.active };
+}
+
 /** An owner's tab in front, if it has one. */
 export function frontTab(state: TabsState, owner: string): BrowserTab | undefined {
   const id = state.active.get(owner);
@@ -122,6 +144,8 @@ export interface OpenOptions {
   now: number;
   /** The load number for the new address (`BrowserTab.seq`). */
   seq: number;
+  /** Opened from this favourite: the tab it already has comes forward, wherever it is now. */
+  favoriteId?: string | null;
 }
 
 /**
@@ -130,10 +154,15 @@ export interface OpenOptions {
  */
 export function openTab(state: TabsState, owner: string, url: string | null, options: OpenOptions): { state: TabsState; id: string } {
   const focus = options.focus ?? true;
-  const existing = url ? ownerTabs(state, owner).find((t) => sameAddress(t.url, url)) : undefined;
+  const favoriteId = options.favoriteId ?? null;
+  const existing = favoriteId
+    ? state.tabs.find((t) => t.owner === owner && t.favoriteId === favoriteId)
+    : url
+      ? ownerTabs(state, owner).find((t) => !t.favoriteId && sameAddress(t.url, url))
+      : undefined;
   if (existing) return { state: focus ? showTab(state, existing.id, options.now) : state, id: existing.id };
   const own = ownerTabs(state, owner);
-  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, zoom: 1, muted: false, audible: false, seq: options.seq };
+  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, favoriteId, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, zoom: 1, muted: false, audible: false, seq: options.seq };
   const tabs = [...state.tabs, tab];
   return { state: { tabs, active: focus || !state.active.has(owner) ? withActive(state.active, owner, tab.id) : state.active }, id: tab.id };
 }
@@ -170,23 +199,25 @@ export function unpinTab(state: TabsState, id: string): TabsState {
   return { tabs: renumber(state.tabs.map((t) => (t.id === id ? { ...t, pinned: false } : t)), tab.owner, order), active: state.active };
 }
 
-/** Moves a tab to `index` among its owner's tabs, kept inside its group: pinned tabs always come first. */
+/** Moves a tab to `index` among its owner's listed tabs (`listedTabs`), kept inside its group: pinned tabs always come first. */
 export function moveTab(state: TabsState, id: string, index: number): TabsState {
   const tab = state.tabs.find((t) => t.id === id);
   if (!tab) return state;
-  const own = ownerTabs(state, tab.owner).filter((t) => t.id !== id);
+  // `index` counts the listed tabs: a favourite's tab is in its tile, so it keeps its place after them.
+  const own = listedTabs(state, tab.owner).filter((t) => t.id !== id);
+  const tiles = ownerTabs(state, tab.owner).filter((t) => t.favoriteId && t.id !== id);
   const pinnedCount = own.filter((t) => t.pinned).length;
   const [low, high] = tab.pinned ? [0, pinnedCount] : [pinnedCount, own.length];
   const at = Math.min(Math.max(index, low), high);
   own.splice(at, 0, tab);
-  return { tabs: renumber(state.tabs, tab.owner, own), active: state.active };
+  return { tabs: renumber(state.tabs, tab.owner, [...own, ...tiles]), active: state.active };
 }
 
-/** Moves a tab one place earlier (-1) or later (1) among its owner's tabs; at the end of its group it stays. */
+/** Moves a tab one place earlier (-1) or later (1) among its owner's listed tabs; at the end of its group it stays. */
 export function stepTab(state: TabsState, id: string, step: 1 | -1): TabsState {
   const tab = state.tabs.find((t) => t.id === id);
   if (!tab) return state;
-  const index = ownerTabs(state, tab.owner).findIndex((t) => t.id === id);
+  const index = listedTabs(state, tab.owner).findIndex((t) => t.id === id);
   return moveTab(state, id, index + step);
 }
 
@@ -211,7 +242,7 @@ export function restore(state: TabsState, saved: readonly SavedTab[]): TabsState
   const added: BrowserTab[] = [...saved]
     .filter((s) => !have.has(s.id))
     .sort((a, b) => a.position - b.position)
-    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, position: s.position, lastShownAt: 0, phone: false, zoom: 1, muted: false, audible: false, seq: 0 }));
+    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, favoriteId: null, position: s.position, lastShownAt: 0, phone: false, zoom: 1, muted: false, audible: false, seq: 0 }));
   if (!added.length) return state;
   let tabs = [...state.tabs, ...added];
   for (const owner of new Set(added.map((t) => t.owner))) tabs = renumber(tabs, owner, ownerTabs({ tabs, active: state.active }, owner));

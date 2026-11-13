@@ -823,7 +823,32 @@
     },
     {
       "id": "feature:browser-favorites",
-      "name": "Browser favourites: star a page, then open it from the sidebar, an empty tab or the Browser view",
+      "name": "Browser favourites: icon tiles at the top of the Browser view that keep their page, in place of pinned tabs there",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-bookmarks",
+      "name": "Browser bookmarks: ⌘D or the star saves a page for this project or everywhere, in folders, listed on every new tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-bookmark",
+      "name": "Bookmark this page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-bookmark-edit",
+      "name": "Edit bookmark",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-open-bookmark",
+      "name": "Open bookmark…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:panel-half",
+      "name": "Panels at half width: Side, Half or Full, the panel and the conversation sharing the session 50/50",
       "page": "sessions/web-preview"
     },
     {
@@ -833,7 +858,7 @@
     },
     {
       "id": "feature:browser-favorite-edit",
-      "name": "Edit a favourite's name and address, or give it the address of the page on screen, from its right-click menu",
+      "name": "Edit a favourite's name and address, or give it the address its tile's tab is on now, from its menu",
       "page": "sessions/web-preview"
     },
     {
@@ -987,8 +1012,8 @@
       "page": "sessions/web-preview"
     },
     {
-      "id": "shortcut:browser.favorite",
-      "name": "Browser: add the page to favourites, or remove it",
+      "id": "shortcut:browser.bookmark",
+      "name": "Browser: bookmark the page, or edit its bookmark",
       "page": "sessions/web-preview"
     },
     {

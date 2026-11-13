@@ -1,36 +1,34 @@
-import { Copy, Ellipsis, ExternalLink, Pencil, Pin, PinOff, Plus, Volume2, VolumeX, X } from 'lucide-react';
+import { Copy, Ellipsis, ExternalLink, Pencil, Plus, Star, Volume2, VolumeX, X } from 'lucide-react';
 import { Fragment } from 'react';
 import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { shortUrl } from '@seshboard/protocol/client';
-import type { BrowserFavorite } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
-import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
+import { addFavorite } from '../../state/browserFavoritesStore.ts';
 import { askRename, copyAddress, openInSystemBrowser, toggleMute } from '../../state/browserActions.ts';
-import { newBrowserTab, openFavorite } from '../../state/browserViewStore.ts';
+import { newBrowserTab } from '../../state/browserViewStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { Button } from '../ui/Button.tsx';
 import { middleClose, middleDown, SoundMark, TabIcon, tabLabel, TabTitle } from '../webPreview/BrowserPane.tsx';
-import { BROWSER_OWNER, ownerTabs, sameGroup, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
-import { favoriteMenu, menuAt } from '../webPreview/FavoriteTiles.tsx';
+import { BROWSER_OWNER, listedTabs, sameGroup, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
+import { FavoriteBar } from '../webPreview/FavoriteTiles.tsx';
 
 /**
- * The Browser view's tabs in the sidebar, in place of the sessions, under your favourites (a click opens one in a tab):
- * pinned ones first, above a line, then the others, each with its icon and title and a ⋯ menu (Pin tab, Rename tab,
- * Copy address, Open in browser, Close tab), then Open tab. It scrolls on its own. Drag a tab (or ⌥↑ ⌥↓ on it) to move
- * it, inside its group: pinned tabs stay above the line.
+ * The Browser view's tabs in the sidebar, in place of the sessions, under your favourites' tiles (`FavoriteBar`): pinned
+ * ones first, above a line, then the others, each with its icon and title and a ⋯ menu (Add to favourites, Rename tab,
+ * Copy address, Open in browser, Close tab), then Open tab. None open, one line says so. It scrolls on its own. Drag a
+ * tab (or ⌥↑ ⌥↓ on it) to move it, inside its group: pinned tabs stay above the line.
  */
 export function BrowserTabList() {
   const all = useWebPreview((s) => s.tabs);
   const activeId = useWebPreview((s) => s.active.get(BROWSER_OWNER) ?? null);
   const confirming = useWebPreview((s) => s.confirming);
   const atBrowser = useSessions((s) => s.view === 'browser');
-  const tabs = ownerTabs({ tabs: all, active: new Map() }, BROWSER_OWNER);
+  // A favourite's tab shows in its tile, not here.
+  const tabs = listedTabs({ tabs: all, active: new Map() }, BROWSER_OWNER);
   const [menu, setMenu] = useState<{ x: number; y: number; tab: BrowserTab } | null>(null);
-  const favorites = useBrowserFavorites((s) => s.favorites);
-  const [favoriteMenuAt, setFavoriteMenuAt] = useState<{ x: number; y: number; favorite: BrowserFavorite } | null>(null);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const drag = useQueueDrag({
@@ -57,9 +55,8 @@ export function BrowserTabList() {
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-browser-tab-list] [data-browser-tab="${CSS.escape(tab.id)}"]`)?.focus());
   };
   const entries = (tab: BrowserTab): MenuEntry[] => [
-    tab.pinned
-      ? { label: 'Unpin tab', icon: <PinOff size={13} aria-hidden />, onSelect: () => useWebPreview.getState().unpin(tab.id), data: { 'data-browser-tab-unpin': true } }
-      : { label: 'Pin tab', icon: <Pin size={13} aria-hidden />, disabled: !tab.url, onSelect: () => useWebPreview.getState().pin(tab.id), data: { 'data-browser-tab-pin': true } },
+    // A favourite is how a Browser tab lasts: it moves to a tile, which keeps its page.
+    { label: 'Add to favourites', icon: <Star size={13} aria-hidden />, disabled: !tab.url, onSelect: () => addFavorite(tab), data: { 'data-browser-tab-favorite': true } },
     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-browser-tab-rename': true } },
     tab.muted
       ? { label: 'Unmute tab', icon: <Volume2 size={13} aria-hidden />, onSelect: () => toggleMute(tab) }
@@ -73,29 +70,7 @@ export function BrowserTabList() {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-browser-tab-list>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        {favorites.length > 0 && (
-          <>
-            <h2 className="px-2.5 pt-1 pb-1 text-meta font-semibold text-muted">Favourites</h2>
-            <ul aria-label="Favourites" className="mb-3 grid grid-cols-[minmax(0,1fr)] gap-0.5" data-browser-favorites-list="">
-              {favorites.map((favorite) => (
-                <li key={favorite.id} className="min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => openFavorite(favorite.url)}
-                    onContextMenu={(e) => setFavoriteMenuAt({ ...menuAt(e), favorite })}
-                    data-tooltip={`${favorite.title}\n${shortUrl(favorite.url)}`}
-                    className="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-ui text-text/90 hover:bg-border/45"
-                    data-browser-favorite={favorite.url}
-                  >
-                    <TabIcon tab={favorite} size={14} />
-                    <span className="min-w-0 flex-1 truncate">{favorite.title}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <h2 className="px-2.5 pb-1 text-meta font-semibold text-muted">Tabs</h2>
-          </>
-        )}
+        <FavoriteBar />
         {/* One column no wider than the sidebar: a long title is cut, instead of widening every row past the edge. */}
         <ul aria-label="Browser tabs" className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
           {tabs.map((tab, index) => {
@@ -144,13 +119,13 @@ export function BrowserTabList() {
             );
           })}
         </ul>
+        {tabs.length === 0 && <p className="px-2.5 pt-1 text-ui text-faint" data-browser-no-tabs="">No tabs open</p>}
         <button type="button" onClick={newBrowserTab} className="mt-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-ui text-muted hover:bg-border/45 hover:text-text" data-browser-open-tab>
           <Plus size={14} aria-hidden />
           Open tab
         </button>
       </div>
       {menu && <Menu x={menu.x} y={menu.y} entries={entries(menu.tab)} label={`${tabName(menu.tab)} menu`} onClose={() => setMenu(null)} />}
-      {favoriteMenuAt && <Menu x={favoriteMenuAt.x} y={favoriteMenuAt.y} entries={favoriteMenu(favoriteMenuAt.favorite)} label={`${favoriteMenuAt.favorite.title} menu`} onClose={() => setFavoriteMenuAt(null)} />}
     </div>
   );
 }

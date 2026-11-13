@@ -5,6 +5,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { browserOn, useWebPreview } from '../../state/webPreviewStore.ts';
 import { noteFavicon } from '../../state/browserFavoritesStore.ts';
+import { noteBookmarkFavicon } from '../../state/browserBookmarksStore.ts';
 import { localPreviewUrl } from '@seshboard/protocol/client';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { BROWSER_OWNER, LIVE_PAGES, livePages } from './browserTabs.ts';
@@ -139,6 +140,7 @@ export function WebPreviewHost() {
             if (!icon || !now || now.seq !== tab.seq) return;
             useWebPreview.getState().iconed(now.id, icon);
             noteFavicon(now.url, icon);
+            noteBookmarkFavicon(now.url, icon);
           });
           return;
         }

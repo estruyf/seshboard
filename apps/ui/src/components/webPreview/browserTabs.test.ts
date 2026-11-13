@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSER_OWNER, cleanTabName, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, sameGroup, stepTab, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
+import { BROWSER_OWNER, cleanTabName, favoriteTab, linkFavorite, listedTabs, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, sameGroup, stepTab, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
 
 let n = 0;
 const open = (state: TabsState, owner: string, url: string | null, focus = true) => openTab(state, owner, url, { id: `t${++n}`, now: ++n, seq: n, focus });
@@ -219,5 +219,32 @@ describe('zoom', () => {
     expect(nextZoom(1.05, 1)).toBe(1.1);
     expect(nextZoom(1.05, -1)).toBe(1);
     expect(zoomLabel(1.1)).toBe('110%');
+  });
+});
+
+describe('favourite tabs', () => {
+  it("opens a favourite's own tab, brings it back wherever it browsed, and keeps it out of the list", () => {
+    let state = open(NO_TABS, BROWSER_OWNER, 'https://github.com/pulls').state;
+    const fav = openTab(state, BROWSER_OWNER, 'https://github.com/pulls', { id: 'f1', now: 1, seq: 1, favoriteId: 'gh' });
+    // A plain tab on the same address is not the favourite's: the tile gets a tab of its own.
+    expect(fav.id).toBe('f1');
+    state = updateTab(fav.state, 'f1', { url: 'https://github.com/estruyf/seshboard' });
+    const again = openTab(state, BROWSER_OWNER, 'https://github.com/pulls', { id: 'f2', now: 2, seq: 2, favoriteId: 'gh' });
+    expect(again.id).toBe('f1');
+    expect(favoriteTab(again.state, 'gh')?.url).toBe('https://github.com/estruyf/seshboard');
+    expect(listedTabs(again.state, BROWSER_OWNER).map((t) => t.favoriteId)).toEqual([null]);
+    // And opening the address the plain way shows the plain tab, not the favourite's.
+    expect(open(again.state, BROWSER_OWNER, 'https://github.com/pulls').id).not.toBe('f1');
+  });
+
+  it('links a tab to a favourite (unpinned: the tile keeps it now) and back', () => {
+    let state = open(NO_TABS, BROWSER_OWNER, 'https://a.test/').state;
+    const id = state.tabs[0]!.id;
+    state = pinTab(state, id);
+    state = linkFavorite(state, id, 'fa');
+    expect(state.tabs[0]).toMatchObject({ favoriteId: 'fa', pinned: false });
+    expect(listedTabs(state, BROWSER_OWNER)).toEqual([]);
+    state = linkFavorite(state, id, null);
+    expect(listedTabs(state, BROWSER_OWNER).map((t) => t.id)).toEqual([id]);
   });
 });

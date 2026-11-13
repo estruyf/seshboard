@@ -1098,9 +1098,9 @@ export const SHORTCUTS = [
     context: "While a page or its address bar has focus",
   },
   {
-    id: "browser.favorite",
+    id: "browser.bookmark",
     keys: ["mod+d"],
-    action: "Add the page to favourites, or remove it",
+    action: "Bookmark the page, or edit its bookmark",
     section: "general",
     context: "While a page or its address bar has focus",
   },

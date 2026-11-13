@@ -44,6 +44,7 @@ import { localSessionId } from '../../state/remoteSelection.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { useBrowserFavorites, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
+import { useBookmarkOf, useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
 import { usePageState } from '../webPreview/webPreviewPages.ts';
 import { pageOwner } from '../../state/browserViewStore.ts';
 import { frontTab } from '../webPreview/browserTabs.ts';
@@ -144,6 +145,8 @@ export function usePaletteContext(): PaletteContext {
   const pageFull = useWebPreview((s) => (id ? s.full.has(id) : false));
   const pageState = usePageState(pageTab?.id ?? null);
   const pageFavorite = useFavoriteOf(pageTab?.url ?? null) !== undefined;
+  const pageBookmarked = useBookmarkOf(pageTab ?? null) !== undefined;
+  const bookmarks = useBrowserBookmarks((s) => s.bookmarks.length);
   const browserTabs = useWebPreview((s) => s.tabs.length);
   const browserClosed = useWebPreview((s) => s.closed.length > 0);
   const favorites = useBrowserFavorites((s) => s.favorites.length);
@@ -221,11 +224,12 @@ export function usePaletteContext(): PaletteContext {
     webPreview: prefs.webPreview,
     browserPage:
       prefs.browserEnabled && pageTab
-        ? { url: !!pageTab.url, favorite: pageFavorite, pinned: pageTab.pinned, back: pageState.back, forward: pageState.forward, loading: pageState.loading, owner: view === 'browser' ? 'view' : 'session', full: pageFull, muted: pageTab.muted }
+        ? { url: !!pageTab.url, favorite: pageFavorite, bookmarked: pageBookmarked, pinned: pageTab.pinned, back: pageState.back, forward: pageState.forward, loading: pageState.loading, owner: view === 'browser' ? 'view' : 'session', full: pageFull, muted: pageTab.muted }
         : null,
     browserTabs,
     browserClosed,
     favorites,
+    bookmarks,
     sounds: prefs.sounds.enabled,
     catchUpFolded: prefs.catchUpSummaries ? prefs.catchUpFolded : null,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },

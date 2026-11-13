@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { BROWSER_OWNER, frontTab, type BrowserTab } from '../components/webPreview/browserTabs.ts';
+import { favoriteOf } from '../components/webPreview/favorites.ts';
+import { useBrowserFavorites } from './browserFavoritesStore.ts';
+import { BROWSER_OWNER, favoriteTab, frontTab, type BrowserTab } from '../components/webPreview/browserTabs.ts';
 import { showInMain } from './popoutsStore.ts';
 import { useSessions } from './sessionsStore.ts';
 import { browserOn, useWebPreview } from './webPreviewStore.ts';
@@ -53,10 +55,36 @@ export function newBrowserTab(): void {
   if (useSessions.getState().view !== 'browser') openBrowserView();
 }
 
-/** A favourite from the sidebar or the empty Browser view: in a Browser tab, the one already on it if there is one. */
+/**
+ * A favourite from its tile, a new tab or the palette: in the Browser view, its own tab (`favoriteId`), which comes
+ * back however far it browsed; an address that is no favourite opens in a Browser tab, the one already on it if any.
+ */
 export function openFavorite(url: string): void {
-  useWebPreview.getState().openTab(BROWSER_OWNER, url);
+  const favorite = favoriteOf(useBrowserFavorites.getState().favorites, url);
+  useWebPreview.getState().openTab(BROWSER_OWNER, url, { favoriteId: favorite?.id ?? null });
   if (useSessions.getState().view !== 'browser') openBrowserView();
+}
+
+/**
+ * A favourite picked on an empty tab: a session's tab loads it there. In the Browser view the empty tab becomes the
+ * favourite's own, or, when the favourite's tab is open already, that one comes forward and the empty tab goes.
+ */
+export function openFavoriteInTab(tabId: string, url: string): void {
+  const web = useWebPreview.getState();
+  const tab = web.tabs.find((t) => t.id === tabId);
+  const favorite = favoriteOf(useBrowserFavorites.getState().favorites, url);
+  if (!tab || tab.owner !== BROWSER_OWNER || !favorite) {
+    web.navigate(tabId, url);
+    return;
+  }
+  const own = favoriteTab(web, favorite.id);
+  if (own) {
+    web.selectTab(own.id);
+    web.closeTab(tabId);
+    return;
+  }
+  web.navigate(tabId, url);
+  web.linkFavorite(tabId, favorite.id);
 }
 
 /** Whose page is on screen: the Browser view's, or the session's whose browser panel is open; null for none. */

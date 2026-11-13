@@ -16,6 +16,18 @@ export function clampAskWidth(width: number, windowWidth: number): number {
   return Math.round(Math.min(Math.max(value, ASK_MIN_WIDTH), max));
 }
 
+/** How the right side's panels are sized: a width you drag (`side`), or half the session area (`half`). */
+export type PanelSizing = 'side' | 'half';
+
+/**
+ * The right panel's width: the dragged one, or at Half half of the session area `body` wide (conversation and panel
+ * share it 50/50, and keep doing so as the window resizes). Before the area is measured, the dragged width.
+ */
+export function panelWidthFor(sizing: PanelSizing, side: number, body: number | null): number {
+  if (sizing !== 'half' || body === null || !(body > 0)) return side;
+  return Math.max(ASK_MIN_WIDTH, Math.floor(body / 2));
+}
+
 /** The width after a resize key: ← widens the panel (its edge is on the left), → narrows it. Null for other keys. */
 export function askWidthForKey(key: string, width: number, windowWidth: number): number | null {
   const step = key === 'ArrowLeft' ? ASK_KEY_STEP : key === 'ArrowRight' ? -ASK_KEY_STEP : null;

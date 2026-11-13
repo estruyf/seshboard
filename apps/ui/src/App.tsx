@@ -43,8 +43,9 @@ import { BROWSER_OWNER } from './components/webPreview/browserTabs.ts';
 import { currentPageTab, followDeletedSessions, followView, newBrowserTab, openBrowserView } from './state/browserViewStore.ts';
 import { previewPage } from './components/webPreview/webPreviewPages.ts';
 import { useBrowserTabsSync } from './state/browserTabsSync.ts';
-import { toggleFavorite, useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
+import { useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
 import { useBrowserHistorySync } from './state/browserHistory.ts';
+import { bookmarkPage, useBrowserBookmarksSync } from './state/browserBookmarksStore.ts';
 import { browserOn, useWebPreview } from './state/webPreviewStore.ts';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
@@ -152,12 +153,12 @@ function browserKey(event: KeyboardEvent): boolean {
     if (view === 'browser' && !useWebPreview.getState().active.get(BROWSER_OWNER)) document.querySelector<HTMLElement>('[data-browser-view]')?.focus();
     return true;
   }
-  if (matches(event, 'browser.favorite')) {
+  if (matches(event, 'browser.bookmark')) {
     const target = event.target instanceof HTMLElement ? event.target : null;
     const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address]')?.dataset.tabId;
     const tab = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId) : undefined;
     if (!tab?.url) return false;
-    toggleFavorite(tab);
+    bookmarkPage(tab);
     return true;
   }
   // ⌘F in a page, its address bar or find bar (or anywhere in the Browser view) finds in the page.
@@ -334,6 +335,7 @@ export function App() {
   useBrowserTabsSync();
   useBrowserFavoritesSync();
   useBrowserHistorySync();
+  useBrowserBookmarksSync();
   useEffect(followView, []);
   useEffect(followDeletedSessions, []);
   // Listen for links before telling main the window is ready: main hands over waiting links then.

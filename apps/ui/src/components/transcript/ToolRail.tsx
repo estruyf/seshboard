@@ -6,6 +6,7 @@ import { RAIL_ORDER } from '@seshboard/protocol/bridge';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { AppIcon } from '../AppIcon.tsx';
 import { GitHubIcon } from '../GitHubIcon.tsx';
+import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { Badged } from '../ui/Badged.tsx';
@@ -42,6 +43,7 @@ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide
   const hidden = usePreferences((s) => s.prefs.railHidden);
   const apps = usePreferences((s) => s.prefs.railApps);
   const editors = useHosts((s) => s.editors);
+  const sizing = useRightPanel((s) => s.sizing);
   const update = usePreferences((s) => s.update);
   const order = usePreferences((s) => s.prefs.railOrder);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -115,6 +117,9 @@ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide
       data: { 'data-rail-menu-app': RAIL_GITHUB, 'data-tooltip': "The folder's page on GitHub. It shows on the rail where the folder has a GitHub remote" },
       onSelect: () => update({ railApps: toggleRailApp(apps, RAIL_GITHUB) }),
     },
+    'separator',
+    // Every panel on the right at half the session area, kept as the window resizes; dragging its edge is Side again.
+    { label: 'Panels at half width', checkbox: true, checked: sizing === 'half', data: { 'data-rail-menu-half': true }, onSelect: () => useRightPanel.getState().setSizing(sizing === 'half' ? 'side' : 'half') },
     'separator',
     { label: 'Reset', data: { 'data-rail-menu-reset': true }, onSelect: () => update({ railHidden: [], railApps: [], railOrder: [...RAIL_ORDER] }) },
   ];

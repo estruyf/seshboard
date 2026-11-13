@@ -18,6 +18,7 @@ import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelSt
 import { showWebPanel, useWebPreview } from '../../state/webPreviewStore.ts';
 import { currentPageTab, newBrowserTab, openBrowserView } from '../../state/browserViewStore.ts';
 import { toggleFavorite } from '../../state/browserFavoritesStore.ts';
+import { bookmarkPage } from '../../state/browserBookmarksStore.ts';
 import { runBrowserAction } from '../../state/browserActions.ts';
 import { sessionServerOffers } from '../webPreview/serverOffers.ts';
 import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
@@ -241,6 +242,10 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     toggleFavorite: () => {
       const tab = currentPageTab();
       if (tab) toggleFavorite(tab);
+    },
+    bookmarkPage: () => {
+      const tab = currentPageTab();
+      if (tab) bookmarkPage(tab);
     },
     newBrowserTab: () => {
       const { view, selectedId } = useSessions.getState();

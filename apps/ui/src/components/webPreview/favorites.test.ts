@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BrowserFavorite } from '@seshboard/protocol/client';
-import { favoriteAddressProblem, favoriteOf, FAVICON_KEEP_MAX, keptFavicon, newFavorite } from './favorites.ts';
+import { favoriteAddressProblem, favoriteOf, FAVICON_KEEP_MAX, keptFavicon, newFavorite, shortTitle } from './favorites.ts';
 
 const fav = (id: string, url: string, position: number): BrowserFavorite => ({ id, url, title: id, favicon: null, position, createdAt: position });
 
@@ -34,5 +34,22 @@ describe('favourites', () => {
     expect(keptFavicon('https://github.com/favicon.ico')).toBeNull();
     expect(keptFavicon(`data:image/png;base64,${'A'.repeat(FAVICON_KEEP_MAX)}`)).toBeNull();
     expect(keptFavicon(null)).toBeNull();
+  });
+
+  it('shortens a title for a favourite: a repeated part once, without the site, a repository by its name', () => {
+    expect(shortTitle('Seshboard | Seshboard', 'https://seshboard.app/')).toBe('Seshboard');
+    expect(shortTitle('involv-intranet/intranet', 'https://github.com/involv-intranet/intranet')).toBe('intranet');
+    expect(shortTitle('GitHub - estruyf/seshboard: Manage your Claude Code sessions', 'https://github.com/estruyf/seshboard')).toBe('seshboard');
+    expect(shortTitle('Workers · Cloudflare Dashboard', 'https://dash.cloudflare.com/workers')).toBe('Workers');
+    expect(shortTitle('Pull requests · involv-intranet/intranet · GitHub', 'https://github.com/involv-intranet/intranet/pulls')).toBe('Pull requests · involv-intranet/intranet');
+    // Nothing to take away: as it was.
+    expect(shortTitle('My Dashboard', 'https://intranet.test/')).toBe('My Dashboard');
+    expect(shortTitle('GitHub', 'https://github.com/')).toBe('GitHub');
+    expect(shortTitle('  ', null)).toBe('');
+  });
+
+  it('adds a page under its short title, or the name you gave its tab', () => {
+    expect(newFavorite([], { url: 'https://seshboard.app/', title: 'Seshboard | Seshboard', favicon: null }, 's', 1).title).toBe('Seshboard');
+    expect(newFavorite([], { url: 'https://seshboard.app/', title: 'Seshboard | Seshboard', name: 'Docs', favicon: null }, 's', 1).title).toBe('Docs');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ASK_DEFAULT_WIDTH, ASK_MIN_WIDTH, askWidthForKey, clampAskWidth, readTab, rightPanel } from './askWidth.ts';
+import { ASK_DEFAULT_WIDTH, ASK_MIN_WIDTH, askWidthForKey, clampAskWidth, panelWidthFor, readTab, rightPanel } from './askWidth.ts';
 
 describe('Ask panel width', () => {
   it('starts at 380px and stays between the minimum and 70% of the window', () => {
@@ -66,5 +66,16 @@ describe('the right panel', () => {
     expect(readTab('commands')).toBe('commands');
     expect(readTab(null)).toBe('changes');
     expect(readTab('junk')).toBe('changes');
+  });
+});
+
+describe('Half', () => {
+  it('splits the session area 50/50, and keeps the dragged width at Side or before the area is measured', () => {
+    expect(panelWidthFor('half', 480, 1400)).toBe(700);
+    expect(panelWidthFor('half', 480, 1401)).toBe(700);
+    expect(panelWidthFor('side', 480, 1400)).toBe(480);
+    expect(panelWidthFor('half', 480, null)).toBe(480);
+    // A narrow area still gives the panel its minimum.
+    expect(panelWidthFor('half', 480, 400)).toBe(ASK_MIN_WIDTH);
   });
 });

@@ -11,6 +11,7 @@ import {
   moveTab,
   stepTab,
   NO_TABS,
+  linkFavorite,
   openTab,
   ownerTabs,
   pinTab,
@@ -67,7 +68,10 @@ interface WebPreviewState extends TabsState {
   /** Hides a session's panel (its Browser button, Escape): every tab stays as it was, for when it is shown again. */
   hide(sessionId: string): void;
   /** Opens `url` (null: an empty tab) for an owner, or shows the tab it has on that address. The tab's id. */
-  openTab(owner: string, url: string | null, options?: { focus?: boolean }): string;
+  /** Opens `url` for an owner (or shows the tab already on it); `favoriteId`: the favourite's own tab, wherever it browsed. */
+  openTab(owner: string, url: string | null, options?: { focus?: boolean; favoriteId?: string | null }): string;
+  /** A tab becomes a favourite's (shown in its tile), or a plain tab again (null). */
+  linkFavorite(id: string, favoriteId: string | null): void;
   selectTab(id: string): void;
   closeTab(id: string): void;
   /** The pinned tab asked to close once (a middle click, its ×, ⌘W), for `CONFIRM_CLOSE_MS`: the next ask closes it. */
@@ -168,7 +172,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     openTab: (owner, url, options = {}) => {
       let id = '';
       tabs((s) => {
-        const result = openTab(s, owner, url, { id: newId(), now: Date.now(), seq: ++seq, focus: options.focus });
+        const result = openTab(s, owner, url, { id: newId(), now: Date.now(), seq: ++seq, focus: options.focus, favoriteId: options.favoriteId });
         id = result.id;
         return result.state;
       });
@@ -208,6 +212,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
       if (tab.owner !== BROWSER_OWNER) set((s) => ({ panels: withValue(s.panels, tab.owner) }));
       return tab.owner;
     },
+    linkFavorite: (id, favoriteId) => tabs((s) => linkFavorite(s, id, favoriteId)),
     pin: (id) => tabs((s) => pinTab(s, id)),
     unpin: (id) => tabs((s) => unpinTab(s, id)),
     move: (id, index) => tabs((s) => moveTab(s, id, index)),

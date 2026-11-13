@@ -78,6 +78,8 @@ export interface BrowserPageContext {
   /** It shows a page (a new tab has none yet). */
   url: boolean;
   favorite: boolean;
+  /** Its page has a bookmark (Bookmark this page says Edit bookmark). Optional for older callers. */
+  bookmarked?: boolean;
   pinned: boolean;
   back: boolean;
   forward: boolean;
@@ -127,6 +129,8 @@ export interface PaletteContext {
   browserClosed?: boolean;
   /** How many favourites there are (Open favourite…). */
   favorites?: number;
+  /** How many bookmarks there are (Open bookmark…). */
+  bookmarks?: number;
   /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
   catchUpFolded: boolean | null;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */

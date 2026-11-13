@@ -10,6 +10,9 @@ import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { EditFavoriteDialog } from '../webPreview/EditFavoriteDialog.tsx';
 import { RenameTabDialog } from '../webPreview/RenameTabDialog.tsx';
+import { projectOfTab, useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
+import { BookmarkDialog } from '../webPreview/BookmarkDialog.tsx';
+import { bookmarkOf } from '../webPreview/bookmarks.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
 import { CopySectionDialog } from '../memory/CopySectionDialog.tsx';
@@ -37,6 +40,9 @@ export function PaletteDialogs() {
   const host = useHosts((s) => (dialog?.kind === 'delete-session' ? s.hosts.get(dialog.sessionId) : undefined));
   const renaming = useWebPreview((s) => (dialog?.kind === 'rename-tab' ? (s.tabs.find((t) => t.id === dialog.tabId) ?? null) : null));
   const editing = useBrowserFavorites((s) => (dialog?.kind === 'edit-favorite' ? (s.favorites.find((f) => f.id === dialog.id) ?? null) : null));
+  const bookmarking = useWebPreview((s) => (dialog?.kind === 'bookmark' ? (s.tabs.find((t) => t.id === dialog.tabId) ?? null) : null));
+  const bookmarks = useBrowserBookmarks((s) => s.bookmarks);
+  const bookmarkHere = bookmarking ? bookmarkOf(bookmarks, bookmarking.url, projectOfTab(bookmarking)) : undefined;
   const close = () => usePaletteBus.getState().showDialog(null);
   if (!dialog) return null;
 
@@ -45,6 +51,8 @@ export function PaletteDialogs() {
       return renaming ? <RenameTabDialog tab={renaming} onClose={close} /> : null;
     case 'edit-favorite':
       return editing ? <EditFavoriteDialog favorite={editing} onClose={close} /> : null;
+    case 'bookmark':
+      return bookmarking && bookmarkHere ? <BookmarkDialog key={bookmarkHere.id} tab={bookmarking} bookmark={bookmarkHere} bookmarks={bookmarks} onClose={close} /> : null;
     case 'clear-browser-data':
       return dialog.origin ? (
         <ConfirmDialog

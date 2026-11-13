@@ -238,6 +238,8 @@ export interface PaletteApi {
   newBrowserTab(): void;
   /** The browser: adds the page on screen to the favourites, or removes it. */
   toggleFavorite(): void;
+  /** The browser: bookmarks the page on screen, or shows its bookmark (`bookmarkPage`). */
+  bookmarkPage(): void;
   /** The browser: something done to the tab on screen (`currentPageTab`), or Reopen closed tab, Clear all browsing data. */
   browserAction(action: BrowserAction): void;
   showTools(): void;
@@ -905,8 +907,11 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'open-session-browser', title: 'Open browser', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'web preview page tab github pull request localhost dev server site', when: (ctx) => hasSession(ctx) && !!ctx.browser, run: (api) => api.openWeb() },
   { id: 'reload-browser-page', title: 'Reload page', group: 'session', icon: RotateCw, keywords: 'refresh browser web preview tab', when: (ctx) => hasSession(ctx) && ctx.session!.web && !!ctx.browser, run: (api) => api.reloadWeb() },
   { id: 'browser-new-tab', title: 'New tab', group: 'general', shortcut: keysFor('browser.new-tab'), icon: Plus, keywords: 'browser web page open', when: (ctx) => !!ctx.browser && (ctx.view === 'browser' || hasSession(ctx)), run: (api) => api.newBrowserTab() },
-  { id: 'browser-favorite-add', title: 'Add page to favourites', group: 'general', shortcut: keysFor('browser.favorite'), icon: Star, keywords: 'favorite bookmark star site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === false, run: (api) => api.toggleFavorite() },
-  { id: 'browser-favorite-remove', title: 'Remove page from favourites', group: 'general', shortcut: keysFor('browser.favorite'), icon: StarOff, keywords: 'favorite bookmark star unstar site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === true, run: (api) => api.toggleFavorite() },
+  { id: 'browser-bookmark', title: 'Bookmark this page', group: 'general', shortcut: keysFor('browser.bookmark'), icon: Bookmark, keywords: 'bookmark save link star folder browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.url === true && !ctx.browserPage.bookmarked, run: (api) => api.bookmarkPage() },
+  { id: 'browser-bookmark-edit', title: 'Edit bookmark', group: 'general', shortcut: keysFor('browser.bookmark'), icon: Bookmark, keywords: 'bookmark rename folder remove browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.bookmarked === true, run: (api) => api.bookmarkPage() },
+  { id: 'browser-open-bookmark', title: 'Open bookmark…', group: 'general', icon: Bookmark, keywords: 'bookmark link site browser web', when: (ctx) => !!ctx.browser && (ctx.bookmarks ?? 0) > 0, next: () => ({ kind: 'pick', list: 'bookmarks', chip: 'Open bookmark' }) },
+  { id: 'browser-favorite-add', title: 'Add page to favourites', group: 'general', icon: Star, keywords: 'favorite bookmark star site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === false, run: (api) => api.toggleFavorite() },
+  { id: 'browser-favorite-remove', title: 'Remove page from favourites', group: 'general', icon: StarOff, keywords: 'favorite bookmark star unstar site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === true, run: (api) => api.toggleFavorite() },
   { id: 'browser-go-to-tab', title: 'Go to tab…', group: 'general', icon: AppWindow, keywords: 'browser switch tabs pages web', when: (ctx) => !!ctx.browser && (ctx.browserTabs ?? 0) > 0, next: () => ({ kind: 'pick', list: 'browser-tabs', chip: 'Go to tab' }) },
   { id: 'browser-open-favorite', title: 'Open favourite…', group: 'general', icon: Star, keywords: 'favorite bookmark site browser web', when: (ctx) => !!ctx.browser && (ctx.favorites ?? 0) > 0, next: () => ({ kind: 'pick', list: 'favorites', chip: 'Open favourite' }) },
   { id: 'browser-address', title: 'Go to address', group: 'general', shortcut: keysFor('browser.address'), icon: Globe, keywords: 'browser url type location open page', when: onPage, run: (api) => api.browserAction('address') },

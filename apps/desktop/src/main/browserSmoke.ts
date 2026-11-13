@@ -192,52 +192,78 @@ export async function runBrowserIntroStep(win: BrowserWindow, deps: BrowserSmoke
   return `ok: ${session ? 'no page with the browser and previews off, ' : ''}the card told about the browser, Open browser opened the Browser view`;
 }
 
-/** "browser pin": pinned, the tab is still in the list with its pin after the window reloads. Needs "browser view" first. */
+/**
+ * "browser pin" (favourites in the Browser view): Add to favourites moves the Smoke browser tab to a tile, with a dot
+ * while open; Edit favourite… names the tile; after a reload the tile is still there with its name and icon, and opens its
+ * page. Browsing on in its tab keeps the favourite's address, until Use current page's address takes the tab's; Edit
+ * favourite… refuses what is no address and sets it back. A middle click closes its tab; Remove from favourites takes it
+ * away. Needs "browser view" first.
+ */
 export async function runBrowserPinStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const listed = (pinned: boolean) => `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]${pinned ? '[data-browser-pinned]' : ''}')].some((t) => t.textContent.includes('Smoke browser'))`;
-  // "browser control" in between goes to a session: back to the Browser view, where "browser view" left its tab.
-  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
-  if (!(await waitInPage(win, `${q('[data-browser-view] [data-web-preview-pin]')} && ${listed(false)}`, 3_000))) return 'no Smoke browser tab to pin (run "browser view" first)';
-  await js(`${q('[data-browser-view] [data-web-preview-pin]')}.click()`);
-  if (!(await waitInPage(win, listed(true), 3_000))) return 'Pin tab did not mark the tab pinned in the list';
-  // A line under the pinned tabs, and no pin on the row.
-  if (!(await js(`!!${q('[data-browser-tab-list] [data-browser-pinned-line]')} && !${q('[data-browser-tab-list] [data-browser-pinned] svg.lucide-pin')}`))) return 'no line under the pinned tabs, or a pin icon still on the row';
-  // Renamed from its menu: the name shows in place of the page's title, and comes back with the pin.
-  const named = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].some((t) => t.textContent.includes('Smoke browser renamed'))`;
-  const tabId = (await js(`[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].find((t) => t.textContent.includes('Smoke browser')).dataset.browserTab`)) as string;
+  const url = await site();
+  const listed = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser'))`;
+  const tile = q(`[data-browser-favorites-bar] [data-browser-favorite="${url}"]`);
+  const menuOn = (target: string) => js(`(() => { const t = ${target}; const r = t.getBoundingClientRect(); t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.bottom })); })()`);
+  if (!(await waitInPage(win, listed, 3_000))) return 'no Smoke browser tab in the list (run "browser view" first)';
+  // No pin in the Browser view: a favourite is what keeps a page there.
+  if (await js(`!!${q('[data-browser-view] [data-web-preview-pin]')}`)) return 'the Browser view still offers Pin tab';
+  const tabId = (await js(`${listed}.dataset.browserTab`)) as string;
   await js(`${q(`[data-browser-tab-menu="${tabId}"]`)}.click()`);
-  if (!(await waitInPage(win, q('[data-browser-tab-rename]'), 2_000))) return 'the tab menu has no Rename tab';
-  await js(`${q('[data-browser-tab-rename]')}.click()`);
-  if (!(await waitInPage(win, q('[data-rename-tab-input]'), 2_000))) return 'Rename tab did not open its dialog';
-  await setFieldValue(win, '[data-rename-tab-input]', 'Smoke browser renamed');
-  await js(`${q('[data-rename-tab-save]')}.click()`);
-  if (!(await waitInPage(win, `!${q('[data-rename-tab-dialog]')} && ${named}`, 2_000))) return 'the tab does not show the name it was given';
-  // The engine saves a new pin at once; give the call a moment to land before the window goes.
+  if (!(await waitInPage(win, q('[data-browser-tab-favorite]'), 2_000))) return 'the tab menu has no Add to favourites';
+  await js(`${q('[data-browser-tab-favorite]')}.click()`);
+  if (!(await waitInPage(win, `${tile}?.hasAttribute('data-browser-favorite-open') && !${listed}`, 3_000))) return 'Add to favourites did not move the tab to an open tile';
+  await deps.shot('browser-favorite-tiles');
+  // Named from the tile's menu (Edit favourite…): the name is the tile's label.
+  const edit = async (target: string, fields: { title?: string; address?: string }) => {
+    await menuOn(target);
+    if (!(await waitInPage(win, q('[data-browser-favorite-edit]'), 2_000))) return "the tile's menu has no Edit favourite…";
+    await js(`${q('[data-browser-favorite-edit]')}.click()`);
+    if (!(await waitInPage(win, q('[data-edit-favorite-dialog] [data-edit-favorite-title]'), 2_000))) return 'Edit favourite… did not open its dialog';
+    if (fields.title !== undefined) await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-title]', fields.title);
+    if (fields.address !== undefined) await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-address]', fields.address);
+    await js(`${q('[data-edit-favorite-save]')}.click()`);
+    return null;
+  };
+  const named = await edit(tile, { title: 'Smoke tile' });
+  if (named) return named;
+  if (!(await waitInPage(win, `!${q('[data-edit-favorite-dialog]')} && ${tile}?.getAttribute('aria-label')?.startsWith('Smoke tile')`, 2_000))) return 'the tile does not carry the name it was given';
+  // The engine saves it at once; give the call a moment to land before the window goes.
   await new Promise((resolve) => setTimeout(resolve, 500));
   deps.reload();
-  if (!(await waitInPage(win, `${q('[data-nav="browser"]')} && ${q('[data-browser-tab-list]')}`, 15_000))) return 'after the reload the sidebar does not list the Browser tabs again';
-  if (!(await waitInPage(win, listed(true), 5_000))) return `after the reload the pinned tab is gone (${String(await js(`[...document.querySelectorAll('[data-browser-tab]')].map((t) => t.textContent).join(', ')`))})`;
-  if (!(await js(named))) return 'after the reload the pinned tab lost its name';
-  // Its icon comes back with it, before its page loads.
-  const pinnedIcon = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].find((t) => t.textContent.includes('Smoke browser'))?.querySelector('img')`;
-  if (!(await waitInPage(win, `${pinnedIcon}?.naturalWidth > 0`, 3_000))) return 'after the reload the pinned tab has no icon until its page loads';
-  // Shown again, its page loads only now.
-  await js(`[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser')).click()`);
-  if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the restored tab did not load its page when shown';
-  // A pinned tab takes two middle clicks to close: the first asks, the second closes. ⌘⇧T brings it back pinned.
-  const pinnedRow = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].find((t) => t.textContent.includes('Smoke browser') || t.hasAttribute('data-browser-confirm-close'))`;
-  const middle = `${pinnedRow}.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`;
-  await js(middle);
-  if (!(await waitInPage(win, `${pinnedRow}?.hasAttribute('data-browser-confirm-close')`, 3_000))) return 'a middle click on a pinned tab closed it or asked nothing';
-  await js(middle);
-  if (!(await waitInPage(win, `!${pinnedRow}`, 3_000))) return 'a second middle click did not close the pinned tab';
-  await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', shiftKey: true, ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
-  if (!(await waitInPage(win, `${listed(true)} && ${q('[data-browser-view] [data-web-preview-pin]')}`, 3_000))) return '⌘⇧T did not bring the pinned tab back';
-  // Leave nothing pinned for later runs on the same profile.
-  await js(`${q('[data-browser-view] [data-web-preview-pin]')}.click()`);
-  if (!(await waitInPage(win, `!(${listed(true)})`, 3_000))) return 'Unpin tab left the pin';
-  return 'ok: pinned, renamed, kept with its name and icon across a reload, loaded when shown, closed only on a second middle click, reopened, unpinned';
+  if (!(await waitInPage(win, `${q('[data-browser-tab-list]')} && ${tile}`, 15_000))) return 'after the reload the favourite is gone';
+  if (!(await js(`${tile}.getAttribute('aria-label').startsWith('Smoke tile') && !${tile}.hasAttribute('data-browser-favorite-open')`))) return 'after the reload the tile lost its name, or shows a tab still open';
+  if (!(await waitInPage(win, `${tile}.querySelector('img')?.naturalWidth > 0`, 3_000))) return 'after the reload the tile has no icon';
+  await js(`${tile}.click()`);
+  if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the tile did not load its page';
+  if (!(await waitInPage(win, `${tile}.hasAttribute('data-browser-favorite-open') && ${tile}.getAttribute('aria-current') === 'page'`, 3_000))) return 'the tile does not show its tab open and in front';
+  // Browsing on in its tab keeps the favourite's address; Use current page's address takes the tab's.
+  const address = q('[data-browser-view] [data-browser-address]');
+  await setFieldValue(win, '[data-browser-view] [data-browser-address]', `${url.replace('http://', '')}two`);
+  await js(`${address}.form.requestSubmit()`);
+  if (!(await waitInPage(win, `${address}.value.endsWith('/two')`, 5_000))) return "the tile's tab did not load the second page";
+  if (!(await js(`!!${tile}`))) return "browsing on changed the favourite's address";
+  await menuOn(tile);
+  if (!(await waitInPage(win, q('[data-browser-favorite-use-page]'), 2_000))) return "the tile's menu has no Use current page's address";
+  await js(`${q('[data-browser-favorite-use-page]')}.click()`);
+  const moved = q(`[data-browser-favorites-bar] [data-browser-favorite="${url}two"]`);
+  if (!(await waitInPage(win, `${moved} && !${tile}`, 3_000))) return "Use current page's address did not change the favourite";
+  // Edit favourite… refuses what is no address, then sets it back.
+  const refused = await edit(moved, { address: 'not an address' });
+  if (refused) return refused;
+  if (!(await waitInPage(win, q('[data-edit-favorite-problem]'), 2_000))) return 'Edit favourite… saved an address that is none';
+  await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-address]', url);
+  await js(`${q('[data-edit-favorite-save]')}.click()`);
+  if (!(await waitInPage(win, `!${q('[data-edit-favorite-dialog]')} && ${tile}?.getAttribute('aria-label')?.startsWith('Smoke tile')`, 3_000))) return 'Edit favourite… did not save the address';
+  // A middle click closes its tab; the tile stays.
+  await js(`${tile}.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
+  if (!(await waitInPage(win, `${tile} && !${tile}.hasAttribute('data-browser-favorite-open')`, 3_000))) return "a middle click did not close the tile's tab";
+  // Leave no favourite for later runs on the same profile.
+  await menuOn(tile);
+  if (!(await waitInPage(win, q('[data-browser-favorite-remove]'), 2_000))) return "the tile's menu has no Remove from favourites";
+  await js(`${q('[data-browser-favorite-remove]')}.click()`);
+  if (!(await waitInPage(win, `!${tile}`, 3_000))) return 'Remove from favourites left the tile';
+  return "ok: Add to favourites moved the tab to an open tile, named, kept with its name and icon across a reload, opened its page, kept its address while browsing, changed by Use current page's address and Edit favourite…, closed on a middle click, removed";
 }
 
 /**
@@ -304,9 +330,8 @@ export async function runSessionBrowserStep(win: BrowserWindow, deps: BrowserSmo
 }
 
 /**
- * "browser favorites": the star adds the local page to the favourites, listed in the sidebar with its icon and kept
- * after a reload. The sidebar's favourite shows its page, an empty tab offers it as a tile, and ⌘D in the address bar
- * removes it again.
+ * "browser favorites" (bookmarks now): the star bookmarks the local page and shows its bookmark; kept after a reload,
+ * listed on an empty tab, which loads it; ⌘D in the address bar shows it again, and Remove takes it away.
  */
 export async function runBrowserFavoritesStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -317,67 +342,40 @@ export async function runBrowserFavoritesStep(win: BrowserWindow, deps: BrowserS
   if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'Browser did not show the Browser view';
   const V = '[data-browser-view]';
   const address = q(`${V} [data-browser-address]`);
-  const open = async (where: string) => {
-    await setFieldValue(win, `${V} [data-browser-address]`, url.replace('http://', ''));
-    await js(`${address}.form.requestSubmit()`);
-    return (await waitInPage(win, `${address}?.value && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`, 5_000)) ? null : `the local page did not load ${where}`;
-  };
+  const star = q(`${V} [data-web-preview-bookmark]`);
+  const loaded = `${address}?.value && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`;
   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
   if (!(await waitInPage(win, `${address} && !${address}.disabled`, 3_000))) return 'Open tab gave no address bar';
-  const failed = await open('in a new tab');
-  if (failed) return failed;
+  await setFieldValue(win, `${V} [data-browser-address]`, url.replace('http://', ''));
+  await js(`${address}.form.requestSubmit()`);
+  if (!(await waitInPage(win, loaded, 5_000))) return 'the local page did not load in a new tab';
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the local page did not load';
 
-  // The star: pressed, and the page in the sidebar's favourites with its icon.
-  await js(`${q(`${V} [data-web-preview-favorite]`)}.click()`);
-  const listed = q(`[data-browser-favorites-list] [data-browser-favorite="${url}"]`);
-  if (!(await waitInPage(win, `${q(`${V} [data-web-preview-favorite]`)}.getAttribute('aria-pressed') === 'true' && ${listed}`, 3_000))) return 'the star did not add the page to the favourites in the sidebar';
-  if (!(await waitInPage(win, `${listed}.querySelector('img')?.naturalWidth > 0`, 5_000))) return "the favourite has no icon";
-  await deps.shot('browser-favorites');
+  // The star: a bookmark, shown at once to name and place.
+  await js(`${star}.click()`);
+  if (!(await waitInPage(win, `${q('[data-bookmark-dialog]')} && ${q('[data-bookmark-name]')}`, 3_000))) return 'the star did not show the bookmark';
+  await setFieldValue(win, '[data-bookmark-folder]', 'Smoke');
+  await deps.shot('browser-bookmark');
+  await js(`${q('[data-bookmark-done]')}.click()`);
+  if (!(await waitInPage(win, `!${q('[data-bookmark-dialog]')} && ${star}.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'Done did not keep the bookmark (the star is not pressed)';
 
-  // Kept by the engine: still there after the window reloads.
+  // Kept by the engine: still there after the window reloads, on an empty tab, in its folder.
   await new Promise((resolve) => setTimeout(resolve, 300));
   deps.reload();
-  if (!(await waitInPage(win, `${q('[data-browser-tab-list]')} && ${listed}`, 15_000))) return 'after the reload the favourite is gone';
-
-  // The sidebar's favourite shows its page.
-  await js(`${listed}.click()`);
-  if (!(await waitInPage(win, `${address}?.value && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`, 5_000))) return "the sidebar's favourite did not show its page";
-
-  // Browsing on keeps the favourite's address. Use current page's address takes the page's; Edit favourite… sets it back.
-  await setFieldValue(win, `${V} [data-browser-address]`, `${url.replace('http://', '')}two`);
-  await js(`${address}.form.requestSubmit()`);
-  if (!(await waitInPage(win, `${address}.value.endsWith('/two')`, 5_000))) return 'the second page did not load';
-  if (!(await js(`!!${listed}`))) return 'browsing on changed the favourite\'s address';
-  const menuOf = (row: string) => js(`(() => { const r = ${row}.getBoundingClientRect(); ${row}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 10, clientY: r.top + 5 })); })()`);
-  await menuOf(listed);
-  if (!(await waitInPage(win, q('[data-browser-favorite-use-page]'), 2_000))) return "the favourite's menu has no Use current page's address";
-  await js(`${q('[data-browser-favorite-use-page]')}.click()`);
-  const moved = q(`[data-browser-favorites-list] [data-browser-favorite="${url}two"]`);
-  if (!(await waitInPage(win, `${moved} && !${listed}`, 3_000))) return "Use current page's address did not change the favourite";
-  await menuOf(moved);
-  if (!(await waitInPage(win, q('[data-browser-favorite-edit]'), 2_000))) return "the favourite's menu has no Edit favourite…";
-  await js(`${q('[data-browser-favorite-edit]')}.click()`);
-  if (!(await waitInPage(win, q('[data-edit-favorite-dialog] [data-edit-favorite-address]'), 2_000))) return 'Edit favourite… did not open its dialog';
-  await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-address]', 'not an address');
-  await js(`${q('[data-edit-favorite-save]')}.click()`);
-  if (!(await waitInPage(win, q('[data-edit-favorite-problem]'), 2_000))) return 'Edit favourite… saved an address that is none';
-  await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-address]', url);
-  await setFieldValue(win, '[data-edit-favorite-dialog] [data-edit-favorite-title]', 'Smoke favourite');
-  await js(`${q('[data-edit-favorite-save]')}.click()`);
-  if (!(await waitInPage(win, `!${q('[data-edit-favorite-dialog]')} && ${listed}?.textContent.includes('Smoke favourite')`, 3_000))) return 'Edit favourite… did not save the address and name';
-
-  // An empty tab offers it as a tile, which loads it there.
+  if (!(await waitInPage(win, q('[data-browser-tab-list]'), 15_000))) return 'after the reload the Browser list is gone';
   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
-  const tile = q(`${V} [data-web-preview-empty] [data-browser-favorite="${url}"]`);
-  if (!(await waitInPage(win, tile, 3_000))) return 'an empty tab does not offer the favourite';
-  await js(`${tile}.click()`);
-  if (!(await waitInPage(win, `!${tile} && ${JSON.stringify(url)}.includes(${address}.value.replace(/\\/$/, ''))`, 5_000))) return "the empty tab's favourite did not load there";
+  const listed = q(`${V} [data-web-preview-empty] [data-new-tab-bookmarks] [data-bookmark="${url}"]`);
+  if (!(await waitInPage(win, listed, 5_000))) return 'after the reload an empty tab does not list the bookmark';
+  if (!(await js(`${q(`${V} [data-web-preview-empty] [data-new-tab-bookmarks]`)}.textContent.includes('Smoke')`))) return 'the bookmark is not in its folder';
+  await js(`${listed}.click()`);
+  if (!(await waitInPage(win, `!${listed} && ${loaded}`, 5_000))) return "the empty tab's bookmark did not load there";
 
-  // ⌘D in the address bar takes it off the favourites.
+  // ⌘D in the address bar shows the bookmark again; Remove takes it away.
   await js(`${address}.focus(); ${address}.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
-  if (!(await waitInPage(win, `!${q('[data-browser-favorites-list]')} && ${q(`${V} [data-web-preview-favorite]`)}.getAttribute('aria-pressed') === 'false'`, 3_000))) return '⌘D did not remove the favourite';
-  return "ok: starred with its icon in the sidebar, kept after a reload, opened from the sidebar and an empty tab, kept its address while browsing, changed by Use current page's address and Edit favourite…, removed with ⌘D";
+  if (!(await waitInPage(win, q('[data-bookmark-remove]'), 3_000))) return '⌘D did not show the bookmark';
+  await js(`${q('[data-bookmark-remove]')}.click()`);
+  if (!(await waitInPage(win, `!${q('[data-bookmark-dialog]')} && ${star}.getAttribute('aria-pressed') === 'false'`, 3_000))) return 'Remove did not take the bookmark away';
+  return 'ok: bookmarked from the star into a folder, kept after a reload, listed and opened on an empty tab, removed from ⌘D';
 }
 
 function escape(win: BrowserWindow): void {

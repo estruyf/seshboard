@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import { clampAskWidth, readTab, type RightTab } from '../components/ask/askWidth.ts';
+import { clampAskWidth, readTab, type PanelSizing, type RightTab } from '../components/ask/askWidth.ts';
 import { useTerminals } from './terminalsStore.ts';
 
 const TAB_KEY = 'ui.rightPanelTab';
 const WIDTH_KEY = 'ui.askWidth';
+const SIZING_KEY = 'ui.rightPanelSizing';
 
 // Per window: kept in sessionStorage, so a reload keeps it and another window has its own.
 const read = (key: string): string | null => {
@@ -32,8 +33,12 @@ interface RightPanelLayout {
   tabs: ReadonlyMap<string, RightTab>;
   /** The Ask panel's width, also of both panels as tabs. */
   width: number;
+  /** Side: the dragged `width`. Half: half the session area, whatever the window's width (`panelWidthFor`). */
+  sizing: PanelSizing;
+  setSizing(sizing: PanelSizing): void;
   /** `owner` is the session, or the window's own terminal. */
   setTab(owner: string, tab: RightTab): void;
+  /** Dragging the edge (or a resize key) is Side again, at that width. */
   setWidth(width: number): void;
 }
 
@@ -41,6 +46,11 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
   tab: readTab(read(TAB_KEY)),
   tabs: new Map(),
   width: clampAskWidth(Number(read(WIDTH_KEY)), window.innerWidth),
+  sizing: read(SIZING_KEY) === 'half' ? 'half' : 'side',
+  setSizing: (sizing) => {
+    write(SIZING_KEY, sizing);
+    set({ sizing });
+  },
   setTab: (owner, tab) => {
     write(TAB_KEY, tab);
     set((s) => ({ tab, tabs: new Map(s.tabs).set(owner, tab) }));
@@ -48,7 +58,8 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
   setWidth: (width) => {
     const next = clampAskWidth(width, window.innerWidth);
     write(WIDTH_KEY, String(next));
-    set({ width: next });
+    write(SIZING_KEY, 'side');
+    set({ width: next, sizing: 'side' });
   },
 }));
 

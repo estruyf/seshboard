@@ -179,6 +179,7 @@ import { ProviderNotes } from './providers/providerNotes.ts';
 import { ProviderForks } from './providers/providerForks.ts';
 import { BrowserFavorites } from './browser/favorites.ts';
 import { BrowserHistory } from './browser/history.ts';
+import { BrowserBookmarks } from './browser/bookmarks.ts';
 import { PinnedTabs } from './browser/pinnedTabs.ts';
 import { BrowserBridge } from './browser/browserBridge.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
@@ -565,6 +566,7 @@ export function createEngine(options: EngineOptions): Engine {
   const pinnedTabs = new PinnedTabs(cache.db);
   const browserFavorites = new BrowserFavorites(cache.db);
   const browserHistory = new BrowserHistory(cache.db);
+  const browserBookmarks = new BrowserBookmarks(cache.db);
   const providerOptions: ProviderOptions = {
     env: process.env,
     home: homedir(),
@@ -3446,6 +3448,9 @@ export function createEngine(options: EngineOptions): Engine {
     'browser.favorites.remove': ({ id }) => (browserFavorites.remove(id), {}),
     'browser.history.visit': ({ url, title, counted }) => (browserHistory.visit(url, title, counted), {}),
     'browser.history.search': ({ query, limit }) => ({ entries: browserHistory.search(query, limit) }),
+    'browser.bookmarks.list': () => ({ bookmarks: browserBookmarks.list() }),
+    'browser.bookmarks.save': ({ bookmark }) => (browserBookmarks.save(bookmark), {}),
+    'browser.bookmarks.remove': ({ id }) => (browserBookmarks.remove(id), {}),
     'limits.state': () => limits.state(),
     'limits.resume': async ({ sessionId }) => {
       await limits.resumeNow(sessionId);

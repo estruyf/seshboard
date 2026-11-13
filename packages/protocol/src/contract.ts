@@ -225,6 +225,22 @@ export const BrowserHistoryEntry = z.object({
 });
 export type BrowserHistoryEntry = z.infer<typeof BrowserHistoryEntry>;
 
+/**
+ * A browser bookmark: a link to find again (⌘D or the star), in a folder ('' for none), shown for one project (its
+ * root) or everywhere (null). Not kept open, unlike a favourite. `favicon` as a favourite's.
+ */
+export const BrowserBookmark = z.object({
+  id: z.string().min(1).max(100),
+  url: z.string().min(1).max(8000),
+  title: z.string().max(500),
+  favicon: z.string().max(65_536).regex(/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i).nullable(),
+  folder: z.string().max(200),
+  projectRoot: z.string().max(4096).nullable(),
+  position: z.number().int().min(0),
+  createdAt: z.number().int(),
+});
+export type BrowserBookmark = z.infer<typeof BrowserBookmark>;
+
 export const contract = {
   requests: {
     'system.info': {
@@ -532,6 +548,12 @@ export const contract = {
     'browser.history.visit': { params: z.object({ url: z.string().min(1).max(8000), title: z.string().max(500), counted: z.boolean() }), result: z.object({}) },
     /** The pages in the history whose address or title holds `query`, most opened and most recent first. */
     'browser.history.search': { params: z.object({ query: z.string().max(500), limit: z.number().int().min(1).max(100) }), result: z.object({ entries: z.array(BrowserHistoryEntry) }) },
+
+    /** Your browser bookmarks, in order: every project's and the ones for everywhere. */
+    'browser.bookmarks.list': { params: z.object({}), result: z.object({ bookmarks: z.array(BrowserBookmark) }) },
+    /** Adds a bookmark, or updates one (its name, folder, project, icon, place). */
+    'browser.bookmarks.save': { params: z.object({ bookmark: BrowserBookmark.omit({ createdAt: true }) }), result: z.object({}) },
+    'browser.bookmarks.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
     /**
