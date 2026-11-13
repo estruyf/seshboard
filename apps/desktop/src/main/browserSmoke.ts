@@ -141,6 +141,8 @@ export async function runBrowserIntroStep(win: BrowserWindow, deps: BrowserSmoke
 export async function runBrowserPinStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const listed = (pinned: boolean) => `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]${pinned ? '[data-browser-pinned]' : ''}')].some((t) => t.textContent.includes('Smoke browser'))`;
+  // "browser control" in between goes to a session: back to the Browser view, where "browser view" left its tab.
+  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view] [data-web-preview-pin]')} && ${listed(false)}`, 3_000))) return 'no Smoke browser tab to pin (run "browser view" first)';
   await js(`${q('[data-browser-view] [data-web-preview-pin]')}.click()`);
   if (!(await waitInPage(win, listed(true), 3_000))) return 'Pin tab did not mark the tab pinned in the list';
@@ -423,6 +425,13 @@ export async function runBrowserOutsideLinkStep(win: BrowserWindow, deps: Browse
   const url = await site();
   deps.setBrowser(false);
   if (!(await waitInPage(win, `!${q('[data-nav="browser"]')}`, 3_000))) return 'the Browser icon stayed with the browser off';
+  // The steps before end in the Browser view, which goes with the browser: back to the first session.
+  if (!(await js("!!document.querySelector('[data-current-session]')"))) {
+    await js("document.querySelector('[data-go-home]')?.click()");
+    await waitInPage(win, "!!document.querySelector('[data-session-list] [data-session-id]')", 3_000);
+    await js("document.querySelector('[data-session-list] [data-session-id]')?.click()");
+    await waitInPage(win, "!!document.querySelector('[data-current-session]')", 5_000);
+  }
   const session = (await js(`document.querySelector('[data-current-session]')?.dataset.currentSession ?? null`)) as string | null;
   if (!session) return 'no session on screen';
   const S = `[data-current-session="${session}"]`;

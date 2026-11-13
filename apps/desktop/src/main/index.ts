@@ -7101,8 +7101,13 @@ async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
   const row = "document.querySelector('[data-smoke-reply-actions]')";
   const bar = `${row}.querySelector('[data-message-actions]')`;
   try {
-    const before = (await js(`({ height: ${row}.getBoundingClientRect().height, opacity: getComputedStyle(${bar}).opacity })`)) as { height: number; opacity: string };
-    if (before.opacity !== '0') return `the actions of a reply show (opacity ${before.opacity}) without hover or focus`;
+    // The pointer can rest over the reply on the runners (where the window opened under it), and a step before can leave
+    // the focus in it: away from both first, as "turn line" does.
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+    await js(`document.activeElement instanceof HTMLElement && document.activeElement.blur()`);
+    await waitInPage(win, `getComputedStyle(${bar}).opacity === '0'`, 2_000);
+    const before = (await js(`({ height: ${row}.getBoundingClientRect().height, opacity: getComputedStyle(${bar}).opacity, hovered: ${row}.matches(':hover'), focused: ${row}.contains(document.activeElement) })`)) as { height: number; opacity: string; hovered: boolean; focused: boolean };
+    if (before.opacity !== '0') return `the actions of a reply show (opacity ${before.opacity}) without hover or focus (hovered ${before.hovered}, focus inside ${before.focused})`;
     await js(`${bar}.querySelector('button[aria-label^="Copy"]').focus()`);
     if (!(await waitInPage(win, `getComputedStyle(${bar}).opacity === '1'`, 2_000))) return 'tabbing to Copy did not show the actions of the reply';
     const height = (await js(`${row}.getBoundingClientRect().height`)) as number;
@@ -9934,7 +9939,8 @@ async function runWorkingPanelStep(win: BrowserWindow): Promise<string> {
     host('running', true);
     if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'compacting' && ${panel}.closest('[data-streaming]').innerText.includes('Compacting')`, 5_000))) return 'Compacting did not show the compacting panel';
     const pulsing = (await js(`[...${panel}.querySelectorAll('.jack-light')].filter((l) => getComputedStyle(l).animationName === 'working-compacting').length`)) as number;
-    if (pulsing !== 5) return `the compacting panel pulsed ${pulsing} jacks, not 5`;
+    // Reduce motion stops the pulse too, as on the working line above.
+    if (pulsing !== (look.reduced ? 0 : 5)) return `the compacting panel pulsed ${pulsing} jacks, not ${look.reduced ? 0 : 5}`;
     host('running', false);
     host('needs-you');
     if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'waiting' && ${panel}.closest('[data-streaming]').innerText.includes('Waiting for you')`, 5_000))) {
@@ -14098,8 +14104,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('sidebar group by project: View › Project, a header per project, what needs you under the first', () => runSidebarGroupByProjectStep(win, sidebarDeps));
   await step('sidebar fold project: a folded project says what is in it, unfolding brings its rows back', () => runSidebarFoldProjectStep(win, sidebarDeps));
   await step('sidebar compact: View › Compact rows makes rows one line', () => runSidebarCompactStep(win, sidebarDeps));
-  await step('tool rail: a toolbar at the right edge, Changes opens in front and closes again', () => runToolRailStep(win, shotBoth));
-  await step('tool rail badges: the Changes badge counts the changed files', () => runToolRailBadgesStep(win));
+  await step('tool rail: a toolbar at the right edge, Changes opens in front and closes again', () => runToolRailStep(win, shotBoth, smokeSessionId));
+  await step('tool rail badges: the Changes badge counts the changed files', () => runToolRailBadgesStep(win, smokeSessionId));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
   await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));

@@ -8,6 +8,14 @@ const S = '[data-current-session]';
 const q = (selector: string) => `document.querySelector(${JSON.stringify(`${S} ${selector}`)})`;
 const CHANGES = q('[data-tool-rail] [data-toggle-changes]');
 
+/** The steps before (the sidebar's) can end on Home: back to the smoke session, as no session is on screen. */
+async function showSession(win: BrowserWindow, sessionId: string | null): Promise<void> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!sessionId || (await js(`!!document.querySelector(${JSON.stringify(S)})`))) return;
+  await js(`document.querySelector('[data-session-id=${JSON.stringify(sessionId)}]')?.click()`);
+  await waitInPage(win, `document.querySelector(${JSON.stringify(S)})?.dataset.currentSession === ${JSON.stringify(sessionId)}`, 5_000);
+}
+
 /** Closes Changes from the rail, whether it is in front or behind another panel. */
 async function closeChanges(win: BrowserWindow): Promise<boolean> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -19,8 +27,9 @@ async function closeChanges(win: BrowserWindow): Promise<boolean> {
  * Tool rail: the session has a vertical toolbar of tools at its right edge and no Panels buttons in its header. Changes
  * on the rail opens the Changes panel in front (`aria-pressed`), and a second click closes it.
  */
-export async function runToolRailStep(win: BrowserWindow, shot: (name: string) => Promise<void>): Promise<string> {
+export async function runToolRailStep(win: BrowserWindow, shot: (name: string) => Promise<void>, sessionId: string | null): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
+  await showSession(win, sessionId);
   const rail = q('[data-tool-rail]');
   if (!(await waitInPage(win, `!!${rail}`, 5_000))) return 'the session has no rail of tools';
   const shape = (await js(`({ role: ${rail}.getAttribute('role'), label: ${rail}.getAttribute('aria-label'), orientation: ${rail}.getAttribute('aria-orientation'), right: Math.round(${rail}.getBoundingClientRect().right), edge: Math.round(${q('')}.getBoundingClientRect().right), width: Math.round(${rail}.getBoundingClientRect().width) })`)) as Record<string, string | number>;
@@ -40,8 +49,9 @@ export async function runToolRailStep(win: BrowserWindow, shot: (name: string) =
 }
 
 /** Tool rail badges: the badge on Changes says how many files changed, as the Changes panel lists them. */
-export async function runToolRailBadgesStep(win: BrowserWindow): Promise<string> {
+export async function runToolRailBadgesStep(win: BrowserWindow, sessionId: string | null): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
+  await showSession(win, sessionId);
   if (!(await waitInPage(win, `!!${q('[data-tool-rail]')}`, 5_000))) return 'the session has no rail of tools';
   if (!(await js(`!!${CHANGES}`))) return 'ok: skipped, the session is not on a git checkout';
   if (!(await closeChanges(win))) return 'could not close Changes first';
