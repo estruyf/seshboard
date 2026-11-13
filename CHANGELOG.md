@@ -35,6 +35,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- Web addresses without `https://` (`github.com/org/repo/pull/12`) are links in your prompts and Claude's replies.
 - **A shorter top of the sidebar.** Home, Upcoming, Activity and Browser sit in one tray. The sort order (**Recent** or **Quickest to unblock**) is a menu beside the project filter, on the same row. **Add a project folder…** is in the project filter's menu. Activity no longer shows a count on its icon.
 - **One header for every view.** Home, Upcoming, Activity, Usage, Browser, New session and Projects have the same header as a session: the sidebar toggle in the same place, then the view's name. Upcoming's filters sit under it, as Usage's tabs do.
 - **Auto suggests a step up, one at a time.** When a session grows past its first prompt, Auto first suggests more effort on the same model, then the next model up at medium effort, instead of jumping straight to the strongest. With a large context, **Compact, then use Opus** keeps the new model's first turn small.

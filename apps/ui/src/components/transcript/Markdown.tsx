@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import type { PluggableList } from 'unified';
 import { withoutSkimMarks } from '@seshboard/protocol/client';
 import remarkGfm from 'remark-gfm';
+import { remarkBareLinks } from './bareLinks.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
@@ -91,18 +92,20 @@ const proseOf = (variant: MarkdownVariant) => (variant === 'reading' ? READING_P
  */
 const previewComponents: Components = { ...markdownComponents, code: (props) => renderCode(props, false) };
 
+/** GFM links `https://` and `www.` addresses; `remarkBareLinks` the ones written without either (`github.com/…`). */
+const PLUGINS = [remarkGfm, remarkBareLinks];
+
 const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={fileUrlTransform} components={previewComponents}>
+    <ReactMarkdown remarkPlugins={PLUGINS} urlTransform={fileUrlTransform} components={previewComponents}>
       {text}
     </ReactMarkdown>
   );
 });
 
-const PLUGINS = [remarkGfm];
 
 const Block = memo(function Block({ text, keep = null }: { text: string; keep?: readonly number[] | null }) {
-  const plugins = useMemo(() => (keep ? [remarkGfm, [remarkSkimFade, { keep }] as const] : PLUGINS), [keep]);
+  const plugins = useMemo(() => (keep ? [...PLUGINS, [remarkSkimFade, { keep }] as const] : PLUGINS), [keep]);
   return (
     <ReactMarkdown remarkPlugins={plugins as PluggableList} urlTransform={fileUrlTransform} components={markdownComponents}>
       {text}
