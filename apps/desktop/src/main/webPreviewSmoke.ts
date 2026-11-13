@@ -88,15 +88,15 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     const kept = (await js(`!!${q('[data-toggle-changes]')}`)) as boolean;
     if (kept) {
       await js(`${q('[data-toggle-changes]')}.click()`);
-      if (!(await waitInPage(win, `!${q('[data-web-preview]')} && ${q('[data-right-tab="web"]')} && ${parked}`, 3_000))) return 'the page did not go out of sight behind Changes';
-      await js(`${q('[data-right-tab="web"]')}.click()`);
+      if (!(await waitInPage(win, `!${q('[data-web-preview]')} && ${q('[data-toggle-web]')}?.dataset.railState === 'behind' && ${parked}`, 3_000))) return 'the page did not go out of sight behind Changes';
+      await js(`${q('[data-toggle-web]')}.click()`);
       if (!(await waitInPage(win, `${q('[data-web-preview]')} && ${over}`, 3_000))) return 'the page did not come back over the Web tab';
       if (!(await keptPage())) return 'the page was loaded again after another tab was in front';
       // Behind Web, the first click brings Changes to the front and the second closes it.
       await js(`${q('[data-toggle-changes]')}.click()`);
-      await waitInPage(win, `${q('[data-right-tab="changes"][aria-selected="true"]')}`, 2_000);
+      await waitInPage(win, `${q('[data-toggle-changes]')}?.dataset.railState === 'front'`, 2_000);
       await js(`${q('[data-toggle-changes]')}.click()`);
-      if (!(await waitInPage(win, `!${q('[data-right-tab="changes"]')} && ${over}`, 3_000))) return 'closing Changes did not bring the page back';
+      if (!(await waitInPage(win, `${q('[data-toggle-changes]')}?.dataset.railState === 'closed' && ${over}`, 3_000))) return 'closing Changes did not bring the page back';
     }
     // And while another session is on screen.
     const here = (await js("document.querySelector('[data-current-session]').dataset.currentSession")) as string;
@@ -105,7 +105,7 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
       await js(`document.querySelector('[data-session-id=${JSON.stringify(other)}]').click()`);
       if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(other)} && ${parked}`, 5_000))) return 'the page did not go out of sight with another session on screen';
       await js(`document.querySelector('[data-session-id=${JSON.stringify(here)}]').click()`);
-      if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(here)} && ${q('[data-web-preview]')} && ${over}`, 5_000))) return `the page did not come back with its session (${JSON.stringify(await js(`({ current: document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(here)}, panel: !!${q('[data-web-preview]')}, tabs: [...document.querySelectorAll('${S} [data-right-tab]')].map((t) => t.dataset.rightTab + (t.getAttribute('aria-selected') === 'true' ? '*' : '')), slot: ${q('[data-web-preview-slot]')}?.getBoundingClientRect().toJSON(), page: document.querySelector('[data-web-preview-page]')?.getBoundingClientRect().toJSON(), covered: ${q('[data-web-preview-slot]')}?.dataset.covered })`))})`;
+      if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(here)} && ${q('[data-web-preview]')} && ${over}`, 5_000))) return `the page did not come back with its session (${JSON.stringify(await js(`({ current: document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(here)}, panel: !!${q('[data-web-preview]')}, tools: [...document.querySelectorAll('${S} [data-rail-tool]')].map((t) => t.dataset.railTool + ':' + t.dataset.railState), slot: ${q('[data-web-preview-slot]')}?.getBoundingClientRect().toJSON(), page: document.querySelector('[data-web-preview-page]')?.getBoundingClientRect().toJSON(), covered: ${q('[data-web-preview-slot]')}?.dataset.covered })`))})`;
       if (!(await keptPage())) return 'the page was loaded again after another session was on screen';
     }
 
@@ -116,16 +116,40 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     const at = (await js("(() => { const r = document.querySelector('[data-web-preview-page]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.bottom - 20) }; })()")) as { x: number; y: number };
     win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount: 1 });
     win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount: 1 });
-    await until(() => page.isFocused(), 2_000);
-    // Focus moving into the page blurs the window's document first; useMarkRead looks after that event.
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    if (!page.isFocused()) return 'a click in the page did not give it the focus';
-    if (!(await js('document.hasFocus()'))) return 'with the focus in the page, the window counts as behind: its session would never be marked read';
+    // Only a window in front gives a page the keyboard (`focusedFrame`; every page of a focused window reports
+    // `isFocused()`). Another app in front during the run: these two checks are skipped, not failed.
+    if (!(await waitInPage(win, "document.activeElement?.tagName === 'WEBVIEW'", 2_000))) return 'a click in the page did not give it the focus in the window';
+    // The page's own process confirms the focus a moment later and sets it again; a person's ⌘K comes long after.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const inFront = win.isFocused();
+    if (inFront) {
+      await until(() => page.focusedFrame !== null, 2_000);
+      // Focus moving into the page blurs the window's document first; useMarkRead looks after that event.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (page.focusedFrame === null) return 'a click in the page did not give it the focus';
+      if (!(await js('document.hasFocus()'))) return 'with the focus in the page, the window counts as behind: its session would never be marked read';
+    }
     page.sendInputEvent({ type: 'keyDown', keyCode: 'K', modifiers: [MOD_MODIFIER] });
     page.sendInputEvent({ type: 'keyUp', keyCode: 'K', modifiers: [MOD_MODIFIER] });
     if (!(await waitInPage(win, "document.querySelector('[data-command-palette]')", 3_000))) return 'the palette key typed in the page did not reach the app';
+    // The palette's field has the focus, and what is typed in the page now goes there: Chromium leaves the keyboard
+    // with the page, so main sends its keys to the window.
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-palette-input]')", 2_000))) return 'the palette opened from the page without the focus in its field';
+    await page.executeJavaScript("window.__typed = ''; addEventListener('keydown', (e) => { window.__typed += e.key; }, true)");
+    for (const type of ['keyDown', 'char', 'keyUp'] as const) page.sendInputEvent({ type, keyCode: 'z' });
+    if (!(await waitInPage(win, "document.querySelector('[data-palette-input]')?.value.endsWith('z')", 2_000))) return `typed in the page after ⌘K, the key did not reach the palette (the page got "${String(await page.executeJavaScript('window.__typed'))}")`;
     await js("document.querySelector('[data-command-palette] input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
     await waitInPage(win, "!document.querySelector('[data-command-palette]')", 2_000);
+    // A click in the page gives it its keys back.
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    page.sendInputEvent({ type: 'mouseDown', x: 20, y: 20, button: 'left', clickCount: 1 });
+    page.sendInputEvent({ type: 'mouseUp', x: 20, y: 20, button: 'left', clickCount: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const type of ['keyDown', 'char', 'keyUp'] as const) page.sendInputEvent({ type, keyCode: 'q' });
+    let back = false;
+    for (const started = Date.now(); !back && Date.now() - started < 2_000; await new Promise((resolve) => setTimeout(resolve, 50))) back = String(await page.executeJavaScript('window.__typed')).includes('q');
+    if (!back) return 'after a click in the page, its keys still went to the window';
 
     await js(`${q('[data-web-preview-phone]')}.click()`);
     if (!(await waitInPage(win, `${q('[data-web-preview-phone]')}.getAttribute('aria-pressed') === 'true' && Math.round(document.querySelector('[data-web-preview-page]').getBoundingClientRect().width) === 390`, 2_000))) return 'the phone width did not show the page 390px wide';
@@ -135,7 +159,7 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     // In its own window the session has its page there, at the same address, and the main window drops its own.
     const popped = await popOutAndBack(win, deps, url);
     if (popped) return popped;
-    return `ok: ${url} offered and shown, kept ${kept ? 'behind Changes' : '(no Changes to check behind)'} and ${other ? 'with another session on screen' : '(no other session to check)'}, a click in the page keeps the window in front, one page went with the session to its own window and back, the outside link went to the browser, the palette key reached the app, the phone width is 390px`;
+    return `ok: ${url} offered and shown, kept ${kept ? 'behind Changes' : '(no Changes to check behind)'} and ${other ? 'with another session on screen' : '(no other session to check)'}, ${inFront ? 'a click in the page keeps the window in front' : 'focus not checked (another app in front)'}, one page went with the session to its own window and back, the outside link went to the browser, the palette key reached the app, the phone width is 390px`;
   } finally {
     await js(`${q('[data-web-preview-close]')}?.click()`);
     await js(`${q('[data-terminal-stop]')}?.click()`);

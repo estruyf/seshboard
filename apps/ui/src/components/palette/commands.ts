@@ -39,6 +39,7 @@ import {
   FolderDown,
   FolderGit2,
   FolderPlus,
+  FolderTree,
   Gauge,
   GitBranch,
   GitBranchPlus,
@@ -48,7 +49,9 @@ import {
   GitMerge,
   GitPullRequest,
   Hash,
-  House,
+  LayoutList,
+  ListFilter,
+  Rows3,
   Keyboard,
   ListChecks,
   ListEnd,
@@ -113,7 +116,14 @@ import {
   CalendarClock,
   Clock,
   BookOpen,
+  Star,
+  StarOff,
+  ExternalLink,
+  LogOut,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
+import type { BrowserAction } from '../../state/browserActions.ts';
 import type { ColorScheme, ConversationView, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
 import type { PromptScope } from '@seshboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
@@ -221,6 +231,14 @@ export interface PaletteApi {
   /** Opens the session's web preview in front, on the newest server running in it when none is open yet. */
   openWeb(): void;
   reloadWeb(): void;
+  /** The browser: the Browser view, with its tabs in the sidebar. */
+  openBrowserView(): void;
+  /** The browser: a new tab, the session's or the Browser view's. */
+  newBrowserTab(): void;
+  /** The browser: adds the page on screen to the favourites, or removes it. */
+  toggleFavorite(): void;
+  /** The browser: something done to the tab on screen (`currentPageTab`), or Reopen closed tab, Clear all browsing data. */
+  browserAction(action: BrowserAction): void;
   showTools(): void;
   openInEditor(): void;
   revealInFinder(): void;
@@ -316,6 +334,14 @@ export interface PaletteCommand {
   next?(ctx: PaletteContext): PaletteStep;
   mode?: PaletteMode;
 }
+
+
+/** The browser's tab on screen, with the browser on. */
+const onPage = (ctx: PaletteContext) => !!ctx.browser && !!ctx.browserPage;
+/** That tab shows a page (not a new, empty tab). */
+const onLoadedPage = (ctx: PaletteContext) => onPage(ctx) && ctx.browserPage!.url;
+/** That tab is in a session's panel. */
+const inSessionPanel = (ctx: PaletteContext) => onPage(ctx) && ctx.browserPage!.owner === 'session';
 
 export const titleOf = (command: PaletteCommand, ctx: PaletteContext) => (typeof command.title === 'string' ? command.title : command.title(ctx));
 export const hintOf = (command: PaletteCommand, ctx: PaletteContext) => (typeof command.hint === 'function' ? command.hint(ctx) : command.hint);
@@ -425,7 +451,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'sidebar-open', title: 'Open sidebar', group: 'general', icon: PanelLeftOpen, keywords: 'show expand', when: (ctx) => ctx.sidebar !== 'open', run: (api) => api.setSidebar('open') },
   { id: 'sidebar-minimize', title: 'Minimize sidebar', group: 'general', icon: PanelLeftDashed, keywords: 'rail icons collapse narrow', when: (ctx) => ctx.sidebar !== 'minimal', run: (api) => api.setSidebar('minimal') },
   { id: 'sidebar-close', title: 'Close sidebar', group: 'general', icon: PanelLeftClose, keywords: 'hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
-  { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: House, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
+  { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: LayoutList, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
   { id: 'upcoming', title: 'Go to Upcoming', group: 'general', shortcut: keysFor('upcoming'), icon: CalendarClock, keywords: 'queue queued schedules scheduled runs planned later timeline week', when: (ctx) => ctx.view !== 'upcoming', run: (api) => api.openUpcoming('all') },
   { id: 'activity', title: 'Go to Activity', group: 'general', shortcut: keysFor('activity'), icon: Clock, keywords: 'what did i do today yesterday week history standup timesheet export summary day', when: (ctx) => ctx.view !== 'activity', run: (api) => api.openActivity() },
   { id: 'open-usage', title: 'Open usage', group: 'general', icon: Gauge, keywords: 'plan limits tokens usage insights session weekly cache', when: (ctx) => ctx.view !== 'usage', run: (api) => api.openUsage() },
@@ -443,6 +469,18 @@ export const COMMANDS: PaletteCommand[] = [
       run: (api) => api.setPreferences({ sidebarStyle: value }),
     }),
   ),
+  // The sidebar's View button: grouping, and one line per row (the Compact sidebar style).
+  { id: 'sidebar-group-project', title: 'Group sessions by project', group: 'general', icon: FolderTree, keywords: 'sidebar view folders projects', when: (ctx) => ctx.sidebarGroup !== 'project', run: (api) => api.setPreferences({ sidebarGroup: 'project' }) },
+  { id: 'sidebar-group-state', title: 'Group sessions by state', group: 'general', icon: ListFilter, keywords: 'sidebar view needs you working review open', when: (ctx) => ctx.sidebarGroup !== 'state', run: (api) => api.setPreferences({ sidebarGroup: 'state' }) },
+  {
+    id: 'sidebar-compact-rows',
+    title: (ctx) => (ctx.sidebarStyle === 'compact' ? 'Turn off compact rows' : 'Compact rows'),
+    group: 'general',
+    icon: Rows3,
+    keywords: 'sidebar view one line dense',
+    when: always,
+    run: (api, ctx) => api.setPreferences({ sidebarStyle: ctx.sidebarStyle === 'compact' ? 'standard' : 'compact' }),
+  },
   ...CONVERSATION_VIEWS.map(
     ({ value, label }): PaletteCommand => ({
       id: `conversation-${value}`,
@@ -861,8 +899,38 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'toggle-terminal', title: 'Toggle terminal', group: 'session', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: (ctx) => session(ctx) !== null, run: (api) => api.toggleTerminal() },
   { id: 'new-terminal-tab', title: 'New terminal tab', group: 'session', icon: Plus, keywords: 'shell', when: (ctx) => withCwd(ctx) && ctx.connected, run: (api) => api.newTerminalTab() },
   { id: 'toggle-agents', title: 'Toggle agents', group: 'session', shortcut: keysFor('agents.toggle'), icon: Bot, keywords: 'subagents background panel', when: hasSession, run: (api) => api.toggleAgents() },
-  { id: 'open-web-preview', title: 'Open web preview', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'browser localhost dev server site page', when: hasSession, run: (api) => api.openWeb() },
-  { id: 'reload-web-preview', title: 'Reload web preview', group: 'session', icon: RotateCw, keywords: 'refresh browser localhost dev server page', when: (ctx) => hasSession(ctx) && ctx.session!.web, run: (api) => api.reloadWeb() },
+  { id: 'open-web-preview', title: 'Open web preview', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'browser localhost dev server site page', when: (ctx) => hasSession(ctx) && !ctx.browser && ctx.webPreview !== false, run: (api) => api.openWeb() },
+  { id: 'reload-web-preview', title: 'Reload web preview', group: 'session', icon: RotateCw, keywords: 'refresh browser localhost dev server page', when: (ctx) => hasSession(ctx) && ctx.session!.web && !ctx.browser && ctx.webPreview !== false, run: (api) => api.reloadWeb() },
+  { id: 'open-session-browser', title: 'Open browser', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'web preview page tab github pull request localhost dev server site', when: (ctx) => hasSession(ctx) && !!ctx.browser, run: (api) => api.openWeb() },
+  { id: 'reload-browser-page', title: 'Reload page', group: 'session', icon: RotateCw, keywords: 'refresh browser web preview tab', when: (ctx) => hasSession(ctx) && ctx.session!.web && !!ctx.browser, run: (api) => api.reloadWeb() },
+  { id: 'browser-new-tab', title: 'New tab', group: 'general', shortcut: keysFor('browser.new-tab'), icon: Plus, keywords: 'browser web page open', when: (ctx) => !!ctx.browser && (ctx.view === 'browser' || hasSession(ctx)), run: (api) => api.newBrowserTab() },
+  { id: 'browser-favorite-add', title: 'Add page to favourites', group: 'general', shortcut: keysFor('browser.favorite'), icon: Star, keywords: 'favorite bookmark star site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === false, run: (api) => api.toggleFavorite() },
+  { id: 'browser-favorite-remove', title: 'Remove page from favourites', group: 'general', shortcut: keysFor('browser.favorite'), icon: StarOff, keywords: 'favorite bookmark star unstar site browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.favorite === true, run: (api) => api.toggleFavorite() },
+  { id: 'browser-go-to-tab', title: 'Go to tab…', group: 'general', icon: AppWindow, keywords: 'browser switch tabs pages web', when: (ctx) => !!ctx.browser && (ctx.browserTabs ?? 0) > 0, next: () => ({ kind: 'pick', list: 'browser-tabs', chip: 'Go to tab' }) },
+  { id: 'browser-open-favorite', title: 'Open favourite…', group: 'general', icon: Star, keywords: 'favorite bookmark site browser web', when: (ctx) => !!ctx.browser && (ctx.favorites ?? 0) > 0, next: () => ({ kind: 'pick', list: 'favorites', chip: 'Open favourite' }) },
+  { id: 'browser-address', title: 'Go to address', group: 'general', shortcut: keysFor('browser.address'), icon: Globe, keywords: 'browser url type location open page', when: onPage, run: (api) => api.browserAction('address') },
+  { id: 'browser-back', title: 'Back in the page', group: 'general', shortcut: keysFor('browser.back'), icon: ArrowLeft, keywords: 'browser previous history', when: (ctx) => onLoadedPage(ctx) && ctx.browserPage!.back, run: (api) => api.browserAction('back') },
+  { id: 'browser-forward', title: 'Forward in the page', group: 'general', shortcut: keysFor('browser.forward'), icon: ArrowRight, keywords: 'browser next history', when: (ctx) => onLoadedPage(ctx) && ctx.browserPage!.forward, run: (api) => api.browserAction('forward') },
+  { id: 'browser-stop', title: 'Stop loading the page', group: 'general', icon: StopCircle, keywords: 'browser cancel', when: (ctx) => onPage(ctx) && ctx.browserPage!.loading, run: (api) => api.browserAction('stop') },
+  { id: 'browser-close-tab', title: 'Close tab', group: 'general', shortcut: keysFor('browser.close-tab'), icon: X, keywords: 'browser page', when: onPage, run: (api) => api.browserAction('close-tab') },
+  { id: 'browser-reopen-tab', title: 'Reopen closed tab', group: 'general', shortcut: keysFor('browser.reopen-tab'), icon: RotateCcw, keywords: 'browser undo close restore page', when: (ctx) => !!ctx.browser && !!ctx.browserClosed, run: (api) => api.browserAction('reopen-tab') },
+  { id: 'browser-pin-tab', title: 'Pin tab', group: 'general', icon: Pin, keywords: 'browser keep restart page', when: (ctx) => onLoadedPage(ctx) && !ctx.browserPage!.pinned, run: (api) => api.browserAction('pin') },
+  { id: 'browser-unpin-tab', title: 'Unpin tab', group: 'general', icon: PinOff, keywords: 'browser page', when: (ctx) => onPage(ctx) && ctx.browserPage!.pinned, run: (api) => api.browserAction('unpin') },
+  { id: 'browser-rename-tab', title: 'Rename tab…', group: 'general', icon: Pencil, keywords: 'browser name title page', when: onPage, run: (api) => api.browserAction('rename') },
+  { id: 'browser-copy-address', title: 'Copy page address', group: 'general', icon: Copy, keywords: 'browser url link clipboard', when: onLoadedPage, run: (api) => api.browserAction('copy-address') },
+  { id: 'browser-open-external', title: 'Open page in browser', group: 'general', icon: ExternalLink, keywords: 'system default chrome safari firefox edge external url', when: onLoadedPage, run: (api) => api.browserAction('open-external') },
+  { id: 'browser-full', title: 'Show browser full size', group: 'session', icon: Maximize2, keywords: 'browser web page panel wide maximize', when: (ctx) => inSessionPanel(ctx) && !ctx.browserPage!.full, run: (api) => api.browserAction('full') },
+  { id: 'browser-side', title: 'Show browser beside the conversation', group: 'session', icon: Shrink, keywords: 'browser web page panel side restore', when: (ctx) => inSessionPanel(ctx) && ctx.browserPage!.full, run: (api) => api.browserAction('side') },
+  { id: 'browser-close-panel', title: 'Close browser', group: 'session', icon: X, keywords: 'browser web page panel tabs', when: inSessionPanel, run: (api) => api.browserAction('close-panel') },
+  { id: 'browser-zoom-in', title: 'Zoom in on the page', group: 'general', icon: ZoomIn, keywords: 'browser larger bigger text', when: onLoadedPage, run: (api) => api.browserAction('zoom-in') },
+  { id: 'browser-zoom-out', title: 'Zoom out of the page', group: 'general', icon: ZoomOut, keywords: 'browser smaller text', when: onLoadedPage, run: (api) => api.browserAction('zoom-out') },
+  { id: 'browser-zoom-reset', title: 'Page at actual size', group: 'general', icon: ZoomIn, keywords: 'browser zoom reset 100%', when: onLoadedPage, run: (api) => api.browserAction('zoom-reset') },
+  { id: 'browser-mute-tab', title: 'Mute tab', group: 'general', icon: VolumeX, keywords: 'browser sound audio silence page', when: (ctx) => onLoadedPage(ctx) && !ctx.browserPage!.muted, run: (api) => api.browserAction('mute') },
+  { id: 'browser-unmute-tab', title: 'Unmute tab', group: 'general', icon: Volume2, keywords: 'browser sound audio page', when: (ctx) => onPage(ctx) && ctx.browserPage!.muted, run: (api) => api.browserAction('unmute') },
+  { id: 'browser-devtools', title: 'Page developer tools', group: 'general', icon: Code, keywords: 'browser devtools inspect console debug network', when: onLoadedPage, run: (api) => api.browserAction('devtools') },
+  { id: 'browser-clear-site', title: 'Clear data for this site…', group: 'general', icon: LogOut, keywords: 'browser sign out log out logout cookies storage', when: onLoadedPage, run: (api) => api.browserAction('clear-site') },
+  { id: 'browser-clear-all', title: 'Clear all browsing data…', group: 'general', icon: Trash2, keywords: 'browser sign out log out logout cookies cache storage everything', when: (ctx) => !!ctx.browser, run: (api) => api.browserAction('clear-all') },
+  { id: 'browser-view', title: 'Go to Browser', group: 'general', shortcut: keysFor('browser.view'), icon: Globe, keywords: 'web page tabs pinned github', when: (ctx) => !!ctx.browser && ctx.view !== 'browser', run: (api) => api.openBrowserView() },
   { id: 'toggle-commands', title: 'Toggle commands', group: 'session', shortcut: keysFor('commands.toggle'), icon: ScrollText, keywords: 'background shell output monitor panel', when: hasSession, run: (api) => api.toggleCommands() },
   { id: 'toggle-changes', title: 'Toggle changes', group: 'session', shortcut: keysFor('changes.toggle'), icon: FileDiff, keywords: 'diff git panel', when: inGit, run: (api) => api.toggleChanges() },
   { id: 'tools', title: 'Tools: MCP servers, skills, agents, plugins', group: 'session', icon: Blocks, keywords: 'mcp extensions capabilities', when: withCwd, run: (api) => api.showTools() },

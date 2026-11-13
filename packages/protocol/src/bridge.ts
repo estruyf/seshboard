@@ -88,6 +88,10 @@ export const IpcChannel = {
   forwardKeys: "seshboard:forward-keys",
   keysForwarded: "seshboard:keys-forwarded",
   webPreviewKeys: "seshboard:web-preview-keys",
+  webPreviewEvent: "seshboard:web-preview-event",
+  webPreviewAddressFocus: "seshboard:web-preview-address-focus",
+  webPreviewClearData: "seshboard:web-preview-clear-data",
+  webPreviewKeysToWindow: "seshboard:web-preview-keys-to-window",
   showInMain: "seshboard:show-in-main",
   mainRequested: "seshboard:main-requested",
   popoutsChanged: "seshboard:popouts-changed",
@@ -174,6 +178,19 @@ export interface WebPreviewKeys {
 }
 
 /**
+ * What a browser page did that its window shows (the browser on): it opened a new window (`window.open`,
+ * `target=_blank`, a sign-in popup), which becomes a tab of the same owner, a download was refused, or its icon came.
+ * `contentsId` is the page's.
+ */
+export type WebPreviewEvent =
+  | { kind: 'popup'; contentsId: number; url: string }
+  | { kind: 'download-refused'; contentsId: number; url: string }
+  /** The page's icon, as a `data:` image main fetched in the page's partition. */
+  | { kind: 'favicon'; contentsId: number; url: string }
+  /** The page started or stopped playing sound. */
+  | { kind: 'audio'; contentsId: number; audible: boolean };
+
+/**
  * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
  * Usage view, a project's page, New session (on a folder, in a new worktree), Go to, Search, or a step to another
  * session in the sidebar's order, or Upcoming (on a filter, with a schedule's run in view). `section` and `tab` are the names the main window's views use; it ignores one it
@@ -188,7 +205,8 @@ export type MainWindowRequest =
   | { kind: "search"; memory: boolean }
   | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
   | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null }
-  | { kind: "activity"; day: string | null };
+  | { kind: "activity"; day: string | null }
+  | { kind: "browser" };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -239,6 +257,11 @@ export type WhileWorking = "queue" | "steer";
 export type ResumeAtLimit = "ask" | "always";
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
+/** How the sidebar groups its sessions: by state (Needs you, Working, To review, Open) or by project. */
+export type SidebarGroup = "state" | "project";
+/** The session tools the rail at a session's right edge can show (a mod's panes go under `mods`). */
+export const RAIL_TOOLS = ["changes", "terminal", "web", "preview", "ask", "agents", "commands", "mods"] as const;
+export type RailTool = (typeof RAIL_TOOLS)[number];
 /** Which buttons a session row shows under the pointer: only Archive, or Mark as read, Pin and Archive. */
 export type QuickActionsShow = "archive" | "all";
 
@@ -255,6 +278,9 @@ export const FOCUS_LIMIT_DEFAULT = 3;
  * you dismissed it (`done`). It never asks again after that.
  */
 export type GithubStar = "ask" | "done";
+
+/** The browser's card in the sidebar after the update (`Preferences.browserIntro`). */
+export type BrowserIntro = "ask" | "done";
 
 /**
  * The moments that can play a sound: Claude needs you (a permission, a question or a plan), finished a turn,
@@ -425,6 +451,18 @@ export interface Preferences {
    */
   dockActivity: boolean;
   /**
+   * Settings › General › Browser: "Allow browser". On (the default), any web page opens in tabs, beside a session and
+   * in a Browser view of its own, with pinned tabs. Off, a session's preview shows only this computer's dev servers.
+   */
+  browserEnabled: boolean;
+  /**
+   * Settings › General › New sessions: "Allow browser previews". On (the default), a dev server a session runs shows in
+   * a Web tab beside the conversation. Off, and with the browser off too, there is no web page in the app at all.
+   */
+  webPreview: boolean;
+  /** The sidebar's card that tells about the browser after the update: shown (`ask`, the browser on) until you open it or say Got it. */
+  browserIntro: BrowserIntro;
+  /**
    * Settings › General › Menu bar: "Show in the menu bar" ("in the notification area" on Windows). The working light,
    * what needs you and new work, from the menu bar's icon. On by default.
    */
@@ -514,6 +552,12 @@ export interface Preferences {
   providerOffersDismissed: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
+  /** The sidebar's View button: group the sessions by state or by project. */
+  sidebarGroup: SidebarGroup;
+  /** The View button's Show › Done: Done docked under the list. Off, Done shows only while searching. */
+  sidebarShowDone: boolean;
+  /** Tools left off the rail (its right-click menu). They keep their shortcuts and palette commands. */
+  railHidden: RailTool[];
   /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
   quickActions: boolean;
   /** Settings › Sidebar: which quick actions show ("Show"). Working rows keep Stop either way. */
@@ -562,6 +606,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
   dockActivity: true,
+  browserEnabled: true,
+  webPreview: true,
+  browserIntro: "ask",
   menuBar: true,
   keepRunning: true,
   hideDock: false,
@@ -589,6 +636,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   githubHintSeen: [],
   providerOffersDismissed: [],
   sidebarSort: "recent",
+  sidebarGroup: "state",
+  sidebarShowDone: true,
+  railHidden: [],
   quickActions: true,
   quickActionsShow: "all",
   githubStar: "ask",
@@ -762,6 +812,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
+  if (typeof raw.browserEnabled === "boolean") out.browserEnabled = raw.browserEnabled;
+  if (typeof raw.webPreview === "boolean") out.webPreview = raw.webPreview;
+  if (oneOf(["ask", "done"] as const, raw.browserIntro)) out.browserIntro = raw.browserIntro;
   if (typeof raw.menuBar === "boolean") out.menuBar = raw.menuBar;
   if (typeof raw.keepRunning === "boolean") out.keepRunning = raw.keepRunning;
   if (typeof raw.hideDock === "boolean") out.hideDock = raw.hideDock;
@@ -806,6 +859,11 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
+  if (oneOf(["state", "project"] as const, raw.sidebarGroup))
+    out.sidebarGroup = raw.sidebarGroup;
+  if (typeof raw.sidebarShowDone === "boolean") out.sidebarShowDone = raw.sidebarShowDone;
+  if (Array.isArray(raw.railHidden))
+    out.railHidden = RAIL_TOOLS.filter((tool) => (raw.railHidden as unknown[]).includes(tool));
   if (typeof raw.quickActions === "boolean") out.quickActions = raw.quickActions;
   if (oneOf(["archive", "all"] as const, raw.quickActionsShow))
     out.quickActionsShow = raw.quickActionsShow;
@@ -1143,6 +1201,24 @@ export interface SeshboardBridge {
   showSession(sessionId: string): void;
   /** From a pop-out: brings the main window to the front and presses these keys there. */
   forwardKeys(keys: ForwardedKeys): void;
+  /** A browser page opened a window or a download was refused (the browser on). */
+  onWebPreviewEvent(listener: (event: WebPreviewEvent) => void): () => void;
+  /**
+   * The browser's address bar has focus (or lost it): main then hands ⌘W (Ctrl+W) to the window as keys, for Close tab,
+   * instead of closing the window.
+   */
+  setAddressFocus(focused: boolean): void;
+  /**
+   * Clears what the browser's pages keep (the browser on): a site's cookies and storage for `origin`, which signs you
+   * out of it, or with null everything (cookies, storage, cache, sign-ins). Resolves once it is done.
+   */
+  clearBrowsingData(origin: string | null): Promise<void>;
+  /**
+   * A browser page's keys go to the window: the window's document took the focus from the page (`contentsId`, a key it
+   * handed over opened the palette or a dialog), but Chromium leaves the keyboard with the page. Main sends what is
+   * typed there to the window until the page has the focus again (null).
+   */
+  keysToWindow(contentsId: number | null): void;
   /** In the main window: keys a pop-out handed over. */
   onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
   /** An app shortcut typed in a web preview's page in this window (`<webview>`, whose keys the window never sees). */

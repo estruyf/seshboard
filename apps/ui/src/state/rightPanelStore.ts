@@ -64,11 +64,11 @@ export function useRightTab(owner: string): RightTab {
 }
 
 /**
- * ⌘J, the header's Terminal button and Toggle terminal: a terminal docked right and waiting behind another tab comes to
+ * ⌘J, the rail's Terminal button and Toggle terminal: a terminal docked right and waiting behind another panel comes to
  * the front; otherwise it opens or closes. `owner`: the session, or the window's own terminal.
  */
 export function toggleTerminalPanel(owner: string): void {
-  const behind = document.querySelector(`[data-current-session="${CSS.escape(owner)}"] [data-right-tab="terminal"][aria-selected="false"]`);
+  const behind = document.querySelector(`[data-current-session="${CSS.escape(owner)}"] [data-rail-tool="terminal"][data-rail-state="behind"]`);
   if (behind) return useRightPanel.getState().setTab(owner, 'terminal');
   useTerminals.getState().togglePanel(owner);
 }

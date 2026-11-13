@@ -1,3 +1,4 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { Folder, FolderDown, FolderGit2, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AUTO_MODEL, bringsAnything, keptRunAs, modelWord, remoteBaseChoices, remoteBaseName, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_WORKTREE_BASE, runAsSteps, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
@@ -27,7 +28,6 @@ import { moveInGrid, NEW_SESSION_COLUMN, PROJECT_GRID, ProjectListFooter, Projec
 import { COLUMN_BREAKPOINTS, quickCount, quickTiles } from '../newSession/projectTiles.ts';
 import { useColumns } from '../ui/useColumns.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { callComputer } from './callComputer.ts';
@@ -361,14 +361,12 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   };
   return (
     <div role="main" className="flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-remote-new-session={computer.id} data-drop-zone>
-      <div className="drag flex h-13 shrink-0 items-center justify-between px-4">
-        <SidebarToggle />
-      </div>
+      <ViewHeader title="New session" />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className={`my-auto ${NEW_SESSION_COLUMN} pt-2 pb-12`} data-new-session-view>
           <div className="grid gap-3 text-center">
             {/* The keys that pick a project are under the list, as many as it shows. */}
-            <h1 className="text-hero leading-tight font-semibold">Where do we start?</h1>
+            <h2 className="text-hero leading-tight font-semibold">Where do we start?</h2>
             <RunOnSwitch />
           </div>
 

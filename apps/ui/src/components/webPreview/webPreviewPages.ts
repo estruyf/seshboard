@@ -1,12 +1,16 @@
 import { create } from 'zustand';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { nextZoom } from './browserTabs.ts';
+import { crashReloadDelay } from './crashRecovery.ts';
 
 /*
- * The web previews' pages, one `<webview>` per session, kept at the end of the window's body rather than in the
- * session's panel: the session view unmounts when you switch to another session, and Electron drops a `<webview>`'s
- * page when it is removed or moved. Each page is drawn over its panel's slot (`registerSlot`), in fixed position, and
- * parked off screen while the slot isn't on show (another tab in front, another session, a hidden pane).
+ * The web previews' pages, one `<webview>` per browser tab (`browserTabs.ts`), kept at the end of the window's body
+ * rather than in the panel: the session view unmounts when you switch to another session, and Electron drops a
+ * `<webview>`'s page when it is removed or moved. Each page is drawn over its panel's slot (`registerSlot`), in fixed
+ * position, and parked off screen while the slot isn't on show (another tab in front, another session, a hidden pane).
+ * Pages are keyed by tab id; the host keeps only the ones shown most recently (`livePages`). Why `<webview>` and not
+ * `WebContentsView`, the workarounds that needs and when to move: docs/browser.md.
  */
 
 /** The slice of Electron's `<webview>` element the pages use. Its methods throw until the page is attached. */
@@ -19,6 +23,12 @@ interface WebviewElement extends HTMLElement {
   reload(): void;
   stop(): void;
   getWebContentsId(): number;
+  openDevTools(): void;
+  closeDevTools(): void;
+  isDevToolsOpened(): boolean;
+  setZoomFactor(factor: number): void;
+  isLoadingMainFrame(): boolean;
+  setAudioMuted(muted: boolean): void;
 }
 
 /** A failed load: where, and Chromium's words for why. */
@@ -27,27 +37,63 @@ export interface LoadFailure {
   description: string;
 }
 
-/** What a session's page is doing, for its panel's toolbar. */
+/** What a tab's page is doing, for its panel's toolbar. */
 export interface PageState {
   loading: boolean;
   back: boolean;
   forward: boolean;
   failure: LoadFailure | null;
+  /** The page's process went (`render-process-gone`): it shows nothing until it is reloaded. */
+  crashed: boolean;
 }
 
-const IDLE: PageState = { loading: false, back: false, forward: false, failure: null };
+const IDLE: PageState = { loading: false, back: false, forward: false, failure: null, crashed: false };
 
 /** Chromium's code for a load that something else cut short (a new navigation): not a failure. */
 const ERR_ABORTED = -3;
+
+/**
+ * A page's title, and its address as it moves within the page, reach the store at most this often: a page that ticks
+ * (a timer in the title, an address rewritten as you scroll) would redraw the tab list and the toolbar every time.
+ */
+const NOTE_MS = 300;
+
+/** Calls `run` with the latest value at most once per `ms`, the last value always arriving. */
+function throttled<T>(ms: number, run: (value: T) => void): { push(value: T): void; cancel(): void } {
+  let last = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending: { value: T } | null = null;
+  const flush = () => {
+    timer = undefined;
+    if (!pending) return;
+    last = Date.now();
+    const { value } = pending;
+    pending = null;
+    run(value);
+  };
+  return {
+    push(value) {
+      pending = { value };
+      if (timer) return;
+      const wait = ms - (Date.now() - last);
+      if (wait <= 0) flush();
+      else timer = setTimeout(flush, wait);
+    },
+    cancel() {
+      clearTimeout(timer);
+      pending = null;
+    },
+  };
+}
 
 /** Where a page goes while its slot isn't on show: still running, out of sight. */
 const PARKED = { left: '-100000px', top: '0px', width: '800px', height: '600px' };
 
 export const usePreviewPages = create<{ pages: ReadonlyMap<string, PageState> }>()(() => ({ pages: new Map() }));
 
-/** A session's page as its toolbar shows it. */
-export function usePageState(sessionId: string): PageState {
-  return usePreviewPages((s) => s.pages.get(sessionId)) ?? IDLE;
+/** A tab's page as its toolbar shows it. */
+export function usePageState(tabId: string | null): PageState {
+  return usePreviewPages((s) => (tabId ? s.pages.get(tabId) : undefined)) ?? IDLE;
 }
 
 const setState = (sessionId: string, change: Partial<PageState>) =>
@@ -70,22 +116,51 @@ class PreviewPage {
     element.setAttribute('partition', WEB_PREVIEW_PARTITION);
     element.setAttribute('allowpopups', '');
     element.dataset.webPreviewPage = sessionId;
+    const tab = useWebPreview.getState().tabs.find((t) => t.id === sessionId);
+    if (tab) element.dataset.webPreviewOwner = tab.owner;
     // White under the page whatever the theme, as a browser draws it: a page without a background of its own expects that.
     Object.assign(element.style, { position: 'fixed', background: 'white', ...PARKED });
     const on = (name: string, listener: (event: Event & Record<string, unknown>) => void) => {
       element.addEventListener(name, listener as EventListener);
       this.off.push(() => element.removeEventListener(name, listener as EventListener));
     };
+    const title = throttled<string>(NOTE_MS, (text) => useWebPreview.getState().titled(sessionId, text));
+    const address = throttled<string>(NOTE_MS, (url) => {
+      useWebPreview.getState().shown(sessionId, url);
+      this.sync();
+    });
+    this.off.push(title.cancel, address.cancel);
     const navigated = (event: Event & Record<string, unknown>) => {
       if (event.isMainFrame === false) return;
-      useWebPreview.getState().shown(sessionId, event.url as string);
-      this.sync();
+      address.push(event.url as string);
     };
+    on('page-title-updated', (event) => title.push(String(event.title ?? '')));
+    // The icon comes from main, fetched in the page's partition (`WebPreviewHost`, `favicon`).
+    // A stopped page loads again by itself a few times (`crashReloadDelay`); past that it shows its notice.
+    on('render-process-gone', () => {
+      const now = Date.now();
+      const delay = crashReloadDelay(this.crashes, now);
+      this.crashes = [...this.crashes.filter((at) => now - at < 30_000), now];
+      if (delay === null) return setState(sessionId, { crashed: true, loading: false });
+      setState(sessionId, { loading: true });
+      clearTimeout(this.restart);
+      this.restart = setTimeout(() => this.reload(this.tab()?.url ?? null), delay);
+    });
+    // A click in the page gives the <webview> the focus but no mouse event: the app's menus and popovers close on one.
+    on('focus', () => {
+      element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    // A page that closes itself (a sign-in popup, opened as a tab, once the provider is done) closes its tab.
+    on('close', () => useWebPreview.getState().closeTab(sessionId));
     on('dom-ready', () => {
       this.ready = true;
       this.sync();
+      // The tab's zoom and mute, on each new document: Chromium keeps zoom per site, the tab keeps its own.
+      this.applyTab();
     });
-    on('did-start-loading', () => setState(sessionId, { loading: true }));
+    // Loading is the page's own document: an iframe that loads late doesn't keep the line going.
+    on('did-start-loading', () => setState(sessionId, { loading: this.mainFrameLoading() }));
     on('did-stop-loading', () => {
       setState(sessionId, { loading: false });
       this.sync();
@@ -101,6 +176,32 @@ class PreviewPage {
     });
     host.appendChild(element);
     this.element = element;
+  }
+
+  /** When it stopped lately (`render-process-gone`), for `crashReloadDelay`. */
+  private crashes: number[] = [];
+  private restart: ReturnType<typeof setTimeout> | undefined;
+
+  private tab() {
+    return useWebPreview.getState().tabs.find((t) => t.id === this.sessionId);
+  }
+
+  private mainFrameLoading(): boolean {
+    try {
+      return this.element.isLoadingMainFrame();
+    } catch {
+      return true;
+    }
+  }
+
+  /** The tab's zoom and mute on the page now showing. */
+  applyTab() {
+    const tab = this.tab();
+    if (!tab) return;
+    this.call((e) => {
+      e.setZoomFactor(tab.zoom);
+      e.setAudioMuted(tab.muted);
+    });
   }
 
   private sync() {
@@ -121,24 +222,40 @@ class PreviewPage {
   }
 
   load(url: string) {
-    setState(this.sessionId, { failure: null });
+    setState(this.sessionId, { failure: null, crashed: false });
     if (!this.ready) this.element.setAttribute('src', url);
     else void this.element.loadURL(url).catch(() => {}); // A failure shows through did-fail-load.
   }
 
   reload(url: string | null) {
-    setState(this.sessionId, { failure: null });
+    setState(this.sessionId, { failure: null, crashed: false });
     if (this.ready) this.call((e) => e.reload());
     else if (url) this.load(url);
   }
 
   stop = () => this.call((e) => e.stop());
+  /** The page's developer tools, in a window of their own; again closes them. */
+  devTools = () => this.call((e) => (e.isDevToolsOpened() ? e.closeDevTools() : e.openDevTools()));
+  /** Zooms the page a step in (1) or out (-1) through Chrome's levels, or back to 100% (0), and keeps it with the tab. */
+  zoom = (step: 1 | -1 | 0) => {
+    const tab = this.tab();
+    if (!tab) return;
+    useWebPreview.getState().zoomTo(tab.id, nextZoom(tab.zoom, step));
+    this.applyTab();
+  };
+  /** Mutes the page, or lets it play sound again, and keeps that with the tab. */
+  mute = (muted: boolean) => {
+    useWebPreview.getState().setMuted(this.sessionId, muted);
+    this.applyTab();
+  };
   back = () => this.call((e) => e.goBack());
   forward = () => this.call((e) => e.goForward());
 
-  /** Its `<webview>`'s contents id, or null before it is attached. */
+  /**
+   * Its `<webview>`'s contents id, or null before it is attached. Not only once `ready`: main sends a page's icon as
+   * soon as the page declares it, often before `dom-ready` on a large page, and the icon would find no tab.
+   */
   contentsId(): number | null {
-    if (!this.ready) return null;
     try {
       return this.element.getWebContentsId();
     } catch {
@@ -159,6 +276,7 @@ class PreviewPage {
   }
 
   destroy() {
+    clearTimeout(this.restart);
     this.off.splice(0).forEach((off) => off());
     this.element.remove();
     usePreviewPages.setState((s) => {
@@ -178,10 +296,16 @@ let resized: ResizeObserver | null = null;
 let fallback: ReturnType<typeof setInterval> | undefined;
 const FALLBACK_MS = 400;
 
-/** A session's page, once the host made it. */
-export const previewPage = (sessionId: string): PreviewPage | undefined => pages.get(sessionId);
+/** A tab's page, once the host made it. */
+export const previewPage = (tabId: string): PreviewPage | undefined => pages.get(tabId);
 
-/** Makes or drops pages so there is one per session in `wanted`. */
+/** The tab whose page has this contents id (the main process names pages by it). */
+export function tabOfContents(contentsId: number): string | undefined {
+  for (const [tabId, page] of pages) if (page.contentsId() === contentsId) return tabId;
+  return undefined;
+}
+
+/** Makes or drops pages so there is one per tab in `wanted`. */
 export function keepPages(wanted: ReadonlySet<string>): void {
   if (!host) {
     host = document.createElement('div');

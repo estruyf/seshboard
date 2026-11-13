@@ -927,7 +927,8 @@ export function writeAutoSuggestDemo(home: string, now = Date.now()): AutoSugges
   const model = new Transcript(acme, 'main', now - 4 * HOUR, usage)
     .user('Fix the typo in the cart button label.')
     .tool('Edit', { file_path: `${acme}/src/cart/CartButton.tsx`, old_string: 'Chekout', new_string: 'Checkout' }, `The file ${acme}/src/cart/CartButton.tsx has been updated.`)
-    .say('Fixed: the button reads Checkout.')
+    // The link is for the browser's smoke step: a reply's link opens in the session's browser.
+    .say('Fixed: the button reads Checkout, as the [button guidelines](https://example.com/guidelines/buttons) spell it.')
     .user('Now plan a refactor of the pricing code across all modules.')
     .say('Here is a first outline: one pricing module, rules as data, and the cart and checkout reading from it.');
   model.write(configDir, 'Fix the cart button typo');

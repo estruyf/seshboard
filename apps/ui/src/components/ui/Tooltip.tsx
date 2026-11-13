@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { placeTooltip, placeTooltipRight } from './tooltipPlacement.ts';
+import { placeTooltip, placeTooltipLeft, placeTooltipRight } from './tooltipPlacement.ts';
 
 /** How long the pointer rests on a target before its tooltip shows. Exported for tooltips drawn by their own component (the prompt outline). */
 export const SHOW_DELAY = 450;
@@ -11,7 +11,10 @@ interface Shown {
   target: Element;
   /** Set when the target describes a card (`data-tooltip-title`), as the minimal sidebar's rows do. */
   card: TooltipCard | null;
-  right: boolean;
+  /** Beside the target (`data-tooltip-placement`) instead of below it. */
+  side: 'right' | 'left' | null;
+  /** A shortcut after the text, in a quieter colour (`data-tooltip-kbd`). */
+  kbd: string | null;
 }
 
 /** The status colours a card's status line can take. */
@@ -66,7 +69,8 @@ function readCard(target: Element): TooltipCard | null {
  * `data-tooltip="…"` gets one on hover or keyboard focus. One delegated listener covers virtualised
  * rows too. The attribute is not an accessible name: icon-only buttons also need an `aria-label`.
  *
- * `data-tooltip-placement="right"` puts it beside the target instead of below. A target can also
+ * `data-tooltip-placement="right"` (or `"left"`, the session's rail) puts it beside the target instead of below, and
+ * `data-tooltip-kbd` adds a shortcut after the text. A target can also
  * describe a small card: `data-tooltip-title`, then `data-tooltip-meta`, lines of numbers with a
  * series swatch (`data-tooltip-rows`, JSON `TooltipRow[]`, as a chart's tooltip), a status line in a
  * status colour (`data-tooltip-status`, `data-tooltip-tone`: warn, accent, unread, ok, error, faint)
@@ -97,7 +101,7 @@ export function TooltipLayer() {
       current = target;
       setShown(null);
       timer = setTimeout(
-        () => current === target && target.isConnected && setShown({ text, target, card: readCard(target), right: target.getAttribute('data-tooltip-placement') === 'right' }),
+        () => current === target && target.isConnected && setShown({ text, target, card: readCard(target), side: placementOf(target), kbd: target.getAttribute('data-tooltip-kbd') }),
         warm ? 0 : SHOW_DELAY,
       );
     };
@@ -148,7 +152,7 @@ export function TooltipLayer() {
     const rect = shown.target.getBoundingClientRect();
     const size = { width: el.offsetWidth, height: el.offsetHeight };
     const viewport = { width: window.innerWidth, height: window.innerHeight };
-    setPosition(shown.right ? placeTooltipRight(rect, size, viewport) : placeTooltip(rect, size, viewport));
+    setPosition(shown.side === 'right' ? placeTooltipRight(rect, size, viewport) : shown.side === 'left' ? placeTooltipLeft(rect, size, viewport) : placeTooltip(rect, size, viewport));
   }, [shown]);
 
   if (!shown) return null;
@@ -193,6 +197,12 @@ export function TooltipLayer() {
       data-tooltip-layer
     >
       {shown.text}
+      {shown.kbd && <span className="ml-2 text-faint">{shown.kbd}</span>}
     </div>
   );
 }
+
+const placementOf = (target: Element): Shown['side'] => {
+  const placement = target.getAttribute('data-tooltip-placement');
+  return placement === 'right' || placement === 'left' ? placement : null;
+};

@@ -1,7 +1,7 @@
 import { CircleAlert, Copy, Globe, ScrollText, Square, X } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { shortUrl, type BackgroundTask } from '@seshboard/protocol/client';
-import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { usePreviewAllowed, useWebPreview } from '../../state/webPreviewStore.ts';
 import { useCommandsPanel } from '../../state/commandsPanelStore.ts';
 import { ASK_MAX_SHARE, ASK_MIN_WIDTH, askWidthForKey } from '../ask/askWidth.ts';
 import { formatDuration, useTicker } from '../transcript/ActivityGroup.tsx';
@@ -84,7 +84,8 @@ function CommandOutput({ sessionId, run }: { sessionId: string; run: CommandRun 
   const out = useTaskOutput(sessionId, run.outputFile, run.state === 'running');
   const text = useMemo(() => plainOutput(out.text), [out.text]);
   // A dev server it started, while it runs: one click shows its page beside the conversation.
-  const preview = run.state === 'running' ? (out.urls[0] ?? null) : null;
+  const allowed = usePreviewAllowed();
+  const preview = run.state === 'running' && allowed ? (out.urls[0] ?? null) : null;
   const boxRef = useRef<HTMLPreElement>(null);
   // Follows the end while you're at the end; scrolled up to read, it stays where you are.
   const atEnd = useRef(true);
@@ -241,7 +242,8 @@ export function CommandsPanel(props: CommandsPanelProps) {
 
   const startResize = (event: PointerEvent<HTMLDivElement>) => {
     const startX = event.clientX;
-    const startWidth = props.width;
+    // From the width on screen: the stored one can be wider than the session area lets the panel be.
+    const startWidth = Math.min(props.width, event.currentTarget.parentElement?.getBoundingClientRect().width ?? props.width);
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     const move = (e: globalThis.PointerEvent) => props.onWidth(startWidth + (startX - e.clientX));
@@ -273,7 +275,7 @@ export function CommandsPanel(props: CommandsPanelProps) {
     );
 
   return (
-    <aside aria-label="Commands" tabIndex={-1} onKeyDown={onPanelKey} className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l" style={{ width: props.width }} data-commands-panel>
+    <aside aria-label="Commands" tabIndex={-1} onKeyDown={onPanelKey} className="relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l" style={{ width: props.width }} data-commands-panel>
       <div
         role="separator"
         aria-orientation="vertical"

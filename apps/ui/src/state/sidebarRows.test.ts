@@ -294,7 +294,9 @@ describe('buildListRows', () => {
             ? `queue:${r.entry.item.prompt}`
             : r.kind === 'hidden'
               ? `+${r.count} hidden`
-              : `[${r.kind === 'queue-header' ? 'queue' : 'archived'} ${r.count} ${r.open ? 'open' : 'closed'}${r.kind === 'queue-header' && r.first ? ' first' : ''}]`,
+              : r.kind === 'project' || r.kind === 'project-summary' || r.kind === 'queue-label'
+                ? `<${r.kind}>`
+                : `[${r.kind === 'queue-header' ? 'queue' : 'archived'} ${r.count} ${r.open ? 'open' : 'closed'}${r.kind === 'queue-header' && r.first ? ' first' : ''}]`,
     );
   const saved = (prompt: string, cwd = '/p/a'): LaterItem => ({
     id: prompt,

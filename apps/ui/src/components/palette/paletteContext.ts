@@ -1,5 +1,5 @@
 import type { PromptScope } from '@seshboard/protocol/client';
-import type { ColorScheme, ConversationView, SidebarStyle } from '@seshboard/protocol/bridge';
+import type { ColorScheme, ConversationView, SidebarGroup, SidebarStyle } from '@seshboard/protocol/bridge';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import type { ActionIcon, HostState } from '@seshboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
@@ -9,7 +9,7 @@ import type { Way } from '../../state/tilingGeometry.ts';
 
 /** Where you are: what the main area shows. */
 /** `projects` is the list of projects; `project` one project's page. */
-export type PaletteView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage' | 'upcoming' | 'activity';
+export type PaletteView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage' | 'upcoming' | 'activity' | 'browser';
 
 /** The session in the active pane, as far as the palette's commands care. */
 export interface PaletteSession {
@@ -73,6 +73,23 @@ export interface PaletteTerminal {
   action: { running: boolean } | null;
 }
 
+/** The browser's tab on screen, for the palette's page commands. */
+export interface BrowserPageContext {
+  /** It shows a page (a new tab has none yet). */
+  url: boolean;
+  favorite: boolean;
+  pinned: boolean;
+  back: boolean;
+  forward: boolean;
+  loading: boolean;
+  /** A session's panel, or the Browser view. */
+  owner: 'session' | 'view';
+  /** The session's panel takes the whole session area (Full). */
+  full: boolean;
+  /** The tab is muted. */
+  muted: boolean;
+}
+
 /** What the palette knows about where you are; every command's `when()` reads it. Built from the stores. */
 export interface PaletteContext {
   /**
@@ -98,6 +115,18 @@ export interface PaletteContext {
   /** Settings › Notifications: notifications and sounds on or off. */
   notifications: boolean;
   sounds: boolean;
+  /** Settings › General › Enable browser: any web page, tabs and the Browser view. */
+  browser?: boolean;
+  /** Settings › General › New sessions › Allow browser previews; on unless it says false. */
+  webPreview?: boolean;
+  /** The browser's tab on screen (the Browser view's, or the session's open panel); null for none. */
+  browserPage?: BrowserPageContext | null;
+  /** How many browser tabs this window has (Go to tab…). */
+  browserTabs?: number;
+  /** A closed browser tab can come back (Reopen closed tab). */
+  browserClosed?: boolean;
+  /** How many favourites there are (Open favourite…). */
+  favorites?: number;
   /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
   catchUpFolded: boolean | null;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */
@@ -126,6 +155,8 @@ export interface PaletteContext {
   themes: Array<{ id: string; name: string }>;
   themeId: string;
   sidebarStyle: SidebarStyle;
+  /** The sidebar's grouping (its View button): by state or by project. */
+  sidebarGroup: SidebarGroup;
   conversationView: ConversationView;
   /** Open, the minimal rail, or closed. */
   sidebar: SidebarState;

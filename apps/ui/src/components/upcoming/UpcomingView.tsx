@@ -1,3 +1,4 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { CalendarClock, Check, ChevronDown, GripVertical, History, Info, ListEnd, MoreHorizontal, Pause, Play, Repeat, SkipForward } from 'lucide-react';
 import { describe, formatPast, pastRuns, SKIPPED_BY_YOU, upcomingRuns, type PastRun, type Schedule, type ScheduleLastRun, type UpcomingRun } from '@seshboard/protocol/client';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -18,7 +19,6 @@ import { useQueueMenu } from '../queue/queueMenu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { runEntries, scheduleEntries } from '../schedules/scheduleMenu.tsx';
 import { schedulesRunLine } from '../schedules/SchedulesCard.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { QUEUE_SURFACE } from '../sidebar/QueueRow.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
@@ -121,13 +121,20 @@ export function UpcomingView() {
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-upcoming>
-      <header className="drag shrink-0 border-b border-border px-6 py-2.5">
-        <div className="flex min-h-9 flex-wrap items-center gap-2.5">
-          <SidebarToggle />
-          <CalendarClock size={18} className="shrink-0 text-muted" aria-hidden />
-          <h1 className="text-hero leading-tight font-semibold">Upcoming</h1>
-          {!nothing && (
-            <div className="no-drag ml-2 flex items-center gap-2">
+      <ViewHeader title="Upcoming">
+        <div className="no-drag ml-auto flex shrink-0 items-center gap-2">
+          <Button icon={<ListEnd size={13} aria-hidden />} onClick={() => addToQueue(project)} data-upcoming-add-queue>
+            Add to queue
+          </Button>
+          <Button variant="primary" icon={<Repeat size={13} aria-hidden />} onClick={() => openToSchedule(project)} data-upcoming-add-schedule>
+            Schedule a session
+          </Button>
+        </div>
+      </ViewHeader>
+      {/* What to show, under the header as Usage's tabs are. */}
+      {!nothing && (
+        <div className="shrink-0 border-b border-border px-6 pb-2.5 @max-[860px]:px-4">
+            <div className="no-drag flex flex-wrap items-center gap-2">
               <SegmentedControl
                 mode="radio"
                 label="Show"
@@ -156,17 +163,8 @@ export function UpcomingView() {
                 <ChevronDown size={13} className="shrink-0 text-muted" aria-hidden />
               </button>
             </div>
-          )}
-          <div className="no-drag ml-auto flex shrink-0 items-center gap-2">
-            <Button icon={<ListEnd size={13} aria-hidden />} onClick={() => addToQueue(project)} data-upcoming-add-queue>
-              Add to queue
-            </Button>
-            <Button variant="primary" icon={<Repeat size={13} aria-hidden />} onClick={() => openToSchedule(project)} data-upcoming-add-schedule>
-              Schedule a session
-            </Button>
-          </div>
         </div>
-      </header>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {nothing ? (
           <Empty project={project} />

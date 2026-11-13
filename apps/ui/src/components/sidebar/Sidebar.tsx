@@ -1,7 +1,7 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
-import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
+import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import type { SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, runOfParent as protocolRunOfParent, type CatchUp, type RunView } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
@@ -11,13 +11,19 @@ import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } fr
 import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
-import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { SidebarNav } from './SidebarNav.tsx';
+import { BrowserTabList } from './BrowserTabList.tsx';
+import { useSidebarList } from '../../state/browserViewStore.ts';
+import { useTerminals } from '../../state/terminalsStore.ts';
+import { useTabCount } from '../../state/webPreviewStore.ts';
+import { rowIndicators } from '../webPreview/browserTabs.ts';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
+import { useSidebarFolds } from '../../state/sidebarFoldsStore.ts';
+import { buildProjectRows, projectState } from '../../state/sidebarProjectRows.ts';
 import { useKeptSessions } from '../../state/keptSessions.ts';
 import { startPass } from '../../state/catchUpPass.ts';
 import { openNoteEditor } from '../../state/noteEditorStore.ts';
@@ -51,10 +57,15 @@ import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
-import { ProjectFilter, type RemoteProjectSummary, type SourceSummary } from './ProjectMenu.tsx';
+import { ProjectFilter, useProjectIconEntries, type RemoteProjectSummary, type SourceSummary } from './ProjectMenu.tsx';
+import { Menu } from '../Menu.tsx';
+import { ProjectGroupRow, ProjectSummaryLine, StateDot } from './ProjectGroupRow.tsx';
+import { SidebarViewButton } from './SidebarViewButton.tsx';
+import { groupedByProject } from './sidebarView.ts';
 import { thisComputerName } from '../../lib/platform.ts';
 import { agentNameOf, sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
+import { BrowserIntro } from './BrowserIntro.tsx';
 import { ComputersStrip } from '../computers/ComputersStrip.tsx';
 import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '../remote/ConnectedDevices.tsx';
 import { ComputerChip, useComputerTint } from '../computers/ComputerChip.tsx';
@@ -87,6 +98,11 @@ const ARCHIVED_HEADER_HEIGHT = 34;
 const GROUP_HEADER_HEIGHT = 34;
 /** The faint "+N hidden" line under a closed section's kept row. */
 const HIDDEN_ROW_HEIGHT = 18;
+/** A project's header while grouped by project (32px, with 4px above it but the first), and the lines under one. */
+const PROJECT_ROW_HEIGHT = 36;
+const PROJECT_LINE_HEIGHT = 20;
+/** Grouped by project, a session row sits in from its project's header by this much. */
+const PROJECT_INDENT = 20;
 /** The space below each session button inside its row: picked rows fill it, so a run of picks reads as one block. */
 const SESSION_ROW_GAP: Record<SidebarStyle, number> = { large: 4, standard: 4, compact: 2 };
 
@@ -101,7 +117,11 @@ const rowHeight = (row: SidebarListRow, style: SidebarStyle) =>
         ? HIDDEN_ROW_HEIGHT
         : row.kind === 'group' || row.kind === 'queue-header'
           ? GROUP_HEADER_HEIGHT - (row.first ? 6 : 0)
-          : ARCHIVED_HEADER_HEIGHT;
+          : row.kind === 'project'
+            ? PROJECT_ROW_HEIGHT - (row.first ? 4 : 0)
+            : row.kind === 'project-summary' || row.kind === 'queue-label'
+              ? PROJECT_LINE_HEIGHT
+              : ARCHIVED_HEADER_HEIGHT;
 
 /** The key a header row's section is stored under, or null for Needs you (it never closes). */
 const sectionOfHeader = (row: SidebarListRow): SectionKey | null => (row.kind === 'queue-header' ? 'queue' : row.kind === 'group' && isSectionKey(row.group) ? row.group : null);
@@ -269,6 +289,7 @@ export const SessionRow = memo(function SessionRow({
   draft,
   review = null,
   outside = false,
+  inProject = false,
   treeLevel,
   expanded,
   childCount = 0,
@@ -300,6 +321,8 @@ export const SessionRow = memo(function SessionRow({
   review?: number | null;
   /** Its last turn changed files outside the plan (or what you asked for). */
   outside?: boolean;
+  /** Listed under its project's header: the state dot takes the project icon's place, and the project's name goes. */
+  inProject?: boolean;
   /** In the sidebar's tree (#179): the row is a treeitem at this level. Without one it is a plain button. */
   treeLevel?: number;
   /** A pipeline's parent: whether its sub-sessions show, and how many it has. A chevron opens or closes them. */
@@ -321,11 +344,16 @@ export const SessionRow = memo(function SessionRow({
   // A computer that went offline keeps its last list: its rows are dimmed and say since when.
   const away = remote?.offline ? offlineLine(remote.computerName, remote.lastSeen, now) : null;
   // With a project filter on, every row is in that project: the name would only repeat.
-  const filtered = useProjects((s) => s.filter !== null);
+  const filtered = useProjects((s) => s.filter !== null) || inProject;
   const status = rowStatus(data);
   // Whose session it is: from its transcript, or while it starts (not indexed yet) from what runs it. A session on
   // another computer has neither.
   const hostProvider = useHosts((s) => s.hosts.get(data.id)?.provider ?? null);
+  // With the browser on: small grey marks for a terminal or a browser the session has open.
+  const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
+  const terminalOpen = useTerminals((s) => browserPreview && !remote && [...s.terminals.values()].some((t) => t.sessionId === data.id));
+  const tabCount = useTabCount(browserPreview && !remote ? data.id : '');
+  const opened = rowIndicators({ terminal: terminalOpen, tabs: tabCount });
   const whose = data.summary ? data.summary : remote ? null : { provider: hostProvider };
   const agent = agentNameOf(whose);
   // A pipeline (#179): a run row stands for its run; a session a run started from says where the run is while it goes
@@ -376,7 +404,8 @@ export const SessionRow = memo(function SessionRow({
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
   // colour, the bold title and the group. With one profile it is the status (needs you, working, unread).
   const profile = useRowProfile(data);
-  const statusRail = (status && RAIL_TONE[status]) || (reminderText ? RAIL_TONE.unread : null);
+  // Under a project the state dot says it; the rail stays for a profile's colour.
+  const statusRail = inProject ? null : (status && RAIL_TONE[status]) || (reminderText ? RAIL_TONE.unread : null);
   const profileRail = profile ? PROFILE_DOT[profile.color] : null;
   const railTone = profileRail ?? statusRail;
   const rail = railTone && (
@@ -415,9 +444,16 @@ export const SessionRow = memo(function SessionRow({
   );
   // What it needs from you and how long that takes, from its catch-up: "needs you · ~1 min", "~2 min to review".
   const reviewText = review === null || status === 'running' ? null : status === 'needs-you' ? `needs you · ~${review} min` : `~${review} min to review`;
+  const dot = (size: number) => (
+    <span className={`flex shrink-0 items-center justify-center ${archived && !selected ? 'opacity-60' : ''}`} style={{ width: size }}>
+      <StateDot state={projectState(data)} />
+    </span>
+  );
   const icon = (size: number) =>
     picking ? (
       <PickBox on={picked} size={size} onToggle={() => onTogglePick(data.id)} />
+    ) : inProject ? (
+      dot(size)
     ) : (
       <span className={`flex shrink-0 ${archived && !selected ? 'opacity-60' : ''}`}>
         {runRow ? <PipelineTile size={size} /> : <ProjectIcon project={project} root={data.projectRoot} size={size} name={remote?.projectName} remote={remote !== null} />}
@@ -444,7 +480,7 @@ export const SessionRow = memo(function SessionRow({
     'data-done-reason': done?.kind,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, note, left: leftLines, reminder: reminderText, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, note, left: leftLines, reminder: reminderText, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText, ...opened.map((kind) => `${kind} open`)].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -474,7 +510,8 @@ export const SessionRow = memo(function SessionRow({
       style === 'compact' ? doneText : null,
       style === 'compact' ? reminderText : null,
       style === 'compact' && note ? `Note: ${note}` : null,
-      style === 'compact' ? projectName : null,
+      style === 'compact' && !inProject ? projectName : null,
+      style === 'compact' ? branch : null,
       style === 'compact' ? waitingFor : null,
       limitText,
       profile ? `Profile: ${profile.name}` : null,
@@ -515,17 +552,18 @@ export const SessionRow = memo(function SessionRow({
 
   if (style === 'compact') {
     return withActions(
+      // One line: the state dot, the title and the age. The branch, what it waits for and its computer are in the tooltip.
       <button {...common} style={roomStyle} className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-meta ${surface} ${dim} ${room}`}>
         {rail}
-        {icon(16)}
+        {picking ? icon(16) : dot(inProject ? 18 : 16)}
         <span className={`min-w-0 flex-1 truncate text-body ${titleTone}`}>{data.title}</span>
         {pin}
         {windowMark}
         {pen}
         {loose}
         {warning}
-        {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
-        {status ? <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} agent={agent} /></span> : age}
+        {status === 'error' && <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} agent={agent} /></span>}
+        {age}
         {chevron}
       </button>,
     );
@@ -616,8 +654,14 @@ export const SessionRow = memo(function SessionRow({
           </>
         )}
         {chip}
-        {/* The rail and the age's colour already say needs you, working and unread; the icon is for the rest. */}
-        {!statusRail && <StatusIcon status={status} agent={agent} />}
+        {opened.map((kind) => (
+          <span key={kind} role="img" aria-label={kind === 'terminal' ? 'A terminal is open' : 'A browser is open'} data-tooltip={kind === 'terminal' ? 'A terminal is open' : 'A browser is open'} className="flex shrink-0 text-faint" data-session-open={kind}>
+            {kind === 'terminal' ? <SquareTerminal size={11} aria-hidden /> : <Globe size={11} aria-hidden />}
+          </span>
+        ))}
+        {/* The rail and the age's colour already say needs you, working and unread; the icon is for the rest. With no
+            status its empty slot gives way to the terminal and browser marks, so they end under the age. */}
+        {!statusRail && (status || opened.length === 0) && <StatusIcon status={status} agent={agent} />}
       </span>
     </span>
   );
@@ -691,6 +735,12 @@ export function Sidebar() {
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const updatePrefs = usePreferences((s) => s.update);
   const sort = usePreferences((s) => s.prefs.sidebarSort);
+  // The View button: grouped by state or by project (with All projects only), and whether Done shows.
+  const grouping = usePreferences((s) => s.prefs.sidebarGroup);
+  const showDone = usePreferences((s) => s.prefs.sidebarShowDone);
+  const byProject = groupedByProject(grouping, projectFilter);
+  const folded = useSidebarFolds((s) => s.folded);
+  const projectMap = useProjects((s) => s.projects);
   const catchUps = useCatchUp((s) => s.cards);
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   const width = useSidebar((s) => s.width);
@@ -756,13 +806,28 @@ export function Sidebar() {
   // sections keep their header (and the open session's row). Closed, Archived is docked under the list; while
   // searching, its matches are listed under the rest.
   const searching = search.trim() !== '';
-  const archivedAt = archivedPlacement(archived.length, { open: archivedOpen, searching });
+  // With Show Done off, Done is gone from the list, but a search still finds what is in it.
+  const archivedAt = showDone || searching ? archivedPlacement(archived.length, { open: archivedOpen, searching }) : null;
   // The row of what the main area shows: a local session, or one on another computer.
   const shownId = useShownRowId();
   const listSelected = shownId;
   const rows = useMemo(
     () =>
-      buildListRows(active, archived, {
+      byProject
+        ? buildProjectRows(active, archived, {
+            nameOf: (root) => projectMap.get(root)?.name ?? basename(root),
+            folded,
+            searching,
+            selectedId: listSelected,
+            sort,
+            quick,
+            children: forest.children,
+            openParents,
+            queue: queueEntries,
+            archivedOpen: archivedAt === 'list',
+            ...(searching ? { snoozed } : {}),
+          })
+        : buildListRows(active, archived, {
         now,
         archivedOpen: archivedAt === 'list',
         queue: { entries: queueEntries, ready: queueReady },
@@ -775,8 +840,28 @@ export function Sidebar() {
         // Snoozed sessions are out of the list; a search still finds them, under Snoozed.
         ...(searching ? { snoozed } : {}),
       }),
-    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents, searching, snoozed],
+    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents, searching, snoozed, byProject, projectMap, folded],
   );
+  // The projects on screen, for ⌥-click and Collapse all projects.
+  const projectKeys = useMemo(() => rows.flatMap((row) => (row.kind === 'project' ? [row.key] : [])), [rows]);
+  const toggleProject = useCallback((key: string, all: boolean) => (all ? useSidebarFolds.getState().toggleAll(key, projectKeys) : useSidebarFolds.getState().toggle(key)), [projectKeys]);
+  // The project menu (⋯ on a project's header, or a right-click on it): the one the project filter offers.
+  const projectIcons = useProjectIconEntries();
+  const [projectMenu, setProjectMenu] = useState<{ root: string; x: number; y: number } | null>(null);
+  // ⌥⌘[: Collapse all projects, or Expand all projects when they are all folded.
+  const foldKeys = useRef({ byProject, projectKeys, folded });
+  foldKeys.current = { byProject, projectKeys, folded };
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || !matches(event, 'sidebar.fold-projects')) return;
+      const { byProject, projectKeys, folded } = foldKeys.current;
+      if (!byProject || projectKeys.length === 0) return;
+      event.preventDefault();
+      useSidebarFolds.getState().foldAll(projectKeys, !projectKeys.every((key) => folded.has(key)));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const queueMenus = useQueueMenu(queue.rows);
   const drag = useQueueDrag();
   /** A header's chevron or label: that section, or (⌥-click) every section. */
@@ -848,7 +933,9 @@ export function Sidebar() {
               ? `queue-${row.entry.item.id}`
               : row.kind === 'queue-header'
                 ? 'queue-header'
-                : 'archived-header';
+                : row.kind === 'project' || row.kind === 'project-summary' || row.kind === 'queue-label'
+                  ? `${row.kind}-${row.key}`
+                  : 'archived-header';
     }, [rows]),
     // The Archived header is always rendered, even far below the fold: it slides in from the dock and keeps focus.
     rangeExtractor: useCallback(
@@ -963,6 +1050,8 @@ export function Sidebar() {
     return row?.kind === 'session' ? [row.data.id] : [];
   });
   const tabStopId = listSelected && renderedIds.includes(listSelected) ? listSelected : (renderedIds[0] ?? null);
+  // With every project folded and no session on screen, the first project's header is the Tab stop.
+  const projectTabStop = tabStopId === null ? (virtualItems.map((item) => rows[item.index]).find((row) => row?.kind === 'project') as Extract<SidebarListRow, { kind: 'project' }> | undefined)?.key ?? null : null;
   // The queue has its own Tab stop: its first item.
   const firstQueued = queueEntries[0]?.item.id ?? null;
 
@@ -979,6 +1068,10 @@ export function Sidebar() {
 
   const focusRow = (id: string) =>
     requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>(`[data-session-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }));
+  const focusProject = (key: string) => {
+    virtualizer.scrollToIndex(rows.findIndex((r) => r.kind === 'project' && r.key === key), { align: 'auto' });
+    requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>(`[data-sidebar-project="${CSS.escape(key)}"]`)?.focus({ preventScroll: true }));
+  };
 
   // ⌘-click adds a row to the selection, ⇧-click selects a range, ⌥-click opens it in the other pane.
   const rowClick = (event: MouseEvent, data: SessionRowData) => {
@@ -1016,7 +1109,15 @@ export function Sidebar() {
       }
       return;
     }
-    // ← → on a pipeline's parent close and open it; ← on a sub-session goes to its parent.
+    // ← → on a project's header fold and unfold it.
+    const projectRow = target.closest<HTMLElement>('[data-sidebar-project]');
+    if (projectRow && matches(event.nativeEvent, 'sidebar.section-toggle')) {
+      event.preventDefault();
+      useSidebarFolds.getState().setFolded(projectRow.dataset.sidebarProject!, event.key === 'ArrowLeft');
+      return;
+    }
+    // ← → on a pipeline's parent close and open it; ← on a sub-session goes to its parent, and on a session in a
+    // project to the project's header.
     const treeRow = target.closest<HTMLElement>('[data-session-id]');
     if (treeRow && matches(event.nativeEvent, 'sidebar.section-toggle')) {
       const id = treeRow.dataset.sessionId!;
@@ -1031,6 +1132,9 @@ export function Sidebar() {
         openRow(listed.child.parentId);
         virtualizer.scrollToIndex(rows.findIndex((r) => r.kind === 'session' && r.data.id === listed.child!.parentId), { align: 'auto' });
         focusRow(listed.child.parentId);
+      } else if (listed.project !== undefined && event.key === 'ArrowLeft') {
+        event.preventDefault();
+        focusProject(listed.project);
       }
       return;
     }
@@ -1139,15 +1243,18 @@ export function Sidebar() {
       return;
     }
     setPicks(NO_PICKS);
-    const ids = rows.flatMap((r, index) => (r.kind === 'session' ? [{ id: r.data.id, index }] : []));
+    // Grouped by project, ↑ ↓ go through the projects' headers too: a header takes focus, a session opens.
+    const ids = rows.flatMap((r, index) => (r.kind === 'session' ? [{ id: r.data.id, index, project: false }] : r.kind === 'project' ? [{ id: r.key, index, project: true }] : []));
     if (ids.length === 0) return;
-    const current = ids.findIndex((r) => r.id === listSelected);
+    const onProject = target.closest<HTMLElement>('[data-sidebar-project]')?.dataset.sidebarProject;
+    const current = onProject !== undefined ? ids.findIndex((r) => r.project && r.id === onProject) : ids.findIndex((r) => !r.project && r.id === listSelected);
     // ↓ from the last row goes on to the docked Archived header.
     if (event.key === 'ArrowDown' && current === ids.length - 1 && archivedAt === 'dock') {
       archivedToggle('dock')?.focus();
       return;
     }
     const next = ids[current === -1 ? 0 : Math.min(ids.length - 1, Math.max(0, current + (event.key === 'ArrowDown' ? 1 : -1)))]!;
+    if (next.project) return focusProject(next.id);
     openRow(next.id);
     virtualizer.scrollToIndex(next.index, { align: 'auto' });
     // Focus follows the selection, so VoiceOver reads the new row and Tab stays where you are.
@@ -1227,6 +1334,8 @@ export function Sidebar() {
   const deviceNotice = useDeviceAnnouncement();
   const remoteFooterShown = useRemoteFooterShown();
   const localWaiting = all.filter((row) => rowStatus(row) === 'needs-you').length;
+  const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
+  const showTabs = useSidebarList((s) => browserPreview && s.list === 'browser');
 
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
@@ -1236,8 +1345,11 @@ export function Sidebar() {
         <span className="text-body font-semibold text-text/90">Seshboard</span>
       </div>
 
-      {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. */}
-      <div className="flex items-center gap-1.5 px-3 pb-1.5">
+      <SidebarNav now={now} needsYou={localWaiting} />
+
+      {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. The
+          Browser's tab list has no search or New session. */}
+      <div className={`items-center gap-1.5 px-3 pb-1.5 ${showTabs ? 'hidden' : 'flex'}`}>
         {/* A real field on the darkest surface, so it reads as the place to type. */}
         <label className="no-drag flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-bg px-2.5 text-faint focus-within:ring-1 focus-within:ring-accent-ink/50">
           <Search size={14} className="shrink-0" aria-hidden />
@@ -1274,24 +1386,16 @@ export function Sidebar() {
         </span>
       </div>
 
-      <SidebarNav now={now} />
 
-      {/* The order: by time and state, or what takes least to unblock first. */}
-      <div className="px-3 pb-1.5">
-        <SegmentedControl<SidebarSort>
-          mode="radio"
-          label="Sort sessions"
-          value={sort}
-          onChange={(sidebarSort) => updatePrefs({ sidebarSort })}
-          fill
-          className="no-drag"
-          segments={[
-            { value: 'recent', label: 'Recent', tooltip: 'What needs you, what is working, then by time', data: { 'data-sort-recent': true } },
-            { value: 'quickest', label: 'Quickest to unblock', tooltip: 'What needs you or a review first, the quickest at the top', data: { 'data-sort-quick': true } },
-          ]}
-        />
-      </div>
-      <ProjectFilter counts={counts} sources={sourceSummaries} remoteProjects={remoteProjects} />
+      {/* With the browser on, Browser swaps the sessions for its tabs; the sessions stay mounted (their notices too). */}
+      <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-sessions>
+      {/* The project and, beside it, the order: by time and state, or what takes least to unblock first. */}
+      <ProjectFilter
+        counts={counts}
+        sources={sourceSummaries}
+        remoteProjects={remoteProjects}
+        trail={<SidebarViewButton projects={projectKeys} />}
+      />
       {noProjects && (
         <div className="mx-3 mb-2 grid justify-items-start gap-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-ui" data-sidebar-onboarding>
           <p className="font-medium text-text">Add a project</p>
@@ -1343,7 +1447,7 @@ export function Sidebar() {
                   key={item.key}
                   role="none"
                   data-list-row={item.index + 1}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: item.size, transform: `translateY(${item.start}px)`, ...((row.kind === 'session' && row.project !== undefined) || row.kind === 'queue' ? { paddingLeft: byProject ? PROJECT_INDENT : 0 } : {}) }}
                   // Archived sessions fade in once their header has landed, and out before it goes back to the dock.
                   className={row.kind === 'session' && row.archived ? `transition-opacity ${archivedMotion === 'closing' ? 'duration-100' : 'duration-150'} ${archivedMotion ? 'opacity-0' : ''}` : undefined}
                 >
@@ -1355,7 +1459,16 @@ export function Sidebar() {
                       style={{ bottom: block.bottom ? SESSION_ROW_GAP[sidebarStyle] : 0 }}
                     />
                   )}
-                  {row.kind === 'group' || row.kind === 'queue-header' ? (
+                  {row.kind === 'project' ? (
+                    <ProjectGroupRow row={row} tabbable={row.key === projectTabStop} onToggle={toggleProject} onMenu={row.remote ? null : (root, at) => setProjectMenu({ root, ...at })} />
+                  ) : row.kind === 'project-summary' ? (
+                    <ProjectSummaryLine row={row} />
+                  ) : row.kind === 'queue-label' ? (
+                    <p className="flex h-full items-end gap-1 pb-0.5 pl-[2.375rem] text-meta font-medium text-faint" data-sidebar-project-queued={row.key}>
+                      <ListEnd size={11} className="shrink-0" aria-hidden />
+                      Queued
+                    </p>
+                  ) : row.kind === 'group' || row.kind === 'queue-header' ? (
                     <GroupHeader row={row} selectAll={row.kind === 'group' ? selectAll(row.group) : null} onToggle={toggleSection} />
                   ) : row.kind === 'hidden' ? (
                     <p className="flex h-full items-start justify-end px-3 text-meta text-faint" data-section-hidden={row.group}>
@@ -1404,7 +1517,8 @@ export function Sidebar() {
                       draft={draftPreviews.get(row.data.id) ?? null}
                       review={reviewOf(catchUps.get(row.data.id))}
                       outside={(catchUps.get(row.data.id)?.signals.outOfScope.length ?? 0) > 0}
-                      treeLevel={1}
+                      inProject={row.project !== undefined}
+                      treeLevel={row.project !== undefined ? 2 : 1}
                       expanded={row.parent?.open}
                       childCount={row.parent?.count}
                       onToggleTree={toggleParent}
@@ -1471,9 +1585,13 @@ export function Sidebar() {
         </div>
       )}
       </div>
+      </div>
+      {showTabs && <BrowserTabList />}
 
-      {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines. */}
-      <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={!listEdge.atBottom || undefined} data-sidebar-bottom>
+      {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines.
+          Under the Browser's tabs only Settings: the rest is about sessions (hidden, not gone, so it is as it was on the way back). */}
+      <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={(!showTabs && !listEdge.atBottom) || undefined} data-sidebar-bottom>
+      <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-session-footer>
       {/* Closed, Archived is docked under the list, so a short list never scrolls and a long one keeps it in sight. */}
       {archivedAt === 'dock' && (
         <div ref={dockRef} onKeyDown={onDockKeyDown} className="relative z-10 flex h-9 shrink-0 items-center bg-sidebar px-4.5" data-archived-dock>
@@ -1485,9 +1603,12 @@ export function Sidebar() {
       <ConnectedDevices />
       <ComputersStrip localWaiting={localWaiting} joined={remoteFooterShown} />
 
+      <BrowserIntro />
       <StarOnGithub sessions={all.length} />
+      </div>
 
       <footer className="flex h-10 shrink-0 items-center gap-2 px-3 text-meta text-muted">
+        <div className={showTabs ? 'hidden' : 'contents'}>
         {/* The focus limit, while it's on: how many sessions are going, out of how many. */}
         <FocusCounter />
         {/* The count opens every session, in Settings › Sessions. */}
@@ -1533,10 +1654,12 @@ export function Sidebar() {
           // The list and the open project are one view: a second click leaves it.
           onClick={() => setView(view === 'projects' || view === 'project' ? 'session' : 'projects')}
         />
+        </div>
         <Button
           variant="quiet"
           iconOnly
           icon={<Settings size={15} aria-hidden />}
+          className={showTabs ? 'ml-auto' : undefined}
           aria-label="Settings"
           shortcut="settings"
           selected={view === 'settings'}
@@ -1552,6 +1675,10 @@ export function Sidebar() {
       </p>
       {menus.overlays}
       {queueMenus.overlay}
+      {projectMenu && (
+        <Menu x={projectMenu.x} y={projectMenu.y} label={`${projectMap.get(projectMenu.root)?.name ?? basename(projectMenu.root)} options`} entries={projectIcons.entries(projectMenu.root, projectMenu)} onClose={() => setProjectMenu(null)} />
+      )}
+      {projectIcons.overlays}
     </aside>
   );
 }

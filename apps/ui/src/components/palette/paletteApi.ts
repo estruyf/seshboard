@@ -15,7 +15,10 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
-import { isWebOpen, useWebPreview } from '../../state/webPreviewStore.ts';
+import { showWebPanel, useWebPreview } from '../../state/webPreviewStore.ts';
+import { currentPageTab, newBrowserTab, openBrowserView } from '../../state/browserViewStore.ts';
+import { toggleFavorite } from '../../state/browserFavoritesStore.ts';
+import { runBrowserAction } from '../../state/browserActions.ts';
 import { sessionServerOffers } from '../webPreview/serverOffers.ts';
 import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
 import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
@@ -227,11 +230,23 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     },
     openWeb: () => {
       const id = useSessions.getState().selectedId;
-      if (id) useWebPreview.getState().open(id, isWebOpen(id) ? null : (sessionServerOffers(useTerminals.getState().terminals.values(), id)[0]?.url ?? null));
+      if (id) showWebPanel(id, sessionServerOffers(useTerminals.getState().terminals.values(), id)[0]?.url ?? null);
     },
     reloadWeb: () => {
       const id = useSessions.getState().selectedId;
       if (id) useWebPreview.getState().reload(id);
+    },
+    openBrowserView: () => openBrowserView(),
+    browserAction: (action) => runBrowserAction(action),
+    toggleFavorite: () => {
+      const tab = currentPageTab();
+      if (tab) toggleFavorite(tab);
+    },
+    newBrowserTab: () => {
+      const { view, selectedId } = useSessions.getState();
+      if (view === 'browser' || !selectedId) return newBrowserTab();
+      useWebPreview.getState().open(selectedId);
+      useWebPreview.getState().openTab(selectedId, null);
     },
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),

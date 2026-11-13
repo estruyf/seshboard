@@ -67,7 +67,7 @@ Most of the time in a feature goes into rerunning slow checks and re-reading the
 - **Features side by side** go in their own git worktree (the Agent tool's `isolation: "worktree"`). A new worktree has no `node_modules` of its own and would resolve packages from the main checkout, on another branch: run `npm install` in it first (if npm skips install scripts, run `node node_modules/electron/install.js` for Electron). Smoke runs take turns; use `--only` in each worktree.
 - **Node 24 or later** (`engines`). If `node -v` says otherwise, put a newer Node first on the `PATH` (on a Mac with Homebrew, `/opt/homebrew/bin`).
 - **Docs and screenshots wait for the release** ([docs/releasing.md](docs/releasing.md)). Per feature, add its `CHANGELOG.md` line and its `website/src/content/features.json` entry (`npm run check` needs it); the pages and screenshots are written at release time.
-- **Read the detail only for your area**: [.claude/rules/ui.md](.claude/rules/ui.md) and then the one section of [docs/ui-patterns.md](docs/ui-patterns.md) you need for the UI, and the subsystem docs in `docs/` (remote access, session linking, mods, themes, Windows) when you change that subsystem.
+- **Read the detail only for your area**: [.claude/rules/ui.md](.claude/rules/ui.md) and then the one section of [docs/ui-patterns.md](docs/ui-patterns.md) you need for the UI, and the subsystem docs in `docs/` (remote access, session linking, mods, themes, Windows, the browser) when you change that subsystem. For a browser bug that traces back to `<webview>` (focus, keys, hidden pages), read [docs/browser.md](docs/browser.md): it says when to recommend moving to `WebContentsView`.
 
 ## Conventions
 
@@ -85,7 +85,7 @@ Most of the time in a feature goes into rerunning slow checks and re-reading the
   Linux takes the POSIX side of each (paths, `$SHELL`, the Ctrl keys of Windows); where macOS calls an app by its bundle (`open -a`), Linux uses a command on `PATH` or `xdg-open`.
 
   Pure helpers take the platform as a parameter, so the macOS tests run on Windows and the other way round.
-- **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings`, `project_actions` and `provider_notes` hold user choices or what nothing else has, and must survive.
+- **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings`, `project_actions`, `provider_notes` and `browser_tabs` hold user choices or what nothing else has, and must survive.
 
 ### UI
 

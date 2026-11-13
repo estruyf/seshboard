@@ -234,6 +234,14 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘L | Add to Later instead (in the quick start panel) |
 | ⌘O | Open the new session (in the quick start panel) |
 | ⌘Q then ⌘Q | Quit (Seshboard asks first; Press once if you turned that off) |
+| ⌘⇧B | Browser: your tabs outside a session (Outside a session, with the browser on) |
+| ⌘T | New tab (in a session or the Browser view, with the browser on) |
+| ⌘L | Go to the address bar (with a browser on screen) |
+| ⌘⇧T | Reopen the closed tab (in the Browser view, or while a page has focus; Elsewhere it opens Activity) |
+| ⌘W | Close the tab (while a page or its address bar has focus) |
+| ⌘D | Add the page to favourites, or remove it (while a page or its address bar has focus) |
+| ⌘[ | Back in the page (while a page has focus) |
+| ⌘] | Forward in the page (while a page has focus) |
 | ⌘J or ⌃` | Show or hide the terminal |
 | ⌘⇧J | Maximize or restore the terminal |
 | ⌘S | Save the memory or instructions you are editing (on a project's Memory tab, or Settings › Memory) |
@@ -263,6 +271,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘Z | Undo the last quick action (in the sidebar) |
 | ← or → | Close or open a section, or a pipeline's steps (on a section header or a pipeline's row in the sidebar) |
 | ⌥-click | Close or open every section (on a section header in the sidebar) |
+| ⌘⌥[ | Collapse or expand all projects (while the sidebar groups sessions by project) |
 | ⌘↩ | Start a queued item now (on a queued item, in the sidebar or Home) |
 | ⌘E | Edit a queued item in New session (on a queued item, in the sidebar or Home) |
 | ⌥↑ or ⌥↓ | Move a queued item up or down (on a queued item, in the sidebar or Home) |
@@ -304,7 +313,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧M | Comment on the selected lines (in a diff in Changes; Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box) |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |
 | ⌘⇧E | Show or hide Commands (The commands Claude runs in the background, with their output) |
-| ⌘⇧B | Show or hide the web preview (Your running dev server beside the conversation) |
+| ⌘⇧B | Show or hide the session's browser (Your running dev server, or with the browser on any page, beside the conversation) |
 |  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |
 | Esc | Restore the terminal (while it fills the view, outside the shell) |
 | ⌘K | Clear the terminal (in the terminal) |

@@ -6,7 +6,7 @@ import { useCommandsPanel } from './commandsPanelStore.ts';
 import { useRightPanel } from './rightPanelStore.ts';
 import { applyView, collectView, parseView, type SessionViewState, type ViewSlices } from './sessionViewState.ts';
 import { useTerminals } from './terminalsStore.ts';
-import { useWebPreview } from './webPreviewStore.ts';
+import { sessionWebs, useWebPreview } from './webPreviewStore.ts';
 
 /** The stores' state a session's view is made of (`sessionViewState.ts` does the work on it). */
 function slices(): ViewSlices {
@@ -22,7 +22,7 @@ function slices(): ViewSlices {
     terminalOpen: terminals.openFor,
     terminalMaximized: terminals.maximizedFor,
     terminalTab: terminals.active,
-    web: useWebPreview.getState().sessions,
+    web: sessionWebs(useWebPreview.getState()),
   };
 }
 
@@ -41,7 +41,11 @@ export function writeSessionView(sessionId: string, view: SessionViewState): voi
   if (after.commands !== before.commands) useCommandsPanel.setState({ sessions: after.commands });
   // Only the session's own pick: the window's default tab (for sessions that picked none) stays.
   if (after.tabs !== before.tabs) useRightPanel.setState({ tabs: after.tabs });
-  if (after.web !== before.web) useWebPreview.setState({ sessions: after.web });
+  if (after.web !== before.web) {
+    const web = after.web.get(sessionId) ?? null;
+    const was = before.web.get(sessionId) ?? null;
+    if (web?.url !== was?.url || web?.phone !== was?.phone || !web !== !was) useWebPreview.getState().handOver(sessionId, web);
+  }
   if (after.terminalOpen !== before.terminalOpen || after.terminalMaximized !== before.terminalMaximized || after.terminalTab !== before.terminalTab) {
     useTerminals.setState({ openFor: after.terminalOpen as Set<string>, maximizedFor: after.terminalMaximized as Set<string>, active: after.terminalTab as Map<string, string> });
   }
@@ -60,7 +64,7 @@ export function subscribeSessionViews(listener: () => void): () => void {
     useAsk.subscribe((state, previous) => state.sessions !== previous.sessions && listener()),
     useAgentsPanel.subscribe((state, previous) => state.sessions !== previous.sessions && listener()),
     useCommandsPanel.subscribe((state, previous) => state.sessions !== previous.sessions && listener()),
-    useWebPreview.subscribe((state, previous) => state.sessions !== previous.sessions && listener()),
+    useWebPreview.subscribe((state, previous) => (state.panels !== previous.panels || state.tabs !== previous.tabs || state.active !== previous.active) && listener()),
     useRightPanel.subscribe((state, previous) => (state.tabs !== previous.tabs || state.tab !== previous.tab) && listener()),
     useTerminals.subscribe((state, previous) => (state.openFor !== previous.openFor || state.maximizedFor !== previous.maximizedFor || state.active !== previous.active) && listener()),
   ];

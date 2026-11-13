@@ -31,6 +31,9 @@ import { ReloadLimiter } from './reloadLimiter.ts';
 import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
 import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
+import { runToolRailBadgesStep, runToolRailStep } from './toolRailSmoke.ts';
+import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
+import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -144,8 +147,9 @@ if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store')
 const forcedScheme = process.env.SESHBOARD_COLOR_SCHEME;
 const preferences = new PreferencesStore(join(app.getPath('userData'), 'preferences.json'), sanitizePreferences({ colorScheme: forcedScheme }).colorScheme);
 // The smoke steps need sessions to click; on the real ~/.claude most were started elsewhere. Star on GitHub stays out
-// of the screenshots (the smoke step that checks it asks for it).
-if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done' });
+// of the screenshots (the smoke step that checks it asks for it), and so does the browser's card. The browser starts
+// off, so the web preview steps check the local-only preview; the browser's own steps turn it on.
+if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done', browserIntro: 'done', browserEnabled: false });
 
 /** Built-in and imported themes; a change (an import, an edited file) goes to every window. */
 const themes = new ThemeStore(join(app.getPath('userData'), 'themes'), BUILT_IN_THEMES, (state) => {
@@ -1413,7 +1417,7 @@ ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
 });
 // A view a pop-out doesn't have (Settings, Usage, a project, New session, Go to, Search) opens in the main window, which comes to the front.
-const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming', 'activity']);
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming', 'activity', 'browser']);
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
@@ -1622,6 +1626,13 @@ ipcMain.on(IpcChannel.showRemoteLog, () => {
 });
 
 const readyReports: TimedReport[] = [];
+/** Reloads of the main window a smoke step made, whose ready reports are expected (`reloadForSmoke`). */
+let smokeReloads = 0;
+/** A smoke step reloads the main window: the ready report that follows is not taken for an engine restart. */
+function reloadForSmoke(win: BrowserWindow): void {
+  smokeReloads++;
+  win.webContents.reload();
+}
 ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
   const timed: TimedReport = {
     ...report,
@@ -1632,6 +1643,12 @@ ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   // What waited for a window is for the main one; a pop-out only shows its session.
   if (!win || win !== mainWindow) return;
+  // A smoke step reloaded the window on purpose (`reloadForSmoke`): its report is not the engine restarting.
+  if (smokeReloads > 0) {
+    smokeReloads--;
+    for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
+    return;
+  }
   // Only the main window's: the menu bar's and Quick start's report too, in any order, and a second report here means the engine restarted.
   readyReports.push(timed);
   for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
@@ -2300,25 +2317,25 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${PANEL_BOX}.width === ${wide.width}`, 2_000))) return `failed: ← on the handle did not widen the panel again (${(await box())?.width}px)`;
   await shot(win, 'terminal-right-light.png');
 
-  // Changes also lives on the right: the terminal stays there as a tab, behind Changes until you pick it.
+  // Changes also lives on the right: the terminal stays open there, behind Changes, until you pick it on the rail.
   let changes = 'no Changes button (not a git checkout)';
   if (await js("document.querySelector('[data-current-session] [data-toggle-changes]') !== null")) {
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
-    if (!(await waitInPage(win, `document.querySelector('[data-changes-panel]') && !document.querySelector('[data-terminal-panel]') && document.querySelector('[data-right-tab="terminal"][aria-selected="false"]')`, 3_000))) {
-      return 'failed: with Changes open the terminal did not wait behind it as a tab';
+    if (!(await waitInPage(win, `document.querySelector('[data-changes-panel]') && !document.querySelector('[data-terminal-panel]') && document.querySelector('[data-current-session] [data-toggle-terminal]')?.dataset.railState === 'behind'`, 3_000))) {
+      return 'failed: with Changes open the terminal did not wait behind it on the rail';
     }
     await shot(win, 'terminal-with-changes.png');
-    await js(`document.querySelector('[data-right-tab="terminal"]').click()`);
-    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right' && document.querySelector('[data-terminal-panel] [data-right-tabs]')", 3_000))) {
-      return 'failed: the Terminal tab did not bring the terminal to the front on the right';
+    await js(`document.querySelector('[data-current-session] [data-toggle-terminal]').click()`);
+    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right' && document.querySelector('[data-current-session] [data-toggle-terminal]')?.getAttribute('aria-pressed') === 'true' && document.querySelector('[data-current-session] [data-toggle-changes]')?.dataset.railState === 'behind'", 3_000))) {
+      return 'failed: the rail\'s Terminal did not bring the terminal to the front on the right';
     }
     // Behind the terminal, the Changes button brings Changes to the front first; the second click closes it.
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
-    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && !document.querySelector('[data-right-tabs]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right'", 3_000))) {
+    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-current-session] [data-toggle-changes]')?.dataset.railState === 'closed' && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right'", 3_000))) {
       return 'failed: closing Changes did not leave the terminal alone on the right';
     }
-    changes = 'a tab next to Changes on the right, alone there again after';
+    changes = 'behind Changes on the right, in front from the rail, alone there again after';
   }
 
   // Maximize: the button, then Esc from it; ⌘⇧J twice.
@@ -2327,8 +2344,9 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${PANEL_BOX}.maximized && ${hidden} && !document.querySelector('[data-current-session] [data-composer-submit]')?.offsetParent`, 3_000))) {
     return `failed: Maximize did not give the terminal the whole view (the click landed on ${maximize.at})`;
   }
-  // The panel grows into the view after the conversation hides; a slow machine can measure it in between.
-  const viewWidth = "Math.round(document.querySelector('[data-current-session]').getBoundingClientRect().width)";
+  // The panel grows into the view after the conversation hides; a slow machine can measure it in between. The view's
+  // rail of tools stays beside it.
+  const viewWidth = "Math.round(document.querySelector('[data-current-session]').getBoundingClientRect().width - (document.querySelector('[data-current-session] [data-tool-rail]')?.getBoundingClientRect().width ?? 0))";
   if (!(await waitInPage(win, `Math.abs(${PANEL_BOX}.width - ${viewWidth}) <= 2`, 3_000))) {
     await shot(win, 'terminal-maximized-failed.png');
     return `failed: maximized, the terminal is ${(await box())?.width}px of ${await js(viewWidth)}px`;
@@ -2574,7 +2592,7 @@ async function runPopoutStep(win: BrowserWindow): Promise<string> {
     pop.webContents.debugger.attach('1.3');
     await pop.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true });
     const view = `document.querySelector('[data-current-session="${id}"]')`;
-    if (!(await inPop(`${view} && ${view}.querySelector('[data-panel-toggles]')`, 20_000))) return 'failed: the pop-out shows no panel buttons';
+    if (!(await inPop(`${view} && ${view}.querySelector('[data-tool-rail] [data-toggle-terminal]')`, 20_000))) return 'failed: the pop-out shows no rail of tools';
     // Its pane in the main window closes: the session is open in one window.
     if (!(await waitInPage(win, `!document.querySelector('[data-current-session="${id}"]')`, 5_000))) return 'failed: the main window still shows the session';
     const header = (await popJs(
@@ -2642,7 +2660,7 @@ async function runPopoutStep(win: BrowserWindow): Promise<string> {
     if (!(await inPop("document.querySelector('[data-ask-panel]')"))) return 'failed: Ask did not open in the narrow pop-out';
     await shot(pop, 'popout-narrow.png');
     const fits = (await popJs(
-      `(() => { const w = window.innerWidth; const edge = (sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return !r || (r.left >= 0 && r.right <= w + 1); }; return { page: document.documentElement.scrollWidth <= w, ask: edge('[data-ask-panel]') && document.querySelector('[data-ask-panel]').getBoundingClientRect().width >= w - 2, back: edge('[data-move-to-main-window]'), close: edge('[data-close-window]'), toggles: edge('[data-panel-toggles]'), w }; })()`,
+      `(() => { const w = window.innerWidth; const edge = (sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return !r || (r.left >= 0 && r.right <= w + 1); }; return { page: document.documentElement.scrollWidth <= w, ask: edge('[data-ask-panel]') && document.querySelector('[data-ask-panel]').getBoundingClientRect().right >= document.querySelector('[data-tool-rail]').getBoundingClientRect().left - 2 && document.querySelector('[data-ask-panel]').getBoundingClientRect().left <= 2, back: edge('[data-move-to-main-window]'), close: edge('[data-close-window]'), toggles: edge('[data-tool-rail]'), w }; })()`,
     )) as { page: boolean; ask: boolean; back: boolean; close: boolean; toggles: boolean; w: number };
     if (!Object.values(fits).every(Boolean)) return `failed: something sticks out of a ${fits.w}px pop-out (${JSON.stringify(fits)})`;
     await popJs("document.querySelector('[data-toggle-ask]').click()");
@@ -11441,7 +11459,7 @@ async function runHomeLayoutStep(win: BrowserWindow): Promise<string> {
       usageUnder: !!usage && !!projects && usage.top >= projects.bottom,
       start: !!document.querySelector('[data-home-start] input[aria-label="Start a session"]'),
       summary: document.querySelector('[data-home-summary]')?.textContent ?? '',
-      heading: document.querySelector('[data-home] h1')?.textContent ?? '',
+      heading: document.querySelector('[data-home] h2')?.textContent ?? '',
     };
   })()`;
   type Layout = { lanes: string[]; rows: number; columns: number; usageRight: boolean; usageUnder: boolean; start: boolean; summary: string; heading: string };
@@ -11614,8 +11632,30 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, details, 3_000))) return 'Space did not open the banner’s Details again';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${banner}') && !${details}`, 3_000))) return 'Esc did not close Details first';
+  // A wide panel beside the conversation (the web preview, widened as far as it goes): the banner and the strip shrink
+  // with the conversation, nothing runs past their edge, and their buttons take a second row when they must.
+  const fitsNarrow = async (box: string) => {
+    await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', shiftKey: true, ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-web-preview] [role=separator]')`, 3_000))) return 'the web preview did not open beside the conversation';
+    await js(`(() => { const handle = document.querySelector('${view} [data-web-preview] [role=separator]'); for (let i = 0; i < 40; i++) handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })); })()`);
+    const result = (await js(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.querySelector('${box}');
+      if (!el) return resolve('no catch-up');
+      const rect = el.getBoundingClientRect();
+      if (rect.width >= 640) return resolve('not narrow: ' + Math.round(rect.width) + 'px');
+      const out = [...el.querySelectorAll('button, [data-catchup-state]')].filter((b) => b.offsetParent && b.getBoundingClientRect().right > rect.right + 1);
+      resolve(out.length ? 'past its edge: ' + out.map((b) => b.textContent.trim()).join(', ') : 'ok');
+    })))`)) as string;
+    await js(`document.querySelector('${view} [data-web-preview-close]')?.click()`);
+    await waitInPage(win, `!document.querySelector('${view} [data-web-preview]')`, 3_000);
+    return result;
+  };
+  const bannerNarrow = await fitsNarrow(banner);
+  if (bannerNarrow !== 'ok') return `with a wide panel beside it, the banner: ${bannerNarrow}`;
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${strip}') && !document.querySelector('${banner}')`, 3_000))) return 'Esc did not fold the banner into the strip';
+  const stripNarrow = await fitsNarrow(strip);
+  if (stripNarrow !== 'ok') return `with a wide panel beside it, the strip: ${stripNarrow}`;
   pressKey(win, 'Space');
   if (!(await waitInPage(win, `document.querySelector('${banner}')`, 3_000))) return 'Space did not open the banner again';
   if (!(await waitInPage(win, details, 3_000))) return 'the banner came back without its Details';
@@ -11628,10 +11668,16 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   if (!(await has(banner))) return 'Esc in the message box folded the banner';
   await blur();
 
-  await js("document.querySelector('[data-sort-quick]')?.click()");
+  // The sort is in the View button's menu beside the project filter: open it and pick.
+  const sortBy = async (value: string) => {
+    await js("document.querySelector('[data-sidebar-view]')?.click()");
+    await waitInPage(win, `document.querySelector('[data-sidebar-view-option="sort-${value}"]')`, 2_000);
+    await js(`document.querySelector('[data-sidebar-view-option="sort-${value}"]')?.click()`);
+  };
+  await sortBy('quickest');
   const grouped = await waitInPage(win, "document.querySelector('[data-session-group=\"review\"], [data-session-group=\"read\"], [data-session-group=\"still-working\"]') && !document.querySelector('[data-session-group=\"open\"], [data-session-group=\"pinned\"], [data-queue-header]')", 3_000);
   if (grouped) await shot(win, 'sidebar-quickest.png');
-  await js("document.querySelector('[data-sort-recent]')?.click()");
+  await sortBy('recent');
   if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
   if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
   return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Details open at first, Space closed and opened them, Esc closed Details then folded the banner, Space opened it again with Details, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
@@ -13270,25 +13316,23 @@ async function runAskStep(win: BrowserWindow): Promise<string> {
   await js(`${askButton}.click()`);
   if (!(await waitInPage(win, `${has('[data-ask-panel]')} && ${box}.value === '' && !${has('[data-btw-token]')}`, 2_000))) return await fail('a bare /btw did not open the panel');
 
-  // With Changes open too, the right side has tabs; opening Changes never closes Ask.
+  // With Changes open too, both stay open on the right and the rail says which is in front; opening Changes never closes Ask.
   let tabs = 'no Changes here';
   if (await js(has('[data-toggle-changes]'))) {
     const wasOpen = (await js(has('[data-changes-panel]'))) as boolean;
-    if (!wasOpen) await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
-    else await js(`document.querySelector('${pane} [data-right-tab="changes"]')?.click()`);
-    const tab = (id: string) => `document.querySelector('${pane} [data-right-tab="${id}"]')?.getAttribute('aria-selected') === 'true'`;
-    if (!(await waitInPage(win, `${has('[data-right-tabs]')} && ${tab('changes')} && ${has('[data-changes-panel]')} && !${has('[data-ask-panel]')}`, 3_000))) return await fail('opening Changes with Ask open did not show it in front as a tab');
-    if (!(await js(`document.querySelector('${pane} [data-right-tab="ask"]').textContent.includes('4')`))) return await fail('the Ask tab does not count the thread’s questions');
-    await js(`document.querySelector('${pane} [data-right-tab="ask"]').click()`);
-    if (!(await waitInPage(win, `${tab('ask')} && ${has('[data-ask-panel]')} && !${has('[data-changes-panel]')}`, 2_000))) return await fail('the Ask tab did not bring Ask to the front');
+    const rail = (id: string) => `document.querySelector('${pane} [data-toggle-${id}]')?.dataset.railState`;
+    if (!wasOpen || (await js(rail('changes'))) !== 'front') await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
+    if (!(await waitInPage(win, `${rail('changes')} === 'front' && ${rail('ask')} === 'behind' && ${has('[data-changes-panel]')} && !${has('[data-ask-panel]')}`, 3_000))) return await fail('opening Changes with Ask open did not show it in front, with Ask behind on the rail');
+    await js(`document.querySelector('${pane} [data-toggle-ask]').click()`);
+    if (!(await waitInPage(win, `${rail('ask')} === 'front' && ${has('[data-ask-panel]')} && !${has('[data-changes-panel]')}`, 2_000))) return await fail("the rail's Ask did not bring Ask to the front");
     if (!wasOpen) {
       // ⌘⇧D with Changes behind: to the front, then closed (Ask stays).
       await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
-      if (!(await waitInPage(win, `${tab('changes')}`, 2_000))) return await fail('the Changes toggle did not bring Changes to the front');
+      if (!(await waitInPage(win, `${rail('changes')} === 'front'`, 2_000))) return await fail('the Changes toggle did not bring Changes to the front');
       await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
-      if (!(await waitInPage(win, `!${has('[data-right-tabs]')} && ${has('[data-ask-panel]')}`, 2_000))) return await fail('closing Changes did not leave Ask on its own');
+      if (!(await waitInPage(win, `${rail('changes')} === 'closed' && ${has('[data-ask-panel]')}`, 2_000))) return await fail('closing Changes did not leave Ask on its own');
     }
-    tabs = 'tabs with Changes';
+    tabs = 'Ask and Changes open together, the rail says which is in front';
   }
   await close();
 
@@ -14021,6 +14065,21 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('triggers: a trigger that starts a pipeline, from Run as and Start when…, starts one run with the issue as its task and the bolt on its run row', () => runTriggerPipelineStep(win), { timeoutMs: 60_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
+  // The new views' pictures, in light and dark, for the pull request.
+  const shotBoth = async (name: string) => {
+    const scheme = preferences.get().colorScheme;
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await setColorScheme(win, colorScheme);
+      await shot(win, `${name}-${colorScheme}.png`);
+    }
+    updatePreferences({ colorScheme: scheme });
+  };
+  const sidebarDeps: SidebarGroupSmokeDeps = { shot: shotBoth, setPreferences: updatePreferences, preferences: () => preferences.get() };
+  await step('sidebar group by project: View › Project, a header per project, what needs you under the first', () => runSidebarGroupByProjectStep(win, sidebarDeps));
+  await step('sidebar fold project: a folded project says what is in it, unfolding brings its rows back', () => runSidebarFoldProjectStep(win, sidebarDeps));
+  await step('sidebar compact: View › Compact rows makes rows one line', () => runSidebarCompactStep(win, sidebarDeps));
+  await step('tool rail: a toolbar at the right edge, Changes opens in front and closes again', () => runToolRailStep(win, shotBoth));
+  await step('tool rail badges: the Changes badge counts the changed files', () => runToolRailBadgesStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
   await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));
@@ -14056,6 +14115,24 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
   await step("web preview: an action's server offered on its run strip and pill, its page beside the conversation, outside links to the browser", () => runWebPreviewStep(win, { shot: (name) => shot(win, name), addAction: (name, command) => addAction(win, name, command), outside: webPreviewOutside, popoutOf: (id) => popouts.get(id) }));
+  // The browser: on for the first three, off again by the last (which checks the web preview as before). "browser
+  // pin" needs "browser view"'s tab; "browser outside link" uses the panel "session browser" left open, or opens one.
+  const bothSchemes = async (name: string) => {
+    const scheme = preferences.get().colorScheme;
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await setColorScheme(win, colorScheme);
+      await shot(win, `${name}-${colorScheme}.png`);
+    }
+    updatePreferences({ colorScheme: scheme });
+  };
+  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
+  await step('browser intro: the sidebar card opens the browser, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
+  await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
+  await step('browser pin: a pinned tab is still there after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser favorites: star a page, kept after a reload, opened from the sidebar and an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
+  await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
@@ -14125,7 +14202,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 
 app.whenReady().then(() => {
   protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
-  installWebPreviewGuards((url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)));
+  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().browserEnabled, preview: () => preferences.get().webPreview, askFirst: !scripted });
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);

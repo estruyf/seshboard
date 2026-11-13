@@ -39,9 +39,11 @@ export function shortcutFromEvent(event: {
       ? event.code.slice(3).toLowerCase()
       : event.altKey && event.code?.startsWith("Digit")
         ? event.code.slice(5)
-        : event.code === "Space"
-          ? " "
-          : event.key.toLowerCase();
+        : event.altKey && (event.code === "BracketLeft" || event.code === "BracketRight")
+          ? (event.code === "BracketLeft" ? "[" : "]")
+          : event.code === "Space"
+            ? " "
+            : event.key.toLowerCase();
   const key = NAMED_KEYS[raw] ?? raw;
   return [
     event.metaKey && "cmd",
@@ -221,7 +223,7 @@ export const sameShortcut = (a: string, b: string) =>
 
 /** Where you are, for `when()`. Built from the stores (and where focus was) when the shortcuts sheet opens. */
 export interface ShortcutContext {
-  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming" | "activity";
+  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming" | "activity" | "browser";
   /** A session is open in the session view. */
   session: boolean;
   /** Claude is working, or waiting for you, in that session. */
@@ -365,6 +367,8 @@ export const SHORTCUTS = [
     keys: ["mod+shift+t"],
     action: "Activity: what you did per day",
     section: "general",
+    // In the Browser view (and in a page) ⌘⇧T reopens the closed tab, as in a browser.
+    when: (ctx) => ctx.view !== "browser",
   },
   {
     id: "usage.open",
@@ -694,6 +698,13 @@ export const SHORTCUTS = [
     where: "sidebar",
   },
   {
+    id: "sidebar.fold-projects",
+    keys: ["mod+alt+["],
+    action: "Collapse or expand all projects",
+    section: "sessions",
+    context: "While the sidebar groups sessions by project",
+  },
+  {
     id: "queue.start",
     keys: ["mod+enter"],
     action: "Start a queued item now",
@@ -1012,10 +1023,71 @@ export const SHORTCUTS = [
   {
     id: "web.toggle",
     keys: ["mod+shift+b"],
-    action: "Show or hide the web preview",
+    action: "Show or hide the session's browser",
     section: "session",
     when: inSession,
-    note: "Your running dev server beside the conversation",
+    note: "Your running dev server, or with the browser on any page, beside the conversation",
+  },
+  {
+    id: "browser.view",
+    keys: ["mod+shift+b"],
+    action: "Browser: your tabs outside a session",
+    section: "general",
+    context: "Outside a session, with the browser on",
+    when: (ctx) => !inSession(ctx),
+  },
+  {
+    id: "browser.new-tab",
+    keys: ["mod+t"],
+    action: "New tab",
+    section: "general",
+    context: "In a session or the Browser view, with the browser on",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+  },
+  {
+    id: "browser.address",
+    keys: ["mod+l"],
+    action: "Go to the address bar",
+    section: "general",
+    context: "With a browser on screen",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+  },
+  {
+    id: "browser.reopen-tab",
+    keys: ["mod+shift+t"],
+    action: "Reopen the closed tab",
+    section: "general",
+    context: "In the Browser view, or while a page has focus",
+    note: "Elsewhere it opens Activity",
+    when: (ctx) => ctx.view === "browser",
+  },
+  {
+    id: "browser.close-tab",
+    keys: ["mod+w"],
+    action: "Close the tab",
+    section: "general",
+    context: "While a page or its address bar has focus",
+  },
+  {
+    id: "browser.favorite",
+    keys: ["mod+d"],
+    action: "Add the page to favourites, or remove it",
+    section: "general",
+    context: "While a page or its address bar has focus",
+  },
+  {
+    id: "browser.back",
+    keys: ["mod+["],
+    action: "Back in the page",
+    section: "general",
+    context: "While a page has focus",
+  },
+  {
+    id: "browser.forward",
+    keys: ["mod+]"],
+    action: "Forward in the page",
+    section: "general",
+    context: "While a page has focus",
   },
   {
     id: "ask.open",

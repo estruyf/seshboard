@@ -39,6 +39,10 @@ export type PaletteDialog =
   | { kind: 'memory-import'; source: { kind: 'export'; paths: string[] } | { kind: 'paste' } }
   | { kind: 'memory-copy-app' }
   | { kind: 'remember'; text: string; from: 'user' | 'claude'; sessionId: string | null; root: string | null }
+  /** Rename tab… on a browser tab, from its menu, a double click or the palette. */
+  | { kind: 'rename-tab'; tabId: string }
+  /** Clear data for this site (`origin`) or, with null, all browsing data: asks first. */
+  | { kind: 'clear-browser-data'; origin: string | null }
   /** New session from an issue or pull request: the # list on its own, for `root`. */
   | { kind: 'github-start'; type: 'issue' | 'pr'; root: string }
   /**

@@ -1,3 +1,4 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
@@ -75,7 +76,6 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Switch } from '../ui/Toggle.tsx';
 import { ProjectIcon, useProjectColor } from '../ProjectIcon.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { OpenInButton } from '../OpenInButton.tsx';
 import { CatchUpButton } from '../git/CatchUpButton.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
@@ -1449,18 +1449,16 @@ function LocalNewSession() {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-drop-zone>
-      {/* No title bar: the heading names the view. The strip keeps the window draggable. */}
-      <div className="drag flex h-13 shrink-0 items-center justify-between px-4">
-        <SidebarToggle />
+      <ViewHeader title="New session">
         {cwd && !question && inspection?.path === cwd && inspection.exists && (
-          <div className="flex items-center gap-2">
+          <div className="no-drag ml-auto flex shrink-0 items-center gap-2">
             {/* Your copy may be behind the remote: catch up before Claude starts from it. */}
             {gitStatus && <CatchUpButton cwd={cwd} status={gitStatus} target={useWorktree ? null : checkoutBranch} onStatus={setGitStatus} request={catchUpRequest} />}
             {/* To look around the whole project before (or instead of) asking Claude. */}
             <OpenInButton path={cwd} shortcut={false} />
           </div>
         )}
-      </div>
+      </ViewHeader>
 
       {/* The view is a container, so the sidebar and side panels count. Stacked, it scrolls; in columns, each column does. */}
       <div ref={viewRef} className="@container/new-session flex min-h-0 flex-1 flex-col overflow-y-auto @min-[860px]/new-session:overflow-hidden">
@@ -1505,9 +1503,8 @@ function LocalNewSession() {
           <main className="flex min-w-0 flex-col gap-3.5 @min-[860px]/new-session:min-h-0 [@media(max-height:680px)]:@min-[860px]/new-session:overflow-y-auto">
             {/* When stacked the projects come first and say what this is: the heading is for screen readers there. */}
             <div className="sr-only shrink-0 @min-[860px]/new-session:not-sr-only" data-new-session-heading>
-              {/* The one hero heading in the app, a little larger than text-title. */}
-              <h1 className="text-hero leading-tight font-semibold">New session</h1>
-              <p className="mt-0.5 truncate text-ui text-muted">{projectName && !question ? `in ${projectName}, on ${thisComputerName()}` : `on ${thisComputerName()}`}</p>
+              {/* The header names the view: here, where it runs. */}
+              <p className="truncate text-ui text-muted">{projectName && !question ? `in ${projectName}, on ${thisComputerName()}` : `on ${thisComputerName()}`}</p>
             </div>
 
             {/* At the focus limit: one line. What is going is in the context, and Start adds to the queue. */}

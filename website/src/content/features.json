@@ -797,6 +797,211 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser",
+      "name": "The browser: any web page beside a session or in a Browser view of its own, in tabs, with pinned tabs that come back after a restart",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:open-session-browser",
+      "name": "Open browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:reload-browser-page",
+      "name": "Reload page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-new-tab",
+      "name": "New tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-view",
+      "name": "Go to Browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-favorites",
+      "name": "Browser favourites: star a page, then open it from the sidebar, an empty tab or the Browser view",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-favorite-add",
+      "name": "Add page to favourites",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-favorite-remove",
+      "name": "Remove page from favourites",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-go-to-tab",
+      "name": "Go to tab…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-open-favorite",
+      "name": "Open favourite…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-address",
+      "name": "Go to address",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-back",
+      "name": "Back in the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-forward",
+      "name": "Forward in the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-stop",
+      "name": "Stop loading the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-close-tab",
+      "name": "Close tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-reopen-tab",
+      "name": "Reopen closed tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-pin-tab",
+      "name": "Pin tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-unpin-tab",
+      "name": "Unpin tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-rename-tab",
+      "name": "Rename tab…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-copy-address",
+      "name": "Copy page address",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-open-external",
+      "name": "Open page in browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-full",
+      "name": "Show browser full size",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-side",
+      "name": "Show browser beside the conversation",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-close-panel",
+      "name": "Close browser",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-zoom-in",
+      "name": "Zoom in on the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-zoom-out",
+      "name": "Zoom out of the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-zoom-reset",
+      "name": "Page at actual size",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-mute-tab",
+      "name": "Mute tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-unmute-tab",
+      "name": "Unmute tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-devtools",
+      "name": "Page developer tools",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-clear-site",
+      "name": "Clear data for this site…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:browser-clear-all",
+      "name": "Clear all browsing data…",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-page-tools",
+      "name": "The browser's page menu: developer tools, zoom, and clearing a site's data or all of it to sign out",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.favorite",
+      "name": "Browser: add the page to favourites, or remove it",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.view",
+      "name": "Browser: your tabs outside a session",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.new-tab",
+      "name": "New tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.address",
+      "name": "Go to the address bar",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.reopen-tab",
+      "name": "Reopen the closed tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.close-tab",
+      "name": "Close the tab",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.back",
+      "name": "Back in the page",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "shortcut:browser.forward",
+      "name": "Forward in the page",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "palette:toggle-changes",
       "name": "Toggle changes",
       "page": "terminal-changes-git/changes"
@@ -3884,6 +4089,41 @@
     {
       "id": "feature:sidebar-styles",
       "name": "Sidebar styles",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-view",
+      "name": "The sidebar's View button: group by State or Project, sort Recent or Quickest to unblock, show Done and Compact rows",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-by-project",
+      "name": "Sessions grouped by project: what needs you first, a folded project says what is in it (\"1 needs you · 2 working\"), + and ⋯ on its header",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:tool-rail",
+      "name": "The rail at a session's right edge: Changes, Terminal, Browser, Preview, Ask, Agents, Commands and mods, with what is in them as badges; right-click to hide a tool",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:sidebar-group-project",
+      "name": "Group sessions by project",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:sidebar-group-state",
+      "name": "Group sessions by state",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:sidebar-compact-rows",
+      "name": "Compact rows",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.fold-projects",
+      "name": "sidebar.fold-projects",
       "page": "sessions/sidebar"
     },
     {

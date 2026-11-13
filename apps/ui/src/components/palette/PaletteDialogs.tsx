@@ -5,6 +5,9 @@ import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { clearBrowsingData, siteName } from '../../state/browserActions.ts';
+import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { RenameTabDialog } from '../webPreview/RenameTabDialog.tsx';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
 import { CopySectionDialog } from '../memory/CopySectionDialog.tsx';
@@ -30,10 +33,35 @@ export function PaletteDialogs() {
   const dialog = usePaletteBus((s) => s.dialog);
   const live = useSessions((s) => (dialog?.kind === 'delete-session' ? (s.live.get(dialog.sessionId) ?? null) : null));
   const host = useHosts((s) => (dialog?.kind === 'delete-session' ? s.hosts.get(dialog.sessionId) : undefined));
+  const renaming = useWebPreview((s) => (dialog?.kind === 'rename-tab' ? (s.tabs.find((t) => t.id === dialog.tabId) ?? null) : null));
   const close = () => usePaletteBus.getState().showDialog(null);
   if (!dialog) return null;
 
   switch (dialog.kind) {
+    case 'rename-tab':
+      return renaming ? <RenameTabDialog tab={renaming} onClose={close} /> : null;
+    case 'clear-browser-data':
+      return dialog.origin ? (
+        <ConfirmDialog
+          title={`Clear data for ${siteName(dialog.origin)}?`}
+          danger
+          confirmLabel="Clear data"
+          body={`Signs you out of ${siteName(dialog.origin)} in Seshboard's browser: its cookies and stored data go. Other sites stay as they are.`}
+          data={{ 'data-clear-site-data-dialog': true }}
+          onConfirm={() => clearBrowsingData(dialog.origin)}
+          onClose={close}
+        />
+      ) : (
+        <ConfirmDialog
+          title="Clear all browsing data?"
+          danger
+          confirmLabel="Clear all data"
+          body="Signs you out of every site in Seshboard's browser: cookies, stored data and the cache go. Your tabs, pins and favourites stay."
+          data={{ 'data-clear-browsing-data-dialog': true }}
+          onConfirm={() => clearBrowsingData(null)}
+          onClose={close}
+        />
+      );
     case 'rename-session':
       return <RenameSessionDialog sessionId={dialog.sessionId} title={dialog.title} onClose={close} />;
     case 'rename-project':

@@ -69,7 +69,7 @@ function PassPosition({ position }: { position: Shared['position'] }) {
 function SkipButton({ skip, size = 'md' }: { skip: Shared['skip']; size?: 'sm' | 'md' }) {
   if (!skip) return null;
   return (
-    <Button variant="secondary" size={size} shortcut="catchup.skip" onClick={skip} data-tooltip="Go to the next session to review, and leave this one as it is" data-catchup-skip>
+    <Button variant="secondary" size={size} shortcut="catchup.skip" kbdHideNarrow="small" onClick={skip} data-tooltip="Go to the next session to review, and leave this one as it is" data-catchup-skip>
       Skip
     </Button>
   );
@@ -93,13 +93,14 @@ function ActionButton({ id, primary, actions, changesOpen, size = 'md' }: { id: 
       variant={primary ? 'primary' : 'secondary'}
       size={size}
       kbd={letter}
+      kbdHideNarrow="small"
       onClick={() => actions.run(id)}
       aria-keyshortcuts={primary ? `Enter ${letter.toUpperCase()}` : letter.toUpperCase()}
       data-catchup-action={id}
       data-catchup-primary={primary || undefined}
     >
       {actionLabel(id, { changesOpen })}
-      {primary && <Kbd keys="enter" tone="on-accent" aria-hidden />}
+      {primary && <Kbd keys="enter" tone="on-accent" hideNarrow="small" aria-hidden />}
     </Button>
   );
 }
@@ -136,19 +137,24 @@ function Lines({ title, lines, empty }: { title: string; lines: readonly string[
 /** The banner folded into one row: the state, what it needs, the review time, the primary action and Show catch-up. */
 function CatchUpStrip({ card, actions, committed, changesOpen, position, skip }: Shared) {
   const primary = primaryAction(card.need.kind, committed);
-  // A size wider than the conversation (max-w-3xl), so the text scrolling under the card stays hidden behind it.
+  // A size wider than the conversation (max-w-3xl), so the text scrolling under the card stays hidden behind it. Its
+  // own container: a wide panel beside the conversation narrows the card, not the session view its queries would read.
   return (
-    <div className="mx-auto w-full max-w-4xl px-6 pt-3 @max-[860px]:px-4">
-      <div role="region" aria-label="Catch-up" className="flex h-10 min-w-0 items-center gap-2.5 rounded-lg bg-card px-3 shadow-overlay forced-colors:border" data-catchup-strip data-catchup-need={card.need.kind}>
+    <div className="@container mx-auto w-full max-w-4xl px-6 pt-3 @max-[860px]:px-4">
+      <div role="region" aria-label="Catch-up" className="flex min-h-10 min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-lg bg-card px-3 py-1.5 shadow-overlay forced-colors:border" data-catchup-strip data-catchup-need={card.need.kind}>
         <StateLabel card={card} committed={committed} />
-        <span className="min-w-0 flex-1 truncate text-ui text-text/85">{committed ? 'Committed' : card.need.title}</span>
+        {/* At least 8rem for what it needs: past that, the buttons go to a second row. */}
+        <span className="min-w-0 flex-1 basis-32 truncate text-ui text-text/85">{committed ? 'Committed' : card.need.title}</span>
         <PassPosition position={position} />
         <span className="shrink-0 text-meta text-muted @max-[640px]:hidden">{reviewLabel(card)}</span>
-        <ActionButton id={primary} primary actions={actions} changesOpen={changesOpen} size="sm" />
-        <SkipButton skip={skip} size="sm" />
-        <Button variant="quiet" size="sm" kbd="space" onClick={() => actions.fold(false)} data-catchup-show>
-          Show catch-up
-        </Button>
+        <span className="ml-auto flex shrink-0 items-center gap-2.5" data-catchup-buttons>
+          <ActionButton id={primary} primary actions={actions} changesOpen={changesOpen} size="sm" />
+          <SkipButton skip={skip} size="sm" />
+          {/* In a narrow card the keys go and Show catch-up says Show. */}
+          <Button variant="quiet" size="sm" kbd="space" kbdHideNarrow="small" onClick={() => actions.fold(false)} aria-label="Show catch-up" data-catchup-show>
+            Show<span className="@max-[640px]:hidden"> catch-up</span>
+          </Button>
+        </span>
       </div>
     </div>
   );
@@ -162,25 +168,29 @@ function CatchUpBanner({ card, actions, committed, changesOpen, details, positio
   const tone = committed ? 'ok' : NEED_TONE[card.need.kind];
   const primary = primaryAction(card.need.kind, committed);
   const secondary = secondaryActions(card, { committed });
-  // A size wider than the conversation (max-w-3xl), so the text scrolling under the card stays hidden behind it.
+  // A size wider than the conversation (max-w-3xl), so the text scrolling under the card stays hidden behind it. Its
+  // own container, as the strip's.
   return (
-    <div className="mx-auto w-full max-w-4xl px-6 pt-3 @max-[860px]:px-4">
+    <div className="@container mx-auto w-full max-w-4xl px-6 pt-3 @max-[860px]:px-4">
       <section aria-label="Catch-up" className="grid gap-1.5 rounded-[14px] bg-card px-4 py-2.5 shadow-overlay forced-colors:border" data-catchup data-catchup-banner data-catchup-need={card.need.kind} data-catchup-source={card.source}>
-        <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <StateLabel card={card} committed={committed} />
-          <span className="min-w-0 flex-1 truncate text-body text-text" data-catchup-ask>
+          {/* At least 10rem for your ask: past that, the buttons go to a second row. */}
+          <span className="min-w-0 flex-1 basis-40 truncate text-body text-text" data-catchup-ask>
             {card.ask}
           </span>
           <PassPosition position={position} />
           <span className="shrink-0 text-ui font-semibold text-text @max-[640px]:hidden" data-catchup-review>
             {reviewLabel(card)}
           </span>
-          <ActionButton id={primary} primary actions={actions} changesOpen={changesOpen} />
-          <SkipButton skip={skip} />
-          <Button variant="secondary" size="md" kbd="space" selected={details} aria-expanded={details} onClick={() => useCatchUp.getState().setDetails(card, !details)} data-catchup-details-toggle>
-            Details
-          </Button>
-          <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} aria-label="Collapse the catch-up (Esc)" data-tooltip="Collapse (Esc)" onClick={() => actions.fold(true)} data-catchup-collapse />
+          <span className="ml-auto flex shrink-0 items-center gap-2.5" data-catchup-buttons>
+            <ActionButton id={primary} primary actions={actions} changesOpen={changesOpen} />
+            <SkipButton skip={skip} />
+            <Button variant="secondary" size="md" kbd="space" kbdHideNarrow="small" selected={details} aria-expanded={details} onClick={() => useCatchUp.getState().setDetails(card, !details)} data-catchup-details-toggle>
+              Details
+            </Button>
+            <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} aria-label="Collapse the catch-up (Esc)" data-tooltip="Collapse (Esc)" onClick={() => actions.fold(true)} data-catchup-collapse />
+          </span>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 pl-4">
           <span className={`shrink-0 text-ui font-semibold ${TEXT[tone]}`}>{committed ? 'Committed' : card.need.title}</span>
