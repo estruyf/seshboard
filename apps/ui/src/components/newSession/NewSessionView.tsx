@@ -193,6 +193,8 @@ function LocalNewSession() {
   };
   /** Run as (#179): the pipeline Start runs with the prompt as its task, or null for one session. Kept with the draft. */
   const [runAsId, setRunAsId] = useState<string | null>(null);
+  /** Run as › Orchestrator (docs/orchestrator.md): Start makes the session the project's orchestrator. */
+  const [orchestrate, setOrchestrate] = useState(false);
   /** The steps line's Change: opens the Run as menu. */
   const [runAsMenu, setRunAsMenu] = useState(0);
   const profiles = useProfiles((s) => s.profiles);
@@ -1126,6 +1128,7 @@ function LocalNewSession() {
         autoEnabled: autoModel.enabled,
         github: fresh || noWorktree || noBranch ? undefined : githubStart(worktree),
         provider: runWith ? { model: runWithModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
+        ...(asOrchestrator ? { orchestrator: true } : {}),
         // A link starts what it says, never at a higher price.
         ...(fastStart && !fromLink ? { fastMode: true } : {}),
       },
@@ -1136,6 +1139,8 @@ function LocalNewSession() {
         addProject: (path) => client.call('projects.add', { path }).then(reloadProjects),
         keep: useDrafts.getState().keepFirstPrompt,
         open: (sessionId) => {
+          // The next session is one session again, as after a pipeline's run.
+          setOrchestrate(false);
           // Edited from the queue and started here: it leaves the queue, and items waiting on it follow this session.
           // New session's own prompt for the project stays.
           if (cloned) closeClone();
@@ -1342,7 +1347,9 @@ function LocalNewSession() {
    * At the focus limit, Start adds to the queue: not for a question, a pipeline (the limit doesn't stop those), what is
    * already queued or scheduled here, or a provider without the queue. Those still go through the gate.
    */
-  const queuesAtLimit = atLimit && !question && !fromLater && !fromSchedule && !scheduleFirst && !(runAs && !noPipeline) && (!runWith || (runWithInfo?.supports.includes('later') ?? false));
+  /** The session starts as the project's orchestrator: not a question, and never from the queue or a schedule. */
+  const asOrchestrator = orchestrate && !question && !fromLater && !fromSchedule;
+  const queuesAtLimit = atLimit && !asOrchestrator && !question && !fromLater && !fromSchedule && !scheduleFirst && !(runAs && !noPipeline) && (!runWith || (runWithInfo?.supports.includes('later') ?? false));
   // What a session in the picked project starts with, for the context: its profile and defaults, before anything changes here.
   const shownDefaults = isProject && project ? firstChoices() : null;
   const defaultsProfile = profiles.find((p) => p.id === (projectProfile ?? defaultProfile));
@@ -1803,7 +1810,7 @@ function LocalNewSession() {
               disabledReason={!client ? 'Connecting to the engine…' : providerBlocked ? providerBlocked : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
               onSubmit={(text, attachments, requested, parts) => {
                 // Scheduling, Enter opens the dialog rather than starting a session; the text stays in the box.
-                if (scheduleFirst && !question && !fromLater && !runAs) {
+                if (scheduleFirst && !question && !fromLater && !runAs && !asOrchestrator) {
                   openSchedule();
                   return false;
                 }
@@ -1818,11 +1825,19 @@ function LocalNewSession() {
               secondary={runWith && !runWithInfo?.supports.includes('later') ? undefined : { shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <>
-                  {canPipeline && !question && !fromSchedule && projectPipelines.length > 0 && (
-                    // Shown with another provider too, off, so it says why rather than going missing.
-                    <span className="inline-flex" data-tooltip={runWith && noPipeline ? notWithYet(runWith) : undefined}>
-                      <RunAsChip pipelines={projectPipelines} value={noPipeline ? null : runAs} onChange={setRunAsId} root={pipelineRoot} openRequest={runAsMenu} disabled={box.sending || noPipeline} />
-                    </span>
+                  {!question && !fromSchedule && !fromLater && (
+                    // One session, an orchestrator (with any agent), or a pipeline where one can run. With another
+                    // provider the pipelines stay listed, off, so they say why rather than going missing.
+                    <RunAsChip
+                      pipelines={canPipeline ? projectPipelines : []}
+                      value={noPipeline ? null : runAs}
+                      onChange={setRunAsId}
+                      root={pipelineRoot}
+                      openRequest={runAsMenu}
+                      disabled={box.sending}
+                      orchestrator={{ on: asOrchestrator, onChange: setOrchestrate }}
+                      {...(runWith && noPipeline ? { noPipelines: notWithYet(runWith) } : {})}
+                    />
                   )}
                   <StartButton
                     state={startButtonState({
@@ -1839,6 +1854,7 @@ function LocalNewSession() {
                       atFocusLimit: queuesAtLimit ? focus.mode : null,
                       canPipeline,
                       runAs,
+                      orchestrator: asOrchestrator,
                       scheduleFirst: scheduleFirst && !fromLater,
                       editingSchedule: fromSchedule !== null,
                       provider: runWith ? { reason: notWithYet(runWith), supports: runWithInfo?.supports ?? [] } : null,

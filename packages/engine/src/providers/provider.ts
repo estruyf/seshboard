@@ -139,6 +139,11 @@ export interface DriverSessionConfig {
   mcpServers?: Record<string, McpStdioServer>;
   /** Text for after the provider's own system prompt (Skim's marks), for a driver that takes it. */
   appendSystem?: string;
+  /**
+   * What this session itself reads after the provider's system prompt: an orchestrator's role, a project's
+   * instructions for the sessions its orchestrator starts (docs/orchestrator.md).
+   */
+  instructions?: string;
 }
 
 /** One running session of a provider. */

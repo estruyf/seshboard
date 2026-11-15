@@ -64,6 +64,8 @@ export interface SidebarForest {
  *
  * `remoteRuns`: other computers' runs with their rows' ids (`remoteTreeRuns`), for the order of their steps and their
  * parents' state; their run rows are in `rows` already (`remoteRunRow`).
+ *
+ * `started`: the sessions orchestrators started, each with its orchestrator, which it goes under.
  */
 export function sidebarForest(
   rows: readonly SessionRowData[],
@@ -72,16 +74,18 @@ export function sidebarForest(
   archiveAfterDays = Number.POSITIVE_INFINITY,
   kept: ReadonlySet<string> = new Set(),
   remoteRuns: readonly RunView[] = [],
+  started: ReadonlyMap<string, string> = new Map(),
 ): SidebarForest {
   const local = [...runs];
   const runRows = local.filter(isRunRow);
   const all: RunView[] = [...local, ...remoteRuns];
   // A step's session goes under its run's parent before its transcript says so (a session still starting).
-  const stepParent = new Map<string, string>();
+  // So does a session an orchestrator started (`started`: session → its orchestrator, docs/orchestrator.md).
+  const stepParent = new Map<string, string>(started);
   for (const { run, steps } of all) for (const step of steps) if (step.sessionId) stepParent.set(step.sessionId, run.parentSessionId ?? run.id);
   const nodes = [...rows, ...runRows.map((state) => runRowData(state, kept.has(state.run.id)))].map((row) => ({
     id: row.id,
-    parentId: row.summary ? (row.summary.parentId ?? null) : (row.remote?.parentRowId ?? stepParent.get(row.id) ?? null),
+    parentId: row.summary ? (row.summary.parentId ?? stepParent.get(row.id) ?? null) : (row.remote?.parentRowId ?? stepParent.get(row.id) ?? null),
     status: toTreeStatus(rowStatus(row)),
     createdAt: row.summary?.createdAt ?? null,
     row,

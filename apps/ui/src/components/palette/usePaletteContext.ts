@@ -12,6 +12,8 @@ import { useQueue } from '../../state/useQueue.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
+import { goToOrchestrator } from '../../state/orchestrator.ts';
+import { useOrchestrators } from '../../state/orchestratorStore.ts';
 import { pipelinesFor } from '../../state/pipelines.ts';
 import { listedSchedules } from '../../state/upcoming.ts';
 import { useLastWritten } from '../../state/lastWrittenStore.ts';
@@ -118,6 +120,7 @@ export function usePaletteContext(): PaletteContext {
   const scheduleCount = useSchedules((s) => listedSchedules(s.schedules, Date.now()).length);
   const triggerCount = useTriggers((s) => s.triggers.length);
   const pipelines = usePipelines((s) => s.pipelines);
+  const orchestrators = useOrchestrators((s) => s.orchestrators);
   const unsent = useUnsent().length;
   const digest = usePaletteBus((s) => s.digest);
   const newSessionInfo = usePaletteBus((s) => s.newSessionInfo);
@@ -237,6 +240,7 @@ export function usePaletteContext(): PaletteContext {
     triggers: triggerCount,
     pipelines: pipelines.length,
     sessionPipelines: session ? pipelinesFor(pipelines, session.projectRoot).length : 0,
+    orchestratorId: goToOrchestrator(orchestrators, session?.projectRoot ? { id: session.id, projectRoot: session.projectRoot } : null, (id) => sessions.has(id)),
     unsent,
     projectCount: added.length,
     projects: added.map((p) => ({ root: p.root, name: p.name })),

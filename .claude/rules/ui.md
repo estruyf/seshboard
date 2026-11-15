@@ -98,6 +98,7 @@ Focus rings and lines that show selection stay. In Windows high contrast (`force
 - [Collapsible sections and the queue](../../docs/ui-patterns.md#collapsible-sections-and-the-queue): sidebar section headers, Up next.
 - [Sessions by project](../../docs/ui-patterns.md#sessions-by-project): the View button, project headers, folding.
 - [Pipelines](../../docs/ui-patterns.md#pipelines): sub-sessions nested in the sidebar's tree, run rows, the step tree.
+- [The orchestrator](../../docs/ui-patterns.md#the-orchestrator): Run as › Orchestrator, the overview card, its row and its sessions under it, Session updates.
 - [The rail of tools](../../docs/ui-patterns.md#the-rail-of-tools): a session's tools at its right edge, their order, states and badges.
 - [Unsent messages](../../docs/ui-patterns.md#unsent-messages): the draft pen on rows and buttons.
 - [Saved prompts](../../docs/ui-patterns.md#saved-prompts): `{{blanks}}`, the / picker, sharing.

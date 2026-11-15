@@ -43,6 +43,8 @@ export interface NewSessionStart {
   provider?: { model: string | null; effort?: Effort | null; permissionMode?: PermissionMode } | null;
   /** The bolt on New session: this session's first message runs in fast mode too. Claude Code's only. */
   fastMode?: boolean;
+  /** Run as › Orchestrator: the session starts as the project's orchestrator (docs/orchestrator.md), whatever its agent. */
+  orchestrator?: boolean;
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -81,7 +83,7 @@ export function firstPromptOf(start: NewSessionStart): FirstPromptStart {
 }
 
 /** What `session.create` gets: Claude Code's options, or only the folder, the message and the model for another provider. */
-export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; profileId: string };
+export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; profileId: string; orchestrator?: boolean };
 
 export interface ClaudeSessionCreateParams {
   cwd: string;
@@ -94,6 +96,7 @@ export interface ClaudeSessionCreateParams {
   worktree: { name: string; baseRef: 'fresh' | 'head' | WorktreeBranchBase } | null;
   checkoutBranch: string | null;
   profileId: string;
+  orchestrator?: boolean;
   checkoutPullRequest?: { number: number; repo: string };
   github?: GithubOrigin;
 }
@@ -138,6 +141,7 @@ export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreate
     worktree: start.worktree ? { name: start.worktreeName || randomWorktreeName(), baseRef: (start.worktree && github?.worktreeFrom) || worktreeRequestBase(choices.baseRef) } : null,
     checkoutBranch: fromPr ? null : checkoutBranchFor(choices, start.worktree, start.currentBranch),
     profileId: start.profileId,
+    ...(start.orchestrator ? { orchestrator: true } : {}),
   };
 }
 

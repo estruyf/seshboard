@@ -41,6 +41,7 @@ import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
+import { OrchestratorInstructionsEditor } from './OrchestratorInstructionsEditor.tsx';
 import { BrowserSitesEditor } from './BrowserSitesEditor.tsx';
 import { defaultChips, overviewWorktrees, recentSessions, sessionState } from './projectOverview.ts';
 
@@ -525,6 +526,20 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
           />
         </SettingRow>
       )}
+      <SettingRow
+        label="Orchestrator instructions"
+        hint="What this project's orchestrator and every session it starts read first: which branch to start from, how to check the work, what needs your go-ahead. Rules about the code itself belong in the repository's own instructions file."
+        data-project-orchestrator-instructions
+      >
+        <OrchestratorInstructionsEditor
+          instructions={project.defaults.orchestratorInstructions ?? ''}
+          onSave={async (orchestratorInstructions) => {
+            if (!client) return;
+            await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, orchestratorInstructions } });
+            reload();
+          }}
+        />
+      </SettingRow>
       <SettingRow
         label="Remove"
         hint="Removing a project only takes it off Seshboard's lists: nothing on disk changes, and its sessions stay in search and under sessions from other apps."

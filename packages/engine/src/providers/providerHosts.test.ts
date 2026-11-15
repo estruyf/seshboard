@@ -85,6 +85,30 @@ describe('ProviderHosts visuals', () => {
   });
 });
 
+describe('ProviderHosts orchestrator', () => {
+  it('starts and resumes an orchestrator with the orchestrator server and its role, and other sessions without', async () => {
+    const started: Array<{ servers: unknown; instructions: unknown }> = [];
+    const server = { command: '/Apps/Seshboard', args: ['/Apps/orchestrator-mcp.js'], env: { SESHBOARD_ORCHESTRATOR_TOKEN: 'secret' } };
+    const { hosts, driver } = setup([], {
+      orchestratorServer: async () => server,
+      isOrchestrator: (id) => id === ID,
+      appendSystemFor: (id) => (id === ID ? 'You are the orchestrator.' : null),
+    });
+    const start = driver.start.bind(driver);
+    driver.start = (config, events) => (started.push({ servers: config.mcpServers, instructions: config.instructions }), start(config, events));
+    // Resumed: the engine says it is one.
+    await send(hosts, 'go on');
+    // New: the start says so, and a plain new session gets neither.
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'Split this', attachments: [], model: null, orchestrator: true, appendSystem: 'You are the orchestrator.' });
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'Fix it', attachments: [], model: null });
+    expect(started).toEqual([
+      { servers: { orchestrator: server }, instructions: 'You are the orchestrator.' },
+      { servers: { orchestrator: server }, instructions: 'You are the orchestrator.' },
+      { servers: undefined, instructions: undefined },
+    ]);
+  });
+});
+
 describe('ProviderHosts MCP Apps', () => {
   const tools: Record<string, unknown> = {
     list_items: { annotations: { readOnlyHint: true } },

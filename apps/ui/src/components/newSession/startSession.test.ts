@@ -27,6 +27,12 @@ describe('sessionCreateParams', () => {
     expect(createParamsFor({ ...START, fastMode: true, provider: { model: 'gpt' } })).not.toHaveProperty('fastMode');
   });
 
+  it('starts an orchestrator only when picked, with any agent', () => {
+    expect(sessionCreateParams(START)).not.toHaveProperty('orchestrator');
+    expect(sessionCreateParams({ ...START, orchestrator: true })).toMatchObject({ orchestrator: true });
+    expect(createParamsFor({ ...START, orchestrator: true, provider: { model: 'gpt' } })).toMatchObject({ orchestrator: true, model: 'gpt' });
+  });
+
   it('passes the choices, with empty ones as Claude Code’s defaults', () => {
     expect(sessionCreateParams(START)).toEqual({
       cwd: '/work/app',

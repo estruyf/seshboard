@@ -4,6 +4,8 @@ import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
   SKIM_MARKS_PROMPT,
+  ORCHESTRATOR_TOKEN_ENV,
+  writeStub,
   agentName,
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
@@ -147,6 +149,9 @@ import { HostProcesses } from './host/hostProcesses.ts';
 import { LinkService } from './links/linkService.ts';
 import { expandMessage, GithubExpander } from './links/githubExpand.ts';
 import { LinkStore } from './links/linkStore.ts';
+import { Orchestrator, type OrchestratorAgent } from './orchestrator/orchestrator.ts';
+import { OrchestratorBridge } from './orchestrator/orchestratorBridge.ts';
+import { OrchestratorStore } from './orchestrator/orchestratorStore.ts';
 import { lastTurn } from './catchUp/turn.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
@@ -442,6 +447,16 @@ export interface Engine {
    * and its script, from main) that sessions started or resumed from now on get, whatever their agent; null when off.
    */
   setBrowserControl(server: McpStdioServer | null): void;
+  /**
+   * The orchestrator's `orchestrator` MCP server (Seshboard's binary and its script, from main), which a session
+   * started or resumed as an orchestrator gets, whatever its agent (docs/orchestrator.md).
+   */
+  setOrchestratorServer(server: McpStdioServer | null): void;
+  /**
+   * The smoke test (`stubQueueStarts` only): makes a stand-in session an orchestrator of a project, and runs one of its
+   * tools as its agent would. Starts are stand-ins too, so no prompt reaches an agent.
+   */
+  smokeOrchestrator(call: { sessionId: string; projectRoot: string; tool?: string; args?: Record<string, unknown> }): Promise<{ text: string; error?: boolean } | null>;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
   /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
@@ -1125,6 +1140,8 @@ export function createEngine(options: EngineOptions): Engine {
       if (!outcome.superseded) {
         const ended = outcome.stopped ? 'stopped' : outcome.ok ? 'clean' : 'error';
         void card.catch(() => null).then((made) => runner?.turnEnded(sessionId, ended, made)).catch((error: Error) => log('warn', `Pipelines: ${error.message}`));
+        // A session an orchestrator started tells it how the turn ended.
+        void card.catch(() => null).then((made) => orchestrator.turnEnded(sessionId, ended, made)).catch((error: Error) => log('warn', `Orchestrator: ${error.message}`));
       }
     },
     onCreated: (id) => {
@@ -1184,6 +1201,91 @@ export function createEngine(options: EngineOptions): Engine {
     log,
   });
   const browserServer = (sessionId: () => string | null) => (browserBase && options.browser ? browserBridge.serverFor(browserBase, sessionId) : Promise.resolve(null));
+  // The orchestrator (docs/orchestrator.md): a session that hands work to other sessions. Its tools reach this bridge
+  // from whatever agent runs it; a start goes through the same holds as a scheduled run.
+  const orchestratorStore = new OrchestratorStore(cache.db);
+  const orchestratorsChanged = () => broadcast('orchestrator.changed', { orchestrators: orchestrator.infos() });
+  /** The profiles a session can start with, the project's own first: Claude Code's, and providers that can start sessions. */
+  const orchestratorAgents = (projectRoot: string): OrchestratorAgent[] => {
+    const startable = new Set<string>(providerCatalog(providerOptions).filter((p) => p.canStart).map((p) => p.id));
+    const own = profiles.forProject(projectRoot);
+    return profiles
+      .exportEntries()
+      .filter((p) => p.provider === 'claude' || startable.has(p.provider))
+      .map((p) => ({ profileId: p.id, name: p.name, agent: PROVIDER_NAMES[p.provider], worktree: p.provider === 'claude' || providerSupports(p.provider, 'worktree') }))
+      .sort((a, b) => Number(b.profileId === own) - Number(a.profileId === own));
+  };
+  /** What the smoke test's orchestrator sent and started (`stubQueueStarts` only), a JSON line each in the data folder. */
+  const smokeOrchestratorLog = join(options.dataDir, 'smoke-orchestrator.jsonl');
+  const orchestrator = new Orchestrator({
+    store: orchestratorStore,
+    session: (id) => sessions.get(id) ?? null,
+    defaults: (root) => projects.defaultsOf(root),
+    inRepo: (folder) => !!resolver.resolve(folder).gitDir,
+    agents: orchestratorAgents,
+    hold: (draft) => scheduleHold(draft),
+    queue: (draft) => queueHeld(draft),
+    start: async (draft, title, instructions) => {
+      // The smoke test never sends a prompt to an agent: the session is a stand-in that works.
+      if (options.stubQueueStarts) {
+        const sessionId = `smoke-worker-${randomUUID()}`;
+        appendFileSync(smokeOrchestratorLog, `${JSON.stringify({ kind: 'start', sessionId, title, cwd: draft.cwd, workspace: draft.workspace, permissionMode: draft.permissionMode, instructions })}\n`);
+        standInHost({ sessionId, cwd: draft.cwd, state: 'running' });
+        return sessionId;
+      }
+      const { sessionId } = await createSession(
+        {
+          cwd: draft.cwd,
+          prompt: draft.prompt,
+          attachments: [],
+          model: draft.model ?? null,
+          permissionMode: draft.permissionMode ?? 'default',
+          effort: draft.effort ?? null,
+          worktree: draft.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
+          profileId: draft.profileId && profiles.has(draft.profileId) ? draft.profileId : null,
+          checkoutBranch: null,
+        },
+        { appendSystem: instructions },
+      );
+      pendingTitles.set(sessionId, title);
+      applyTitles([sessionId]);
+      return sessionId;
+    },
+    setParent: (sessionId, orchestratorId) => {
+      runStore.setParent(sessionId, orchestratorId, null);
+      sessions.republish(sessionId);
+    },
+    status: (id) => {
+      const state = (hosts.list().hosts.find((h) => h.sessionId === id) ?? smokeHosts.get(id))?.state ?? liveList().find((l) => l.sessionId === id)?.status;
+      return state === 'running' || state === 'starting' ? 'working' : state === 'needs-you' ? 'needsYou' : state === 'error' ? 'failed' : state ? 'idle' : null;
+    },
+    info: (id) => links.info(id),
+    pr: (id) => {
+      const rows = linkStore.prsOf(id);
+      const pick = rows.find((r) => r.source === 'opened' && r.state === 'open') ?? rows[0];
+      return pick ? { number: pick.number, url: pick.url, state: pick.state } : null;
+    },
+    catchUp: (id) => catchUpStore.get(id),
+    brief: async (from, id, label) => {
+      await links.warm(id);
+      return links.expand(from, writeStub(label, id));
+    },
+    send: async (sessionId, text) => {
+      if (options.stubQueueStarts) {
+        appendFileSync(smokeOrchestratorLog, `${JSON.stringify({ kind: 'send', sessionId, text })}\n`);
+        return;
+      }
+      await hosts.send({ sessionId, text, attachments: [], fork: false, mode: 'queue' });
+      sessions.wake(sessionId);
+    },
+    changed: orchestratorsChanged,
+    log,
+  });
+  let orchestratorBase: McpStdioServer | null = null;
+  const orchestratorBridge = new OrchestratorBridge({ run: (sessionId, tool, args) => orchestrator.run(sessionId, tool, args), isOrchestrator: (id) => orchestrator.isOrchestrator(id), log });
+  const orchestratorServer = (sessionId: () => string | null) => (orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId) : Promise.resolve(null));
+  /** The smoke test calls a tool as the session's own server would: with a token the bridge gave out for that session. */
+  const smokeOrchestratorToken = async (sessionId: string) => (await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId)).env[ORCHESTRATOR_TOKEN_ENV] ?? '';
   const hosts = new RoutedHostManager({
     limits,
     signIns,
@@ -1239,6 +1341,9 @@ export function createEngine(options: EngineOptions): Engine {
     autoAnswer: (request) => runner?.autoAnswer(request) ?? null,
     browserServer,
     allowBrowserSite,
+    orchestratorServer,
+    isOrchestrator: (id) => orchestrator.isOrchestrator(id),
+    appendSystemFor: (id) => orchestrator.systemTextFor(id),
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -1276,6 +1381,9 @@ export function createEngine(options: EngineOptions): Engine {
     providers: () => providerProfiles.adapters(),
     browserServer,
     allowBrowserSite,
+    orchestratorServer,
+    isOrchestrator: (id) => orchestrator.isOrchestrator(id),
+    appendSystemFor: (id) => orchestrator.systemTextFor(id),
     appendSystem: () => (skimMarksOn ? SKIM_MARKS_PROMPT : null),
     profileOf: providerProfileOf,
     sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
@@ -1329,7 +1437,7 @@ export function createEngine(options: EngineOptions): Engine {
    * Starts a session with another provider in `cwd` (a worktree `createSession` made, or the folder as it checked it
    * out): only the message, the model (with its effort), the mode and the worktree's setup apply.
    */
-  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'effort' | 'permissionMode'> & { profileId: string; readOnly?: boolean; beforeFirstMessage?: (sessionId: string) => Promise<void> }) => {
+  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'effort' | 'permissionMode'> & { profileId: string; readOnly?: boolean; orchestrator?: boolean; appendSystem?: string | null; beforeFirstMessage?: (sessionId: string) => Promise<void> }) => {
     // A model or mode from Claude Code's defaults (a project's, a schedule's) is left out when the provider has no such one.
     const driver = providerProfiles.adapter(params.profileId)?.driver;
     const models = params.model && driver ? await driver.models().catch(() => []) : [];
@@ -1337,7 +1445,7 @@ export function createEngine(options: EngineOptions): Engine {
     const model = picked?.value ?? null;
     // An effort only for a model that takes it, and at a level it has.
     const effort = picked?.supportsEffort && params.effort && (picked.efforts ?? [params.effort]).includes(params.effort) ? params.effort : null;
-    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, effort, permissionMode: params.permissionMode, ...(params.readOnly ? { readOnly: true } : {}), ...(params.beforeFirstMessage ? { beforeFirstMessage: params.beforeFirstMessage } : {}) });
+    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, effort, permissionMode: params.permissionMode, ...(params.readOnly ? { readOnly: true } : {}), ...(params.orchestrator ? { orchestrator: true } : {}), ...(params.appendSystem ? { appendSystem: params.appendSystem } : {}), ...(params.beforeFirstMessage ? { beforeFirstMessage: params.beforeFirstMessage } : {}) });
     void sessions.refresh();
     return { sessionId };
   };
@@ -1607,22 +1715,27 @@ export function createEngine(options: EngineOptions): Engine {
   /** Starts a queued item, as Start does and as an item that starts by itself does. */
   const startQueued = async (item: LaterItem) => {
     // The same path as New session: its folder, choices and route, and a worktree with a made-up name.
-    const { sessionId } = await createSession({
-      cwd: item.cwd,
-      prompt: item.prompt,
-      attachments: item.attachments,
-      model: item.model,
-      permissionMode: item.permissionMode,
-      effort: item.effort,
-      worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(item.baseRef) } : null,
-      profileId: item.profileId,
-      // A queued prompt on Auto is routed now, when it starts, not when it was added.
-      checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
-    });
+    const { sessionId } = await createSession(
+      {
+        cwd: item.cwd,
+        prompt: item.prompt,
+        attachments: item.attachments,
+        model: item.model,
+        permissionMode: item.permissionMode,
+        effort: item.effort,
+        worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(item.baseRef) } : null,
+        profileId: item.profileId,
+        // A queued prompt on Auto is routed now, when it starts, not when it was added.
+        checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
+      },
+      // An orchestrator's start that waited: the project's instructions go with it, as with one that started at once.
+      { appendSystem: orchestrator.itemInstructions(item.id) },
+    );
     later.started(item.id, sessionId);
     laterChanged();
-    // A trigger's event that waited in the queue gets its title now, as one that started at once does.
-    const title = triggerWatcher?.queuedStarted(item.id, sessionId);
+    // A trigger's event that waited in the queue gets its title now, as one that started at once does; so does an
+    // orchestrator's start, which goes under it.
+    const title = triggerWatcher?.queuedStarted(item.id, sessionId) ?? orchestrator.itemStarted(item.id, sessionId);
     if (title) {
       pendingTitles.set(sessionId, title);
       applyTitles([sessionId]);
@@ -1637,6 +1750,7 @@ export function createEngine(options: EngineOptions): Engine {
         later.started(item.id, sessionId);
         laterChanged();
         triggerWatcher?.queuedStarted(item.id, sessionId);
+        orchestrator.itemStarted(item.id, sessionId);
         return sessionId;
       }
     : startQueued;
@@ -1686,6 +1800,8 @@ export function createEngine(options: EngineOptions): Engine {
       promptedAt: state === 'running' ? Date.now() : (before?.promptedAt ?? null),
     };
     if (state === 'idle' && outcome) autoStarter?.turnEnded(sessionId, { ok: outcome === 'clean', stopped: outcome === 'stopped' });
+    // A stand-in an orchestrator started tells it how the turn ended, as a real session's does.
+    if (state === 'idle' && outcome) orchestrator.turnEnded(sessionId, outcome, null);
     if (state === 'closed') smokeHosts.delete(sessionId);
     else smokeHosts.set(sessionId, info);
     if (fast || before?.model === SMOKE_FAST_MODEL.value) broadcast('models.changed', { models: withStandInModel(hosts.listModels()) });
@@ -2468,11 +2584,15 @@ export function createEngine(options: EngineOptions): Engine {
   type CreateSessionParams = Parameters<Handlers<Contract>['session.create']>[0];
   /** `smokeStubCreate`: the starts the smoke test asked for, while it is on. */
   let stubCreate = false;
-  const createSession = async (params: CreateSessionParams) => {
+  const createSession = async (params: CreateSessionParams, extra: { appendSystem?: string | null } = {}) => {
+    // An orchestrator belongs to a project: the folder's repository, or the folder itself outside git.
+    if (params.orchestrator && questions.contains(params.cwd)) throw new RpcError('INVALID', 'A quick question can\'t be an orchestrator');
+    const orchestratorRoot = params.orchestrator ? resolver.resolve(params.cwd).root : null;
     if (stubCreate && options.stubQueueStarts) {
       const sessionId = `smoke-new-${randomUUID()}`;
       appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null, fastMode: params.fastMode ?? false })}\n`);
       standInHost({ sessionId, cwd: params.cwd, state: 'running', ...(params.fastMode ? { fast: { blocked: null, on: true } } : {}) });
+      if (orchestratorRoot) orchestrator.mark(sessionId, orchestratorRoot);
       return { sessionId };
     }
     // A profile of another provider (the project's, or the one picked) starts that provider: its own model and mode.
@@ -2497,7 +2617,7 @@ export function createEngine(options: EngineOptions): Engine {
     }
     // Before a branch is switched or a worktree made, so starting again after the question doesn't do it twice.
     assertTrusted(params.cwd);
-    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, ...create } = params;
+    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, orchestrator: _orchestrator, ...create } = params;
     // Claude Code's profile, checked before any git step, so a missing one never leaves a branch switched.
     const profileId = provider === 'claude' ? requireProfile(chosenProfile ?? folderProfile(params.cwd)) : chosen!;
     if (checkoutBranch) {
@@ -2550,10 +2670,20 @@ export function createEngine(options: EngineOptions): Engine {
       const baseRef = asked.baseRef as ClaudeWorktreeRequest['baseRef'];
       await made((root, env) => makeWorktree(root, asked.name, baseRef, { env }));
     } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
-    const setup = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
+    const worktreeSetupFor = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
+    // An orchestrator is one before its first message goes, so its first tool call already finds it.
+    const setup = orchestratorRoot
+      ? (id: string) => {
+          orchestrator.mark(id, orchestratorRoot);
+          return worktreeSetupFor?.(id) ?? Promise.resolve();
+        }
+      : worktreeSetupFor;
+    // What it reads after its agent's system prompt: an orchestrator its role, a session one started the project's instructions.
+    const appendSystem = orchestratorRoot ? orchestrator.systemTextForNew(orchestratorRoot) : (extra.appendSystem ?? null);
+    const own = { ...(orchestratorRoot ? { orchestrator: true } : {}), ...(appendSystem ? { appendSystem } : {}) };
     let sessionId: string;
     if (provider !== 'claude') {
-      ({ sessionId } = await createProviderSession({ ...create, cwd, profileId, ...(setup ? { beforeFirstMessage: setup } : {}) }));
+      ({ sessionId } = await createProviderSession({ ...create, ...own, cwd, profileId, ...(setup ? { beforeFirstMessage: setup } : {}) }));
     } else {
       // Auto routes once the session is open, so starting doesn't wait for it; the session says Auto is choosing until
       // it has picked. With Auto off it starts on the default model.
@@ -2566,7 +2696,7 @@ export function createEngine(options: EngineOptions): Engine {
         const effort = route.ok && !create.effort ? route.effort : null;
         return { model: route.ok ? route.model : null, effort, autoPick: autoPickOf(route.ok ? { ...route, effort } : { ...route, model: null, effort: null }) };
       };
-      sessionId = await hosts.create({ ...create, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
+      sessionId = await hosts.create({ ...create, ...own, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
     }
     if (origin) {
       // Where it works on the pull request (the checkout's top folder, as git status reports it), and on which branch.
@@ -2991,6 +3121,7 @@ export function createEngine(options: EngineOptions): Engine {
     limits.forget(sessionId);
     signIns.forget(sessionId);
     triggerWatcher?.released(sessionId);
+    orchestrator.sessionRemoved(sessionId);
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
@@ -3340,7 +3471,11 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'projects.setDefaults': ({ root, defaults }) => {
       questions.assertNotProject(root);
-      projects.setDefaults(root, defaults);
+      // The orchestrator's instructions have their own editor: a save that doesn't name them (the defaults editor, Save
+      // as project default) keeps them, and an empty text takes them away.
+      const { orchestratorInstructions: named, ...rest } = defaults;
+      const instructions = (named === undefined ? projects.defaultsOf(root).orchestratorInstructions : named)?.trim();
+      projects.setDefaults(root, instructions ? { ...rest, orchestratorInstructions: instructions } : rest);
       return {};
     },
     'projects.reorder': ({ roots }) => {
@@ -3412,7 +3547,7 @@ export function createEngine(options: EngineOptions): Engine {
       const list = hosts.list();
       return { ...list, hosts: [...list.hosts, ...smokeHosts.values()].map(withAwake), permissions: [...list.permissions, ...[...smokePermissions].map(smokePermission)] };
     },
-    'session.create': createSession,
+    'session.create': (params) => createSession(params),
     'session.send': async (params) => {
       // Another provider's session that can run here goes to its driver (`RoutedHostManager`); one that can't is refused.
       if (!providerHosts.handles(params.sessionId)) assertClaudeSession(params.sessionId, 'Sending');
@@ -3778,7 +3913,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (startedAs) {
         later.started(id, startedAs);
         // Started from New session: a trigger's event follows the session, as when the queue starts it.
-        const title = triggerWatcher?.queuedStarted(id, startedAs);
+        const title = triggerWatcher?.queuedStarted(id, startedAs) ?? orchestrator.itemStarted(id, startedAs);
         if (title) {
           pendingTitles.set(startedAs, title);
           applyTitles([startedAs]);
@@ -3786,6 +3921,7 @@ export function createEngine(options: EngineOptions): Engine {
       } else {
         later.remove(id);
         triggerWatcher?.queueRemoved(id);
+        orchestrator.itemRemoved(id);
       }
       laterChanged();
       return {};
@@ -3802,6 +3938,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (item.autoStart && item.waitFor.kind === 'slot') autoStarter?.armForLimit(item.id);
       return { item };
     },
+    'orchestrator.list': () => ({ orchestrators: orchestrator.infos() }),
     'later.start': async ({ id }) => {
       const item = later.get(id);
       if (!item) throw new RpcError('NOT_FOUND', 'That item is no longer in the queue');
@@ -4723,6 +4860,14 @@ export function createEngine(options: EngineOptions): Engine {
       browserBase = server;
       hosts.browserChanged();
     },
+    setOrchestratorServer: (server) => {
+      orchestratorBase = server;
+    },
+    smokeOrchestrator: async ({ sessionId, projectRoot, tool, args }) => {
+      if (!options.stubQueueStarts) return null;
+      if (!orchestrator.isOrchestrator(sessionId)) orchestrator.mark(sessionId, projectRoot);
+      return tool ? orchestratorBridge.handle({ id: 0, token: await smokeOrchestratorToken(sessionId), tool, args: args ?? {} }) : null;
+    },
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setAppUpdate: (update) => remote?.setAppUpdate(update),
@@ -4761,6 +4906,7 @@ export function createEngine(options: EngineOptions): Engine {
     close() {
       clearInterval(dailyCleanup);
       browserBridge.close();
+      orchestratorBridge.close();
       clearInterval(providerLiveTimer);
       // Providers' runtimes (a headless `copilot`) stop with the engine.
       providerProfiles.dispose();

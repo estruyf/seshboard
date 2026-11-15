@@ -4,7 +4,8 @@ import { useMods } from '../../state/modsStore.ts';
 import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
 import { replaceableOf } from '../mods/modReplace.ts';
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
-import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs, VISUAL_TOOL } from '@seshboard/protocol/client';
+import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs, parseSessionUpdate, VISUAL_TOOL } from '@seshboard/protocol/client';
+import { SessionUpdateNote } from '../orchestrator/OrchestratorOverview.tsx';
 import { LinkedSessions } from './LinkedSessions.tsx';
 import { GithubAttached } from './GithubAttached.tsx';
 import { ActionResults, LinkedRuns } from '../pipelines/RunPromptRows.tsx';
@@ -256,6 +257,9 @@ function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'u
     const ran = parseActionResults(run.text);
     return { text: ran.text, briefs: parsed.briefs, issues: github.blocks, runs: run.runs, actions: ran.actions };
   }, [item.text, item.subagent]);
+  // What Seshboard told an orchestrator about one of its sessions is a note, not something you wrote.
+  const update = useMemo(() => (item.subagent ? null : parseSessionUpdate(item.text)), [item.text, item.subagent]);
+  if (update) return <SessionUpdateNote update={update} />;
   return (
     // Your prompt sits on the right as a card, so the conversation reads like a chat.
     <div className="flex justify-end">

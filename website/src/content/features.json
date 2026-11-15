@@ -5315,6 +5315,21 @@
       "id": "feature:scroll-memory",
       "name": "Switching back to a session opens it where you were reading",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:orchestrator",
+      "name": "Orchestrator: Run as › Orchestrator in New session starts a session that hands your tasks to sessions it starts, each in its own worktree, with Claude Code, Copilot or Codex; its sessions show under it in the sidebar and in an overview above its conversation (Waiting on you, Working, Queued, Ready for review, Idle); it hears when a session finishes, fails or waits for you; starts wait in the queue at the focus limit or a usage limit",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:orchestrator-instructions",
+      "name": "Orchestrator instructions: a project's Settings tab keeps what its orchestrator and every session it starts read first",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "palette:go-to-orchestrator",
+      "name": "Go to orchestrator",
+      "page": "sessions/pipelines"
     }
   ]
 }

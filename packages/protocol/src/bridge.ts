@@ -20,6 +20,7 @@ export * from "./retention.ts";
 export * from "./autoModel.ts";
 export * from "./appIcons.ts";
 export * from "./browserSites.ts";
+export * from "./orchestrator.ts";
 export { channelOf } from "./appUpdate.ts";
 export * from "./notificationPause.ts";
 

@@ -4,6 +4,8 @@ import { memo, useMemo, type KeyboardEvent, type MouseEvent } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { childTone, stepMeta, stepOfSession, type ChildTone } from '../../state/pipelineTree.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
+import { workerTitle } from '../../state/orchestrator.ts';
+import { useOrchestrators } from '../../state/orchestratorStore.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { rowStatus } from '../../state/sidebarRows.ts';
 import { stepRowLabel } from './rowLabel.ts';
@@ -29,7 +31,7 @@ export function PipelineTile({ size }: { size: number }) {
  * A parent's chevron: right while closed, down while open. A click opens or closes the parent without opening it;
  * from the keyboard, → and ← on the row do the same (the row carries `aria-expanded`).
  */
-export function TreeChevron({ open, count, className = '', onToggle }: { open: boolean; count: number; className?: string; onToggle(): void }) {
+export function TreeChevron({ open, count, noun = 'step', className = '', onToggle }: { open: boolean; count: number; noun?: 'step' | 'session'; className?: string; onToggle(): void }) {
   return (
     <span
       onClick={(e) => {
@@ -37,7 +39,7 @@ export function TreeChevron({ open, count, className = '', onToggle }: { open: b
         onToggle();
       }}
       className={`-my-1 flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-border/60 hover:text-text ${className}`}
-      data-tooltip={open ? 'Hide steps' : `Show ${count} ${count === 1 ? 'step' : 'steps'}`}
+      data-tooltip={open ? `Hide ${noun}s` : `Show ${count} ${count === 1 ? noun : `${noun}s`}`}
       data-tree-toggle={open}
       aria-hidden
     >
@@ -99,6 +101,9 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   const runs = usePipelines((s) => s.runs);
   const step = useMemo(() => stepOfSession(runs.values(), data.id), [runs, data.id]);
   const status = rowStatus(data);
+  // A session an orchestrator just started has no transcript yet: it goes by the title its orchestrator gave it.
+  const startedTitle = useOrchestrators((s) => (data.summary ? null : workerTitle(s.orchestrators, data.id)));
+  const title = startedTitle ?? data.title;
   const meta = step ? stepMeta(step.state, step.row) : null;
   const tone = childTone(status, step?.row.status ?? null);
   const line = waitingFor ?? meta;
@@ -121,13 +126,13 @@ export const PipelineStepRow = memo(function PipelineStepRow({
         aria-setsize={count}
         aria-selected={selected}
         aria-current={selected ? 'true' : undefined}
-        aria-label={stepRowLabel({ title: data.title, parent: parentTitle, meta: line, status })}
+        aria-label={stepRowLabel({ title, parent: parentTitle, meta: line, status })}
         tabIndex={tabbable ? 0 : -1}
         data-session-id={data.id}
         data-tree-child={data.summary?.parentId ?? ''}
         data-archived={archived || undefined}
         data-indexed={data.summary !== null}
-        data-tooltip={[data.title, line].filter(Boolean).join('\n')}
+        data-tooltip={[title, line].filter(Boolean).join('\n')}
         onClick={(e) => onClick(e, data)}
         onAuxClick={(e) => {
           if (e.button !== 1) return;
@@ -149,12 +154,12 @@ export const PipelineStepRow = memo(function PipelineStepRow({
         <span aria-hidden className={`size-2 shrink-0 rounded-full ${TONE_DOT[tone]}`} data-tree-dot={tone} />
         {style === 'compact' ? (
           <span className="flex min-w-0 flex-1 items-baseline gap-2">
-            <span className={`min-w-0 shrink truncate text-ui ${emphasised ? 'font-semibold text-text' : 'text-text/85'}`}>{data.title}</span>
+            <span className={`min-w-0 shrink truncate text-ui ${emphasised ? 'font-semibold text-text' : 'text-text/85'}`}>{title}</span>
             {line && <span className={`min-w-0 flex-1 truncate text-meta ${waitingFor ? 'font-medium text-warn' : 'text-faint'}`}>{line}</span>}
           </span>
         ) : (
           <span className="grid min-w-0 flex-1">
-            <span className={`truncate text-ui leading-4 ${emphasised ? 'font-semibold text-text' : 'text-text/85'}`}>{data.title}</span>
+            <span className={`truncate text-ui leading-4 ${emphasised ? 'font-semibold text-text' : 'text-text/85'}`}>{title}</span>
             {line && <span className={`truncate text-meta leading-4 ${waitingFor ? 'font-medium text-warn' : 'text-faint'}`} data-tree-meta>{line}</span>}
           </span>
         )}

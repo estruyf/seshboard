@@ -986,4 +986,23 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX browser_bookmarks_project ON browser_bookmarks (project_root);
   `,
+  // v62: The orchestrator (docs/orchestrator.md): which sessions are orchestrators, and the sessions each started. A
+  // start that waits in the queue has an item and no session yet. Nothing else has this: keep it when rebuilding.
+  `
+  CREATE TABLE orchestrators (
+    session_id   TEXT PRIMARY KEY,
+    project_root TEXT NOT NULL,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE TABLE orchestrator_workers (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    orchestrator_id TEXT NOT NULL,
+    session_id      TEXT,
+    item_id         TEXT,
+    title           TEXT NOT NULL,
+    created_at      INTEGER NOT NULL
+  );
+  CREATE INDEX orchestrator_workers_orchestrator ON orchestrator_workers (orchestrator_id);
+  CREATE INDEX orchestrator_workers_session ON orchestrator_workers (session_id);
+  `,
 ];

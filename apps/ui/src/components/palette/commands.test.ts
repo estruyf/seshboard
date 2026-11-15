@@ -45,6 +45,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     triggers: 0,
     pipelines: 0,
     sessionPipelines: 0,
+    orchestratorId: null,
     lastPreviewableFile: null,
     unsent: 0,
     projectCount: 2,

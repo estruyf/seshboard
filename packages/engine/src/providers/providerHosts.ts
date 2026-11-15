@@ -17,6 +17,7 @@ import {
   type SessionHostInfo,
   type SlashCommand,
   type StreamDelta,
+  ORCHESTRATOR_SERVER,
   PROVIDER_NAMES,
   siteLabel,
   type BrowserTool,
@@ -35,6 +36,13 @@ export interface ProviderHostsDeps {
   browserServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
   /** "Always allow" on a browser site's prompt: the session's project allows that site from now on. */
   allowBrowserSite?(sessionId: string, site: string): void;
+  /**
+   * The orchestrator (docs/orchestrator.md), as Claude Code's hosts get it: its `orchestrator` MCP server for one
+   * session, whether a session being resumed is one, and what a resumed session reads after the provider's prompt.
+   */
+  orchestratorServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
+  isOrchestrator?(sessionId: string): boolean;
+  appendSystemFor?(sessionId: string): string | null;
   /** The provider profile a session belongs to (to resume it with that profile's login). */
   profileOf(sessionId: string): string | undefined;
   /** The folder a session ran in. */
@@ -89,6 +97,10 @@ interface Host {
   queue: StoredUpNext[];
   /** Only tools that read run (a pipeline's read-only step): every other request is denied before you are asked. */
   readOnly: boolean;
+  /** An orchestrator (docs/orchestrator.md): it starts with Seshboard's `orchestrator` MCP server. */
+  orchestrator: boolean;
+  /** Text for after the provider's system prompt at each start: an orchestrator's role, a project's instructions. */
+  appendSystem: string | null;
 }
 
 /**
@@ -133,7 +145,7 @@ export class ProviderHosts {
   }
 
   /** Starts a session with a provider in `cwd` and sends the first message. Returns its id. */
-  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode; readOnly?: boolean; beforeFirstMessage?: (sessionId: string) => Promise<void> }): Promise<string> {
+  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode; readOnly?: boolean; orchestrator?: boolean; appendSystem?: string | null; beforeFirstMessage?: (sessionId: string) => Promise<void> }): Promise<string> {
     const adapter = this.adapterOf(params.profileId);
     if (!adapter?.driver) throw new RpcError('PROVIDER_UNAVAILABLE', 'This profile is not one of a provider that can start sessions');
     const permissionMode = this.modeFor(adapter, params.permissionMode);
@@ -143,9 +155,11 @@ export class ProviderHosts {
     // The provider names the session: it is reported from then on (the window waits on `session.create` until then).
     const host = this.newHost('', adapter, params.cwd, params.model, permissionMode, 'starting', effort);
     host.readOnly = params.readOnly === true;
+    host.orchestrator = params.orchestrator === true;
+    host.appendSystem = params.appendSystem?.trim() || null;
     let session: DriverSession;
     try {
-      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly, ...(await this.ownServers(host)), ...this.appended() }, this.eventsFor(host));
+      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly, ...(await this.ownServers(host)), ...this.appended(host) }, this.eventsFor(host));
     } catch (error) {
       throw new RpcError('PROVIDER_FAILED', (error as Error).message);
     }
@@ -253,9 +267,9 @@ export class ProviderHosts {
   }
 
   /** What goes after the provider's system prompt now, as a start's config. */
-  private appended(): { appendSystem?: string } {
+  private appended(host?: Host): { appendSystem?: string; instructions?: string } {
     const text = this.deps.appendSystem?.();
-    return text ? { appendSystem: text } : {};
+    return { ...(text ? { appendSystem: text } : {}), ...(host?.appendSystem ? { instructions: host.appendSystem } : {}) };
   }
 
   /** Stops one of a session's background tasks. */
@@ -318,7 +332,8 @@ export class ProviderHosts {
   private async ownServers(host: Host): Promise<Pick<DriverSessionConfig, 'mcpServers'>> {
     if (host.readOnly) return {};
     const browser = (await this.deps.browserServer?.(() => host.info.sessionId || null)) ?? null;
-    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { browser } : {}) };
+    const orchestrator = host.orchestrator ? ((await this.deps.orchestratorServer?.(() => host.info.sessionId || null)) ?? null) : null;
+    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { browser } : {}), ...(orchestrator ? { [ORCHESTRATOR_SERVER]: orchestrator } : {}) };
     return Object.keys(servers).length ? { mcpServers: servers } : {};
   }
 
@@ -464,8 +479,10 @@ export class ProviderHosts {
     const permissionMode = this.modeFor(adapter, saved?.permissionMode);
     const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting', effort);
     host.readOnly = this.deps.readOnly?.(sessionId) ?? false;
+    host.orchestrator = this.deps.isOrchestrator?.(sessionId) ?? false;
+    host.appendSystem = this.deps.appendSystemFor?.(sessionId) ?? null;
     try {
-      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly, ...(await this.ownServers(host)), ...this.appended() }, this.eventsFor(host));
+      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly, ...(await this.ownServers(host)), ...this.appended(host) }, this.eventsFor(host));
     } catch (error) {
       this.hosts.delete(sessionId);
       this.update(host, { state: 'closed' });
@@ -558,6 +575,8 @@ export class ProviderHosts {
       stopping: false,
       queue: [],
       readOnly: false,
+      orchestrator: false,
+      appendSystem: null,
       info: {
         sessionId,
         cwd,
