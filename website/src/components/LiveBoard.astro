@@ -1,8 +1,9 @@
 ---
 /**
- * The homepage's moving picture: a small, scripted Seshboard window. Sessions go from Working to Needs you and
- * back, a permission gets allowed, a queued prompt turns ready and starts, and a finished session gets its
- * catch-up, in the app's status colours. Behind the window, patch cables carry a pulse in the colour of each
+ * The homepage's moving picture: a small, scripted Seshboard window. Sessions of Claude Code, GitHub Copilot and
+ * Codex go from Working to Needs you and back, a permission gets allowed, a queued prompt turns ready and starts,
+ * and a finished session gets its catch-up, in the app's status colours. The session's ticket sits in a browser
+ * beside the conversation, and the pull request opens there when Claude is done. Behind the window, patch cables carry a pulse in the colour of each
  * event (the switchboard the app is named after). It is drawn in HTML, not a video, so it follows the site's
  * theme; it only runs while it is on screen, and with reduced motion it shows one still moment.
  */
@@ -12,11 +13,19 @@ const projects = {
   docs: { name: 'docs-site', tone: 'purple', icon: 'page' },
 } as const;
 type ProjectKey = keyof typeof projects;
+/** The agent's mark on each row: simple glyphs in the agents' colours, not their logos. */
+const agents = {
+  claude: 'Claude Code',
+  copilot: 'GitHub Copilot',
+  codex: 'Codex',
+} as const;
+type AgentKey = keyof typeof agents;
 
 interface Row {
   id: string;
   title: string;
   project: ProjectKey;
+  agent: AgentKey;
   group: 'needs' | 'working' | 'queue' | 'today';
   state: 'working' | 'needs' | 'waiting' | 'idle' | 'unread' | 'ready' | 'open';
   sub: string;
@@ -25,12 +34,12 @@ interface Row {
 
 /** The sessions at the start of the loop; the script moves them around and puts them back. */
 const rows: Row[] = [
-  { id: 'stripe', title: 'Upgrade Stripe SDK to v18', project: 'payments', group: 'working', state: 'working', sub: 'chore/stripe-18 · payments-api', age: 'now' },
-  { id: 'rounding', title: 'Fix rounding in invoice totals', project: 'payments', group: 'working', state: 'working', sub: 'fix/invoice-rounding · payments-api', age: 'now' },
-  { id: 'dark', title: 'Add dark mode toggle to settings', project: 'store', group: 'working', state: 'working', sub: 'feat/dark-mode · acme-store', age: '4m' },
-  { id: 'search', title: 'Add product search with filters', project: 'store', group: 'queue', state: 'waiting', sub: 'Waits for acme-store to be free', age: '' },
-  { id: 'auth', title: 'Refactor auth middleware', project: 'store', group: 'today', state: 'idle', sub: 'main · acme-store', age: '1h' },
-  { id: 'guide', title: 'Write a getting started guide', project: 'docs', group: 'today', state: 'idle', sub: 'main · docs-site', age: '4h' },
+  { id: 'stripe', title: 'Upgrade Stripe SDK to v18', project: 'payments', agent: 'claude', group: 'working', state: 'working', sub: 'chore/stripe-18 · payments-api', age: 'now' },
+  { id: 'rounding', title: 'Fix rounding in invoice totals', project: 'payments', agent: 'copilot', group: 'working', state: 'working', sub: 'fix/invoice-rounding · payments-api', age: 'now' },
+  { id: 'dark', title: 'Add dark mode toggle to settings', project: 'store', agent: 'codex', group: 'working', state: 'working', sub: 'feat/dark-mode · acme-store', age: '4m' },
+  { id: 'search', title: 'Add product search with filters', project: 'store', agent: 'claude', group: 'queue', state: 'waiting', sub: 'Waits for acme-store to be free', age: '' },
+  { id: 'auth', title: 'Refactor auth middleware', project: 'store', agent: 'copilot', group: 'today', state: 'idle', sub: 'main · acme-store', age: '1h' },
+  { id: 'guide', title: 'Write a getting started guide', project: 'docs', agent: 'codex', group: 'today', state: 'idle', sub: 'main · docs-site', age: '4h' },
 ];
 const groups = [
   { id: 'needs', label: 'Needs you', tone: 'needs' },
@@ -50,10 +59,10 @@ const jacks = [
 const cords = [
   { jack: 'l1', d: 'M0 40 C 220 40, 280 150, 442 150' },
   { jack: 'l2', d: 'M0 330 C 200 330, 270 300, 442 300' },
-  { jack: 'l3', d: 'M60 564 C 160 470, 300 440, 442 440' },
+  { jack: 'l3', d: 'M60 604 C 160 470, 300 440, 442 440' },
   { jack: 'r1', d: 'M2016 70 C 1796 70, 1736 190, 1574 190' },
   { jack: 'r2', d: 'M2016 380 C 1816 380, 1746 340, 1574 340' },
-  { jack: 'r3', d: 'M1956 564 C 1856 490, 1716 470, 1574 470' },
+  { jack: 'r3', d: 'M1956 604 C 1856 490, 1716 470, 1574 470' },
 ];
 const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ id, group, state, sub, age })));
 ---
@@ -63,9 +72,9 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
   data-live-board
   data-initial={initial}
   role="img"
-  aria-label="A Seshboard window in motion: a session asks for permission and is allowed, another finishes, a queued prompt starts, and a finished session shows its catch-up with Commit."
+  aria-label="A Seshboard window in motion: Claude Code, Copilot and Codex sessions in one list. A session asks for permission and is allowed, another finishes, a queued prompt starts, and the finished session opens its pull request in the browser beside the conversation, next to its ticket."
 >
-  <svg class="lb-cables" viewBox="0 0 2016 564" preserveAspectRatio="none" aria-hidden="true">
+  <svg class="lb-cables" viewBox="0 0 2016 604" preserveAspectRatio="none" aria-hidden="true">
     <defs>
       <filter id="lb-glow" x="-20%" y="-20%" width="140%" height="140%">
         <feGaussianBlur stdDeviation="3" result="blur" />
@@ -86,13 +95,19 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
         <span class="lb-lights"><i></i><i></i><i></i></span>
         <span class="lb-appname">Seshboard</span>
       </div>
+      {/* The views (Home, Upcoming, Activity, Browser), then search and New session, as in the app's sidebar. */}
+      <div class="lb-nav">
+        <span><svg viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /></svg></span>
+        <span><svg viewBox="0 0 24 24"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5M16 2v4M8 2v4M3 10h5M17.5 17.5 16 16.3V14" /><circle cx="16" cy="16" r="6" /></svg></span>
+        <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg></span>
+        <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20" /></svg></span>
+      </div>
       <div class="lb-tools">
         <span class="lb-search">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
           Search sessions
         </span>
-        <span class="lb-iconbtn"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1Z" /></svg></span>
-        <span class="lb-iconbtn lb-plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span>
+        <span class="lb-plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span>
       </div>
       <div class="lb-list">
         {
@@ -111,7 +126,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
                   .map((row) => (
                     <div class="lb-row" data-row={row.id} data-state={row.state} data-selected={row.id === 'stripe' ? '' : undefined}>
                       <span class="lb-rail" />
-                      <span class:list={['lb-picon', `tone-${projects[row.project].tone}`]}>
+                      <span class:list={['lb-picon', `tone-${projects[row.project].tone}`]} title={agents[row.agent]}>
                         {projects[row.project].icon === 'card' && (
                           <svg viewBox="0 0 24 24">
                             <rect width="18" height="13" x="3" y="5.5" rx="2" />
@@ -130,6 +145,24 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
                             <path d="M14 3v5h5M9 13h6M9 17h6" />
                           </svg>
                         )}
+                        <span class:list={['lb-agent', `agent-${row.agent}`]}>
+                          {row.agent === 'claude' && (
+                            <svg viewBox="0 0 24 24">
+                              <path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3 6.3 17.7" />
+                            </svg>
+                          )}
+                          {row.agent === 'copilot' && (
+                            <svg viewBox="0 0 24 24">
+                              <circle cx="7.5" cy="13" r="3.5" />
+                              <circle cx="16.5" cy="13" r="3.5" />
+                            </svg>
+                          )}
+                          {row.agent === 'codex' && (
+                            <svg viewBox="0 0 24 24">
+                              <path d="m5 7 5 5-5 5M13 17h6" />
+                            </svg>
+                          )}
+                        </span>
                       </span>
                       <span class="lb-text">
                         <span class="lb-title">{row.title}</span>
@@ -158,7 +191,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
       </div>
       <div class="lb-foot">
         <span class="lb-focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></svg><span data-focus>3 / 3</span></span>
-        <span>6 sessions</span>
+        <span>6 sessions · 3 agents</span>
       </div>
     </aside>
 
@@ -172,14 +205,16 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
           <span class="lb-header-status"><span class="lb-dot"></span><span data-status>Claude is working</span> · payments-api · chore/stripe-18</span>
         </span>
         <span class="lb-header-actions">
-          <span class="lb-seg"><span>Changes</span><span>Terminal</span></span>
+          <span class="lb-seg"><span>Changes</span><span>Terminal</span><span class="on">Browser</span></span>
         </span>
       </header>
 
+      <div class="lb-body">
+      <div class="lb-chat">
       <div class="lb-convo">
         <div class="lb-prompt">Upgrade the Stripe SDK to v18 and fix whatever breaks. Run the tests when you're done.</div>
         <div class="lb-step" data-step="1"><span class="lb-step-dot"></span>Read 6 files and searched the code <em>8s</em></div>
-        <p class="lb-reply" data-step="2">The breaking changes are in how charges are created and in the webhook types. I'll update both, then install v18 and run the tests.</p>
+        <p class="lb-reply" data-step="2">The breaking changes are in charges and the webhook types. I'll update both, then run the tests.</p>
         <div class="lb-step" data-step="2"><span class="lb-step-dot"></span>Edited <code>src/billing/charge.ts</code> and 2 more files <em>21s</em></div>
         <div class="lb-perm" data-perm>
           <div class="lb-perm-title"><span class="lb-dot pulse"></span>Claude wants to run a command</div>
@@ -192,6 +227,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
         </div>
         <div class="lb-step lb-allowed" data-allowed><span class="lb-step-dot ok"></span>Allowed <code>npm install stripe@18</code></div>
         <div class="lb-step" data-step="3"><span class="lb-step-dot"></span>Ran the tests: 14 passed <em>34s</em></div>
+        <div class="lb-step" data-step="4"><span class="lb-step-dot ok"></span>Opened pull request <span class="lb-link" data-pr-link>#318</span></div>
         <div class="lb-thinking" data-thinking><i></i><i></i><i></i></div>
       </div>
 
@@ -202,7 +238,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
           <span class="lb-catchup-title">Upgrade Stripe SDK to v18</span>
           <span class="lb-catchup-time">~2 min to review</span>
         </div>
-        <div class="lb-catchup-need">Commit the changes</div>
+        <div class="lb-catchup-need">Open a pull request</div>
         <div class="lb-catchup-text">Moved 3 calls to the v18 API and updated the webhook types. Every change stays in src/billing.</div>
         <div class="lb-catchup-row">
           <span class="lb-chip ok">14 tests passed</span>
@@ -210,7 +246,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
           <span class="lb-chip ok">Followed the plan</span>
           <span class="lb-catchup-actions">
             <span class="lb-btn">Details</span>
-            <span class="lb-btn primary" data-commit>Commit</span>
+            <span class="lb-btn primary" data-commit>Create PR</span>
           </span>
         </div>
       </div>
@@ -218,6 +254,54 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
       <div class="lb-composer">
         <span>Message Claude</span>
         <span class="lb-composer-chips"><span>Opus</span><span>High</span><span>Accept edits</span></span>
+      </div>
+      </div>
+
+      <section class="lb-browser" data-browser>
+        <div class="lb-tabs">
+          <span class="lb-tab" data-tab="ticket">
+            <svg viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="3" /><path d="m8.5 12 2.5 2.5 4.5-5" /></svg>
+            <span>PAY-142 Upgrade Stripe SDK</span>
+          </span>
+          <span class="lb-tab" data-tab="pr">
+            <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M6 8.5v7M18 15.5V9a3 3 0 0 0-3-3h-4m2-2.5L10.5 6 13 8.5" /></svg>
+            <span>#318 Upgrade Stripe SDK</span>
+          </span>
+        </div>
+        <div class="lb-addr">
+          <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg>
+          <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+          <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" /></svg>
+          <span class="lb-url" data-url></span>
+        </div>
+        <div class="lb-page" data-page="ticket">
+          <div class="lb-pg-meta"><span class="lb-key">PAY-142</span><span class="lb-badge">In progress</span></div>
+          <div class="lb-pg-title">Upgrade Stripe SDK to v18</div>
+          <dl class="lb-fields">
+            <div><dt>Assignee</dt><dd>You</dd></div>
+            <div><dt>Priority</dt><dd>High</dd></div>
+            <div><dt>Sprint</dt><dd>Sprint 24</dd></div>
+          </dl>
+          <div class="lb-pg-label">Acceptance criteria</div>
+          <ul class="lb-criteria">
+            <li>Charges use the v18 API</li>
+            <li>Webhook types match v18</li>
+            <li>Every billing test passes</li>
+          </ul>
+        </div>
+        <div class="lb-page" data-page="pr">
+          <div class="lb-pg-meta"><span class="lb-badge ok">Open</span><span>chore/stripe-18 → main</span></div>
+          <div class="lb-pg-title">Upgrade Stripe SDK to v18 <span class="lb-faint">#318</span></div>
+          <div class="lb-pg-label">Checks</div>
+          <ul class="lb-checks">
+            <li data-check><span class="lb-check"></span>build</li>
+            <li data-check><span class="lb-check"></span>tests</li>
+            <li data-check><span class="lb-check"></span>lint</li>
+          </ul>
+          <div class="lb-pg-label">Changes</div>
+          <div class="lb-diffstat"><span class="lb-add">+57</span> <span class="lb-del">−12</span> in 4 files</div>
+        </div>
+      </section>
       </div>
     </main>
 
@@ -372,6 +456,15 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
       cursor.style.opacity = '0';
     }
 
+    /** The browser beside the conversation: the ticket, or the pull request once Claude opened it. */
+    const browser = root.querySelector<HTMLElement>('[data-browser]')!;
+    const URLS: Record<string, string> = { ticket: 'tracker.acme.dev/browse/PAY-142', pr: 'github.com/acme/payments-api/pull/318' };
+    function tab(page: 'ticket' | 'pr') {
+      browser.dataset.page = page;
+      browser.querySelector('[data-url]')!.textContent = URLS[page]!;
+      browser.querySelector<HTMLElement>(`.lb-page[data-page="${page}"]`)!.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: 'ease-out' });
+    }
+
     function mainState(state: string, status: string) {
       main.dataset.mainState = state;
       main.querySelector('[data-status]')!.textContent = status;
@@ -389,7 +482,11 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
       main.querySelectorAll('[data-step], [data-perm], [data-allowed], [data-catchup]').forEach((el) => el.classList.remove('on'));
       main.querySelector('[data-step="1"]')!.classList.add('on');
       main.querySelector('[data-thinking]')!.classList.add('on');
-      root.querySelector('[data-commit]')!.textContent = 'Commit';
+      root.querySelector('[data-commit]')!.textContent = 'Create PR';
+      browser.dataset.page = 'ticket';
+      browser.dataset.pr = 'closed';
+      browser.querySelector('[data-url]')!.textContent = URLS.ticket!;
+      browser.querySelectorAll<HTMLElement>('[data-check]').forEach((el) => (el.dataset.check = 'running'));
       toast.classList.remove('on');
       mainState('working', 'Claude is working');
       cursor.style.transition = 'none';
@@ -456,10 +553,28 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
       pulse('unread');
       await wait(2000);
       await click(root.querySelector<HTMLElement>('[data-commit]')!);
-      root.querySelector('[data-commit]')!.textContent = 'Committed';
+      root.querySelector('[data-commit]')!.textContent = 'Created';
       pulse('ok');
       hideCursor();
-      await wait(2600);
+      await wait(900);
+
+      // The pull request's link opens in the browser beside the session, next to the ticket, and its checks run.
+      show('[data-catchup]', false);
+      show('[data-step="4"]');
+      await wait(900);
+      await click(root.querySelector<HTMLElement>('[data-pr-link]')!);
+      browser.dataset.pr = 'open';
+      browser.querySelector<HTMLElement>('[data-tab="pr"]')!.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 360, easing: 'ease-out' });
+      tab('pr');
+      pulse('working');
+      hideCursor();
+      await wait(1100);
+      for (const check of browser.querySelectorAll<HTMLElement>('[data-check]')) {
+        check.dataset.check = 'ok';
+        pulse('ok');
+        await wait(650);
+      }
+      await wait(2200);
 
       await win.animate([{ opacity: 1 }, { opacity: 0.0 }], { duration: 450, fill: 'forwards' }).finished;
       reset();
@@ -561,7 +676,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     position: relative;
     display: grid;
     grid-template-columns: 300px 1fr;
-    height: 540px;
+    height: 580px;
     overflow: hidden;
     border: 1px solid var(--sb-overlay-border);
     border-radius: var(--sb-radius-card);
@@ -607,21 +722,41 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     font-weight: 600;
     color: var(--sb-muted);
   }
+  .lb-nav {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    gap: 4px;
+    margin: 0 10px 8px;
+    padding: 4px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--sb-bg) 50%, transparent);
+    color: var(--sb-muted);
+  }
+  .lb-nav span {
+    display: grid;
+    place-items: center;
+    height: 30px;
+  }
+  .lb-nav svg {
+    width: 16px;
+    height: 16px;
+  }
   .lb-tools {
     display: flex;
     gap: 6px;
-    padding: 0 10px 10px;
+    padding: 0 10px 8px;
   }
   .lb-search {
     display: flex;
     flex: 1;
     align-items: center;
-    gap: 6px;
-    height: 28px;
-    padding: 0 8px;
-    border-radius: 6px;
+    gap: 8px;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 8px;
     background: var(--sb-bg);
-    color: var(--sb-faint);
+    color: var(--sb-muted);
   }
   .lb svg {
     flex: none;
@@ -632,28 +767,24 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     stroke-linejoin: round;
   }
   .lb-search svg {
-    width: 13px;
-    height: 13px;
-  }
-  .lb-iconbtn {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--sb-text) 8%, transparent);
-    color: var(--sb-muted);
-  }
-  .lb-iconbtn svg {
     width: 14px;
     height: 14px;
   }
+  /* New session: the sidebar's one primary action, in the accent colour. */
   .lb-plus {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     background: var(--sb-accent);
     color: var(--sb-on-accent);
   }
   .lb-plus svg {
-    stroke-width: 2.6;
+    width: 17px;
+    height: 17px;
+    stroke-width: 2.4;
   }
   .lb-list {
     flex: 1;
@@ -727,6 +858,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     transition: background-color 0.4s;
   }
   .lb-picon {
+    position: relative;
     display: grid;
     flex: none;
     place-items: center;
@@ -748,6 +880,34 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
   }
   .lb-picon.tone-purple {
     background: #b197fc;
+  }
+  /* The agent's mark, on the project icon's corner. */
+  .lb-agent {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    display: grid;
+    place-items: center;
+    width: 13px;
+    height: 13px;
+    border: 2px solid var(--sb-sidebar);
+    border-radius: 50%;
+    box-sizing: content-box;
+    color: #fff;
+  }
+  .lb-agent svg {
+    width: 9px;
+    height: 9px;
+    stroke-width: 3;
+  }
+  .lb-agent.agent-claude {
+    background: #d97757;
+  }
+  .lb-agent.agent-copilot {
+    background: #8957e5;
+  }
+  .lb-agent.agent-codex {
+    background: #3b3f46;
   }
   .lb-text {
     display: flex;
@@ -956,6 +1116,24 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     padding: 3px 9px;
     border-radius: 5px;
   }
+  .lb-seg span.on {
+    background: var(--sb-selected);
+    color: var(--sb-text);
+  }
+
+  /* The conversation on the left, the browser on the right, as with the Browser panel at half width. */
+  .lb-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .lb-chat {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
 
   .lb-convo {
     display: flex;
@@ -965,7 +1143,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     max-width: 640px;
     width: 100%;
     margin: 0 auto;
-    padding: 22px 24px 0;
+    padding: 20px 20px 0;
     overflow: hidden;
   }
   .lb-prompt {
@@ -1089,8 +1267,8 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
   .lb-catchup {
     position: absolute;
     inset-inline: 0;
-    top: 64px;
-    width: min(600px, calc(100% - 32px));
+    top: 12px;
+    width: min(600px, calc(100% - 24px));
     margin: 0 auto;
     padding: 13px 15px;
     border: 1px solid var(--sb-overlay-border);
@@ -1171,9 +1349,9 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: min(640px, calc(100% - 32px));
+    width: min(640px, calc(100% - 28px));
     height: 64px;
-    margin: 12px auto 16px;
+    margin: 12px auto 14px;
     padding: 0 14px;
     border: 1px solid var(--sb-border);
     border-radius: 12px;
@@ -1185,6 +1363,213 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     display: flex;
     gap: 10px;
     font-size: 11px;
+  }
+
+  .lb-link {
+    color: var(--sb-accent-ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .lb-browser {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 44%;
+    min-width: 0;
+    border-inline-start: 1px solid var(--sb-border);
+    background: var(--sb-sidebar);
+  }
+  .lb-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 8px 0;
+  }
+  .lb-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 50%;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 7px 7px 0 0;
+    font-size: 11px;
+    color: var(--sb-faint);
+  }
+  .lb-tab span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .lb-tab svg {
+    width: 12px;
+    height: 12px;
+  }
+  .lb-browser[data-pr='closed'] [data-tab='pr'] {
+    display: none;
+  }
+  .lb-browser[data-page='ticket'] [data-tab='ticket'],
+  .lb-browser[data-page='pr'] [data-tab='pr'] {
+    background: var(--sb-bg);
+    color: var(--sb-text);
+  }
+  .lb-addr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 10px;
+    background: var(--sb-bg);
+    color: var(--sb-faint);
+  }
+  .lb-addr svg {
+    width: 13px;
+    height: 13px;
+  }
+  .lb-url {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--sb-text) 7%, transparent);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    color: var(--sb-muted);
+  }
+  .lb-page {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 18px;
+    border-top: 1px solid var(--sb-border);
+    background: var(--sb-card);
+    overflow: hidden;
+  }
+  .lb-browser[data-page='ticket'] .lb-page[data-page='ticket'],
+  .lb-browser[data-page='pr'] .lb-page[data-page='pr'] {
+    display: flex;
+  }
+  .lb-pg-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--sb-faint);
+  }
+  .lb-key {
+    font-family: var(--sb-font-mono);
+    color: var(--sb-muted);
+  }
+  .lb-badge {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--unread) 16%, transparent);
+    color: var(--unread);
+    font-weight: 600;
+  }
+  .lb-badge.ok {
+    background: color-mix(in srgb, var(--ok) 16%, transparent);
+    color: var(--ok);
+  }
+  .lb-pg-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .lb-faint {
+    font-weight: 400;
+    color: var(--sb-faint);
+  }
+  .lb-fields {
+    display: grid;
+    gap: 5px;
+    margin: 4px 0 0;
+  }
+  .lb-fields div {
+    display: flex;
+    gap: 10px;
+  }
+  .lb-fields dt {
+    width: 64px;
+    color: var(--sb-faint);
+  }
+  .lb-fields dd {
+    margin: 0;
+    color: var(--sb-text);
+  }
+  .lb-pg-label {
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sb-faint);
+  }
+  .lb-criteria,
+  .lb-checks {
+    display: grid;
+    gap: 7px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .lb-criteria li {
+    position: relative;
+    margin: 0;
+    padding-inline-start: 16px;
+    color: var(--sb-muted);
+  }
+  .lb-criteria li::before {
+    content: '';
+    position: absolute;
+    top: 0.45em;
+    left: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+    border: 1.5px solid var(--sb-faint);
+  }
+  .lb-checks li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-family: var(--sb-font-mono);
+    font-size: 11px;
+    color: var(--sb-muted);
+  }
+  .lb-check {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    transition: background-color 0.3s;
+  }
+  [data-check='running'] .lb-check {
+    border: 2px solid color-mix(in srgb, var(--working) 30%, transparent);
+    border-top-color: var(--working);
+    width: 7px;
+    height: 7px;
+    animation: lb-spin 0.9s linear infinite;
+  }
+  [data-check='ok'] .lb-check {
+    background: var(--ok);
+  }
+  [data-check='ok'] {
+    color: var(--sb-text);
+  }
+  .lb-diffstat {
+    font-size: 12px;
+    color: var(--sb-muted);
+  }
+  .lb-add {
+    color: var(--ok);
+  }
+  .lb-del {
+    color: var(--needs);
   }
 
   /* The system notification, sliding in at the top right. */
@@ -1296,6 +1681,9 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     .lb-window {
       grid-template-columns: 250px 1fr;
     }
+    .lb-browser {
+      width: 40%;
+    }
     .lb-cables,
     .lb-jack {
       display: none;
@@ -1306,10 +1694,23 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
    * A phone: the session list fills the window, the way the remote app looks on a phone. The permission
    * card and the catch-up slide up over it as sheets, and the notification drops in from the top.
    */
+  @media (max-width: 56rem) {
+    .lb-browser {
+      display: none;
+    }
+    .lb-seg span.on {
+      display: none;
+    }
+  }
   @media (max-width: 46rem) {
     .lb-window {
       grid-template-columns: 1fr;
-      height: 540px;
+      height: 580px;
+    }
+    /* The sheets sit against the whole window, not the conversation column. */
+    .lb-body,
+    .lb-chat {
+      position: static;
     }
     .lb-main {
       position: absolute;

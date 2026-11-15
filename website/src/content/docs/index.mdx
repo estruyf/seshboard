@@ -1,12 +1,12 @@
 ---
 title: Seshboard
-description: A fast app for macOS, Windows and Linux that runs and keeps track of your Claude Code sessions, across all your Claude accounts.
+description: A fast app for macOS, Windows and Linux that runs your Claude Code, GitHub Copilot and Codex sessions, with your issue tracker, pull requests and running app open right next to them.
 template: splash
 tableOfContents: false
 editUrl: false
 hero:
-  title: All your Claude Code sessions, in one window.
-  tagline: Run several sessions at once and always know which one needs you, which one is working and what each one did. With the Claude Code you already have, on Mac, Windows and Linux.
+  title: All your AI sessions and tools, in one window.
+  tagline: Run Claude Code, GitHub Copilot and Codex sessions side by side, and always know which one needs you. Open Jira, Productive or GitHub right next to them, so you follow up without switching apps. With the agents you already have, on Mac, Windows and Linux.
 ---
 
 import CopyCommand from '../../components/CopyCommand.astro';
@@ -18,12 +18,12 @@ import Related from '../../components/Related.astro';
 
 <section class="sb-proof not-content" aria-label="Why it fits in">
   <div>
-    <h2>Your own Claude Code</h2>
-    <p>It runs the <code>claude</code> you already use, with your login, settings, commands and skills. Nothing new to sign in to.</p>
+    <h2>Your own agents</h2>
+    <p>It runs the <code>claude</code>, <code>copilot</code> and <code>codex</code> you already use, with your logins, settings, commands and skills. Nothing new to sign in to.</p>
   </div>
   <div>
     <h2>Stays on your computer</h2>
-    <p>Your prompts and sessions only go where Claude Code sends them. Remote runs only when you turn it on, encrypted from your phone to your computer.</p>
+    <p>Your prompts and sessions only go where your agent sends them. Remote runs only when you turn it on, encrypted from your phone to your computer.</p>
   </div>
   <div>
     <h2>Free and open source</h2>
@@ -31,8 +31,29 @@ import Related from '../../components/Related.astro';
   </div>
 </section>
 
+<section class="sb-switch not-content" aria-labelledby="sb-switch-title">
+  <p class="sb-switch-eyebrow">Less switching</p>
+  <h2 id="sb-switch-title">Stop switching apps to follow up</h2>
+  <p class="sb-switch-intro">The ticket, the pull request and the running app sit in a browser next to the session. Read the task, check the review and answer the agent, all in the same window.</p>
+  <ul class="sb-switch-cards" role="list">
+    <li>
+      <h3>Your project tool</h3>
+      <p>Keep the Jira, Productive or Linear ticket open beside the session that works on it. Copy the acceptance criteria straight into the prompt.</p>
+    </li>
+    <li>
+      <h3>Your pull requests</h3>
+      <p>Open the pull request on GitHub next to its session, read the review and the failing check, and send Claude the fix.</p>
+    </li>
+    <li>
+      <h3>Your running app</h3>
+      <p>See the dev server's page while Claude changes it. Claude can open it too, click through it and read the console to check its own work.</p>
+    </li>
+  </ul>
+  <p class="sb-switch-note">Favourites, bookmarks per project and pinned tabs bring your pages back after a restart. A web address in a terminal opens there too. Your sign-ins stay, so it works like the browser you already use.</p>
+</section>
+
 <Feature eyebrow="Stay on top" title="See which session needs you" shot="home" focus="62% 45%" alt="Home: a session that needs you, one that is working, the queue, project tiles to start in, and the usage of two Claude profiles" href="/sessions/sidebar/" linkText="How the sidebar works">
-  <p>Every session sits in one list, across every project and every Claude account: the ones you start here and the ones in your terminal. Sessions that <Pill tone="needs-you">Needs you</Pill> go to the top, then the ones that are <Pill tone="working">Working</Pill>, then the rest by day.</p>
+  <p>Every session sits in one list, across every project, agent and account: the ones you start here and the ones in your terminal. Sessions that <Pill tone="needs-you">Needs you</Pill> go to the top, then the ones that are <Pill tone="working">Working</Pill>, then the rest by day.</p>
   <p>A notification tells you when Claude asks or finishes, so you can look away. <Kbd shortcut="session.next-needs-you" /> jumps to the next session that needs you, from anywhere.</p>
 
   - [Session states](/sessions/states/)
@@ -82,7 +103,7 @@ import Related from '../../components/Related.astro';
 
 <Feature eyebrow="Ship" title="From changed files to a pull request" shot="git-checks" focus="100% 0%" alt="A session with the git button showing the pull request's checks, one failing, and Fix failing checks with Claude" href="/terminal-changes-git/git/" linkText="Git in Seshboard" flip>
   <p>See what Claude changed in the **Changes** panel (<Kbd shortcut="changes.toggle" />): stage, unstage or revert files, and open any diff inline. The git button offers the next step: commit, push or create a pull request.</p>
-  <p>Once the pull request is open, its checks show on the same button. When one fails, let Claude fix it. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
+  <p>Once the pull request is open, its checks show on the same button, and the pull request opens in the browser beside the session. When a check fails, let Claude fix it. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
 
   - [Changes](/terminal-changes-git/changes/)
   - [Terminal](/terminal-changes-git/terminal/)
@@ -99,9 +120,9 @@ import Related from '../../components/Related.astro';
   - [VS Code companion](/vscode-companion/)
 </Feature>
 
-<Feature eyebrow="Accounts" title="Every Claude account, and what it used" shot="usage-limits" focus="45% 25%" alt="The Usage view: the 5-hour and weekly limits with what is left, when they reset, and how they went over time" href="/usage/" linkText="See the Usage view" flip>
-  <p>Add a profile for each Claude account, such as a personal plan and a work one. Each session's rail shows which account it uses, and a project can always start on its own.</p>
-  <p>See what is left of your 5-hour and weekly limits, when they come back, and which sessions, projects and models used them, with what that would cost at API prices.</p>
+<Feature eyebrow="Accounts" title="Every account, and what it used" shot="usage-limits" focus="45% 25%" alt="The Usage view: the 5-hour and weekly limits with what is left, when they reset, and how they went over time" href="/usage/" linkText="See the Usage view" flip>
+  <p>Add a profile for each account: a personal Claude plan and a work one, GitHub Copilot or Codex. Each session shows which agent and account it uses, and a project can always start on the same one.</p>
+  <p>See what is left of your 5-hour and weekly limits, or of Copilot's premium requests, when they come back, and which sessions, projects and models used them.</p>
 
   - [Profiles](/settings/claude-profiles/)
   - [Work and personal accounts](/guides/two-accounts/)
@@ -163,12 +184,12 @@ import Related from '../../components/Related.astro';
 
 <section class="sb-name not-content">
   <h2>Why Seshboard?</h2>
-  <p><strong>Sesh</strong> is short for sessions: the sessions your agents run. <strong>Board</strong> is the one app where you manage them all.</p>
+  <p><strong>Sesh</strong> is short for sessions: the sessions your agents run. <strong>Board</strong> is the one app where you manage them all, with the tools you follow them up in.</p>
 </section>
 
 <section class="sb-cta not-content">
   <h2>Try it on the sessions you already have</h2>
-  <p>Seshboard picks up your existing Claude Code sessions the moment it opens. Nothing to set up first.</p>
+  <p>Seshboard picks up your existing Claude Code sessions the moment it opens. Add a Copilot or Codex profile, and their sessions show up too.</p>
   <div class="sb-cta-actions">
     <a class="sb-button primary large sb-os-mac" href="https://github.com/estruyf/seshboard/releases/latest">Download for Mac</a>
     <a class="sb-button primary large sb-os-windows" href="https://github.com/estruyf/seshboard/releases/latest">Download for Windows</a>
@@ -184,6 +205,15 @@ import Related from '../../components/Related.astro';
   .sb-proof h2 { margin: 0; font-size: var(--sb-text-title); font-weight: 600; color: var(--sb-text); }
   .sb-proof p { margin: 0.4rem 0 0; font-size: var(--sb-text-ui); line-height: 1.55; color: var(--sb-muted); }
   .sb-proof code { font-size: 0.9em; }
+  .sb-switch { margin-top: 3rem; padding: 3.5rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
+  .sb-switch-eyebrow { margin: 0; font-size: var(--sb-text-meta); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sb-accent-ink); }
+  .sb-switch h2 { margin: 0.5rem 0 0; font-size: calc(var(--sb-text-hero) * 1.2); line-height: 1.25; font-weight: 600; color: var(--sb-text); }
+  .sb-switch-intro, .sb-switch-note { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
+  .sb-switch-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin: 2rem 0 0; padding: 0; list-style: none; text-align: start; }
+  .sb-switch-cards li { margin: 0; padding: 1.1rem 1.25rem; border: 1px solid var(--sb-border); border-top: 2px solid var(--sb-accent); border-radius: var(--sb-radius-card); background: var(--sb-card); }
+  .sb-switch-cards h3 { margin: 0; font-size: var(--sb-text-title); font-weight: 600; color: var(--sb-text); }
+  .sb-switch-cards p { margin: 0.4rem 0 0; font-size: var(--sb-text-ui); line-height: 1.55; color: var(--sb-muted); }
+  .sb-switch-note { margin-top: 1.5rem; font-size: var(--sb-text-ui); }
   .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-name, .sb-cta { padding: 3.5rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
   .sb-keys h2, .sb-more h2, .sb-tour h2, .sb-companion h2, .sb-name h2, .sb-cta h2 { margin: 0; font-size: calc(var(--sb-text-hero) * 1.2); font-weight: 600; color: var(--sb-text); }
   .sb-keys > p, .sb-more > p, .sb-companion p, .sb-name p, .sb-cta p { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
@@ -202,7 +232,8 @@ import Related from '../../components/Related.astro';
   @media (max-width: 40rem) {
     .sb-proof { margin-top: 2.5rem; gap: 0.75rem; }
     .sb-proof > div { padding: 0.9rem 1rem; }
-    .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-name, .sb-cta { padding: 2.5rem 0; }
+    .sb-switch, .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-name, .sb-cta { padding: 2.5rem 0; }
+    .sb-switch { margin-top: 2rem; }
     .sb-keys ul { grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 1.5rem; }
     .sb-keys li { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0.75rem; }
     .sb-more-links { margin-top: -0.5rem; }

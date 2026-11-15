@@ -34,7 +34,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Seshboard',
-      description: 'A fast app for Mac, Windows and Linux for running and keeping track of your Claude Code sessions.',
+      description: 'A fast app for Mac, Windows and Linux that runs your Claude Code, GitHub Copilot and Codex sessions, with your issue tracker, pull requests and running app right next to them.',
       logo: { src: './src/assets/logo.svg', alt: 'Seshboard' },
       favicon: '/favicon.svg',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/estruyf/seshboard' }],
