@@ -52,6 +52,7 @@ import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
 import { useTriggersSync } from './state/triggersStore.ts';
 import { usePipelinesSync } from './state/pipelinesStore.ts';
+import { useOrchestratorSync } from './state/orchestratorStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useLooseEndsSync } from './state/looseEndsStore.ts';
@@ -317,6 +318,7 @@ export function App() {
   useSchedulesSync();
   useTriggersSync();
   usePipelinesSync();
+  useOrchestratorSync();
   useCatchUpSync();
   useLooseEndsSync();
   useReminderClear();

@@ -232,6 +232,8 @@ const PLANS: Record<string, Plan> = {
   'close-other-panes': 'hide',
   'toggle-worktree': 'hide',
   'save-defaults': 'hide',
+  // The orchestrator opens in the main window, where its sessions are listed under it.
+  'go-to-orchestrator': 'hide',
   'catch-up': 'hide',
 };
 

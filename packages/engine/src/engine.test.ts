@@ -807,6 +807,15 @@ describe('engine over a MessagePort', () => {
       { root: PARSER, added: false },
     ]);
     await expect(client.call('projects.setDefaults', { root: PARSER, defaults: {} })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // The orchestrator's instructions have their own editor: a save of the other defaults keeps them, an empty text removes them.
+    const defaultsOf = async () => (await client.call('projects.list', {})).projects.find((p) => p.root === dataDir)!.defaults;
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), orchestratorInstructions: '  Branch from dev.  ' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { model: 'sonnet', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } });
+    expect(await defaultsOf()).toMatchObject({ model: 'sonnet', orchestratorInstructions: 'Branch from dev.' });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), orchestratorInstructions: '' } });
+    expect(await defaultsOf()).not.toHaveProperty('orchestratorInstructions');
+    // No session is an orchestrator yet.
+    expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [] });
     await client.call('projects.remove', { root: dataDir });
     expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual([PARSER]);
   });

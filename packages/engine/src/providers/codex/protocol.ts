@@ -285,11 +285,14 @@ export interface ThreadStartParams {
   ephemeral?: boolean | null;
   /** Codex's config for this thread, merged over the profile's (`{ mcp_servers: { name: { enabled: false } } }`). */
   config?: Record<string, unknown> | null;
+  /** Text Codex reads as developer instructions, after its own (an orchestrator's role, a project's instructions). */
+  developerInstructions?: string | null;
 }
 
 export interface ThreadResumeParams {
   threadId: string;
   config?: Record<string, unknown> | null;
+  developerInstructions?: string | null;
   model?: string | null;
   cwd?: string | null;
   approvalPolicy?: AskForApproval | null;

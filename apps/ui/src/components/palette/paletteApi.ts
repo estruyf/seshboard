@@ -116,6 +116,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     setSidebar: (state) => useSidebar.getState().setState(state),
     toggleSidebar: () => useSidebar.getState().toggle(),
     goToSession: (direction) => goToAdjacentSession(direction),
+    openSession: (sessionId) => useSessions.getState().select(sessionId),
     goToNextNeedsYou: () => goToNextNeedsYou(),
     manageProjects: () => manage(),
     openProject: (root, tab) => openProject(root, tab),

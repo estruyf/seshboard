@@ -46,6 +46,8 @@ export interface StartButtonInput {
   canPipeline?: boolean;
   /** The pipeline the Run as chip picked: Start runs it with the prompt as its task. Null: one session. */
   runAs?: { id: string; name: string } | null;
+  /** Orchestrator is picked in the Run as chip: Start makes this session the project's orchestrator (docs/orchestrator.md). */
+  orchestrator?: boolean;
   /**
    * Another provider runs it (a GitHub Copilot profile): the items it doesn't have yet (`supports`: `later`, `schedule`,
    * `trigger`, `worktree`, `pipeline`) stay in the menu, off, with `reason` ("Not with GitHub Copilot yet").
@@ -108,6 +110,19 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', ...unless('worktree', !canStart) });
   // A pipeline runs with the prompt as its task, in a worktree of its own: the branch and the focus limit don't stop it
   // (#179). Start when… makes a trigger that starts it (#185); a queued item or a schedule is one session.
+  // An orchestrator starts now, as one session: it is never queued, scheduled or started by a trigger.
+  if (input.orchestrator && !input.question && !input.editingSchedule) {
+    return {
+      main: 'start',
+      shortcut: 'new-session.start',
+      label: sending ? 'Starting…' : 'Start orchestrator',
+      sending,
+      disabled: !canStartHere,
+      menuDisabled: !canStartHere,
+      reason: sending ? null : (blocked ?? (!hasMessage ? 'Type the tasks first' : (startBlocked ?? input.branchBlocked ?? null))),
+      items: [{ ...items[0]!, label: 'Start orchestrator' }],
+    };
+  }
   const runAs = input.canPipeline && !input.question && !input.editingSchedule && !lacks('pipeline') ? (input.runAs ?? null) : null;
   if (runAs) {
     const one: StartMenuItem = { action: 'start-one', label: 'Start one session', disabled: !canStartHere };

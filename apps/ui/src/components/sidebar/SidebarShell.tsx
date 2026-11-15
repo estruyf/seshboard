@@ -1,6 +1,8 @@
 import { useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { usePipelines } from '../../state/pipelinesStore.ts';
-import { provideRemoteTreeRuns, provideTreeRuns } from '../../state/pipelineTreeStore.ts';
+import { provideRemoteTreeRuns, provideStarted, provideTreeRuns } from '../../state/pipelineTreeStore.ts';
+import { startedBy } from '../../state/orchestrator.ts';
+import { useOrchestrators } from '../../state/orchestratorStore.ts';
 import { currentRemoteTreeRuns } from '../../state/useRemoteRows.ts';
 import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, snapFromCollapsed, snapWidth, stepState, type SidebarSnap } from '../../state/sidebarWidth.ts';
@@ -9,6 +11,7 @@ import { SidebarRail } from './SidebarRail.tsx';
 
 // The sidebar's order (⌃⇥, ⌘P) nests pipelines' sub-sessions under their runs: it reads them from the pipelines store.
 provideTreeRuns(() => usePipelines.getState().runs.values());
+provideStarted(() => startedBy(useOrchestrators.getState().orchestrators));
 // Other computers' runs too, from their last lists.
 provideRemoteTreeRuns(currentRemoteTreeRuns);
 

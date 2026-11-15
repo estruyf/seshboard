@@ -143,6 +143,11 @@ export interface PaletteContext {
   pipelines: number;
   /** How many of them the open session's project can run; 0 without a session. */
   sessionPipelines: number;
+  /**
+   * The orchestrator to go to (docs/orchestrator.md): the open session's project's, or the newest one with no session
+   * open; null when there is none, or the open session is it.
+   */
+  orchestratorId: string | null;
   /** Unsent messages (sessions and New session prompts) that count. */
   unsent: number;
   projectCount: number;

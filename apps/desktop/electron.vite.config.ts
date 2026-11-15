@@ -55,6 +55,8 @@ export default defineConfig({
           visualize: resolve(here, 'src/visualize/index.ts'),
           // The browser MCP server agents start: its calls go to the engine over a local socket.
           'browser-mcp': resolve(here, 'src/browserMcp/index.ts'),
+          // The orchestrator MCP server an orchestrator's agent starts: its calls go to the engine the same way.
+          'orchestrator-mcp': resolve(here, 'src/orchestratorMcp/index.ts'),
         },
       },
     },

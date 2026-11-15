@@ -310,6 +310,13 @@ Mention another session with `@` in the message box, and Claude gets a brief abo
 - **Phase 3:** `ask_session`, an in-process tool that asks a linked session through a read-only fork.
 - **Phase 4:** a stack view.
 
+### 5.12 Orchestrator
+
+A session that hands work to other sessions: you send it tasks, it starts a session for each and tracks them. Borrowed from Claude's Projects, run on this computer, with Claude Code, Copilot or Codex. Design in [docs/orchestrator.md](docs/orchestrator.md), how to try it in [docs/orchestrator-testing.md](docs/orchestrator-testing.md).
+
+- ✅ **Core:** Run as › Orchestrator in New session (`session.create`'s `orchestrator`); the `orchestrator` MCP server every agent starts (`apps/desktop/src/orchestratorMcp/`), its bridge and tools (`packages/engine/src/orchestrator/`: `start_session`, `list_sessions`, `read_session`, `message_session`); starts held by the focus and usage limits in the queue; `orchestrators` and `orchestrator_workers` (migration v62, user data); a Session update to the orchestrator when a started session's turn ends; the overview above its conversation, its sessions under its row, the way back in a started session's header; Orchestrator instructions per project (`ProjectDefaults.orchestratorInstructions`); *Go to orchestrator*.
+- Not yet: Ready for review and Landing from the pull request's review state, pausing a project, marking a session resolved, a pipeline as one of its tasks, the overview on other computers and the phone, and a check against a real Codex.
+
 ### v0.2: power features
 - ✅ **Embedded terminal** per session (xterm.js on node-pty), plus a raw `claude` TUI tab for anything the GUI doesn't cover (including mods). Built ahead of schedule; project actions will reuse it.
 - **Diff panel:** the session's git diff against its starting point, with stage, revert and **rewind to message** (`rewindFiles`).

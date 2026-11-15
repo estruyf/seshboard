@@ -379,7 +379,7 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
         ...(config.mcpServers ? { mcpServers: Object.fromEntries(Object.entries(config.mcpServers).map(([name, server]) => [name, { type: 'local' as const, ...server, tools: ['*'] }])) } : {}),
         // For Rewind. On a resume it starts only when the session still has a baseline: earlier turns can't be restored.
         enableFileChangeTracking: true,
-        ...(config.appendSystem ? { systemMessage: { mode: 'append' as const, content: config.appendSystem } } : {}),
+        ...(config.appendSystem || config.instructions ? { systemMessage: { mode: 'append' as const, content: [config.appendSystem, config.instructions].filter(Boolean).join('\n\n') } } : {}),
         onPermissionRequest: (request) =>
           approves(request)
             ? Promise.resolve<PermissionAnswer>({ kind: 'approve-once' })

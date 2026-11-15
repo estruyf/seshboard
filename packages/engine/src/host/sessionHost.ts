@@ -1,6 +1,6 @@
 import { randomUUID, type UUID } from 'node:crypto';
 import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { BROWSER_SERVER, BROWSER_TOOL_NAMES, cacheTtlOf, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
+import { BROWSER_SERVER, BROWSER_TOOL_NAMES, cacheTtlOf, ORCHESTRATOR_SERVER, ORCHESTRATOR_TOOL_NAMES, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -108,14 +108,20 @@ export interface HostConfig {
   readOnly?: boolean;
   /** Let the agent mark its key sentences (Settings › Conversation): `SKIM_MARKS_PROMPT` goes after Claude Code's prompt. */
   skimMarks?: boolean;
+  /** The orchestrator's tools (docs/orchestrator.md): Seshboard's `orchestrator` MCP server, tied to this session. */
+  orchestrator?: McpStdioServer | null;
+  /** More text for after Claude Code's prompt: an orchestrator's role, a project's instructions for its sessions. */
+  appendSystem?: string | null;
 }
 
 /**
- * Claude Code's own system prompt, with Skim's instruction after it when on. A fork (Ask about this session) takes the
- * same, so the prompt cache still matches.
+ * Claude Code's own system prompt, with Skim's instruction after it when on, then `extra` (an orchestrator's role, a
+ * project's instructions). A fork (Ask about this session) takes the same, so the prompt cache still matches.
  */
-export const systemPromptFor = (skimMarks: boolean | undefined): Options['systemPrompt'] =>
-  skimMarks ? { type: 'preset', preset: 'claude_code', append: SKIM_MARKS_PROMPT } : { type: 'preset', preset: 'claude_code' };
+export const systemPromptFor = (skimMarks: boolean | undefined, extra?: string | null): Options['systemPrompt'] => {
+  const append = [skimMarks ? SKIM_MARKS_PROMPT : null, extra?.trim() || null].filter(Boolean).join('\n\n');
+  return append ? { type: 'preset', preset: 'claude_code', append } : { type: 'preset', preset: 'claude_code' };
+};
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
 export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Seshboard can’t find it. Install it, then try again.';
@@ -171,7 +177,7 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     // Session state events drive the status dot; they are opt-in.
     env: { ...config.env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
     pathToClaudeCodeExecutable: config.claudePath,
-    systemPrompt: systemPromptFor(config.skimMarks),
+    systemPrompt: systemPromptFor(config.skimMarks, config.appendSystem),
     settingSources: ['user', 'project', 'local'],
     includePartialMessages: true,
     enableFileCheckpointing: true,
@@ -219,6 +225,12 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   if (config.browser && !config.readOnly) {
     options.mcpServers = { ...options.mcpServers, [BROWSER_SERVER]: { type: 'stdio', ...config.browser } };
     options.allowedTools = [...(options.allowedTools ?? []), ...BROWSER_TOOL_NAMES];
+  }
+  // An orchestrator's tools never ask: the engine holds each start behind the focus and usage limits, and a started
+  // session runs in the project's own mode.
+  if (config.orchestrator && !config.readOnly) {
+    options.mcpServers = { ...options.mcpServers, [ORCHESTRATOR_SERVER]: { type: 'stdio', ...config.orchestrator } };
+    options.allowedTools = [...(options.allowedTools ?? []), ...ORCHESTRATOR_TOOL_NAMES];
   }
   return options;
 }

@@ -58,6 +58,7 @@ import {
   ListPlus,
   NotebookText,
   PencilLine,
+  Waypoints,
   Maximize2,
   MessageCircleQuestion,
   MessageSquareText,
@@ -171,6 +172,8 @@ export interface PaletteApi {
   /** The next (1) or previous (-1) session in the sidebar's order. */
   goToSession(direction: 1 | -1): void;
   goToNextNeedsYou(): void;
+  /** Opens a session by its id (Go to orchestrator). */
+  openSession(sessionId: string): void;
   manageProjects(): void;
   /** A project's page, on a tab or the one it was last left on. */
   openProject(root: string, tab?: 'triggers' | 'worktrees' | 'branches' | 'memory'): void;
@@ -808,6 +811,15 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'pipeline steps plan execute validate push parent sub-session workflow chain',
     when: (ctx) => hasSession(ctx) && ctx.connected && ctx.sessionPipelines > 0,
     next: () => ({ kind: 'pick', list: 'run-pipeline', chip: 'Run pipeline' }),
+  },
+  {
+    id: 'go-to-orchestrator',
+    title: 'Go to orchestrator',
+    group: 'general',
+    icon: Waypoints,
+    keywords: 'orchestrator orchestration coordinate coordinator sessions overview tasks parallel agents',
+    when: (ctx) => ctx.orchestratorId !== null,
+    run: (api, ctx) => api.openSession(ctx.orchestratorId!),
   },
   {
     id: 'pin',

@@ -464,7 +464,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       /** Starts or resumes the thread; a read-only one without MCP servers (`noMcpConfig`). */
       const open = async (resume: string | null): Promise<ThreadStartResponse> => {
         const { sandbox, approvalPolicy } = settings();
-        const common = { cwd: config.cwd, approvalPolicy, sandbox, ...(model ? { model } : {}) };
+        // An orchestrator's role and a project's instructions (docs/orchestrator.md) go as developer instructions.
+        const common = { cwd: config.cwd, approvalPolicy, sandbox, ...(model ? { model } : {}), ...(config.instructions ? { developerInstructions: config.instructions } : {}) };
         const request = (extra: { config?: Record<string, unknown> }) =>
           resume ? resumeWhenClosed(() => server.request('thread/resume', { threadId: resume, ...common, ...extra, excludeTurns: true })) : server.request('thread/start', { ...common, ...extra });
         // Seshboard's own servers (Visuals in replies) join the ones in Codex's config, for this thread.

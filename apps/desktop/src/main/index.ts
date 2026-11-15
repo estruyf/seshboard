@@ -311,6 +311,8 @@ function updatePreferences(patch: unknown): void {
 const visualizeServer = () => ({ command: process.execPath, args: [join(here, 'visualize.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
 /** Seshboard's `browser` MCP server (`src/browserMcp/`), started the same way; the engine adds its socket and a session's token. */
 const browserMcpServer = () => ({ command: process.execPath, args: [join(here, 'browser-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
+/** Seshboard's `orchestrator` MCP server (`src/orchestratorMcp/`), started the same way by an orchestrator's agent (docs/orchestrator.md). */
+const orchestratorMcpServer = () => ({ command: process.execPath, args: [join(here, 'orchestrator-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
 
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived, doneOnMerge: prefs.doneOnMerge });
@@ -337,6 +339,8 @@ function sendEngineSettings(prefs: Preferences): void {
   // Settings › General › Browser › Allow Seshboard to control the browser: sessions started or resumed from now on get
   // the browser server, whatever their agent.
   engine?.sendStanding({ type: 'browserControl', server: prefs.browserEnabled && prefs.browserControl ? browserMcpServer() : null });
+  // The orchestrator's tools: a session started or resumed as an orchestrator gets its server, whatever its agent.
+  engine?.sendStanding({ type: 'orchestratorServer', server: orchestratorMcpServer() });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
@@ -9654,6 +9658,116 @@ async function runRunAsStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * The orchestrator (docs/orchestrator.md), with stand-in sessions: Run as › Orchestrator in New session makes Start
+ * say Start orchestrator, and ⌘↵ opens the session with its overview. Its tools (called as its agent would) start three
+ * sessions, which show in the overview as Working and under its row in the sidebar. One that needs you moves to
+ * Waiting on you; one whose turn ends cleanly moves to Idle, and the orchestrator is told so. Open on a row opens that
+ * session, whose header leads back. The project's Orchestrator instructions, saved on its Settings tab first, reach
+ * every session it starts. No prompt reaches an agent: starts and messages are recorded, not sent.
+ */
+async function runOrchestratorStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-orchestrator-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+  const logFile = join(app.getPath('userData'), 'smoke-orchestrator.jsonl');
+  const logged = (): Array<{ kind: string; sessionId: string; title?: string; text?: string; workspace?: string; permissionMode?: string; instructions?: string | null }> => {
+    try {
+      return readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as { kind: string; sessionId: string });
+    } catch {
+      return [];
+    }
+  };
+  const before = logged().length;
+  const host = (sessionId: string, state: 'running' | 'needs-you' | 'idle' | 'closed', outcome?: 'clean') => engine.send({ type: 'smokeQueueHost', sessionId, cwd: folder, state, ...(outcome ? { outcome } : {}) });
+  const view = '[data-new-session-view]';
+  const chip = `document.querySelector('${view} [data-run-as]')`;
+  const submit = `document.querySelector('${view} [data-composer-submit]')`;
+  const overview = "document.querySelector('[data-orchestrator-overview]')";
+  const workers = (state: string) => `${overview}?.querySelectorAll('[data-orchestrator-worker][data-worker-state="${state}"]').length`;
+  const instructions = 'Branch from main. Run the tests before you call work done.';
+  const pageSelector = `[data-project-page=${JSON.stringify(folder)}]`;
+  const page = (selector: string) => `document.querySelector(${JSON.stringify(`${pageSelector} ${selector}`)})`;
+  let orchestratorId = '';
+  let started: string[] = [];
+  try {
+    openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${chip} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)}`, 8_000))) return 'New session did not open on the throwaway repository with the Run as chip';
+    await js(`${chip}.click()`);
+    const option = "document.querySelector('[role=menu] [data-run-as-option=\"orchestrator\"]')";
+    if (!(await waitInPage(win, `!!${option}`, 3_000))) return 'the Run as menu did not list Orchestrator';
+    await shot(win, 'orchestrator-run-as-menu.png');
+    await js(`${option}.click()`);
+    if (!(await waitInPage(win, `${chip}?.dataset.runAs === 'orchestrator' && ${submit}?.innerText.includes('Start orchestrator')`, 2_000))) return 'Start did not turn into Start orchestrator';
+    await setFieldValue(win, `${view} [data-composer]`, 'Fix the login redirect, update the lint config and refresh the docs.');
+    await shot(win, 'orchestrator-run-as.png');
+    // The session is a stand-in: nothing is sent to an agent.
+    engine.send({ type: 'smokeStubCreate', on: true });
+    await js(`document.querySelector('${view} [data-composer]').focus()`);
+    pressKey(win, 'Return', ['meta']);
+    if (!(await waitInPage(win, `${overview}?.querySelector('[data-orchestrator-line]')?.innerText.includes('No sessions yet')`, 10_000))) return 'the orchestrator did not open with its empty overview';
+    orchestratorId = (await js(`${overview}.dataset.orchestratorOverview`)) as string;
+    engine.send({ type: 'smokeStubCreate', on: false });
+    host(orchestratorId, 'idle');
+    // Starting it added the folder to your projects: its Settings tab keeps the orchestrator's instructions.
+    await js("document.querySelector('[data-open-projects]')?.click()");
+    const projectRow = `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(folder)}]`)})`;
+    if (!(await waitInPage(win, `!!${projectRow} || !!${page('[data-project-tab="settings"]')}`, 5_000))) return 'the throwaway project did not show in Projects';
+    if (!(await js(`!!${page('[data-project-tab="settings"]')}`))) await js(`${projectRow}.click()`);
+    if (!(await waitInPage(win, `!!${page('[data-project-tab="settings"]')}`, 5_000))) return 'the project’s page did not open';
+    await js(`${page('[data-project-tab="settings"]')}.click()`);
+    if (!(await waitInPage(win, `!!${page('[data-orchestrator-instructions-input]')}`, 3_000))) return 'the Settings tab has no Orchestrator instructions';
+    await setFieldValue(win, `${pageSelector} [data-orchestrator-instructions-input]`, instructions);
+    await js(`${page('[data-orchestrator-instructions-save]')}.click()`);
+    if (!(await waitInPage(win, `${page('[data-orchestrator-instructions]')}?.innerText.includes('Saved') && ${page('[data-orchestrator-instructions-save]')}.disabled`, 5_000))) return 'the instructions did not save';
+    await js(`${page('[data-orchestrator-instructions]')}.scrollIntoView({ block: 'center' })`);
+    await shot(win, 'orchestrator-instructions.png');
+    // Back to the orchestrator.
+    await js(`document.querySelector('[data-session-list] [data-session-id="${orchestratorId}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${orchestratorId}"] [data-orchestrator-overview]')`, 5_000))) return 'the orchestrator did not open again from the sidebar';
+    // Its agent would call start_session: three tasks, three sessions.
+    for (const title of ['Fix the login redirect', 'Update the lint config', 'Refresh the docs']) {
+      engine.send({ type: 'smokeOrchestrator', sessionId: orchestratorId, projectRoot: folder, tool: 'start_session', args: { title, prompt: `${title}. Run the tests before you call it done.` } });
+    }
+    if (!(await waitInPage(win, `${workers('working')} === 3 && ${overview}.querySelector('[data-orchestrator-line]').innerText.includes('3 working')`, 8_000))) return `the overview did not show three working sessions (${String(await js(workers('working')))})`;
+    const starts = logged().slice(before).filter((l) => l.kind === 'start');
+    started = starts.map((l) => l.sessionId);
+    if (starts.length !== 3 || starts.some((l) => l.workspace !== 'worktree' || l.permissionMode !== 'acceptEdits')) return `the starts were not three sessions in their own worktrees, accepting edits (${JSON.stringify(starts)})`;
+    if (starts.some((l) => !(l.instructions ?? '').includes(instructions))) return 'the started sessions did not get the project’s instructions';
+    // Under its row in the sidebar: the row says how many, and its sessions open under it.
+    const row = `document.querySelector('[data-session-list] [data-session-id="${orchestratorId}"]')`;
+    if (!(await waitInPage(win, `${row}?.querySelector('[data-row-orchestrator]')?.dataset.rowOrchestrator === '3' && !!${row}.querySelector('[data-tree-toggle]')`, 5_000))) return 'the orchestrator’s row did not say 3 sessions with a chevron';
+    if ((await js(`${row}.querySelector('[data-tree-toggle]').dataset.treeToggle`)) !== 'true') await js(`${row}.querySelector('[data-tree-toggle]').click()`);
+    if (!(await waitInPage(win, `document.querySelectorAll('[data-session-list] [data-tree-child-row] [data-session-id^="smoke-worker-"]').length === 3`, 5_000))) return 'its three sessions did not show under it in the sidebar';
+    // One needs you, one ends its turn: the groups follow, and the orchestrator hears about the one that finished.
+    host(started[0]!, 'needs-you');
+    host(started[1]!, 'idle', 'clean');
+    if (!(await waitInPage(win, `${workers('waiting')} === 1 && ${workers('working')} === 1 && ${workers('idle')} + ${workers('review')} === 1`, 8_000))) {
+      return `the groups did not follow the sessions (waiting ${String(await js(workers('waiting')))}, working ${String(await js(workers('working')))})`;
+    }
+    const told = await until(() => logged().slice(before).some((l) => l.kind === 'send' && l.sessionId === orchestratorId && (l.text ?? '').includes('"Update the lint config"') && (l.text ?? '').includes('finished its turn')), 5_000);
+    if (!told) return 'the orchestrator was not told that a session finished its turn';
+    await shot(win, 'orchestrator-overview.png');
+    // Open on a row goes to the session; its header leads back.
+    await js(`${overview}.querySelector('[data-worker-open="${started[2]!}"]').click()`);
+    const crumb = `document.querySelector('[data-current-session="${started[2]!}"] [data-orchestrator-crumb="${orchestratorId}"]')`;
+    if (!(await waitInPage(win, `!!${crumb}`, 5_000))) return 'Open did not show the session with the way back to its orchestrator';
+    await js(`${crumb}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${orchestratorId}"] [data-orchestrator-overview]')`, 5_000))) return 'the way back did not open the orchestrator';
+    return 'ok: the project kept its instructions and gave them to each session; Run as › Orchestrator started the orchestrator; its three sessions showed as Working in the overview and under its row; one moved to Waiting on you, one to Idle with the orchestrator told; Open and the way back work';
+  } finally {
+    engine.send({ type: 'smokeStubCreate', on: false });
+    for (const id of [...started, orchestratorId].filter(Boolean)) host(id, 'closed');
+    engine.send({ type: 'smokeProject', path: folder, add: false });
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * A pipeline run as one tree (#179), with stand-in steps: Execute and validate from New session in a throwaway
  * repository, Execute's turn ends so Validate starts, Stop the run, then Archive with its 2 steps from the run row's
  * menu moves the run row and both steps to Archived. Delete… takes it out again, so later steps never see it.
@@ -14114,6 +14228,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: run, @ links, a round 2, another round, done', () => runPipelineStep(win));
   await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));
   await step('pipelines: Stop the run, archive the run with its steps, then delete it', () => runArchiveRunStep(win));
+  await step('orchestrator: instructions saved in a project, Run as › Orchestrator, three sessions in the overview and under its row, the groups follow, the way back', () => runOrchestratorStep(win), { timeoutMs: 60_000 });
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));

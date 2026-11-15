@@ -83,6 +83,9 @@ import { reducedMotion, tween } from './archivedMotion.ts';
 import { usePipelines, runOfParent } from '../../state/pipelinesStore.ts';
 import { runIsActive } from '../../state/pipelines.ts';
 import { parentRunLine, pipelinesRunning, runRowLine, sidebarForest, treeNeedsYouLine } from '../../state/pipelineTree.ts';
+import { orchestratorInfo, orchestratorRowLine, startedBy } from '../../state/orchestrator.ts';
+import { useOrchestrators } from '../../state/orchestratorStore.ts';
+import { OrchestratorIcon } from '../orchestrator/OrchestratorOverview.tsx';
 import { usePipelineTree } from '../../state/pipelineTreeStore.ts';
 import { isRunRowId } from '../../state/runSelection.ts';
 import { askDeleteTree } from '../pipelines/RunTreeDialogs.tsx';
@@ -364,6 +367,8 @@ export const SessionRow = memo(function SessionRow({
   const remoteRuns = useComputers((s) => (remote ? s.lists.get(remote.computerId)?.runs : undefined));
   const run = useMemo<RunView | null>(() => (remote ? (remoteRuns ? protocolRunOfParent(remoteRuns, remote.sessionId) : null) : runOfParent(runs, data.id)), [runs, remoteRuns, data.id, remote]);
   const runShown = run && (runRow || expanded !== undefined || runIsActive(run)) ? run : null;
+  // An orchestrator (docs/orchestrator.md) says so on its second line, with how many sessions it started.
+  const orchestrated = useOrchestrators((s) => (remote ? null : orchestratorInfo(s.orchestrators, data.id)));
   // Quick actions on hover (Settings › Sidebar): small buttons take the age's place while the pointer is on the row, or
   // once Tab moves into them, and the lines make room for them only then, so titles don't jump. None while picking.
   const quickOn = usePreferences((s) => s.prefs.quickActions);
@@ -421,7 +426,7 @@ export const SessionRow = memo(function SessionRow({
   const tree = expanded !== undefined && onToggleTree ? { open: expanded, count: childCount, onToggle: () => onToggleTree(data.id) } : undefined;
   const treeInActions = actions.length > 0 && tree !== undefined;
   const buttons = actions.length + (treeInActions ? 1 : 0);
-  const chevron = tree && <TreeChevron open={tree.open} count={tree.count} className={hideForActions} onToggle={tree.onToggle} />;
+  const chevron = tree && <TreeChevron open={tree.open} count={tree.count} noun={orchestrated ? 'session' : 'step'} className={hideForActions} onToggle={tree.onToggle} />;
   // An unsent message: a pen in the same corner, never in a status colour.
   const pen = draft !== null && <PencilLine size={11} className="shrink-0 text-faint" aria-hidden data-row-pen />;
   // Loose ends: what it left behind in git or on GitHub, or a queued prompt. The tooltip lists them, the unsent message too.
@@ -616,6 +621,11 @@ export const SessionRow = memo(function SessionRow({
             {!runRow && <ListTree size={11} className="shrink-0 text-pipeline" aria-hidden />}
             <span className="min-w-0 truncate">{runRow ? runRowLine(runShown, filtered ? null : projectName) : parentRunLine(runShown, filtered ? null : projectName)}</span>
           </span>
+        ) : orchestrated ? (
+          <span className="flex min-w-0 flex-1 items-center gap-1" data-row-orchestrator={orchestrated.workers.length}>
+            <OrchestratorIcon size={11} />
+            <span className="min-w-0 truncate">{orchestratorRowLine(orchestrated.workers.length, filtered ? null : projectName)}</span>
+          </span>
         ) : limitText ? (
           <span className="flex min-w-0 flex-1 items-center gap-1 text-muted">
             <Clock size={11} className="shrink-0" aria-hidden />
@@ -766,7 +776,10 @@ export function Sidebar() {
   // most urgent state. Parents start closed.
   const runs = usePipelines((s) => s.runs);
   const remoteRuns = useRemoteTreeRuns();
-  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept, remoteRuns), [merged, runs, now, archiveAfterDays, kept, remoteRuns]);
+  // An orchestrator's sessions nest under it the same way (docs/orchestrator.md).
+  const orchestrators = useOrchestrators((s) => s.orchestrators);
+  const started = useMemo(() => startedBy(orchestrators), [orchestrators]);
+  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept, remoteRuns, started), [merged, runs, now, archiveAfterDays, kept, remoteRuns, started]);
   const openParents = usePipelineTree((s) => s.open);
   const { active, archived, snoozed } = useMemo(
     () => buildSessionList(forest.roots, { search, project: projectFilter, now, archiveAfterDays, children: forest.children }),

@@ -271,6 +271,9 @@ function setup(
     assertTrusted?: HostManagerDeps['assertTrusted'];
     browserServer?: HostManagerDeps['browserServer'];
     allowBrowserSite?: HostManagerDeps['allowBrowserSite'];
+    orchestratorServer?: HostManagerDeps['orchestratorServer'];
+    isOrchestrator?: HostManagerDeps['isOrchestrator'];
+    appendSystemFor?: HostManagerDeps['appendSystemFor'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -344,6 +347,9 @@ function setup(
     assertTrusted: opts.assertTrusted,
     browserServer: opts.browserServer,
     allowBrowserSite: opts.allowBrowserSite,
+    orchestratorServer: opts.orchestratorServer,
+    isOrchestrator: opts.isOrchestrator,
+    appendSystemFor: opts.appendSystemFor,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -631,6 +637,33 @@ describe('HostManager', () => {
     expect(t.queries[1]!.options.allowedTools).toEqual(expect.arrayContaining(['mcp__browser__open', 'mcp__browser__click', 'mcp__browser__console']));
     // Its calls drive this session's page.
     expect(owners.at(-1)!()).toBe(id);
+    t.manager.closeAll();
+  });
+
+  it('starts and resumes an orchestrator with its tools and its role, and no other session', async () => {
+    const owners: Array<() => string | null> = [];
+    const server = { command: '/app/Seshboard', args: ['orchestrator-mcp.js'], env: { SESHBOARD_ORCHESTRATOR_TOKEN: 'secret' } };
+    const t = setup({
+      cwds: { 'old-orchestrator': '/w', 'its-session': '/w' },
+      orchestratorServer: async (sessionId) => (owners.push(sessionId), server),
+      isOrchestrator: (id) => id === 'old-orchestrator',
+      appendSystemFor: (id) => (id === 'old-orchestrator' ? 'You are the orchestrator.' : id === 'its-session' ? 'Branch from dev.' : null),
+    });
+    await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.mcpServers).toBeUndefined();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', orchestrator: true, appendSystem: 'You are the orchestrator.' });
+    expect(t.queries[1]!.options.mcpServers?.orchestrator).toEqual({ type: 'stdio', ...server });
+    expect(t.queries[1]!.options.allowedTools).toEqual(expect.arrayContaining(['mcp__orchestrator__start_session']));
+    expect(t.queries[1]!.options.systemPrompt).toMatchObject({ append: expect.stringContaining('You are the orchestrator.') });
+    // Its calls are this session's.
+    expect(owners.at(-1)!()).toBe(id);
+    await t.manager.send({ sessionId: 'old-orchestrator', text: 'Say hi', attachments: [], fork: false });
+    expect(t.queries[2]!.options.mcpServers?.orchestrator).toEqual({ type: 'stdio', ...server });
+    expect(t.queries[2]!.options.systemPrompt).toMatchObject({ append: expect.stringContaining('You are the orchestrator.') });
+    // A session it started resumes with the project's instructions, without the tools.
+    await t.manager.send({ sessionId: 'its-session', text: 'Say hi', attachments: [], fork: false });
+    expect(t.queries[3]!.options.mcpServers).toBeUndefined();
+    expect(t.queries[3]!.options.systemPrompt).toMatchObject({ append: expect.stringContaining('Branch from dev.') });
     t.manager.closeAll();
   });
 
@@ -1750,6 +1783,16 @@ describe('buildOptions', () => {
   it("appends Skim's instruction to Claude Code's prompt only when it is on", () => {
     expect(buildOptions({ ...config, skimMarks: true }, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: SKIM_MARKS_PROMPT });
     expect(buildOptions(config, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code' });
+  });
+
+  it("gives an orchestrator Seshboard's orchestrator server with its tools allowed, and its role after the prompt", () => {
+    const orchestrator = { command: '/Apps/Seshboard', args: ['/Apps/orchestrator-mcp.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    const options = buildOptions({ ...config, orchestrator, appendSystem: 'You are the orchestrator.', skimMarks: true }, () => {});
+    expect(options.mcpServers).toEqual({ orchestrator: { type: 'stdio', ...orchestrator } });
+    expect(options.allowedTools).toEqual(['mcp__orchestrator__start_session', 'mcp__orchestrator__list_sessions', 'mcp__orchestrator__read_session', 'mcp__orchestrator__message_session']);
+    expect(options.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: `${SKIM_MARKS_PROMPT}\n\nYou are the orchestrator.` });
+    expect(buildOptions({ ...config, appendSystem: 'Branch from dev.' }, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: 'Branch from dev.' });
+    expect(buildOptions({ ...config, orchestrator, readOnly: true }, () => {}).mcpServers).toBeUndefined();
   });
 
   it('maps a new worktree session onto Claude Code options', () => {

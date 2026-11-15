@@ -43,3 +43,12 @@ export const remoteTreeRunsNow = (): readonly RunView[] => remoteSource();
 export function provideRemoteTreeRuns(read: () => readonly RunView[]): void {
   remoteSource = read;
 }
+
+let startedSource: () => ReadonlyMap<string, string> = () => new Map();
+
+/** The sessions orchestrators started, each with its orchestrator (`startedBy`), for the same order. The orchestrator store registers itself (`SidebarShell`). */
+export const startedNow = (): ReadonlyMap<string, string> => startedSource();
+
+export function provideStarted(read: () => ReadonlyMap<string, string>): void {
+  startedSource = read;
+}

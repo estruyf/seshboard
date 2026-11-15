@@ -15,6 +15,15 @@ describe('the Start button', () => {
     ]);
   });
 
+  it('starts an orchestrator now, as one session: no queue, schedule or worktree in the menu, also at the focus limit', () => {
+    const state = startButtonState({ ...ready, orchestrator: true, canSchedule: true, canTrigger: true, atFocusLimit: 'nudge' });
+    expect(state).toMatchObject({ main: 'start', label: 'Start orchestrator', disabled: false, reason: null });
+    expect(state.items.map((i) => [i.action, i.label])).toEqual([['start', 'Start orchestrator']]);
+    expect(startButtonState({ ...ready, orchestrator: true, hasMessage: false, hasText: false })).toMatchObject({ disabled: true, reason: 'Type the tasks first' });
+    // A question is never an orchestrator.
+    expect(startButtonState({ ...ready, orchestrator: true, question: true })).toMatchObject({ label: 'Ask' });
+  });
+
   it('leads with Add to queue when opened to follow a session, with starting in the menu', () => {
     const state = startButtonState({ ...ready, queueFirst: true });
     expect(state).toMatchObject({ main: 'queue', shortcut: 'new-session.queue', label: 'Add to queue', disabled: false, reason: null });

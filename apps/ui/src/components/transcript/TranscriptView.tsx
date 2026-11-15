@@ -158,6 +158,7 @@ import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut, modKey } from '../../lib/shortcuts.ts';
 import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
 import { BackToRunButton, ParentRunRows, ParentStepTree, StepCrumb, StepStopNotice, StepTopLines, StepVerdictCard, useRunPlaceholder } from '../pipelines/RunParts.tsx';
+import { OrchestratorCrumb, OrchestratorOverview } from '../orchestrator/OrchestratorOverview.tsx';
 import { withRunStub } from '../pipelines/runView.ts';
 import { useRunOfParent } from '../../state/pipelinesStore.ts';
 import { replyPlaceholder } from '../catchUp/catchUpModel.ts';
@@ -1657,6 +1658,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
             {/* A pipeline step's parent, before its state: the way back to the run. */}
             <StepCrumb sessionId={sessionId} />
+            {/* A session an orchestrator started: the way back to it. */}
+            <OrchestratorCrumb sessionId={sessionId} />
             {/* Whose session it is first, as on its sidebar row. */}
             <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider ?? 'claude'}>
               <ProviderMark session={{ provider: otherProvider ?? 'claude' }} size={12} />
@@ -1839,6 +1842,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           )}
           {/* A pipeline run's step tree in its parent; the read-only line and the round at the top of a step. */}
           {!terminalMaximized && <ParentStepTree sessionId={sessionId} />}
+          {/* An orchestrator's sessions, by what needs you first. */}
+          {!terminalMaximized && <OrchestratorOverview sessionId={sessionId} />}
           {!terminalMaximized && <StepTopLines sessionId={sessionId} />}
           <MessageActionsContext.Provider value={messageActions}>
           <PromptExpansionContext.Provider value={promptExpansion}>

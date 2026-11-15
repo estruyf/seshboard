@@ -55,6 +55,7 @@ import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './sch
 import { Trigger, TriggerEvent, TriggerNotice, TriggerRepoInfo, TriggerSave, TriggersState } from './triggerSchema.ts';
 import { Pipeline, PipelineNotice, PipelineRunState, PipelineSave, PushPreview } from './pipelineSchema.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
+import { MAX_WORKER_TITLE } from './orchestrator.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { ActivityDay, ActivityEntry, ActivitySummary, ActivitySummaryExtra, ActivitySummaryState } from './activity.ts';
 import { CatchUp, RequestWhy } from './catchUp.ts';
@@ -139,6 +140,21 @@ export const LogEntry = z.object({
 });
 export type LogEntry = z.infer<typeof LogEntry>;
 
+/** An orchestrator and the sessions it started (`OrchestratorInfo`, docs/orchestrator.md). */
+const OrchestratorInfoSchema = z.object({
+  sessionId: z.string(),
+  projectRoot: z.string(),
+  createdAt: z.number(),
+  workers: z.array(
+    z.object({
+      sessionId: z.string().nullable(),
+      itemId: z.string().nullable(),
+      title: z.string().max(MAX_WORKER_TITLE),
+      startedAt: z.number(),
+      pr: z.object({ number: z.number().int(), url: z.string(), state: z.enum(['open', 'merged', 'closed']) }).nullable().optional(),
+    }),
+  ),
+});
 const AppStateKey = z.string().min(1).max(200);
 const SessionId = z.string().min(1).max(200);
 const Prompt = z.string().max(MAX_PROMPT_LENGTH);
@@ -491,6 +507,11 @@ export const contract = {
          * session from a fork's pull request Seshboard can't push to (`readOnly`), push and Create pull request are off.
          */
         github: GithubOrigin.optional(),
+        /**
+         * Start it as the project's orchestrator (docs/orchestrator.md): it gets the tools that start and track other
+         * sessions, and the sessions it starts show under it.
+         */
+        orchestrator: z.boolean().optional(),
       }),
       result: z.object({ sessionId: z.string() }),
     },
@@ -1289,6 +1310,8 @@ export const contract = {
      * You wrote in a run row (a run started from New session): it gets a session of its own in the run's folder, with a
      * brief of the run before your text, and its sub-sessions go under that session.
      */
+    /** The orchestrators (docs/orchestrator.md) and the sessions each started. */
+    'orchestrator.list': { params: z.object({}), result: z.object({ orchestrators: z.array(OrchestratorInfoSchema) }) },
     'runs.write': { params: z.object({ runId: z.string().min(1).max(100), text: z.string().min(1).max(MAX_PROMPT_LENGTH) }), result: z.object({ sessionId: z.string() }) },
 
     // --- Settings backup -----------------------------------------------------------------------
@@ -1727,6 +1750,8 @@ export const contract = {
     /** A triggered session started, an issue was picked up, or a trigger paused: main's notifier says so. */
     'triggers.notice': z.object({ notices: z.array(TriggerNotice) }),
     /** Pipelines were saved, deleted or imported: the built-ins and yours. */
+    /** An orchestrator was started, or one started, queued or lost a session. */
+    'orchestrator.changed': z.object({ orchestrators: z.array(OrchestratorInfoSchema) }),
     'pipelines.changed': z.object({ pipelines: z.array(Pipeline) }),
     /** A run changed: a step started or ended, it waits for you, or it ended. */
     'runs.changed': z.object({ state: PipelineRunState }),

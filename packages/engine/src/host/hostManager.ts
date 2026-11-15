@@ -152,6 +152,14 @@ export interface HostManagerDeps {
   browserServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
   /** "Always allow" on a browser site's prompt: the session's project allows that site from now on. */
   allowBrowserSite?: (sessionId: string, site: string) => void;
+  /**
+   * The orchestrator (docs/orchestrator.md): its `orchestrator` MCP server for one process, tied to the session
+   * `sessionId` names when a call comes (null while main has not sent the server), whether a session being resumed is
+   * one, and what a resumed session reads after Claude Code's prompt (an orchestrator's role, its sessions' instructions).
+   */
+  orchestratorServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
+  isOrchestrator?: (sessionId: string) => boolean;
+  appendSystemFor?: (sessionId: string) => string | null;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -211,6 +219,10 @@ export interface CreateParams {
   autoPick?: AutoPick | null;
   /** Only tools that read: a read-only pipeline step (#179). */
   readOnly?: boolean;
+  /** Start it as an orchestrator (docs/orchestrator.md): it gets the `orchestrator` MCP server. */
+  orchestrator?: boolean;
+  /** Text for after Claude Code's prompt: an orchestrator's role, a project's instructions for a session one starts. */
+  appendSystem?: string | null;
   /**
    * Auto picks the model after the session has opened: it starts on `model`, shows your message and that Auto is
    * choosing, and the message goes once the pick is in (and setup has finished). Null model: the default model.
@@ -284,8 +296,8 @@ export class HostManager {
 
   async create(params: CreateParams): Promise<string> {
     await this.deps.links?.warm(params.prompt);
-    // A warm process started without the read-only hook.
-    const warm = params.readOnly ? undefined : this.takeWarm(params);
+    // A warm process started without the read-only hook, the orchestrator's tools and any text after the prompt.
+    const warm = params.readOnly || params.orchestrator || params.appendSystem ? undefined : this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
       {
@@ -298,6 +310,8 @@ export class HostManager {
         effort: params.effort,
         worktree: params.worktree,
         ...(params.readOnly ? { readOnly: true } : {}),
+        ...(params.orchestrator ? { orchestrate: true } : {}),
+        ...(params.appendSystem ? { appendSystem: params.appendSystem } : {}),
       },
       warm,
     );
@@ -362,7 +376,9 @@ export class HostManager {
     // A fork gets its own id up front, so it is never stored or reported under the original's id
     // (which would show the original as starting, or replace it in the map while it runs here).
     if (fork) return this.spawn({ ...common, sessionId: randomUUID(), forkFrom: sessionId, mode: 'fork' });
-    return this.spawn({ ...common, sessionId, mode: 'resume' });
+    // An orchestrator resumes with its tools and its role, a session one started with the project's instructions; a
+    // fork of either is an ordinary session.
+    return this.spawn({ ...common, sessionId, mode: 'resume', ...(this.deps.isOrchestrator?.(sessionId) ? { orchestrate: true } : {}), appendSystem: this.deps.appendSystemFor?.(sessionId) ?? null });
   }
 
   /**
@@ -839,7 +855,7 @@ export class HostManager {
         env,
         pathToClaudeCodeExecutable: claudePath,
         settingSources: ['user', 'project', 'local'],
-        systemPrompt: systemPromptFor(this.skimMarks),
+        systemPrompt: systemPromptFor(this.skimMarks, this.deps.appendSystemFor?.(sessionId)),
         includePartialMessages: true,
         maxTurns: ASK_MAX_TURNS,
         permissionMode: 'default',
@@ -1137,7 +1153,7 @@ export class HostManager {
     setTimeout(() => this.deps.ephemeral?.delete(warm.sessionId), 30_000).unref?.();
   }
 
-  private async spawn(config: Omit<HostConfig, 'env' | 'claudePath' | 'canUseTool'>, warm?: Warm): Promise<SessionHost> {
+  private async spawn({ orchestrate, ...config }: Omit<HostConfig, 'env' | 'claudePath' | 'canUseTool' | 'orchestrator'> & { orchestrate?: boolean }, warm?: Warm): Promise<SessionHost> {
     this.deps.assertTrusted?.(config.cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(config.profileId), this.deps.claudePath(), this.deps.sdk()]);
     // The session id can change (forks), so permission prompts look it up through the host.
@@ -1167,6 +1183,7 @@ export class HostManager {
         visualize: this.visualize,
         // A pre-warmed process has its tools already; a new one gets them here.
         browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
+        orchestrator: orchestrate ? ((await this.deps.orchestratorServer?.(() => hostRef?.sessionId ?? null)) ?? null) : null,
         skimMarks: this.skimMarks,
       },
       {

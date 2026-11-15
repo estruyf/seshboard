@@ -164,6 +164,14 @@ process.parentPort.on('message', (event) => {
     }
     return;
   }
+  // The smoke run's orchestrator step: a stand-in session becomes an orchestrator and calls one of its tools.
+  if (data?.type === 'smokeOrchestrator') {
+    const { sessionId, projectRoot, tool, args } = data as { sessionId?: unknown; projectRoot?: unknown; tool?: unknown; args?: unknown };
+    if (typeof sessionId === 'string' && typeof projectRoot === 'string') {
+      void engine.smokeOrchestrator({ sessionId, projectRoot, ...(typeof tool === 'string' ? { tool } : {}), ...(args && typeof args === 'object' ? { args: args as Record<string, unknown> } : {}) });
+    }
+    return;
+  }
   // The smoke run's pipeline step: a step's turn ends, with the reply its verdict is read from.
   if (data?.type === 'smokePipelineTurn') {
     const { sessionId, outcome, reply } = data as { sessionId?: unknown; outcome?: unknown; reply?: unknown };
@@ -229,6 +237,13 @@ process.parentPort.on('message', (event) => {
     const server = (data as { server?: { command?: unknown; args?: unknown; env?: unknown } | null }).server;
     const valid = server && typeof server.command === 'string' && Array.isArray(server.args) && server.args.every((a) => typeof a === 'string') && server.env && typeof server.env === 'object';
     engine.setBrowserControl(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
+    return;
+  }
+  // The orchestrator's `orchestrator` server (docs/orchestrator.md), for sessions started or resumed as one.
+  if (data?.type === 'orchestratorServer') {
+    const server = (data as { server?: { command?: unknown; args?: unknown; env?: unknown } | null }).server;
+    const valid = server && typeof server.command === 'string' && Array.isArray(server.args) && server.args.every((a) => typeof a === 'string') && server.env && typeof server.env === 'object';
+    engine.setOrchestratorServer(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
     return;
   }
   if (data?.type === 'browser-tool-result' && typeof data.id === 'number') {
