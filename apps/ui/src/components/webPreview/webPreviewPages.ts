@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { noteVisit } from '../../state/browserHistory.ts';
-import { nextZoom } from './browserTabs.ts';
+import type { PickedElement } from '@seshboard/protocol/bridge';
+import { BROWSER_OWNER, nextZoom } from './browserTabs.ts';
 import { crashReloadDelay } from './crashRecovery.ts';
 
 /*
@@ -51,9 +52,11 @@ export interface PageState {
   crashed: boolean;
   /** Find in page: its bar is open, the matches of what was typed (null before a result), and a count that asks for the field's focus. */
   find: { open: boolean; matches: number; active: number; focus: number };
+  /** Picking an element for the session's message (`pick`). */
+  picking: boolean;
 }
 
-const IDLE: PageState = { loading: false, back: false, forward: false, failure: null, crashed: false, find: { open: false, matches: 0, active: 0, focus: 0 } };
+const IDLE: PageState = { loading: false, back: false, forward: false, failure: null, crashed: false, find: { open: false, matches: 0, active: 0, focus: 0 }, picking: false };
 
 /** Chromium's code for a load that something else cut short (a new navigation): not a failure. */
 const ERR_ABORTED = -3;
@@ -167,6 +170,10 @@ class PreviewPage {
     on('dom-ready', () => {
       this.ready = true;
       this.sync();
+      // A session's page: main then offers its selection and elements for the session's message.
+      const id = this.contentsId();
+      const owner = this.tab()?.owner;
+      if (id && owner && owner !== BROWSER_OWNER) window.seshboard?.markSessionPage(id);
       // The tab's zoom and mute, on each new document: Chromium keeps zoom per site, the tab keeps its own.
       this.applyTab();
     });
@@ -308,6 +315,29 @@ class PreviewPage {
     this.clearFind();
     setState(this.sessionId, { find: { ...this.findState(), open: false } });
     this.call((e) => e.focus());
+  };
+
+  /**
+   * Pick an element on a session's page for its message: the page outlines what is under the pointer until a click
+   * picks it. Null when the pick ends without one (Escape, `cancelPick`, a navigation), or one is running already.
+   */
+  async pick(): Promise<PickedElement | null> {
+    const id = this.contentsId();
+    const state = usePreviewPages.getState().pages.get(this.sessionId);
+    if (!id || !window.seshboard || state?.picking) return null;
+    setState(this.sessionId, { picking: true });
+    try {
+      return await window.seshboard.pickElement(id);
+    } catch {
+      return null;
+    } finally {
+      setState(this.sessionId, { picking: false });
+    }
+  }
+
+  cancelPick = () => {
+    const id = this.contentsId();
+    if (id) window.seshboard?.cancelPick(id);
   };
 
   back = () => this.call((e) => e.goBack());

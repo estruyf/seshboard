@@ -1,8 +1,8 @@
-import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, SquareDashedMousePointer, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject, type MouseEvent, type ReactNode } from 'react';
 import { addressBarUrl, browserNavigation, type BrowserHistoryEntry, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
-import { askClearData, askRename, copyAddress, findInPage, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
+import { askClearData, askRename, copyAddress, findInPage, pickElement, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
 import { bookmarkPage, useBookmarkOf } from '../../state/browserBookmarksStore.ts';
 import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
 import { searchHistory } from '../../state/browserHistory.ts';
@@ -12,12 +12,13 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { Button } from '../ui/Button.tsx';
+import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Popover } from '../ui/Popover.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { addressSuggestions, autoPick, type AddressSuggestion } from './addressSuggestions.ts';
 import { tabMenu } from './tabMenu.tsx';
-import { sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
+import { BROWSER_OWNER, sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
 import { NewTabSections } from './NewTabPage.tsx';
 import { openFavoriteInTab } from '../../state/browserViewStore.ts';
 import type { ServerOffer } from './serverOffers.ts';
@@ -105,6 +106,22 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   }, [tabId]);
   // Leaving with the address bar focused: main stops keeping ⌘W for it.
   useEffect(() => () => window.seshboard?.setAddressFocus(false), []);
+  // Picking an element: Escape in the app stops it (the page's own Escape does too), and so does leaving the tab.
+  const picking = page.picking;
+  useEffect(() => {
+    if (!picking || !tabId) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      previewPage(tabId)?.cancelPick();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      previewPage(tabId)?.cancelPick();
+    };
+  }, [picking, tabId]);
 
   const closeList = () => {
     setListOpen(false);
@@ -159,18 +176,19 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div
-        className={`relative flex shrink-0 items-center gap-0.5 border-b border-border ${asHeader ? 'drag h-13 px-6 *:no-drag @max-[860px]:px-4' : 'px-2 py-1'}`}
+        className={`@container/toolbar relative flex shrink-0 items-center gap-0.5 *:shrink-0 border-b border-border ${asHeader ? 'drag h-13 px-6 *:no-drag @max-[860px]:px-4' : 'px-2 py-1'}`}
         data-web-preview-toolbar=""
       >
         {lead}
         <Button variant="quiet" size="sm" iconOnly icon={<ArrowLeft size={13} aria-hidden />} aria-label="Back" disabled={!page.back} onClick={() => tab && previewPage(tab.id)?.back()} data-web-preview-back="" />
-        <Button variant="quiet" size="sm" iconOnly icon={<ArrowRight size={13} aria-hidden />} aria-label="Forward" disabled={!page.forward} onClick={() => tab && previewPage(tab.id)?.forward()} data-web-preview-forward="" />
+        <Button variant="quiet" size="sm" iconOnly icon={<ArrowRight size={13} aria-hidden />} aria-label="Forward" disabled={!page.forward} onClick={() => tab && previewPage(tab.id)?.forward()} className="@max-[360px]/toolbar:hidden" data-web-preview-forward="" />
         {page.loading ? (
           <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Stop loading" onClick={() => tab && previewPage(tab.id)?.stop()} data-web-preview-stop="" />
         ) : (
           <Button variant="quiet" size="sm" iconOnly icon={<RotateCw size={12} aria-hidden />} aria-label="Reload" disabled={!tab?.url} onClick={reload} data-web-preview-reload="" />
         )}
-        <form onSubmit={go} className="relative mx-1 min-w-0 flex-1">
+        {/* The address keeps room to type in a narrow panel: Pin, the star and Open in browser go to ⋯ (`NARROW_HIDDEN`), the sizes to one button, and Forward (in the palette and on the mouse) goes. */}
+        <form onSubmit={go} className="relative mx-1 min-w-20 flex-1">
           {/* The page's address to the clipboard in one click, from inside the bar. */}
           {browser && tab?.url && (
             <Button
@@ -235,6 +253,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             selected={tab.pinned}
             disabled={!tab.url}
             onClick={() => (tab.pinned ? useWebPreview.getState().unpin(tab.id) : useWebPreview.getState().pin(tab.id))}
+            className={NARROW_HIDDEN}
             data-web-preview-pin=""
           />
         )}
@@ -251,6 +270,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             selected={bookmarked}
             disabled={!tab.url}
             onClick={() => bookmarkPage(tab)}
+            className={NARROW_HIDDEN}
             data-web-preview-bookmark=""
           />
         )}
@@ -272,7 +292,22 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             <span className="tabular-nums">{zoomLabel(tab.zoom)}</span>
           </Button>
         )}
-        <Button variant="quiet" size="sm" iconOnly icon={<ExternalLink size={13} aria-hidden />} aria-label="Open in browser" data-tooltip="Open in browser" disabled={!tab?.url} onClick={() => tab?.url && window.open(tab.url, '_blank')} data-web-preview-open-external="" />
+        {tab && tab.owner !== BROWSER_OWNER && (
+          <Button
+            variant="quiet"
+            size="sm"
+            iconOnly
+            icon={<SquareDashedMousePointer size={13} aria-hidden />}
+            aria-label={picking ? 'Stop picking' : 'Pick an element'}
+            data-tooltip={picking ? 'Stop picking' : 'Pick an element for the message'}
+            aria-pressed={picking}
+            selected={picking}
+            disabled={!tab.url || covered}
+            onClick={() => pickElement(tab)}
+            data-web-preview-pick=""
+          />
+        )}
+        <Button variant="quiet" size="sm" iconOnly icon={<ExternalLink size={13} aria-hidden />} aria-label="Open in browser" data-tooltip="Open in browser" disabled={!tab?.url} onClick={() => tab?.url && window.open(tab.url, '_blank')} className={browser && tab ? NARROW_HIDDEN : ''} data-web-preview-open-external="" />
         {browser && tab && (
           <Button
             variant="quiet"
@@ -289,13 +324,18 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             data-web-preview-more=""
           />
         )}
-        {more && tab && <Menu x={more.x} y={more.y} entries={pageMenu(tab)} label="Page menu" onClose={() => setMore(null)} />}
+        {more && tab && <Menu x={more.x} y={more.y} entries={pageMenu(tab, bookmarked)} label="Page menu" onClose={() => setMore(null)} />}
         {trail}
         {/* Loading: a thin line under the toolbar. */}
         {page.loading && <div aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 animate-pulse bg-accent-ink" data-web-preview-progress="" />}
       </div>
       {/* From the first tab: each has its ×, and + opens another. */}
       {browser && tabs && tabs.length > 0 && <TabStrip tabs={tabs} activeId={tab?.id ?? null} onNewTab={onNewTab} />}
+      {picking && (
+        <Notice inline className="shrink-0 px-3 py-1.5 text-meta text-muted" icon={<SquareDashedMousePointer size={12} aria-hidden />} data-web-preview-picking="">
+          Click an element to add it to the message. <Kbd keys="Esc" tone="plain" /> stops.
+        </Notice>
+      )}
       {tab?.url && page.find.open && <FindBar key={tab.id} tabId={tab.id} focus={page.find.focus} matches={page.find.matches} active={page.find.active} />}
       {refused && (
         <Notice inline tone="error" className="shrink-0 px-3 py-1.5 text-meta" data-web-preview-refused={refused}>
@@ -520,10 +560,20 @@ export function TabTitle({ tab, confirming }: { tab: BrowserTab; confirming: boo
   return <span className="min-w-0 flex-1 truncate">{tabName(tab)}</span>;
 }
 
-/** The toolbar's ⋯: what is used less often for the page on screen, and Clear all browsing data. */
-function pageMenu(tab: BrowserTab): MenuEntry[] {
+/** Toolbar buttons that go to the ⋯ menu in a narrow toolbar, so the address bar keeps its room. */
+const NARROW_HIDDEN = '@max-[520px]/toolbar:hidden';
+
+/**
+ * The toolbar's ⋯: what is used less often for the page on screen, and Clear all browsing data. Pin, the bookmark and
+ * Open in browser are here too, as a narrow toolbar hides their buttons.
+ */
+function pageMenu(tab: BrowserTab, bookmarked: boolean): MenuEntry[] {
   const blank = !tab.url;
   return [
+    { label: tab.pinned ? 'Unpin tab' : 'Pin tab', icon: <Pin size={13} aria-hidden />, disabled: blank, onSelect: () => (tab.pinned ? useWebPreview.getState().unpin(tab.id) : useWebPreview.getState().pin(tab.id)), data: { 'data-page-pin': true } },
+    { label: bookmarked ? 'Edit bookmark…' : 'Bookmark this page…', icon: <Star size={13} aria-hidden />, hint: formatKeys(keysFor('browser.bookmark')), disabled: blank, onSelect: () => bookmarkPage(tab), data: { 'data-page-bookmark': true } },
+    { label: 'Open in browser', icon: <ExternalLink size={13} aria-hidden />, disabled: blank, onSelect: () => tab.url && window.open(tab.url, '_blank'), data: { 'data-page-open-external': true } },
+    'separator',
     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-page-rename': true } },
     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: blank, onSelect: () => copyAddress(tab) },
     'separator',
@@ -640,30 +690,68 @@ function EmptyTab({ tabId, owner, offers, browser }: { tabId: string; owner: str
   );
 }
 
+type PanelSizing = 'side' | 'half' | 'full';
+
+/** Side or Half for every panel on the right, Full for this one. */
+function choosePanelSize(value: PanelSizing, onChange: (full: boolean) => void): void {
+  if (value !== 'full') useRightPanel.getState().setSizing(value);
+  onChange(value === 'full');
+}
+
+const SIZE_LABEL: Record<PanelSizing, string> = { side: 'Side', half: 'Half', full: 'Full' };
+
 /**
  * The panel's sizes: beside the conversation at the width you dragged (Side), sharing the session area 50/50 (Half,
- * for every panel on the right, `useRightPanel().sizing`), or the whole session area (Full, this panel).
+ * for every panel on the right, `useRightPanel().sizing`), or the whole session area (Full, this panel). In a narrow
+ * toolbar, one button that names the size and opens the three, so the address bar keeps its room.
  */
 export function PanelSize({ full, onChange }: { full: boolean; onChange(full: boolean): void }) {
   const sizing = useRightPanel((s) => s.sizing);
-  const pick = (value: 'side' | 'half' | 'full') => {
-    if (value !== 'full') useRightPanel.getState().setSizing(value);
-    onChange(value === 'full');
-  };
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const value: PanelSizing = full ? 'full' : sizing;
+  const pick = (next: PanelSizing) => choosePanelSize(next, onChange);
   return (
-    <SegmentedControl
-      mode="radio"
-      size="sm"
-      label="Panel size"
-      value={full ? 'full' : sizing}
-      onChange={pick}
-      segments={[
-        { value: 'side', label: 'Side', data: { 'data-web-preview-size': 'side' } },
-        { value: 'half', label: 'Half', data: { 'data-web-preview-size': 'half' } },
-        { value: 'full', label: 'Full', data: { 'data-web-preview-size': 'full' } },
-      ]}
-      className="ml-1"
-    />
+    <>
+      <span className="contents @max-[420px]/toolbar:hidden">
+        <SegmentedControl
+          mode="radio"
+          size="sm"
+          label="Panel size"
+          value={value}
+          onChange={pick}
+          segments={(['side', 'half', 'full'] as const).map((size) => ({ value: size, label: SIZE_LABEL[size], data: { 'data-web-preview-size': size } }))}
+          className="ml-1"
+        />
+      </span>
+      <span className="hidden @max-[420px]/toolbar:contents">
+        <Button
+          variant="quiet"
+          size="sm"
+          aria-label={`Panel size: ${SIZE_LABEL[value]}`}
+          data-tooltip="Panel size"
+          aria-haspopup="menu"
+          aria-expanded={menu !== null}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setMenu(menu ? null : { x: rect.right - 140, y: rect.bottom + 4 });
+          }}
+          className="ml-0.5 shrink-0"
+          data-web-preview-size-menu={value}
+        >
+          {SIZE_LABEL[value]}
+          <ChevronDown size={11} aria-hidden />
+        </Button>
+      </span>
+      {menu && (
+        <Menu
+          x={menu.x}
+          y={menu.y}
+          label="Panel size"
+          entries={(['side', 'half', 'full'] as const).map((size) => ({ label: SIZE_LABEL[size], checked: value === size, onSelect: () => pick(size), data: { 'data-web-preview-size': size } }))}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </>
   );
 }
 

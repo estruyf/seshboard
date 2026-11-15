@@ -38,13 +38,14 @@ export function asQuote(quoted: string): string {
 
 /**
  * Quote in reply: `quoted` as a Markdown quote at the end of the message, after a blank line, with the caret
- * on a new line under it, ready for your answer. Null when there is nothing to quote.
+ * on a new line under it, ready for your answer. `heading` goes on the line above it (where a quote from a page came
+ * from). Null when there is nothing to quote.
  */
-export function appendQuote(text: string, quoted: string): TextEdit | null {
+export function appendQuote(text: string, quoted: string, heading?: string): TextEdit | null {
   const quote = asQuote(quoted);
   if (quote === '>' || !quote) return null;
   const before = !text ? '' : text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n';
-  return { from: text.length, to: text.length, insert: `${before}${quote}\n\n` };
+  return { from: text.length, to: text.length, insert: `${before}${heading ? `${heading}\n` : ''}${quote}\n\n` };
 }
 
 /** A prompt put in the box for you (Fix failing checks with Claude): at the end of what is there, after a blank line. */

@@ -178,6 +178,7 @@ const PLANS: Record<string, Plan> = {
   'browser-full': 'here',
   'browser-side': 'here',
   'browser-close-panel': 'here',
+  'browser-pick-element': 'here',
   'browser-zoom-in': 'here',
   'browser-zoom-out': 'here',
   'browser-zoom-reset': 'here',

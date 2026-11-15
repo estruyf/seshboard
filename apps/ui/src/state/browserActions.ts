@@ -1,6 +1,9 @@
 import { shortUrl, type BrowserFavorite } from '@seshboard/protocol/client';
+import type { PickedElement } from '@seshboard/protocol/bridge';
+import { elementImage, elementItem, quoteHeading } from '../components/webPreview/pageMessage.ts';
+import { useDrafts } from './draftsStore.ts';
 import { BROWSER_OWNER, livePages, nextZoom, type BrowserTab } from '../components/webPreview/browserTabs.ts';
-import { previewPage } from '../components/webPreview/webPreviewPages.ts';
+import { previewPage, usePreviewPages } from '../components/webPreview/webPreviewPages.ts';
 import { currentPageTab, openBrowserView, openFavorite } from './browserViewStore.ts';
 import { usePaletteBus } from './paletteBus.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -10,7 +13,7 @@ import { useWebPreview } from './webPreviewStore.ts';
 /*
  * What can be done with a browser tab, in one place for the toolbar's ⋯ menu, the tab menus, the palette and the keys:
  * copy its address, open it in the system's browser, rename it, its developer tools and zoom, clear its site's data or
- * all of it, show it wherever it lives.
+ * all of it, show it wherever it lives, and send what is on a session's page to its message.
  */
 
 export function copyAddress(tab: Pick<BrowserTab, 'url'>): void {
@@ -80,6 +83,35 @@ export function toggleMute(tab: Pick<BrowserTab, 'id' | 'muted'>): void {
   else useWebPreview.getState().setMuted(tab.id, !tab.muted);
 }
 
+/** The session's message box is out of sight (its browser full size, or the tab shown in the Browser view): a toast says where things went. */
+const messageHidden = (owner: string): boolean => useWebPreview.getState().full.has(owner) || useSessions.getState().view !== 'session';
+
+/** Quote in message: text selected on a session's page, quoted in its message box under the page it came from. */
+export function quoteInMessage(tab: Pick<BrowserTab, 'owner'>, text: string, url: string): void {
+  if (tab.owner === BROWSER_OWNER) return;
+  useDrafts.getState().requestQuote(tab.owner, text, { heading: quoteHeading(url) });
+  if (messageHidden(tab.owner)) toast('Quoted in the message', { icon: 'browser' });
+}
+
+/** An element of a session's page in its message: a chip with where it is and its HTML, and its picture. */
+export function addElementToMessage(tab: Pick<BrowserTab, 'owner'>, element: PickedElement): void {
+  if (tab.owner === BROWSER_OWNER) return;
+  const drafts = useDrafts.getState();
+  drafts.addContext(tab.owner, [elementItem(element)]);
+  const image = elementImage(element);
+  if (image) drafts.requestImages(tab.owner, [image]);
+  drafts.requestFocus(tab.owner);
+  if (messageHidden(tab.owner)) toast('Element added to the message', { icon: 'browser' });
+}
+
+/** Pick an element: on a session's page, the one you click goes to its message; again while picking stops. */
+export function pickElement(tab: Pick<BrowserTab, 'id' | 'owner' | 'url'>): void {
+  const page = previewPage(tab.id);
+  if (!page || !tab.url || tab.owner === BROWSER_OWNER) return;
+  if (usePreviewPages.getState().pages.get(tab.id)?.picking) return page.cancelPick();
+  void page.pick().then((element) => element && addElementToMessage(tab, element));
+}
+
 /** Go to tab…: the tab in front where it lives, the Browser view or its session with the panel open. */
 export function goToTab(tabId: string): void {
   const web = useWebPreview.getState();
@@ -125,6 +157,7 @@ export type BrowserAction =
   | 'mute'
   | 'unmute'
   | 'devtools'
+  | 'pick-element'
   | 'clear-site'
   | 'clear-all';
 
@@ -191,6 +224,8 @@ export function runBrowserAction(action: BrowserAction): void {
       return toggleMute({ id: tab.id, muted: action === 'unmute' });
     case 'devtools':
       return toggleDevTools(tab);
+    case 'pick-element':
+      return pickElement(tab);
     case 'clear-site':
       return askClearData(tab);
   }

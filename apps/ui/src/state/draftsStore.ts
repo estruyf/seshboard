@@ -23,7 +23,9 @@ interface DraftsState {
   /** A message box should take focus with the caret at the end of its text (opened from the Unsent list or ⌘P). */
   focus: { key: string; nonce: number } | null;
   /** Text to quote at the end of a message box, which then takes focus (Quote in reply from the conversation); `plain` adds it as it is. */
-  quote: { key: string; text: string; nonce: number; plain?: boolean } | null;
+  quote: { key: string; text: string; nonce: number; plain?: boolean; heading?: string } | null;
+  /** Images to add to a message box (an element picked in the browser); the box with that key takes them. */
+  images: { key: string; images: ImageAttachment[]; nonce: number } | null;
   /**
    * A saved prompt to fill in a message box (null `prompt`: open its / menu), from the palette or New session's chips.
    * The box with that key takes it, and the focus.
@@ -58,8 +60,10 @@ interface DraftsState {
   applyRelayed(change: Record<string, ComposerDraft | null>): void;
   requestFocus(key: string): void;
   clearFocus(): void;
-  requestQuote(key: string, text: string, options?: { plain?: boolean }): void;
+  requestQuote(key: string, text: string, options?: { plain?: boolean; heading?: string }): void;
   clearQuote(): void;
+  requestImages(key: string, images: ImageAttachment[]): void;
+  clearImages(): void;
   requestPrompt(key: string, prompt: SavedPrompt | null): void;
   clearPromptRequest(): void;
   openList(at: { x: number; y: number; above: boolean }): void;
@@ -120,6 +124,7 @@ export const useDrafts = create<DraftsState>()((set, get) => {
     loaded: false,
     focus: null,
     quote: null,
+    images: null,
     promptRequest: null,
     list: null,
     archivePrompt: null,
@@ -211,8 +216,10 @@ export const useDrafts = create<DraftsState>()((set, get) => {
     },
     requestFocus: (key) => set({ focus: { key, nonce: ++focusRequests } }),
     clearFocus: () => set({ focus: null }),
-    requestQuote: (key, text, options) => set({ quote: { key, text, nonce: ++focusRequests, ...(options?.plain ? { plain: true } : {}) } }),
+    requestQuote: (key, text, options) => set({ quote: { key, text, nonce: ++focusRequests, ...(options?.plain ? { plain: true } : {}), ...(options?.heading ? { heading: options.heading } : {}) } }),
     clearQuote: () => set({ quote: null }),
+    requestImages: (key, images) => set({ images: { key, images, nonce: ++focusRequests } }),
+    clearImages: () => set({ images: null }),
     requestPrompt: (key, prompt) => set({ promptRequest: { key, prompt, nonce: ++focusRequests } }),
     clearPromptRequest: () => set({ promptRequest: null }),
     openList: (list) => set({ list }),

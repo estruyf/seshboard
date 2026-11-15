@@ -11,6 +11,7 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { BROWSER_OWNER, LIVE_PAGES, livePages } from './browserTabs.ts';
 import { shrinkIcon } from './shrinkIcon.ts';
 import { listenForBrowserAgent } from './browserAgentTarget.ts';
+import { addElementToMessage, quoteInMessage } from '../../state/browserActions.ts';
 import { keepPages, placePages, previewPage, tabOfContents } from './webPreviewPages.ts';
 
 /** A browser change that can move or cover a page: a panel shown, hidden or resized, another tab in front, a tab opened or closed, a new tab getting its first address, phone width. */
@@ -117,13 +118,16 @@ export function WebPreviewHost() {
   // The browser tools ask this window for a session's page (main/browserAgent.ts).
   useEffect(() => listenForBrowserAgent(), []);
 
-  // A page's new window becomes a tab of the same owner; a refused download says so, with the browser instead.
+  // A page's new window becomes a tab of the same owner; a refused download says so, with the browser instead. A
+  // session's page sends a quote or an element to its message, the dev server's preview too (the browser off).
   useEffect(
     () =>
       window.seshboard?.onWebPreviewEvent((event) => {
-        if (!browserOn()) return;
         const tabId = tabOfContents(event.contentsId);
         const tab = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId) : undefined;
+        if (event.kind === 'quote') return tab && quoteInMessage(tab, event.text, event.url);
+        if (event.kind === 'element') return tab && addElementToMessage(tab, event.element);
+        if (!browserOn()) return;
         if (event.kind === 'popup') {
           if (tab) useWebPreview.getState().openTab(tab.owner, event.url);
           return;
