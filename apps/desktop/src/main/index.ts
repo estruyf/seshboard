@@ -35,7 +35,7 @@ import { installBrowserAgent } from './browserAgent.ts';
 import { runBrowserAgentStep, runBrowserServerStep } from './browserAgentSmoke.ts';
 import { runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
-import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
+import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -14210,6 +14210,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('browser favorites: the star bookmarks a page into a folder, kept after a reload, opened from an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
   await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
+  await step('browser pick: an element picked on a session\'s page and the page\'s menu send to the message', () => runBrowserPickStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });

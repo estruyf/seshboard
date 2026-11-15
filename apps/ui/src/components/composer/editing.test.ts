@@ -90,8 +90,8 @@ describe('wrapInCode', () => {
 });
 
 /** Quotes `quoted` at the end of `text` and returns the result with the caret after the edit. */
-function quote(text: string, quoted: string): string | null {
-  const edit = appendQuote(text, quoted);
+function quote(text: string, quoted: string, heading?: string): string | null {
+  const edit = appendQuote(text, quoted, heading);
   if (!edit) return null;
   return `${text.slice(0, edit.from)}${edit.insert}|${text.slice(edit.to)}`;
 }
@@ -113,6 +113,10 @@ describe('appendQuote', () => {
     expect(quote('> First?\n\nYes.', 'Second?')).toBe('> First?\n\nYes.\n\n> Second?\n\n|');
     expect(quote('Yes.\n', 'Second?')).toBe('Yes.\n\n> Second?\n\n|');
     expect(quote('Yes.\n\n', 'Second?')).toBe('Yes.\n\n> Second?\n\n|');
+  });
+
+  it('puts a heading on the line above the quote', () => {
+    expect(quote('Yes.', 'Get started', 'From http://localhost:5173/:')).toBe('Yes.\n\nFrom http://localhost:5173/:\n> Get started\n\n|');
   });
 
   it('does nothing with only white space', () => {

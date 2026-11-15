@@ -17,6 +17,7 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
 import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
+import { MAX_ATTACHMENTS } from './images.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
@@ -410,7 +411,7 @@ export function Composer(props: ComposerProps) {
     if (!quoteRequest) return;
     useDrafts.getState().clearQuote();
     const el = ref.current;
-    const edit = (quoteRequest.plain ? appendText : appendQuote)(el?.value ?? text, quoteRequest.text);
+    const edit = quoteRequest.plain ? appendText(el?.value ?? text, quoteRequest.text) : appendQuote(el?.value ?? text, quoteRequest.text, quoteRequest.heading);
     if (!edit) return;
     if (!el || el.disabled) return setText((current) => current + edit.insert);
     history.current!.reset();
@@ -426,6 +427,14 @@ export function Composer(props: ComposerProps) {
       card.classList.add('composer-flash');
     }
   }, [quoteRequest]);
+
+  // Images put here for you (an element picked in the browser): after the ones there, up to the most a message takes.
+  const imagesRequest = useDrafts((s) => (draftKey !== undefined && s.images?.key === draftKey ? s.images : null));
+  useEffect(() => {
+    if (!imagesRequest) return;
+    useDrafts.getState().clearImages();
+    setAttachments((current) => [...current, ...imagesRequest.images].slice(0, MAX_ATTACHMENTS));
+  }, [imagesRequest]);
 
   // Mounting with autoFocus, or a new focusRequest, focuses the prompt. While the prompt is disabled
   // (engine connecting, no folder yet) the request waits, and is dropped if by then the user is typing

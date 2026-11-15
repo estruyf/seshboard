@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -176,6 +176,9 @@ const bridge: SeshboardBridge = {
   },
   setAddressFocus: (focused) => ipcRenderer.send(IpcChannel.webPreviewAddressFocus, focused === true),
   keysToWindow: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewKeysToWindow, typeof contentsId === 'number' ? contentsId : null),
+  markSessionPage: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewSessionPage, contentsId),
+  pickElement: (contentsId) => ipcRenderer.invoke(IpcChannel.webPreviewPickElement, contentsId) as Promise<PickedElement | null>,
+  cancelPick: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewCancelPick, contentsId),
   clearBrowsingData: (origin) => ipcRenderer.invoke(IpcChannel.webPreviewClearData, typeof origin === 'string' ? origin : null) as Promise<void>,
   showInMain: (request) => ipcRenderer.send(IpcChannel.showInMain, request),
   onMainRequest(listener) {

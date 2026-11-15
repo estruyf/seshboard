@@ -94,6 +94,9 @@ export const IpcChannel = {
   webPreviewAddressFocus: "seshboard:web-preview-address-focus",
   webPreviewClearData: "seshboard:web-preview-clear-data",
   webPreviewKeysToWindow: "seshboard:web-preview-keys-to-window",
+  webPreviewSessionPage: "seshboard:web-preview-session-page",
+  webPreviewPickElement: "seshboard:web-preview-pick-element",
+  webPreviewCancelPick: "seshboard:web-preview-cancel-pick",
   browserAgentTarget: "seshboard:browser-agent-target",
   browserAgentTargetReply: "seshboard:browser-agent-target-reply",
   showInMain: "seshboard:show-in-main",
@@ -192,7 +195,25 @@ export type WebPreviewEvent =
   /** The page's icon, as a `data:` image main fetched in the page's partition. */
   | { kind: 'favicon'; contentsId: number; url: string }
   /** The page started or stopped playing sound. */
-  | { kind: 'audio'; contentsId: number; audible: boolean };
+  | { kind: 'audio'; contentsId: number; audible: boolean }
+  /** Quote in message, from a session's page: the selected text and the page it is on. */
+  | { kind: 'quote'; contentsId: number; text: string; url: string }
+  /** Add element to message, from a session's page: the element under the right-click. */
+  | { kind: 'element'; contentsId: number; element: PickedElement };
+
+/** An element of a session's page, for its message: where it is, its HTML and how it looks. */
+export interface PickedElement {
+  /** The page's address. */
+  url: string;
+  /** A CSS selector that finds it on the page. */
+  selector: string;
+  /** Its HTML, cut short when long. */
+  html: string;
+  /** Its text, cut short when long. */
+  text: string;
+  /** Its picture as a PNG, base64 without the `data:` prefix; null when it is off screen or empty. */
+  image: string | null;
+}
 
 /**
  * The browser tools ask a window for the page a session's tools work on (main/browserAgent.ts). `open`: load this
@@ -1253,8 +1274,20 @@ export interface SeshboardBridge {
   showSession(sessionId: string): void;
   /** From a pop-out: brings the main window to the front and presses these keys there. */
   forwardKeys(keys: ForwardedKeys): void;
-  /** A browser page opened a window or a download was refused (the browser on). */
+  /** A browser page opened a window or a download was refused (the browser on), or a session's page sent a quote or an element. */
   onWebPreviewEvent(listener: (event: WebPreviewEvent) => void): () => void;
+  /**
+   * A page of a session's tab (`contentsId`), not the Browser view's: its right-click menu then offers Quote in message
+   * and Add element to message.
+   */
+  markSessionPage(contentsId: number): void;
+  /**
+   * Pick an element on a session's page: the page outlines what is under the pointer until a click picks it (resolves
+   * with it) or Escape, a navigation or `cancelPick` ends it (null).
+   */
+  pickElement(contentsId: number): Promise<PickedElement | null>;
+  /** Ends the pick on that page, if one is running. */
+  cancelPick(contentsId: number): void;
   /** The browser tools: main asks for (and, to open, makes) the page a session's tools work on. */
   onBrowserAgentTarget(listener: (request: BrowserAgentTargetRequest) => Promise<BrowserAgentTarget>): () => void;
   /**

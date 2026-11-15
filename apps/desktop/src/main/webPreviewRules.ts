@@ -189,17 +189,18 @@ export interface PageMenuParams {
   editFlags: { canCut: boolean; canCopy: boolean; canPaste: boolean; canSelectAll: boolean };
 }
 
-/** One entry of a page's right-click menu: what it does, as main runs it (`webPreview.ts`), or a line. */
-export type PageMenuEntry =
-  | { id: 'spelling'; label: string; word: string }
-  | { id: 'open-link' | 'copy-link' | 'copy-email' | 'copy-image' | 'copy-image-address' | 'cut' | 'copy' | 'paste' | 'select-all' | 'back' | 'forward' | 'reload' | 'inspect'; label: string; enabled: boolean }
-  | 'separator';
+/** What an entry of a page's right-click menu does, as main runs it (`runPageMenuEntry` in `webPreview.ts`). */
+export type PageMenuEntryId = 'open-link' | 'copy-link' | 'copy-email' | 'copy-image' | 'copy-image-address' | 'cut' | 'copy' | 'paste' | 'select-all' | 'back' | 'forward' | 'reload' | 'quote' | 'add-element' | 'inspect';
+
+/** One entry of a page's right-click menu, or a line. */
+export type PageMenuEntry = { id: 'spelling'; label: string; word: string } | { id: PageMenuEntryId; label: string; enabled: boolean } | 'separator';
 
 /**
  * A page's right-click menu: spelling suggestions, then what was clicked (a link, an email address, an image), then
- * editing, or back, forward and reload when nothing else applies, then Inspect.
+ * editing, or back, forward and reload when nothing else applies, then on a session's page what goes to its message
+ * (the selection, the element), then Inspect.
  */
-export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean; back: boolean; forward: boolean }): PageMenuEntry[] {
+export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean; back: boolean; forward: boolean; session: boolean }): PageMenuEntry[] {
   const groups: PageMenuEntry[][] = [];
   if (params.isEditable && params.dictionarySuggestions.length) groups.push(params.dictionarySuggestions.slice(0, 5).map((word) => ({ id: 'spelling', label: word, word })));
   const mail = /^mailto:/i.test(params.linkURL);
@@ -222,6 +223,7 @@ export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean
       { id: 'reload', label: 'Reload', enabled: true },
     ]);
   }
+  if (page.session) groups.push([...(params.selectionText.trim() ? [{ id: 'quote', label: 'Quote in message', enabled: true } as const] : []), { id: 'add-element', label: 'Add element to message', enabled: true }]);
   groups.push([{ id: 'inspect', label: 'Inspect', enabled: true }]);
   return groups.flatMap((group, i) => (i ? ['separator' as const, ...group] : group));
 }

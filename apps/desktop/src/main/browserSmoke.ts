@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { BrowserWindow, webContents, type WebContents } from 'electron';
 import { setFieldValue, until, waitInPage } from './pageDriver.ts';
 import { MOD_KEY_PROPERTY, platformModifiers } from './smokeKeys.ts';
+import { isSessionPage, runPageMenuEntry } from './webPreview.ts';
 
 // The smoke steps for Enable browser (Settings › General). A tiny server on this computer (Node's own http module, on
 // a free port) stands in for the web, so no outside site is needed: a page with a title, a link to a second one, and a
@@ -13,6 +14,8 @@ const PAGES: Record<string, string> = {
   '/': '<title>Smoke browser</title><link rel=icon href=/missing-a.png><link rel=icon href=/icon.svg><link rel=icon href=/missing-b.png><h1>One</h1><a id=next href=/two>Two</a> <a id=out href=https://example.com/>Out</a>',
   '/two': '<title>Smoke browser two</title><h1>Two</h1>',
   '/long': `<title>Smoke browser long ${'title '.repeat(40)}</title><h1>Long</h1>`,
+  // A click that reaches the button marks the body: a pick must keep it from the page.
+  '/pick': '<title>Smoke pick</title><main><h1 id=heading>Pick me</h1><p id=words>Some words to quote here.</p><button class="cta" data-testid=buy onclick="document.body.dataset.clicked=1">Buy now</button></main>',
 };
 
 /** The page's icon, for the tab's favicon: padded past what the window keeps as it is, so the tab shows it shrunk. */
@@ -360,6 +363,94 @@ export async function runSessionBrowserStep(win: BrowserWindow, deps: BrowserSmo
   await js(`${q(`${P} [data-web-preview-close]`)}.click()`);
   if (!(await waitInPage(win, `!${q(P)} && !${q(`[data-session-list] [data-session-id="${id}"] [data-session-open="browser"]`)}`, 3_000))) return 'closing the panel left it or the row\'s globe';
   return 'ok: the reply link opened in the session panel with the globe on the row, + opened a second tab, ⌘⇧B hid and showed it as it was, widened it left the conversation 440px, Full showed the page, closing the panel closed its tabs';
+}
+
+/**
+ * "browser pick": a session's page is marked as one (its menu sends to the message). Pick an element outlines what the
+ * pointer is over, Esc stops it, and a click puts the element in the message as a chip with its picture, without the
+ * page getting the click. Quote in message and Add element to message (the page's right-click menu, run as its
+ * entries, as a native menu can't be clicked) quote the selection under its page and add the element at the point.
+ * Leaves the message box empty and closes the panel.
+ */
+export async function runBrowserPickStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  deps.setBrowser(true);
+  if (!(await waitInPage(win, q('[data-nav="home"]'), 3_000))) return 'no Home icon';
+  await js(`${q('[data-nav="home"]')}.click()`);
+  const row = `[...document.querySelectorAll('[data-session-list] [data-session-id]')].find((r) => r.textContent.includes('Fix the cart button typo'))`;
+  if (!(await waitInPage(win, row, 5_000))) return 'the demo session "Fix the cart button typo" is not in the sidebar';
+  const id = (await js(`${row}.dataset.sessionId`)) as string;
+  await js(`${row}.click()`);
+  const S = `[data-current-session="${id}"]`;
+  if (!(await waitInPage(win, q(`${S} [data-composer]`), 5_000))) return 'the session shows no message box';
+  if (!(await paletteCommand(win, 'New tab'))) return 'the palette offers no New tab in the session';
+  const P = `${S} [data-web-preview]`;
+  if (!(await waitInPage(win, q(`${P} [data-browser-address]`), 3_000))) return "New tab opened no browser panel in the session";
+  const url = `${await site()}pick`;
+  await setFieldValue(win, `${P} [data-browser-address]`, url.replace('http://', ''));
+  await js(`${q(`${P} [data-browser-address]`)}.form.requestSubmit()`);
+  if (!(await until(() => pageWithTitle('Smoke pick') !== undefined, 10_000))) return 'the local page did not load in the session\'s tab';
+  const page = pageWithTitle('Smoke pick')!;
+  if (!(await until(() => isSessionPage(page.id), 5_000))) return "the session's page is not marked as one: its menu would not offer Quote in message";
+
+  // Dragged as narrow as it goes, the toolbar keeps room to type an address: Pin, the star and Open in browser move
+  // to ⋯, the sizes become one button that names the size, and Pick an element stays.
+  for (let i = 0; i < 40; i++) await js(`${q(`${P} [role=separator]`)}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`);
+  const addressWidth = `Math.round(${q(`${P} [data-browser-address]`)}.getBoundingClientRect().width)`;
+  const sizeMenu = q(`${P} [data-web-preview-size-menu]`);
+  // Every button keeps its size, and the last one (×) ends inside the toolbar.
+  const toolbarFits = `(() => { const bar = ${q(`${P} [data-web-preview-toolbar]`)}; const r = bar.getBoundingClientRect(); return [...bar.querySelectorAll('button')].filter((b) => b.checkVisibility()).every((b) => { const box = b.getBoundingClientRect(); return box.right <= r.right + 0.5 && box.width >= 20; }); })()`;
+  if (!(await waitInPage(win, `${addressWidth} >= 80 && ${toolbarFits} && !${q(`${P} [data-web-preview-pin]`)}.checkVisibility() && ${sizeMenu}?.checkVisibility() && ${sizeMenu}.textContent.includes('Side')`, 3_000))) return `in a narrow panel the address bar is ${String(await js(addressWidth))}px wide, a button is squeezed or past the edge (${String(await js(toolbarFits))}), Pin still takes the toolbar, or the size button doesn't show Side`;
+  await js(`${q(`${P} [data-web-preview-more]`)}.click()`);
+  if (!(await waitInPage(win, q('[role="menu"] [data-page-pin]'), 2_000))) return 'in a narrow panel ⋯ has no Pin tab';
+  escape(win);
+  if (!(await waitInPage(win, `!${q('[role="menu"] [data-page-pin]')}`, 2_000))) return 'Esc did not close ⋯';
+  await js(`${sizeMenu}.click()`);
+  if (!(await waitInPage(win, `${q('[role="menu"] [data-web-preview-size="half"]')} && ${q('[role="menu"] [data-web-preview-size="full"]')}`, 2_000))) return 'the size button opened no menu with Half and Full';
+  escape(win);
+  if (!(await waitInPage(win, `!${q('[role="menu"] [data-web-preview-size="half"]')}`, 2_000))) return 'Esc did not close the size menu';
+
+  // Pick an element: pressed, with its hint; Esc in the app stops it.
+  const pick = q(`${P} [data-web-preview-pick]`);
+  const picking = `${q(`${P} [data-web-preview-picking]`)} && ${pick}.getAttribute('aria-pressed') === 'true'`;
+  if (!(await waitInPage(win, `${pick} && !${pick}.disabled`, 3_000))) return 'no Pick an element in the toolbar';
+  await js(`${pick}.click()`);
+  if (!(await waitInPage(win, picking, 3_000))) return 'Pick an element did not start a pick (no hint, not pressed)';
+  escape(win);
+  if (!(await waitInPage(win, `!${q(`${P} [data-web-preview-picking]`)}`, 3_000))) return 'Esc did not stop the pick';
+
+  // A click on the button picks it: a chip and its picture in the message box, and the page never got the click.
+  await js(`${pick}.click()`);
+  if (!(await waitInPage(win, picking, 3_000))) return 'Pick an element did not start a second pick';
+  const center = (await page.executeJavaScript(`(() => { const r = document.querySelector('[data-testid=buy]').getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`)) as { x: number; y: number };
+  page.sendInputEvent({ type: 'mouseMove', x: center.x, y: center.y });
+  await deps.shot('browser-pick');
+  page.sendInputEvent({ type: 'mouseDown', x: center.x, y: center.y, button: 'left', clickCount: 1 });
+  page.sendInputEvent({ type: 'mouseUp', x: center.x, y: center.y, button: 'left', clickCount: 1 });
+  const chips = `[...document.querySelectorAll(${JSON.stringify(`${S} [data-context-tray] [data-context-chip="element"]`)})]`;
+  const images = `document.querySelectorAll(${JSON.stringify(`${S} [data-attachments] img`)}).length`;
+  if (!(await waitInPage(win, `${chips}.some((c) => c.textContent.includes('data-testid="buy"')) && ${images} === 1`, 5_000))) return `the picked button is not in the message (chips: ${String(await js(`${chips}.map((c) => c.textContent).join(', ') || 'none'`))}, images: ${String(await js(images))})`;
+  if (!(await waitInPage(win, `!${q(`${P} [data-web-preview-picking]`)}`, 2_000))) return 'the pick went on after the click';
+  if (await page.executeJavaScript('document.body.dataset.clicked === "1"')) return 'the page got the click that picked the button';
+
+  // The page's menu: Quote in message quotes the selection under its page; Add element to message adds the heading.
+  const host = page.hostWebContents;
+  if (!host) return 'the page has no window';
+  const text = 'Some words to quote here.';
+  runPageMenuEntry(host, page, { x: 0, y: 0, linkURL: '', srcURL: '', selectionText: text }, 'quote');
+  const box = q(`${S} [data-composer]`);
+  if (!(await waitInPage(win, `${box}.value.includes(${JSON.stringify(`From ${url}:\n> ${text}`)})`, 3_000))) return `Quote in message did not quote the selection under its page (box: ${JSON.stringify(await js(`${box}.value`))})`;
+  const heading = (await page.executeJavaScript(`(() => { const r = document.getElementById('heading').getBoundingClientRect(); return { x: Math.round(r.x + 4), y: Math.round(r.y + r.height / 2) }; })()`)) as { x: number; y: number };
+  runPageMenuEntry(host, page, { x: heading.x, y: heading.y, linkURL: '', srcURL: '', selectionText: '' }, 'add-element');
+  if (!(await waitInPage(win, `${chips}.some((c) => c.textContent.includes('#heading')) && ${images} === 2`, 5_000))) return 'Add element to message did not add the heading with its picture';
+
+  // Leave the message box as it was, and close the panel.
+  await setFieldValue(win, `${S} [data-composer]`, '');
+  await js(`for (const b of document.querySelectorAll(${JSON.stringify(`${S} [data-context-tray] [data-context-chip="element"] [data-context-chip-remove]`)})) b.click()`);
+  await js(`for (const b of [...document.querySelectorAll(${JSON.stringify(`${S} [data-attachments] button`)})].reverse()) b.click()`);
+  if (!(await waitInPage(win, `${chips}.length === 0 && ${images} === 0`, 3_000))) return 'the chips or pictures stayed in the message box';
+  await js(`${q(`${P} [data-web-preview-close]`)}.click()`);
+  return 'ok: a narrow panel kept room for the address, with Pin in ⋯ and the sizes behind one button, the page was marked as a session page, a pick stopped on Esc, a click put the button in the message with its picture (the page never got it), Quote in message quoted the selection under its page, and Add element to message added the heading';
 }
 
 /**

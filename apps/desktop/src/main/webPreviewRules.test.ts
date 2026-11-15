@@ -216,7 +216,7 @@ describe('pagePermissionAllowed', () => {
 describe('pageMenuEntries', () => {
   const params = { linkURL: '', srcURL: '', mediaType: 'none', selectionText: '', isEditable: false, dictionarySuggestions: [], editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: true } };
   const ids = (entries: ReturnType<typeof pageMenuEntries>) => entries.map((e) => (e === 'separator' ? '-' : e.id));
-  const page = { browser: true, back: true, forward: false };
+  const page = { browser: true, back: true, forward: false, session: false };
 
   it('offers back, forward and reload on the page itself, then Inspect', () => {
     expect(ids(pageMenuEntries(params, page))).toEqual(['back', 'forward', 'reload', '-', 'inspect']);
@@ -228,6 +228,13 @@ describe('pageMenuEntries', () => {
     expect(ids(pageMenuEntries({ ...params, linkURL: 'https://github.com/x' }, { ...page, browser: false }))).toEqual(['copy-link', '-', 'inspect']);
     expect(ids(pageMenuEntries({ ...params, linkURL: 'mailto:me@example.com' }, page))).toEqual(['copy-email', '-', 'inspect']);
     expect(ids(pageMenuEntries({ ...params, selectionText: 'hello' }, page))).toEqual(['copy', '-', 'inspect']);
+  });
+
+  it("offers a session's page the selection and the element for its message", () => {
+    const session = { ...page, session: true };
+    expect(ids(pageMenuEntries(params, session))).toEqual(['back', 'forward', 'reload', '-', 'add-element', '-', 'inspect']);
+    expect(ids(pageMenuEntries({ ...params, selectionText: 'hello' }, session))).toEqual(['copy', '-', 'quote', 'add-element', '-', 'inspect']);
+    expect(ids(pageMenuEntries({ ...params, selectionText: '  ' }, session))).toEqual(['back', 'forward', 'reload', '-', 'add-element', '-', 'inspect']);
   });
 
   it('offers spelling, then editing in a field, as the field allows', () => {

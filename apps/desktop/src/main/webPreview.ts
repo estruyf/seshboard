@@ -1,13 +1,24 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, webContents, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
 import { localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, cookieOfSite, faviconCap, iconTooLarge, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
+import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
+import { acceptsLocalCertificate, cookieOfSite, faviconCap, iconTooLarge, keyForWindow, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
 /**
  * Pages whose keys go to their window (`keysToWindow`): the window's document took the focus from them, which Chromium
  * doesn't count as the keyboard leaving the page. Their contents ids.
  */
 const keysToWindow = new Set<number>();
+
+/** Pages of a session's tabs (`markSessionPage`), not the Browser view's: their menu sends to the session's message. Contents ids. */
+const sessionPages = new Set<number>();
+
+/** A page of this window's, by contents id: a `<webview>` it hosts, or null. */
+function guestOf(host: WebContents, contentsId: unknown): WebContents | null {
+  if (typeof contentsId !== 'number') return null;
+  const guest = webContents.fromId(contentsId);
+  return guest && guest.getType() === 'webview' && guest.hostWebContents === host ? guest : null;
+}
 
 /** What the guards need from the app. */
 export interface WebPreviewGuardDeps {
@@ -56,6 +67,23 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
     // Not `event.sender.focus()` (T3 Code calls it before a command that moves focus): here the focus has moved
     // already, and that call gives the keyboard and the document's focus back to the page.
     keysToWindow.add(contentsId);
+  });
+
+  // A session's page: its menu offers Quote in message and Add element to message.
+  ipcMain.on(IpcChannel.webPreviewSessionPage, (event, contentsId: unknown) => {
+    const guest = event.sender.getType() === 'window' ? guestOf(event.sender, contentsId) : null;
+    if (!guest || sessionPages.has(guest.id)) return;
+    const id = guest.id;
+    sessionPages.add(id);
+    guest.once('destroyed', () => sessionPages.delete(id));
+  });
+  // Pick an element on a session's page, for its message; null when the pick ends without one.
+  ipcMain.handle(IpcChannel.webPreviewPickElement, (event, contentsId: unknown) => {
+    const guest = event.sender.getType() === 'window' ? guestOf(event.sender, contentsId) : null;
+    return guest && sessionPages.has(guest.id) ? pickElement(guest) : null;
+  });
+  ipcMain.on(IpcChannel.webPreviewCancelPick, (event, contentsId: unknown) => {
+    if (event.sender.getType() === 'window' && guestOf(event.sender, contentsId)) cancelPick(contentsId as number);
   });
 
   // Clear data for this site (its cookies, which sign you out, and its storage), or everything the pages keep.
@@ -194,42 +222,52 @@ async function openAppLink(host: WebContents, url: string, deps: WebPreviewGuard
   }
 }
 
+/** Runs an entry of a page's right-click menu against the page (the smoke run calls it too, as the menu can't be clicked). */
+export function runPageMenuEntry(host: WebContents, guest: WebContents, params: Pick<Electron.ContextMenuParams, 'x' | 'y' | 'linkURL' | 'srcURL' | 'selectionText'>, id: PageMenuEntryId | 'spelling', word?: string) {
+  if (guest.isDestroyed()) return;
+  switch (id) {
+    case 'spelling':
+      return word && guest.replaceMisspelling(word);
+    case 'open-link':
+      return send(host, { kind: 'popup', contentsId: guest.id, url: webPageUrl(params.linkURL)! });
+    case 'copy-link':
+      return clipboard.writeText(params.linkURL);
+    case 'copy-email':
+      return clipboard.writeText(params.linkURL.replace(/^mailto:/i, ''));
+    case 'copy-image':
+      return guest.copyImageAt(params.x, params.y);
+    case 'copy-image-address':
+      return clipboard.writeText(params.srcURL);
+    case 'cut':
+      return guest.cut();
+    case 'copy':
+      return guest.copy();
+    case 'paste':
+      return guest.paste();
+    case 'select-all':
+      return guest.selectAll();
+    case 'back':
+      return guest.navigationHistory.goBack();
+    case 'forward':
+      return guest.navigationHistory.goForward();
+    case 'reload':
+      return guest.reload();
+    case 'quote':
+      return send(host, { kind: 'quote', contentsId: guest.id, text: params.selectionText, url: webPageUrl(guest.getURL()) ?? guest.getURL() });
+    case 'add-element':
+      return void elementAt(guest, params.x, params.y).then((element) => element && send(host, { kind: 'element', contentsId: guest.id, element }));
+    case 'inspect':
+      return guest.inspectElement(params.x, params.y);
+  }
+}
+
+/** A page of a session's tab (`markSessionPage`): its menu offers Quote in message and Add element to message. */
+export const isSessionPage = (contentsId: number): boolean => sessionPages.has(contentsId);
+
 /** A page's right-click menu (`pageMenuEntries`), run here against the page, over `owner` (the page's window, or a sign-in window's own). */
 function showPageMenu(host: WebContents, guest: WebContents, params: Electron.ContextMenuParams, deps: WebPreviewGuardDeps, owner = BrowserWindow.fromWebContents(host)): void {
-  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward() });
-  const run = (id: string, word?: string) => {
-    if (guest.isDestroyed()) return;
-    switch (id) {
-      case 'spelling':
-        return word && guest.replaceMisspelling(word);
-      case 'open-link':
-        return send(host, { kind: 'popup', contentsId: guest.id, url: webPageUrl(params.linkURL)! });
-      case 'copy-link':
-        return clipboard.writeText(params.linkURL);
-      case 'copy-email':
-        return clipboard.writeText(params.linkURL.replace(/^mailto:/i, ''));
-      case 'copy-image':
-        return guest.copyImageAt(params.x, params.y);
-      case 'copy-image-address':
-        return clipboard.writeText(params.srcURL);
-      case 'cut':
-        return guest.cut();
-      case 'copy':
-        return guest.copy();
-      case 'paste':
-        return guest.paste();
-      case 'select-all':
-        return guest.selectAll();
-      case 'back':
-        return guest.navigationHistory.goBack();
-      case 'forward':
-        return guest.navigationHistory.goForward();
-      case 'reload':
-        return guest.reload();
-      case 'inspect':
-        return guest.inspectElement(params.x, params.y);
-    }
-  };
+  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward(), session: sessionPages.has(guest.id) });
+  const run = (id: PageMenuEntryId | 'spelling', word?: string) => runPageMenuEntry(host, guest, params, id, word);
   const menu = Menu.buildFromTemplate(
     entries.map((entry) => (entry === 'separator' ? { type: 'separator' as const } : entry.id === 'spelling' ? { label: entry.label, click: () => run('spelling', entry.word) } : { label: entry.label, enabled: entry.enabled, click: () => run(entry.id) })),
   );
@@ -241,8 +279,8 @@ const MOUSE_NAVIGATION = `addEventListener('mouseup', (event) => {
   if (event.button === 3) { event.preventDefault(); history.back(); }
   else if (event.button === 4) { event.preventDefault(); history.forward(); }
 }, true);`;
-/** The isolated world `MOUSE_NAVIGATION` runs in. */
-const SESHBOARD_WORLD = 1999;
+/** The isolated world `MOUSE_NAVIGATION` runs in, the picker's too. */
+const SESHBOARD_WORLD = PICKER_WORLD;
 
 function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardDeps): void {
   // Leaving the page: an outside page opens in the browser, an app's link with the system (after asking), anything else goes nowhere.

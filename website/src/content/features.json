@@ -952,6 +952,11 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "palette:browser-pick-element",
+      "name": "Pick an element for the message",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "palette:browser-full",
       "name": "Show browser full size",
       "page": "sessions/web-preview"
