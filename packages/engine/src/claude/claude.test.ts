@@ -119,6 +119,13 @@ describe('normaliseMessage', () => {
     expect(m.timestamp).toBeNull();
     expect(m.blocks).toEqual([{ type: 'unknown', kind: 'compact_boundary' }]);
   });
+
+  it('gives a compaction Claude Code made while idle its own kind', () => {
+    const boundary = (message: object) => normaliseMessage({ type: 'system', uuid: 's1', parent_tool_use_id: null, message }).blocks;
+    expect(boundary({ subtype: 'compact_boundary', idle: true })).toEqual([{ type: 'unknown', kind: 'compact_boundary_idle' }]);
+    expect(boundary({ subtype: 'compact_boundary', idle: false })).toEqual([{ type: 'unknown', kind: 'compact_boundary' }]);
+    expect(boundary({ subtype: 'informational', idle: true })).toEqual([{ type: 'unknown', kind: 'informational' }]);
+  });
 });
 
 describe('images in transcripts', () => {

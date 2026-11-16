@@ -239,7 +239,7 @@ export const remoteMessage = (message: TranscriptMessage, device?: string): Remo
 
 const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1]?.trim() ?? null;
 const SYSTEM_REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
-const NOTICE_LABELS: Record<string, string> = { compact_boundary: 'Conversation compacted', informational: 'Information' };
+const NOTICE_LABELS: Record<string, string> = { compact_boundary: 'Conversation compacted', compact_boundary_idle: 'Compacted while idle', informational: 'Information' };
 
 /**
  * A turn as a phone shows it, the way the app's transcript reads the markup Claude Code writes into user turns
