@@ -2168,6 +2168,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
+                  ultrathink={!otherProvider}
                   savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
                   links={{ sessionId, root: projectRoot }}
                   github={{ root: options.projectActions ? projectRoot : null }}

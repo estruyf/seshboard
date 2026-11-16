@@ -1762,6 +1762,8 @@ function LocalNewSession() {
               key={fromLater ? `queued:${fromLater.id}` : fromSchedule ? `schedule:${fromSchedule.id}` : 'new'}
               draftKey={draftKey}
               carryOver
+              // Claude Code's word: colour it in the box (the one-turn option is on a running session's chip only).
+              ultrathink={!runWith}
               savedPrompts={{ root: cwd && !question ? cwd : null, projectName: projectName ?? 'This project' }}
               links={{ sessionId: null, root: cwd }}
               github={{ root: cwd && !question ? cwd : null }}

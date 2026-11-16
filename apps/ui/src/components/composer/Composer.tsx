@@ -21,6 +21,9 @@ import { MAX_ATTACHMENTS } from './images.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
+import { hasUltrathink, withUltrathink } from './ultrathink.ts';
+import { UltrathinkMirror } from './UltrathinkMirror.tsx';
+import { useUltrathink } from '../../state/ultrathinkStore.ts';
 import { branchOf, linkableSessions } from './sessionLinks.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -167,6 +170,11 @@ export interface ComposerProps {
    * one offers to attach it. Only in a project with a remote on GitHub; without gh, one hint per project.
    */
   github?: { root: string | null };
+  /**
+   * A Claude Code box: the word ultrathink is coloured (it runs that turn at xhigh), and the effort chip's "Ultrathink this
+   * turn" adds it to the next message from this box (needs a `draftKey`). Off for another provider's session.
+   */
+  ultrathink?: boolean;
 }
 
 /** What the message was made of: the typed text and the context chips that `promptWithContext` put together. */
@@ -236,6 +244,10 @@ export function Composer(props: ComposerProps) {
   const { prompts: savedPrompts } = useSavedPrompts(promptsFor ? promptsFor.root : undefined);
   const projectName = promptsFor?.projectName ?? 'This project';
   const left = fillState ? blanksLeft(fillState) : [];
+  /** Where "Ultrathink this turn" is kept for this box: its draft key, for a Claude Code box. */
+  const armedKey = props.ultrathink && props.draftKey !== undefined ? props.draftKey : null;
+  /** The word is in the box: it is drawn under the text, in colour. */
+  const marked = !!props.ultrathink && hasUltrathink(text);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -740,11 +752,17 @@ export function Composer(props: ComposerProps) {
     const sentChips = chips;
     const sentFill = fillState;
     // A saved prompt is filled in, and what was typed under it goes after it.
-    const typed = sentFill ? fillMessage(sentFill, text) : text;
+    let typed = sentFill ? fillMessage(sentFill, text) : text;
     // The chips go with the message: files as @ mentions after what you typed, text in fenced blocks.
-    const value = promptWithContext(typed, sentChips, cwd);
+    let value = promptWithContext(typed, sentChips, cwd);
     const sentAttachments = attachments;
     if (!value && sentAttachments.length === 0) return;
+    // "Ultrathink this turn": the word goes on this message only. A slash command would take it as an argument, so it keeps the option for the next message.
+    const armedNow = armedKey !== null && !!useUltrathink.getState().armed[armedKey] && !typed.trimStart().startsWith('/');
+    if (armedNow) {
+      typed = withUltrathink(typed);
+      value = promptWithContext(typed, sentChips, cwd);
+    }
     // Said here rather than as the engine's "Invalid params": the text stays, so you can trim it.
     const tooLong = tooLongReason(value);
     if (tooLong) return setNotice(tooLong);
@@ -753,6 +771,7 @@ export function Composer(props: ComposerProps) {
     closePalette();
     try {
       if ((await send(value, sentAttachments, { typed, context: sentChips.map(({ id: _id, ...item }) => item as ContextItem) })) === false) return;
+      if (armedNow) useUltrathink.getState().set(armedKey!, false);
       if (sentFill) {
         // Counted for the order of the lists; a prompt deleted meanwhile just isn't.
         void engineClient()?.call('savedPrompts.used', { id: sentFill.prompt.id, scope: sentFill.prompt.scope }).catch(() => {});
@@ -946,6 +965,9 @@ export function Composer(props: ComposerProps) {
   };
 
   const disabled = !!props.disabledReason;
+  /** The box's type and padding, which the coloured copy of the text under it shares, and the sizes only the box has. */
+  const boxType = props.large && !fillState ? 'px-1 pt-1 text-title font-normal leading-relaxed' : 'px-1 text-body leading-relaxed';
+  const boxSize = props.large && !fillState ? LARGE_BOX : 'max-h-[10lh] min-h-[3lh]';
   const submitSecondary = () => (props.secondary ? submit(false, (value, sent, parts) => props.secondary!.onSubmit(value, sent, parts)) : Promise.resolve());
   const submitOther = (shortcut: ShortcutId) => {
     const other = props.others?.find((o) => o.shortcut === shortcut);
@@ -1208,6 +1230,9 @@ export function Composer(props: ComposerProps) {
               {SIDE_TOKEN}
             </span>
           )}
+          {/* The wrapper holds the box's place in the row, so the coloured copy of the text can sit over exactly the box. */}
+          <div className={`relative min-w-0 ${props.large ? 'flex min-h-0 flex-[0_1_auto] flex-col' : 'flex-1'}`}>
+          {marked && <UltrathinkMirror text={text} textarea={ref} className={boxType} />}
           <textarea
             data-composer
             data-history={props.history?.length ?? 0}
@@ -1260,8 +1285,9 @@ export function Composer(props: ComposerProps) {
                 setPalette(null);
               }, 100);
             }}
-            className={`block field-sizing-content w-full min-w-0 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large ? 'flex-[0_1_auto]' : 'flex-1'} ${props.large && !fillState ? `${LARGE_BOX} px-1 pt-1 text-title font-normal` : 'max-h-[10lh] min-h-[3lh] px-1 text-body'}`}
+            className={`relative block field-sizing-content w-full min-w-0 resize-none bg-transparent outline-none placeholder:text-faint disabled:opacity-60 ${props.large ? 'flex-[0_1_auto]' : ''} ${marked ? 'text-transparent caret-text selection:bg-accent/35' : 'text-text'} ${boxType} ${boxSize}`}
           />
+          </div>
         </div>
         {menuAt && <Menu x={menuAt.x} y={menuAt.y} above={menuAt.above} width={180} label="Message" onClose={() => setMenuAt(null)} entries={textMenu()} />}
         {notice && (

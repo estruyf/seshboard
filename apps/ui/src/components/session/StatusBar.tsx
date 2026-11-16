@@ -8,7 +8,14 @@ import { findModelOption } from '../../lib/models.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useSavedSettings, type SavedSettings } from '../../state/savedSettingsStore.ts';
+import { useUltrathink } from '../../state/ultrathinkStore.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
+
+/** The effort menu's "Ultrathink this turn" for a Claude Code session: on or off for the next message from its box. */
+function useUltrathinkOption(sessionId: string) {
+  const armed = useUltrathink((s) => !!s.armed[sessionId]);
+  return { armed, onToggle: () => useUltrathink.getState().set(sessionId, !armed) };
+}
 
 /**
  * The chip row of a session running in this app (profile · model · effort · permission mode), in the
@@ -31,6 +38,7 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
   const choosing = host.autoChoosing === true;
   const row = useRef<HTMLDivElement>(null);
   const openPopover = useAutoPick((s) => s.openPopover);
+  const ultrathink = useUltrathinkOption(host.sessionId);
 
   return (
     <div ref={row} className="contents">
@@ -58,7 +66,7 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
                 ]
               : undefined,
         }}
-        effort={supportsEffort ? { value: host.effort ?? '', onChange: (effort) => void client?.call('session.setEffort', { sessionId: host.sessionId, effort: effort || null }) } : null}
+        effort={supportsEffort ? { value: host.effort ?? '', onChange: (effort) => void client?.call('session.setEffort', { sessionId: host.sessionId, effort: effort || null }), ultrathink } : null}
         // Unlike effort, an unknown model gets no toggle: fast mode costs more, so only offer it when the model says it has it.
         fast={modelOption?.supportsFastMode ? { face: fastModeFace(host), onToggle: (on) => void client?.call('session.setFastMode', { sessionId: host.sessionId, on }) } : null}
         mode={{ value: host.permissionMode, onChange: (mode) => void client?.call('session.setPermissionMode', { sessionId: host.sessionId, mode }) }}
@@ -78,6 +86,7 @@ export function SavedSessionControls({ sessionId, profileId }: { sessionId: stri
   const client = connection.status === 'connected' ? connection.client : null;
   const saved = useSavedSettings((s) => s.bySession[sessionId]) ?? null;
   const setSaved = useSavedSettings((s) => s.set);
+  const ultrathink = useUltrathinkOption(sessionId);
 
   useEffect(() => {
     if (!client) return;
@@ -116,7 +125,7 @@ export function SavedSessionControls({ sessionId, profileId }: { sessionId: stri
           choices: [...(modelOption ? [] : [{ value: '', label: saved.model ?? 'Default model' }]), ...models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }))],
           onChange: (model) => change({ model: model || null }, () => client?.call('session.setModel', { sessionId, model: model || null })),
         }}
-        effort={supportsEffort ? { value: saved.effort ?? '', onChange: (effort) => change({ effort: effort || null }, () => client?.call('session.setEffort', { sessionId, effort: effort || null })) } : null}
+        effort={supportsEffort ? { value: saved.effort ?? '', onChange: (effort) => change({ effort: effort || null }, () => client?.call('session.setEffort', { sessionId, effort: effort || null })), ultrathink } : null}
         mode={{ value: saved.permissionMode, onChange: (mode) => change({ permissionMode: mode }, () => client?.call('session.setPermissionMode', { sessionId, mode })) }}
       />
     )

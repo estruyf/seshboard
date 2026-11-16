@@ -294,6 +294,18 @@
 }
 
 /*
+ * The word ultrathink in the message box and on the effort chip, like Claude Code's rainbow word. The gradient is made
+ * of the status tokens, so every theme and both modes keep it readable. Violet is left out: it is for other computers.
+ */
+@utility ultrathink-word {
+  background-image: linear-gradient(90deg, var(--sb-warn), var(--sb-accent-ink), var(--sb-ok), var(--sb-link));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/*
  * The surface of anything that floats above the app: menus, popovers, tooltips and dialogs.
  * Use with `border` and a radius; inner controls keep their own surfaces (`bg-bg` fields).
  */
