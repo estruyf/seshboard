@@ -46,6 +46,7 @@ import { useBrowserTabsSync } from './state/browserTabsSync.ts';
 import { useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
 import { useBrowserHistorySync } from './state/browserHistory.ts';
 import { bookmarkPage, useBrowserBookmarksSync } from './state/browserBookmarksStore.ts';
+import { useBrowserProfilesSync } from './state/browserProfilesStore.ts';
 import { browserOn, useWebPreview } from './state/webPreviewStore.ts';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
@@ -338,6 +339,7 @@ export function App() {
   useBrowserFavoritesSync();
   useBrowserHistorySync();
   useBrowserBookmarksSync();
+  useBrowserProfilesSync();
   useEffect(followView, []);
   useEffect(followDeletedSessions, []);
   // Listen for links before telling main the window is ready: main hands over waiting links then.

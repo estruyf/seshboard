@@ -1,5 +1,5 @@
 import { connect } from 'node:net';
-import { BROWSER_SOCKET_ENV, BROWSER_TOKEN_ENV, type BrowserBridgeReply, type BrowserBridgeRequest, type BrowserToolResult } from '@seshboard/protocol/bridge';
+import { BROWSER_SCRIPTS_ENV, BROWSER_SOCKET_ENV, BROWSER_TOKEN_ENV, type BrowserBridgeReply, type BrowserBridgeRequest, type BrowserToolResult } from '@seshboard/protocol/bridge';
 import { browserMcpServer, lineReader } from './server.ts';
 
 // Seshboard's `browser` MCP server, over stdio: an agent starts it as Seshboard's own binary run as Node
@@ -42,6 +42,7 @@ const take = browserMcpServer(
       const request: BrowserBridgeRequest = { id, token, tool, args };
       socket.write(`${JSON.stringify(request)}\n`);
     }),
+  process.env[BROWSER_SCRIPTS_ENV] === '1',
 );
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk: string) => take(chunk));

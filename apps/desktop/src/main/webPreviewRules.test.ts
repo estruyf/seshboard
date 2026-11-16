@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, cookieOfSite, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, cookieOfSite, partitionClearing, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
 
 const key = (k: string, mods: Partial<PreviewKeyInput> = {}): PreviewKeyInput => ({ type: 'keyDown', key: k, meta: false, control: false, alt: false, shift: false, ...mods });
 
@@ -111,6 +111,24 @@ describe('with the browser off, the web preview as before', () => {
     expect(popupTarget('http://localhost:3000/x')).toBe('same');
     expect(popupTarget('https://github.com/')).toBe('browser');
     expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'https://github.com/' })).toBe(false);
+  });
+});
+
+describe('browser profiles', () => {
+  const profile = 'persist:browser-3f2b8c1e-6a4d-4e7b-9c2a-1d5e8f7a6b3c';
+  it("lets a page attach in a browser profile's partition with the browser on, and in no other", () => {
+    expect(webviewAllowed({ partition: profile, src: 'https://github.com/' }, true)).toBe(true);
+    expect(webviewAllowed({ partition: profile }, true)).toBe(true);
+    // The web preview alone has no profiles.
+    expect(webviewAllowed({ partition: profile, src: 'http://localhost:5173/' }, false, true)).toBe(false);
+    for (const partition of ['persist:browser-admin', 'persist:browser-../x', 'persist:main', '', undefined]) expect(webviewAllowed({ partition, src: 'https://github.com/' }, true)).toBe(false);
+  });
+
+  it('clears only what Reset ticked', () => {
+    expect(partitionClearing({ cookies: true, siteData: false, cache: false })).toEqual({ storages: ['cookies'], authCache: true, cache: false });
+    expect(partitionClearing({ cookies: false, siteData: true, cache: false })).toEqual({ storages: ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage', 'filesystem'], authCache: false, cache: false });
+    expect(partitionClearing({ cookies: false, siteData: false, cache: true })).toEqual({ storages: ['shadercache'], authCache: false, cache: true });
+    expect(partitionClearing({ cookies: false, siteData: false, cache: false })).toEqual({ storages: [], authCache: false, cache: false });
   });
 });
 

@@ -169,6 +169,8 @@ export const PermissionRequest = z.object({
   blockedPath: z.string().nullable(),
   /** What "Always allow" would do, e.g. `Allow Bash(npm test:*) in this project`. Null when not offered. */
   alwaysLabel: z.string().nullable(),
+  /** The card also offers "Allow for this session" (the browser tools' cards): kept in memory until the engine restarts. */
+  sessionAllow: z.boolean().optional(),
   /** Set when a subagent asked. */
   agentId: z.string().nullable(),
   createdAt: z.number(),
@@ -180,6 +182,8 @@ export const PermissionDecision = z.discriminatedUnion('behavior', [
     behavior: z.literal('allow'),
     /** Apply Claude Code's suggested rule so it doesn't ask again. */
     always: z.boolean().default(false),
+    /** "Allow for this session", on a card that offers it (`sessionAllow`). */
+    session: z.boolean().optional(),
     /** Replaces the tool input, e.g. AskUserQuestion answers or an edited command. */
     updatedInput: z.record(z.string(), z.json()).optional(),
   }),

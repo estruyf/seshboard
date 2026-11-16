@@ -14,6 +14,7 @@ import { middleClose, middleDown, SoundMark, TabIcon, tabLabel, TabTitle } from 
 import { BROWSER_OWNER, listedTabs, sameGroup, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
 import { FavoriteBar } from '../webPreview/FavoriteTiles.tsx';
 import { tabMenu } from '../webPreview/tabMenu.tsx';
+import { ProfileMark, useNewTabMenu } from '../webPreview/ProfileMenus.tsx';
 
 /**
  * The Browser view's tabs in the sidebar, in place of the sessions, under your favourites' tiles (`FavoriteBar`): pinned
@@ -29,6 +30,8 @@ export function BrowserTabList() {
   // A favourite's tab shows in its tile, not here.
   const tabs = listedTabs({ tabs: all, active: new Map() }, BROWSER_OWNER);
   const [menu, setMenu] = useState<{ x: number; y: number; tab: BrowserTab } | null>(null);
+  // Open tab in a browser profile: the ⌄ beside it, or a right click on it.
+  const profileMenu = useNewTabMenu(BROWSER_OWNER);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const drag = useQueueDrag({
@@ -87,6 +90,7 @@ export function BrowserTabList() {
                 >
                   <TabIcon tab={tab} size={14} />
                   <TabTitle tab={tab} confirming={confirming === tab.id} />
+                  <ProfileMark tab={tab} />
                   <SoundMark tab={tab} />
                 </button>
                 <Button
@@ -106,10 +110,13 @@ export function BrowserTabList() {
             );
           })}
         </ul>
-        <button type="button" onClick={newBrowserTab} className="mt-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-ui text-muted hover:bg-border/45 hover:text-text" data-browser-open-tab>
-          <Plus size={14} aria-hidden />
-          Open tab
-        </button>
+        <div className="mt-1 flex items-center gap-0.5">
+          <button type="button" onClick={newBrowserTab} onContextMenu={profileMenu.onContextMenu} className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 text-left text-ui text-muted hover:bg-border/45 hover:text-text" data-browser-open-tab>
+            <Plus size={14} aria-hidden />
+            Open tab
+          </button>
+          {profileMenu.button}
+        </div>
       </div>
       {menu && <Menu x={menu.x} y={menu.y} entries={tabMenu(menu.tab)} label={`${tabName(menu.tab)} menu`} onClose={() => setMenu(null)} />}
     </div>

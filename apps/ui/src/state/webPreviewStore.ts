@@ -19,6 +19,7 @@ import {
   restore,
   takeClosed,
   showTab,
+  switchTabProfile,
   unpinTab,
   updateTab,
   cleanTabName,
@@ -61,15 +62,26 @@ interface WebPreviewState extends TabsState {
   full: ReadonlySet<string>;
   /** Goes up when the palette asks a tab's page to reload. */
   reloads: ReadonlyMap<string, number>;
+  /**
+   * Browser profiles whose pages are held off while Reset or Delete clears their data, so none writes back (`''` for
+   * the Default one). Their tabs stay; their pages load again once it is done.
+   */
+  suspended: ReadonlySet<string>;
+  /** Holds a browser profile's pages off (true), or lets them load again (false). */
+  suspend(profileId: string | null, on: boolean): void;
+  /** The toolbar's profile switcher: the tab in another browser profile, as a new tab in its place (`switchTabProfile`). The new tab's id. */
+  switchProfile(id: string, profileId: string | null): string;
   /** Opens a session's panel in front; on `url` when given (a tab on it), else on the tab it had. */
   open(sessionId: string, url?: string | null): void;
   /** Closes a session's panel. With the browser on its pinned tabs stay and the others close; off, its page goes. */
   close(sessionId: string): void;
   /** Hides a session's panel (its Browser button, Escape): every tab stays as it was, for when it is shown again. */
   hide(sessionId: string): void;
-  /** Opens `url` (null: an empty tab) for an owner, or shows the tab it has on that address. The tab's id. */
-  /** Opens `url` for an owner (or shows the tab already on it); `favoriteId`: the favourite's own tab, wherever it browsed. */
-  openTab(owner: string, url: string | null, options?: { focus?: boolean; favoriteId?: string | null }): string;
+  /**
+   * Opens `url` (null: an empty tab) for an owner, or shows the tab it has on that address. `favoriteId`: the
+   * favourite's own tab, wherever it browsed; `profileId`: the browser profile of a new tab (null: Default). The tab's id.
+   */
+  openTab(owner: string, url: string | null, options?: { focus?: boolean; favoriteId?: string | null; profileId?: string | null }): string;
   /** A tab becomes a favourite's (shown in its tile), or a plain tab again (null). */
   linkFavorite(id: string, favoriteId: string | null): void;
   selectTab(id: string): void;
@@ -141,6 +153,13 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     panels: new Set(),
     full: new Set(),
     reloads: new Map(),
+    suspended: new Set(),
+    switchProfile: (id, profileId) => {
+      const next = newId();
+      tabs((s) => switchTabProfile(s, id, profileId, { id: next, now: Date.now(), seq: ++seq }));
+      return get().tabs.some((t) => t.id === next) ? next : id;
+    },
+    suspend: (profileId, on) => set((s) => ({ suspended: on ? withValue(s.suspended, profileId ?? '') : without(s.suspended, profileId ?? '') })),
     open: (sessionId, url) => {
       if (!previewAllowed()) return;
       const front = frontTab(get(), sessionId);
@@ -172,7 +191,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     openTab: (owner, url, options = {}) => {
       let id = '';
       tabs((s) => {
-        const result = openTab(s, owner, url, { id: newId(), now: Date.now(), seq: ++seq, focus: options.focus, favoriteId: options.favoriteId });
+        const result = openTab(s, owner, url, { id: newId(), now: Date.now(), seq: ++seq, focus: options.focus, favoriteId: options.favoriteId, profileId: options.profileId });
         id = result.id;
         return result.state;
       });
@@ -202,7 +221,7 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
       if (!tab?.url) return null;
       set({ closed });
       const had = new Set(get().tabs.map((t) => t.id));
-      const id = get().openTab(tab.owner, tab.url);
+      const id = get().openTab(tab.owner, tab.url, { profileId: tab.profileId });
       // A tab already on that address is only brought forward, as it is; a new one gets back what the closed one had.
       if (!had.has(id)) {
         tabs((s) => updateTab(s, id, { title: tab.title, name: tab.name, favicon: tab.favicon }));

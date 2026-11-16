@@ -115,6 +115,11 @@ export const ProjectDefaults = z.object({
    * (docs/orchestrator.md): which branch to start from, how to check the work, what needs your go-ahead.
    */
   orchestratorInstructions: z.string().max(MAX_ORCHESTRATOR_INSTRUCTIONS).optional(),
+  /**
+   * Sites where the browser tools' scripts (evaluate, network) may run without asking in this project, as origins
+   * (docs/browser.md, the script guard); this computer always may. Apart from `browserSites`: a script reaches more.
+   */
+  browserScriptSites: z.array(z.string().min(1).max(500)).max(50).optional(),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
 
@@ -122,7 +127,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, browserSites: true, orchestratorInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({

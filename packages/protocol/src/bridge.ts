@@ -94,6 +94,7 @@ export const IpcChannel = {
   webPreviewEvent: "seshboard:web-preview-event",
   webPreviewAddressFocus: "seshboard:web-preview-address-focus",
   webPreviewClearData: "seshboard:web-preview-clear-data",
+  webPreviewResetPartition: "seshboard:web-preview-reset-partition",
   webPreviewKeysToWindow: "seshboard:web-preview-keys-to-window",
   webPreviewSessionPage: "seshboard:web-preview-session-page",
   webPreviewPickElement: "seshboard:web-preview-pick-element",
@@ -226,12 +227,19 @@ export interface BrowserAgentTargetRequest {
   sessionId: string;
   open: string | null;
   ensure: boolean;
+  /**
+   * With `open`: the browser profile to open it in (null: the Default one). The agent has a tab of its own per profile,
+   * so it can use two accounts at once; the other tools work on the one it opened last.
+   */
+  profileId?: string | null;
 }
 
-/** The page's contents id (null: no page yet) and the address its tab shows; `error` when the window can't. */
+/** The page's contents id (null: no page yet), the address its tab shows and its browser profile; `error` when the window can't. */
 export interface BrowserAgentTarget {
   contentsId: number | null;
   url: string | null;
+  /** The tab's browser profile, null for the Default one. */
+  profileId?: string | null;
   error?: string;
 }
 
@@ -471,12 +479,19 @@ export interface Preferences {
    */
   agentVisuals: boolean;
   /**
-   * Settings › General › Browser: "Allow Seshboard to control the browser". On (with the browser on), the sessions
+   * Settings › Browser: "Allow Seshboard to control the browser". On (with the browser on), the sessions
    * Seshboard starts or resumes get its `browser` tools, whatever their agent (Claude Code, Copilot, Codex): open,
    * read, click and type in the session's Browser panel. Pages on this computer need no approval; other sites ask
    * first, or are allowed per project.
    */
   browserControl: boolean;
+  /**
+   * Settings › Browser › Agents: "Allow scripts in pages". On (with browser control), sessions started or resumed
+   * after the change also get `evaluate` (a script in the page, with its globals and your login) and `network` (the
+   * page's requests and their bodies). Pages on this computer run them at once; any other site asks on a card of its
+   * own. Off by default; turning it off refuses both at once, even in sessions that list them.
+   */
+  browserScripts: boolean;
   /**
    * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
    * Seshboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
@@ -657,6 +672,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   chrome: false,
   agentVisuals: true,
   browserControl: true,
+  browserScripts: false,
   keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
@@ -851,6 +867,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
   if (typeof raw.agentVisuals === "boolean") out.agentVisuals = raw.agentVisuals;
   if (typeof raw.browserControl === "boolean") out.browserControl = raw.browserControl;
+  if (typeof raw.browserScripts === "boolean") out.browserScripts = raw.browserScripts;
   if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "beta"] as const, raw.updateChannel))
@@ -1298,9 +1315,15 @@ export interface SeshboardBridge {
   setAddressFocus(focused: boolean): void;
   /**
    * Clears what the browser's pages keep (the browser on): a site's cookies and storage for `origin`, which signs you
-   * out of it, or with null everything (cookies, storage, cache, sign-ins). Resolves once it is done.
+   * out of it, or with null everything (cookies, storage, cache, sign-ins). In `partition`, a browser profile's (the
+   * Default one's when left out). Resolves once it is done.
    */
-  clearBrowsingData(origin: string | null): Promise<void>;
+  clearBrowsingData(origin: string | null, partition?: string): Promise<void>;
+  /**
+   * Reset or Delete of a browser profile (docs/browser.md, Browser profiles): clears what main keeps for its partition
+   * (`WEB_PREVIEW_PARTITION` for the Default one), the parts ticked. History is the engine's (`browser.profiles.reset`).
+   */
+  resetBrowserPartition(partition: string, parts: { cookies: boolean; siteData: boolean; cache: boolean }): Promise<void>;
   /**
    * A browser page's keys go to the window: the window's document took the focus from the page (`contentsId`, a key it
    * handed over opened the palette or a dialog), but Chromium leaves the keyboard with the page. Main sends what is

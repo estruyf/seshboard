@@ -45,8 +45,12 @@ export type PaletteDialog =
   | { kind: 'edit-favorite'; id: string }
   /** ⌘D or the star on a page: its bookmark, just added (or the one it had), to name, place or remove. */
   | { kind: 'bookmark'; tabId: string }
-  /** Clear data for this site (`origin`) or, with null, all browsing data: asks first. */
-  | { kind: 'clear-browser-data'; origin: string | null }
+  /** Clear data for this site (`origin`, in the tab's browser profile) or, with null, all browsing data: asks first. */
+  | { kind: 'clear-browser-data'; origin: string | null; profileId?: string | null }
+  /** Reset profile… on a browser profile (null: the Default one): what to forget, ticked. */
+  | { kind: 'reset-browser-profile'; profileId: string | null }
+  /** Delete profile… on a browser profile: asks first. */
+  | { kind: 'delete-browser-profile'; profileId: string }
   /** New session from an issue or pull request: the # list on its own, for `root`. */
   | { kind: 'github-start'; type: 'issue' | 'pr'; root: string }
   /**

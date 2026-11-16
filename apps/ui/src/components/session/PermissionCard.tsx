@@ -286,6 +286,11 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
         <Button ref={allowRef} variant="primary" size="lg" shortcut="permission.allow" data-permission-allow disabled={busy} onClick={allow} data-tooltip={`Allow this once; ${midSentence(agent)} asks again next time`}>
           Allow
         </Button>
+        {request.sessionAllow && (
+          <Button size="lg" disabled={busy} data-permission-session-allow data-tooltip="Allow it until this session ends or Seshboard restarts" onClick={() => void respond({ behavior: 'allow', session: true })}>
+            Allow for this session
+          </Button>
+        )}
         {request.alwaysLabel && (
           <Button
             size="lg"

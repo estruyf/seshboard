@@ -1,7 +1,8 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { BrowserWindow, webContents, type WebContents } from 'electron';
+import { BrowserWindow, session, webContents, type WebContents } from 'electron';
 import { setFieldValue, until, waitInPage } from './pageDriver.ts';
+import type { BrowserToolRequest, BrowserToolResult } from '@seshboard/protocol/bridge';
 import { MOD_KEY_PROPERTY, platformModifiers } from './smokeKeys.ts';
 import { isSessionPage, runPageMenuEntry } from './webPreview.ts';
 
@@ -15,6 +16,7 @@ const PAGES: Record<string, string> = {
   '/two': '<title>Smoke browser two</title><h1>Two</h1>',
   '/long': `<title>Smoke browser long ${'title '.repeat(40)}</title><h1>Long</h1>`,
   // A click that reaches the button marks the body: a pick must keep it from the page.
+  '/profile': '<title>Smoke profile</title><h1>Profile</h1>',
   '/pick': '<title>Smoke pick</title><main><h1 id=heading>Pick me</h1><p id=words>Some words to quote here.</p><button class="cta" data-testid=buy onclick="document.body.dataset.clicked=1">Buy now</button></main>',
 };
 
@@ -26,8 +28,10 @@ export interface BrowserSmokeDeps {
   shot(name: string): Promise<void>;
   /** Sets the browser on or off, as Settings would. */
   setBrowser(on: boolean): void;
-  /** Sets the browser's other preferences: its card in the sidebar, previews. */
-  setPrefs(patch: { browserIntro?: 'ask' | 'done'; webPreview?: boolean }): void;
+  /** Sets the browser's other preferences: its card in the sidebar, previews, control by agents. */
+  setPrefs(patch: { browserIntro?: 'ask' | 'done'; webPreview?: boolean; browserControl?: boolean }): void;
+  /** The browser tools' calls, as the engine's bridge makes them (main's `browserAgent`). */
+  agent?(request: BrowserToolRequest): Promise<BrowserToolResult>;
   /** The outside addresses the preview sent to the browser (recorded, not opened, in a smoke run). */
   outside: readonly string[];
   /** Reloads the window, which the run then doesn't take for an engine restart. */
@@ -620,6 +624,162 @@ export async function runBrowserPaletteStep(win: BrowserWindow, deps: BrowserSmo
   escape(win);
   if (!(await waitInPage(win, `!${q('[data-clear-browsing-data-dialog]')}`, 3_000))) return 'Escape did not close Clear all browsing data';
   return 'ok: zoom in (110% in the toolbar) and actual size, mute and unmute, a sign-in window with its opener, a stopped page loaded again, developer tools, Rename tab… and Go to tab… from the palette; Clear data for this site asked and removed the cookie; Clear all asked';
+}
+
+/**
+ * "browser profiles": Settings › Browser makes two browser profiles (a name another one has is refused); a tab in the
+ * first, opened from the new tab menu, keeps a cookie and local storage on a local page; Open in other profile opens
+ * the same page in the second, which sees neither; the toolbar's switcher moves that tab to the first (its page then sees
+ * the first one's data) and to Default (none); Reset profile… (everything ticked) on the first forgets both, and
+ * its tab loads again. Both profiles are deleted again, which closes their tabs.
+ */
+export async function runBrowserProfilesStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const url = `${await site()}profile`;
+  deps.setBrowser(true);
+  if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
+
+  // Settings › Browser, shown with the browser on.
+  await js(`${q('[data-settings]')} || ${q('[data-open-settings]')}.click()`);
+  if (!(await waitInPage(win, q('[data-settings-section="browser"]'), 3_000))) return 'no Browser page in Settings with the browser on';
+  await js(`${q('[data-settings-section="browser"]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-settings-page="browser"] [data-browser-control-setting]')} && ${q('[data-settings-page="browser"] [data-browser-profile="default"]')}`, 3_000))) return 'Settings › Browser has no Allow Seshboard to control the browser or no Default profile';
+  if (await js(`!!${q('[data-settings-page="general"]')}`)) return 'Settings still shows General';
+  const names = ['Smoke A', 'Smoke B'];
+  const ids: string[] = [];
+  const idOf = (name: string) => `[...document.querySelectorAll('[data-browser-profile] [data-browser-profile-name]')].find((input) => input.value === ${JSON.stringify(name)})?.closest('[data-browser-profile]')?.dataset.browserProfile`;
+  for (const name of names) {
+    await js(`${q('[data-new-browser-profile]')}.click()`);
+    if (!(await waitInPage(win, q('[data-new-browser-profile-name]'), 2_000))) return 'New profile showed no form';
+    await setFieldValue(win, '[data-new-browser-profile-name]', name);
+    await js(`${q('[data-new-browser-profile-create]')}.click()`);
+    if (!(await waitInPage(win, `!${q('[data-new-browser-profile-form]')} && !!(${idOf(name)})`, 5_000))) return `${name} was not created: ${String(await js(`${q('[data-new-browser-profile-form] [role=alert]')}?.textContent ?? ''`))}`;
+    ids.push(String(await js(idOf(name))));
+  }
+  const [a, b] = ids as [string, string];
+  // The same name again, in any case, is refused with a reason.
+  await js(`${q('[data-new-browser-profile]')}.click()`);
+  await waitInPage(win, q('[data-new-browser-profile-name]'), 2_000);
+  await setFieldValue(win, '[data-new-browser-profile-name]', 'smoke a');
+  await js(`${q('[data-new-browser-profile-create]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-new-browser-profile-form] [role=alert]')}?.textContent.includes('already there')`, 3_000))) return 'a second profile called smoke a was not refused';
+  await js(`[...document.querySelectorAll('[data-new-browser-profile-form] button')].find((b) => b.textContent.trim() === 'Cancel').click()`);
+  await deps.shot('browser-profiles-settings');
+  await js(`${q('[data-close-settings]')}.click()`);
+  if (!(await waitInPage(win, `!${q('[data-settings]')}`, 3_000))) return 'Settings did not close';
+
+  // A tab in the first profile, from the new tab menu in the Browser view's list.
+  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list] [data-browser-new-tab-menu]')}`, 3_000))) return 'the Browser list has no New tab in profile menu';
+  await js(`${q('[data-browser-tab-list] [data-browser-new-tab-menu]')}.click()`);
+  if (!(await waitInPage(win, q(`[data-browser-new-tab-profile="${a}"]`), 2_000))) return 'the New tab in profile menu does not list the new profile';
+  await js(`${q(`[data-browser-new-tab-profile="${a}"]`)}.click()`);
+  const address = q('[data-browser-view] [data-browser-address]');
+  if (!(await waitInPage(win, `${address} && !${address}.disabled`, 3_000))) return 'the new tab in a profile gave no address bar';
+  await setFieldValue(win, '[data-browser-view] [data-browser-address]', url.replace('http://', ''));
+  await js(`${address}.form.requestSubmit()`);
+  const pageIn = (id: string) => webContents.getAllWebContents().find((c) => c.getType() === 'webview' && !c.isDestroyed() && c.session === session.fromPartition(`persist:browser-${id}`) && c.getURL().startsWith(url) && c.getTitle() === 'Smoke profile');
+  if (!(await until(() => pageIn(a) !== undefined, 10_000))) return "the page did not load in the first profile's partition";
+  const tabRow = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.querySelector('[data-browser-tab-profile="${a}"]'))`;
+  if (!(await waitInPage(win, tabRow, 3_000))) return "the profile's tab shows no mark of its profile in the list";
+  await pageIn(a)!.executeJavaScript("localStorage.setItem('smoke-profile', 'A'); document.cookie = 'smoke-profile=A; path=/'; true");
+  const stored = async (page: WebContents | undefined) => (page ? String(await page.executeJavaScript("`${localStorage.getItem('smoke-profile')}|${document.cookie}`").catch(() => '?')) : '?');
+  if (!(await stored(pageIn(a))).startsWith('A|') || !(await stored(pageIn(a))).includes('smoke-profile=A')) return 'the first profile could not keep its cookie and local storage';
+
+  // Open in other profile: the same page in a new tab of the second, which sees neither.
+  await js(`${tabRow}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }))`);
+  if (!(await waitInPage(win, q('[data-browser-tab-other-profile]'), 2_000))) return "the tab's menu has no Open in other profile";
+  await js(`${q('[data-browser-tab-other-profile]')}.click()`);
+  if (!(await waitInPage(win, q(`[data-browser-tab-open-in="${b}"]`), 2_000))) return 'Open in other profile does not list the second profile';
+  await js(`${q(`[data-browser-tab-open-in="${b}"]`)}.click()`);
+  if (!(await until(() => pageIn(b) !== undefined, 10_000))) return "Open in other profile did not load the page in the second profile's partition";
+  const other = await stored(pageIn(b));
+  if (other !== 'null|') return `the second profile sees the first one's data (${other})`;
+
+  // The toolbar's switcher: the second profile's tab (in front) moves to the first, in its place, and its page now sees
+  // the first one's data; then to Default, which sees none. Each time the switcher names the profile.
+  const switcher = (id: string) => q(`[data-browser-view] [data-web-preview-toolbar] [data-browser-profile-switch="${id}"]`);
+  if (!(await waitInPage(win, `${switcher(b)}?.getAttribute('aria-label') === 'Browser profile: Smoke B' && ${switcher(b)}.textContent.includes('Smoke B')`, 3_000))) return "the toolbar's switcher does not show the tab's profile";
+  const listed = () => js("document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]').length") as Promise<number>;
+  const tabsBefore = await listed();
+  await js(`${switcher(b)}.click()`);
+  if (!(await waitInPage(win, `${q(`[data-browser-profile-switch-to="${b}"][aria-checked="true"]`)} || ${q(`[data-browser-profile-switch-to="${b}"]`)}?.closest('[role]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return "the switcher's menu does not check the tab's own profile";
+  await deps.shot('browser-profile-switch');
+  await js(`${q(`[data-browser-profile-switch-to="${a}"]`)}.click()`);
+  if (!(await waitInPage(win, `!!${switcher(a)}`, 3_000))) return 'switching to the first profile did not show it in the toolbar';
+  if (!(await until(() => pageIn(b) === undefined, 5_000))) return "the switched tab's page stayed in the second profile";
+  let seen = '';
+  for (const started = Date.now(); Date.now() - started < 8_000; await new Promise((resolve) => setTimeout(resolve, 150))) {
+    const pages = webContents.getAllWebContents().filter((c) => c.getType() === 'webview' && !c.isDestroyed() && c.session === session.fromPartition(`persist:browser-${a}`) && c.getURL().startsWith(url));
+    if (pages.length >= 2) seen = (await Promise.all(pages.map(stored))).join(',');
+    if (seen && seen.split(',').every((one) => one.startsWith('A|'))) break;
+  }
+  if (!seen.split(',').every((one) => one.startsWith('A|'))) return `after switching to the first profile the page does not see its data (${seen})`;
+  if ((await listed()) !== tabsBefore) return 'switching the profile changed the number of tabs instead of replacing the tab';
+  await js(`${switcher(a)}.click()`);
+  if (!(await waitInPage(win, q('[data-browser-profile-switch-to="default"]'), 2_000))) return "the switcher's menu has no Default";
+  await js(`${q('[data-browser-profile-switch-to="default"]')}.click()`);
+  if (!(await waitInPage(win, `!!${switcher('default')} && ${switcher('default')}.getAttribute('aria-label') === 'Browser profile: Default'`, 3_000))) return 'switching to Default did not show it in the toolbar';
+  const defaultPage = () => webContents.getAllWebContents().find((c) => c.getType() === 'webview' && !c.isDestroyed() && c.session === session.fromPartition('persist:web-preview') && c.getURL().startsWith(url) && c.getTitle() === 'Smoke profile');
+  if (!(await until(() => defaultPage() !== undefined, 8_000))) return 'switching to Default did not load the page in the Default profile';
+  if ((await stored(defaultPage())) !== 'null|') return 'the Default profile sees the first one\'s data';
+
+  // The agent's open with a profile (the name already found by the engine's bridge, as it passes it on): a tab of its
+  // own in that profile, beside its Default one, so it can use both accounts.
+  if (deps.agent) {
+    deps.setPrefs({ browserControl: true });
+    await js("document.querySelector('[data-go-home]')?.click()");
+    await waitInPage(win, "!!document.querySelector('[data-session-list] [data-session-id]')", 3_000);
+    await js("document.querySelector('[data-session-list] [data-session-id]')?.click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[data-current-session]')", 5_000))) return 'no session on screen for the agent';
+    const sessionId = String(await js("document.querySelector('[data-current-session]').dataset.currentSession"));
+    const inProfile = await deps.agent({ sessionId, tool: 'open', args: { url, profileId: a, profileName: 'Smoke A' } });
+    if (inProfile.error || !inProfile.text.includes('in the browser profile Smoke A')) return `the agent's open in a profile: ${inProfile.text}`;
+    const where = await deps.agent({ sessionId, tool: 'where', args: {} });
+    if (where.profileId !== a) return `after open in Smoke A the agent's tools work in ${String(where.profileId)}`;
+    const agentPages = () => webContents.getAllWebContents().filter((c) => c.getType() === 'webview' && !c.isDestroyed() && c.session === session.fromPartition(`persist:browser-${a}`) && c.getURL().startsWith(url));
+    if (!(await until(() => agentPages().length >= 2, 5_000))) return "the agent's page is not in the profile's partition";
+    for (const page of agentPages()) if (!(await stored(page)).startsWith('A|')) return "the agent's page in Smoke A does not have the profile's data";
+    const plain = await deps.agent({ sessionId, tool: 'open', args: { url } });
+    if (plain.error || plain.text.includes('browser profile')) return `the agent's open without a profile: ${plain.text}`;
+    if ((await deps.agent({ sessionId, tool: 'where', args: {} })).profileId !== null) return "after open without a profile the agent's tools are not in Default";
+    if (!(await waitInPage(win, `document.querySelectorAll('[data-current-session] [data-web-preview-tabs] [data-browser-tab]').length >= 2 && !!${q(`[data-current-session] [data-web-preview-tabs] [data-browser-tab-profile="${a}"]`)}`, 3_000))) return "the session's strip does not show the agent's tab in Smoke A beside its Default one";
+    await js(`${q('[data-nav="browser"]')}.click()`);
+    if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${tabRow}`, 3_000))) return 'the Browser view did not come back';
+  }
+
+  // Reset profile… on the first: everything ticked to start with, then its data is gone and its tab loads again.
+  await js(`${tabRow}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }))`);
+  if (!(await waitInPage(win, q('[data-browser-tab-reset-profile]'), 2_000))) return "the tab's menu has no Reset profile…";
+  await js(`${q('[data-browser-tab-reset-profile]')}.click()`);
+  const dialog = `[data-reset-browser-profile-dialog="${a}"]`;
+  if (!(await waitInPage(win, q(`${dialog} [data-confirm]`), 2_000))) return 'Reset profile… showed no dialog';
+  if (!(await js(`document.querySelectorAll('${dialog} [data-reset-part][aria-checked="true"]').length === 4`))) return 'Reset profile… does not start with all four parts ticked';
+  if (!(await js(`${q(dialog)}.textContent.includes('Reset Smoke A?') && ${q(dialog)}.textContent.includes('Its tabs reload.')`))) return 'the Reset dialog does not name the profile or say its tabs reload';
+  await deps.shot('browser-profile-reset');
+  await js(`${q(`${dialog} [data-confirm]`)}.click()`);
+  if (!(await waitInPage(win, `!${q(dialog)}`, 8_000))) return 'the Reset dialog stayed';
+  let forgotten = '';
+  for (const started = Date.now(); Date.now() - started < 8_000; await new Promise((resolve) => setTimeout(resolve, 150))) {
+    forgotten = await stored(pageIn(a));
+    if (forgotten === 'null|') break;
+  }
+  if (forgotten !== 'null|') return `after Reset the first profile still has its data (${forgotten})`;
+
+  // Clean up: both profiles deleted, which closes their tabs.
+  await js(`${q('[data-open-settings]')}.click()`);
+  if (!(await waitInPage(win, q('[data-settings-section="browser"]'), 3_000))) return 'Settings did not open again';
+  await js(`${q('[data-settings-section="browser"]')}.click()`);
+  for (const id of ids) {
+    if (!(await waitInPage(win, q(`[data-browser-profile-delete="${id}"]`), 3_000))) return 'a profile has no Delete button';
+    await js(`${q(`[data-browser-profile-delete="${id}"]`)}.click()`);
+    if (!(await waitInPage(win, q(`[data-delete-browser-profile-dialog="${id}"] [data-confirm]`), 2_000))) return 'Delete profile did not ask first';
+    await js(`${q(`[data-delete-browser-profile-dialog="${id}"] [data-confirm]`)}.click()`);
+    if (!(await waitInPage(win, `!${q(`[data-browser-profile="${id}"]`)}`, 8_000))) return 'a deleted profile stayed in the list';
+  }
+  await js(`${q('[data-close-settings]')}.click()`);
+  if (!(await waitInPage(win, `!${q('[data-browser-tab-profile]')}`, 3_000))) return "a deleted profile's tab is still open";
+  return `ok: two browser profiles made in Settings › Browser (a taken name refused), a tab in the first from the new tab menu kept a cookie and local storage, Open in other profile showed the second sees neither, the toolbar's switcher moved that tab to the first (which saw its data) and to Default (which did not),${deps.agent ? " the agent's open used the profile's own tab and data beside its Default one," : ''} Reset with all four ticked forgot them and reloaded the tab, both deleted with their tabs`;
 }
 
 /**

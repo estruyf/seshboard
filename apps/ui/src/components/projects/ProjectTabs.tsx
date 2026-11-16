@@ -446,11 +446,12 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   // "Always allow" on a site's prompt changes the project's sites in the engine: read them again when this opens.
   useEffect(() => reload(), [reload]);
   const browserOn = usePreferences((s) => s.prefs.browserEnabled && s.prefs.browserControl);
+  const scriptsOn = usePreferences((s) => s.prefs.browserScripts);
   const save = async (defaults: ProjectDefaults) => {
     if (!client) return;
     try {
       setError(null);
-      await client.call('projects.setDefaults', { root: project.root, defaults: { ...defaults, browserSites: project.defaults.browserSites } });
+      await client.call('projects.setDefaults', { root: project.root, defaults: { ...defaults, browserSites: project.defaults.browserSites, browserScriptSites: project.defaults.browserScriptSites } });
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -521,6 +522,23 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
             onSave={async (browserSites) => {
               if (!client) return;
               await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, browserSites } });
+              reload();
+            }}
+          />
+        </SettingRow>
+      )}
+      {browserOn && (scriptsOn || (project.defaults.browserScriptSites?.length ?? 0) > 0) && (
+        <SettingRow
+          label="Scripts in pages"
+          hint="The agent can run scripts and read requests on these sites without asking, with your login there. Pages on this computer always can. Any other site asks first."
+          data-project-browser-script-sites
+        >
+          <BrowserSitesEditor
+            sites={project.defaults.browserScriptSites ?? []}
+            inputLabel="Site to allow scripts on"
+            onSave={async (browserScriptSites) => {
+              if (!client) return;
+              await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, browserScriptSites } });
               reload();
             }}
           />

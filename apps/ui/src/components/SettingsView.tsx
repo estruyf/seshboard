@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
-import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -44,7 +44,8 @@ import { clickKeysFor, formatKeys, keysFor, matches } from '../lib/shortcuts.ts'
 import { groupByPage, searchSettings, type SettingEntry } from './settingsSearch/searchSettings.ts';
 import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } from './settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from './settingsSearch/settingsIndex.ts';
-import { navGroups, SETTINGS_GROUP_LABEL, SETTINGS_SECTIONS, settingsPageOrder, settingsSectionLabel, type SettingsPage } from './settingsSections.ts';
+import { navGroups, SETTINGS_GROUP_LABEL, SETTINGS_SECTIONS, settingsPageOrder, settingsPageShown, settingsSectionLabel, type SettingsPage } from './settingsSections.ts';
+import { BrowserProfilesSettings } from './webPreview/BrowserProfilesSettings.tsx';
 import { SectionHeader } from './ui/SectionHeader.tsx';
 
 /** A session row in miniature, drawn with the live theme tokens. */
@@ -553,6 +554,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               onChange={(webPreview) => update({ webPreview })}
             />
           </Section>
+          {/* The rest of the browser's settings are on its own page, Settings › Browser, shown while it is on. */}
           <Section title="Browser">
             <Toggle
               label="Allow browser"
@@ -560,13 +562,6 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               checked={prefs.browserEnabled}
               attr="data-browser-setting"
               onChange={(browserEnabled) => update({ browserEnabled, browserIntro: 'done' })}
-            />
-            <Toggle
-              label="Allow Seshboard to control the browser"
-              detail={BROWSER_CONTROL_DETAIL}
-              checked={prefs.browserControl}
-              attr="data-browser-control-setting"
-              onChange={(browserControl) => update({ browserControl })}
             />
           </Section>
           <Section title="Quitting">
@@ -640,6 +635,31 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <EngineDiagnostics />
         </Section>
       );
+    case 'browser':
+      return (
+        <>
+          <Section title="Agents">
+            <Toggle
+              label="Allow Seshboard to control the browser"
+              detail={BROWSER_CONTROL_DETAIL}
+              checked={prefs.browserControl}
+              attr="data-browser-control-setting"
+              onChange={(browserControl) => update({ browserControl })}
+            />
+            <Toggle
+              label="Allow scripts in pages"
+              detail={BROWSER_SCRIPTS_DETAIL}
+              checked={prefs.browserControl && prefs.browserScripts}
+              disabled={!prefs.browserControl}
+              attr="data-browser-scripts-setting"
+              onChange={(browserScripts) => update({ browserScripts })}
+            />
+          </Section>
+          <Section title="Browser profiles" description="Each profile keeps its own logins, site data and cache, so you can use one site with several accounts side by side. Its tabs show its colour.">
+            <BrowserProfilesSettings />
+          </Section>
+        </>
+      );
     case 'about':
       return (
         <Section title="About">
@@ -692,7 +712,8 @@ export function SettingsNav({ search }: { search: SearchState }) {
       </button>
     );
   };
-  const groups = navGroups(SETTINGS_SECTIONS);
+  const browser = usePreferences((s) => s.prefs.browserEnabled);
+  const groups = navGroups(SETTINGS_SECTIONS.filter((page) => settingsPageShown(page.id, { browser })));
   const bottom = groups.find((g) => g.group === 'bottom');
   return (
     <nav aria-label="Settings sections" onKeyDown={moveBetweenPages} className={`flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 ${sidebarClosed ? 'pt-12' : 'pt-3'}`} data-settings-nav>
@@ -765,7 +786,11 @@ export function SettingsView() {
   const [active, setActive] = useState(0);
   const field = useRef<HTMLInputElement>(null);
   const listId = useId();
-  const entries = useMemo(settingsIndex, []);
+  // Settings › Browser's settings are found only while it is shown.
+  const browser = usePreferences((s) => s.prefs.browserEnabled);
+  const entries = useMemo(() => settingsIndex().filter((entry) => settingsPageShown(entry.page, { browser })), [browser]);
+  // A page that went away meanwhile (Browser, as the browser was turned off) shows General instead.
+  const shown = settingsPageShown(section, { browser }) ? section : 'general';
   const found = useMemo(() => searchSettings(query, entries, settingsSectionLabel, currentPlatform()), [query, entries]);
   const groups = useMemo(() => groupByPage(found, settingsPageOrder), [found]);
   /** The results in the order they show, for ↑ ↓. */
@@ -852,8 +877,8 @@ export function SettingsView() {
                 <SettingsSearchResults query={query} groups={groups} pages={SETTINGS_SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
               </div>
             ) : (
-              <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'pipelines' ? 'max-w-6xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
-                <SectionPage section={section} scrollRef={scroller} />
+              <div className={`mx-auto min-w-0 px-8 ${shown === 'sessions' ? 'max-w-5xl' : shown === 'pipelines' ? 'max-w-6xl' : shown === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={shown}>
+                <SectionPage section={shown} scrollRef={scroller} />
               </div>
             )}
           </div>

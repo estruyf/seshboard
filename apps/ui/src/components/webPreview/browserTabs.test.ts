@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSER_OWNER, cleanTabName, favoriteTab, linkFavorite, listedTabs, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, sameGroup, stepTab, tabName, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
+import { BROWSER_OWNER, cleanTabName, favoriteTab, linkFavorite, listedTabs, nextZoom, zoomLabel, closeTab, livePages, moveTab, NO_TABS, openTab, ownerTabs, pinTab, rememberClosed, restore, rowIndicators, sameAddress, sameGroup, showTab, stepTab, switchTabProfile, tabName, tabsOfProfile, takeClosed, unpinTab, updateTab, type TabsState } from './browserTabs.ts';
 
 let n = 0;
 const open = (state: TabsState, owner: string, url: string | null, focus = true) => openTab(state, owner, url, { id: `t${++n}`, now: ++n, seq: n, focus });
@@ -15,6 +15,45 @@ function three(owner = 's1') {
   }
   return { state, made };
 }
+
+describe('browser profiles', () => {
+  it('opens the same address again in another profile, and keeps the profile when restored', () => {
+    let state = open(NO_TABS, 's1', 'https://a.test/').state;
+    const admin = openTab(state, 's1', 'https://a.test/', { id: 'admin', now: 1, seq: 1, profileId: 'p1' });
+    expect(admin.id).toBe('admin');
+    state = admin.state;
+    expect(state.tabs.find((t) => t.id === 'admin')?.profileId).toBe('p1');
+    // The same profile's tab on that address comes forward instead of another.
+    expect(openTab(state, 's1', 'https://a.test/#x', { id: 'again', now: 2, seq: 2, profileId: 'p1' }).id).toBe('admin');
+    const restored = restore(NO_TABS, [{ id: 'pin', owner: 'browser', url: 'https://b.test/', title: 'B', position: 0, profileId: 'p2' }, { id: 'old', owner: 'browser', url: 'https://c.test/', title: 'C', position: 1 }]);
+    expect(restored.tabs.map((t) => [t.id, t.profileId])).toEqual([['pin', 'p2'], ['old', null]]);
+    expect(tabsOfProfile(state, 'p1').map((t) => t.id)).toEqual(['admin']);
+  });
+});
+
+describe('switchTabProfile', () => {
+  it("puts a tab in another profile in the old one's place, pinned and in front as it was", () => {
+    let { state, made } = three();
+    state = pinTab(state, made[1]!);
+    state = showTab(state, made[1]!, 50);
+    const before = ids(state, 's1');
+    const switched = switchTabProfile(state, made[1]!, 'p1', { id: 'new', now: 99, seq: 99 });
+    expect(ids(switched, 's1')).toEqual(before.map((id) => (id === made[1] ? 'new' : id)));
+    expect(switched.tabs.find((t) => t.id === 'new')).toMatchObject({ profileId: 'p1', pinned: true, url: 'https://b.test/', seq: 99, lastShownAt: 99 });
+    expect(switched.active.get('s1')).toBe('new');
+    expect(switched.tabs.some((t) => t.id === made[1])).toBe(false);
+    // Back to Default works the same way; the same profile, or a tab that is gone, changes nothing.
+    expect(switchTabProfile(switched, 'new', null, { id: 'back', now: 100, seq: 100 }).tabs.find((t) => t.id === 'back')?.profileId).toBeNull();
+    expect(switchTabProfile(switched, 'new', 'p1', { id: 'x', now: 1, seq: 1 })).toBe(switched);
+    expect(switchTabProfile(switched, 'gone', 'p2', { id: 'x', now: 1, seq: 1 })).toBe(switched);
+  });
+
+  it('leaves the front tab alone when another tab switches', () => {
+    const { state, made } = three();
+    const switched = switchTabProfile(state, made[0]!, 'p1', { id: 'new', now: 99, seq: 99 });
+    expect(switched.active.get('s1')).toBe(made[2]);
+  });
+});
 
 describe('sameAddress', () => {
   it('compares origin and path, ignoring #', () => {

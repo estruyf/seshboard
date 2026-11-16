@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest } from '@seshboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -32,10 +32,10 @@ import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visual
 import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
 import { installBrowserAgent } from './browserAgent.ts';
-import { runBrowserAgentStep, runBrowserServerStep } from './browserAgentSmoke.ts';
+import { runBrowserAgentStep, runBrowserScriptsStep, runBrowserServerStep } from './browserAgentSmoke.ts';
 import { runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
-import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
+import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -309,8 +309,11 @@ function updatePreferences(patch: unknown): void {
  * it needs no Node on the computer, on its bundle next to this one (inside the app's archive when packaged).
  */
 const visualizeServer = () => ({ command: process.execPath, args: [join(here, 'visualize.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
-/** Seshboard's `browser` MCP server (`src/browserMcp/`), started the same way; the engine adds its socket and a session's token. */
-const browserMcpServer = () => ({ command: process.execPath, args: [join(here, 'browser-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
+/**
+ * Seshboard's `browser` MCP server (`src/browserMcp/`), started the same way; the engine adds its socket and a session's
+ * token. `scripts`: Settings › Browser › Allow scripts in pages, so it lists evaluate and network.
+ */
+const browserMcpServer = (scripts = false) => ({ command: process.execPath, args: [join(here, 'browser-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1', ...(scripts ? { [BROWSER_SCRIPTS_ENV]: '1' } : {}) } });
 /** Seshboard's `orchestrator` MCP server (`src/orchestratorMcp/`), started the same way by an orchestrator's agent (docs/orchestrator.md). */
 const orchestratorMcpServer = () => ({ command: process.execPath, args: [join(here, 'orchestrator-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
 
@@ -336,9 +339,9 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'skimMarks', enabled: prefs.skimMarks });
   // Settings › General › Visuals in replies: sessions started or resumed from now on get the visualize server.
   engine?.sendStanding({ type: 'visuals', server: prefs.agentVisuals ? visualizeServer() : null });
-  // Settings › General › Browser › Allow Seshboard to control the browser: sessions started or resumed from now on get
-  // the browser server, whatever their agent.
-  engine?.sendStanding({ type: 'browserControl', server: prefs.browserEnabled && prefs.browserControl ? browserMcpServer() : null });
+  // Settings › Browser › Allow Seshboard to control the browser: sessions started or resumed from now on get
+  // the browser server, whatever their agent; with Allow scripts in pages, its evaluate and network too.
+  engine?.sendStanding({ type: 'browserControl', server: prefs.browserEnabled && prefs.browserControl ? browserMcpServer(prefs.browserScripts) : null });
   // The orchestrator's tools: a session started or resumed as an orchestrator gets its server, whatever its agent.
   engine?.sendStanding({ type: 'orchestratorServer', server: orchestratorMcpServer() });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
@@ -452,6 +455,7 @@ const browserAgent = installBrowserAgent({
     return popout && !popout.isDestroyed() ? popout : mainWindow;
   },
   enabled: () => preferences.get().browserEnabled && preferences.get().browserControl,
+  scripts: () => preferences.get().browserScripts,
 });
 /**
  * How each pop-out's session has its panels laid out, by session (a `SessionView`, which main never looks inside): what
@@ -14312,18 +14316,27 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     }
     updatePreferences({ colorScheme: scheme });
   };
-  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win) };
+  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win), agent: (request) => browserAgent.run(request) };
   await step('browser intro: the sidebar card opens the browser, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
   await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
-  await step('browser server: runs as this app, lists its tools, and says when it has no session', () => runBrowserServerStep(browserMcpServer()));
+  await step('browser server: runs as this app, lists its tools, and says when it has no session', async () => {
+    const plain = await runBrowserServerStep(browserMcpServer());
+    if (!plain.startsWith('ok')) return plain;
+    const scripts = await runBrowserServerStep(browserMcpServer(true));
+    return scripts.startsWith('ok') ? `${plain}; with scripts on, it lists evaluate and network too` : `with scripts on: ${scripts}`;
+  });
   await step('browser control: open, snapshot, type, click, screenshot and console on a local page, in the session’s own tab', () =>
     runBrowserAgentStep(win, { run: (request) => browserAgent.run(request), setPrefs: updatePreferences, prefs: () => preferences.get(), shot: bothSchemes }),
+  );
+  await step('browser scripts: scripts off refused, read in parts and an XML source, evaluate and network on a local page', () =>
+    runBrowserScriptsStep(win, { run: (request) => browserAgent.run(request), setPrefs: updatePreferences, prefs: () => preferences.get(), shot: bothSchemes }),
   );
   // Needs "browser view" first: its tab and its pages in the history.
   await step('browser suggestions: the address bar offers open tabs and pages from the history', () => runBrowserSuggestionsStep(win, browserDeps));
   await step('browser pin: a favourite tile keeps its page, its name and icon after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser favorites: the star bookmarks a page into a folder, kept after a reload, opened from an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step("browser profiles: two made in Settings, a cookie and local storage kept apart, Open in other profile, the agent's open in a profile, Reset, Delete", () => runBrowserProfilesStep(win, browserDeps), { timeoutMs: 60_000 });
   await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
   await step('browser pick: an element picked on a session\'s page and the page\'s menu send to the message', () => runBrowserPickStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));

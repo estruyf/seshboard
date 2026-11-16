@@ -5,9 +5,10 @@ import { Button } from '../ui/Button.tsx';
 
 /**
  * The sites the browser tools may use in a project without asking (docs/browser.md), such as a staging site or a
- * hosted app a dev server plugs into. Pages on this computer always can. "Always allow" on a site's prompt adds one here.
+ * hosted app a dev server plugs into, or where their scripts may run (`inputLabel` names which). Pages on this
+ * computer always can. "Always allow" on a site's card adds one here.
  */
-export function BrowserSitesEditor({ sites, onSave }: { sites: readonly string[]; onSave(sites: string[]): Promise<void> }) {
+export function BrowserSitesEditor({ sites, onSave, inputLabel = 'Site to allow' }: { sites: readonly string[]; onSave(sites: string[]): Promise<void>; inputLabel?: string }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +63,7 @@ export function BrowserSitesEditor({ sites, onSave }: { sites: readonly string[]
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="app.example.com"
-          aria-label="Site to allow"
+          aria-label={inputLabel}
           spellCheck={false}
           className="h-8 w-72 max-w-full min-w-0 rounded-md border border-border bg-bg px-2.5 font-mono text-ui text-text outline-none focus:border-accent-ink/60"
           data-browser-site-input

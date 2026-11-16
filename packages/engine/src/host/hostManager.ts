@@ -25,8 +25,10 @@ import {
   type ModPromptAnswer,
   type ModPromptAsk,
   type ModsSnapshot,
-  siteLabel,
-  type BrowserTool,
+  browserAnswerOf,
+  browserPromptText,
+  type BrowserAnswer,
+  type BrowserAsk,
 } from '@seshboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -147,11 +149,9 @@ export interface HostManagerDeps {
   autoAnswer?: (request: PermissionRequest) => PermissionDecision | null;
   /**
    * The browser tools (docs/browser.md): Seshboard's `browser` MCP server for one process, tied to the session
-   * `sessionId` names when a call comes; null while Settings › General › Browser has them off.
+   * `sessionId` names when a call comes; null while Settings › Browser has them off.
    */
   browserServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
-  /** "Always allow" on a browser site's prompt: the session's project allows that site from now on. */
-  allowBrowserSite?: (sessionId: string, site: string) => void;
   /**
    * The orchestrator (docs/orchestrator.md): its `orchestrator` MCP server for one process, tied to the session
    * `sessionId` names when a call comes (null while main has not sent the server), whether a session being resumed is
@@ -181,8 +181,8 @@ interface Pending {
   suggestions: PermissionUpdate[] | undefined;
   /** A user's ask rule forced this prompt, so no mode answers it. */
   matchedAskRule: boolean;
-  /** A browser tool's prompt: the site that "Always allow" adds to the project. */
-  browserSite?: string;
+  /** A browser card (`askBrowser`): hears which of its choices you picked; its "Always allow" is the bridge's to keep. */
+  browser?: (answer: BrowserAnswer) => void;
   resolve: (result: PermissionResult) => void;
 }
 
@@ -695,8 +695,8 @@ export class HostManager {
         behavior: 'allow',
         updatedInput: decision.updatedInput ?? pending.input,
       };
-      if (decision.always && pending.suggestions && !pending.browserSite) result.updatedPermissions = pending.suggestions;
-      if (decision.always && pending.browserSite) this.deps.allowBrowserSite?.(pending.request.sessionId, pending.browserSite);
+      if (decision.always && pending.suggestions && !pending.browser) result.updatedPermissions = pending.suggestions;
+      pending.browser?.(browserAnswerOf(decision));
       this.settle(requestId, result);
       // "Always" can switch the mode too (Accept edits for this session), which the other waiting prompts miss.
       const mode = result.updatedPermissions?.findLast((u) => u.type === 'setMode');
@@ -1249,21 +1249,26 @@ export class HostManager {
   }
 
   /**
-   * The browser tools want a site this session's project doesn't allow (the bridge, `BrowserBridge`): asks in the
-   * session's permission card, naming the site. True when you allowed it; "Always allow" also keeps it for the project.
+   * The browser tools want a site this session's project doesn't allow, or to run scripts on one (the bridge,
+   * `BrowserBridge`): asks in the session's permission card, naming the site. Your answer: once, for this session, or
+   * always (which the bridge keeps for the project); 'deny' when you said no.
    */
-  async askBrowserSite(sessionId: string, site: string, tool: BrowserTool, input: Record<string, unknown>): Promise<boolean> {
+  async askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
     const host = this.hosts.get(sessionId);
     host?.waitingOnYou(true);
+    let answer: BrowserAnswer = 'deny';
     try {
-      const result = await this.prompt(sessionId, `mcp__browser__${tool}`, input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], site);
-      return result.behavior === 'allow';
+      const result = await this.prompt(sessionId, `mcp__browser__${ask.tool}`, ask.input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], {
+        ask,
+        answer: (picked) => (answer = picked),
+      });
+      return result.behavior === 'allow' ? answer : 'deny';
     } finally {
       host?.waitingOnYou(false);
     }
   }
 
-  private prompt(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2], browserSite?: string): Promise<PermissionResult> {
+  private prompt(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2], browser?: { ask: BrowserAsk; answer(picked: BrowserAnswer): void }): Promise<PermissionResult> {
     // Once per call: Claude's new attempt has a new id, so it can't come back here again.
     const before = this.callsBeforeMode.get(sessionId);
     if (before?.toolUseIds.delete(options.toolUseID) && recheckAfterModeChange({ toolName, matchedAskRule: Boolean(options.matchedAskRule) }, before.mode)) {
@@ -1280,15 +1285,17 @@ export class HostManager {
         toolUseId: str(options.toolUseID),
         input: clipped.value,
         ...(clipped.truncated ? { truncated: true } : {}),
-        title: browserSite ? `Claude Code wants to use ${siteLabel(browserSite)} in the browser` : str((options as { title?: unknown }).title),
-        description: browserSite ? 'It clicks and types there as you, with your login on that site.' : str((options as { description?: unknown }).description),
+        title: str((options as { title?: unknown }).title),
+        description: str((options as { description?: unknown }).description),
         decisionReason: str(options.decisionReason),
         blockedPath: str(options.blockedPath),
-        alwaysLabel: browserSite ? `${siteLabel(browserSite)} in this project` : describeSuggestions(options.suggestions),
+        alwaysLabel: describeSuggestions(options.suggestions),
         agentId: str(options.agentID),
         createdAt: Date.now(),
+        // A browser card: the site (or its scripts) in its words, and Allow for this session.
+        ...(browser ? { ...browserPromptText('Claude Code', browser.ask), sessionAllow: true } : {}),
       };
-      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), ...(browserSite ? { browserSite } : {}), resolve });
+      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), ...(browser ? { browser: browser.answer } : {}), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });
       // Answered for you: through `respond`, so an approved plan goes through `planApproved` as a click would.
       const auto = this.deps.autoAnswer?.(request) ?? null;

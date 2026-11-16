@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addressBarUrl, browserNavigation, externalSchemeAllowed, localPreviewUrl, shortUrl, webPageUrl } from './webPreview.ts';
+import { addressBarUrl, browserNavigation, browserProfilePartition, externalSchemeAllowed, isBrowserPartition, isProfilePartition, localPreviewUrl, shortUrl, webPageUrl, WEB_PREVIEW_PARTITION } from './webPreview.ts';
 
 describe('localPreviewUrl', () => {
   it('allows this computer over http and https', () => {
@@ -111,5 +111,24 @@ describe('shortUrl', () => {
   it('drops the scheme and a root slash', () => {
     expect(shortUrl('http://localhost:5173/')).toBe('localhost:5173');
     expect(shortUrl('https://localhost:5173/docs/')).toBe('localhost:5173/docs/');
+  });
+});
+
+describe('browser profile partitions', () => {
+  const id = '3f2b8c1e-6a4d-4e7b-9c2a-1d5e8f7a6b3c';
+  it('keeps the Default profile in the partition the browser always had', () => {
+    expect(browserProfilePartition(null)).toBe(WEB_PREVIEW_PARTITION);
+    expect(browserProfilePartition(undefined)).toBe(WEB_PREVIEW_PARTITION);
+    expect(browserProfilePartition(id)).toBe(`persist:browser-${id}`);
+  });
+
+  it('accepts only the Default partition and exactly a profile UUID', () => {
+    expect(isBrowserPartition(WEB_PREVIEW_PARTITION)).toBe(true);
+    expect(isBrowserPartition(`persist:browser-${id}`)).toBe(true);
+    expect(isProfilePartition(`persist:browser-${id}`)).toBe(true);
+    expect(isProfilePartition(WEB_PREVIEW_PARTITION)).toBe(false);
+    for (const bad of [undefined, '', 'persist:browser-', `browser-${id}`, `persist:browser-${id.toUpperCase()}`, `persist:browser-${id}x`, `persist:browser-${id}/..`, 'persist:browser-../../x', 'persist:main', `persist:browser-${id} `, 42]) {
+      expect(isBrowserPartition(bad)).toBe(false);
+    }
   });
 });

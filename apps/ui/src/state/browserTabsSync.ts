@@ -10,7 +10,7 @@ import { useWebPreview } from './webPreviewStore.ts';
 const SAVE_MS = 1_000;
 
 /** What the engine keeps of a pinned tab. */
-const kept = (tab: BrowserTab) => ({ id: tab.id, owner: tab.owner, url: tab.url ?? '', title: tab.title.slice(0, 500), name: tab.name, favicon: keptFavicon(tab.favicon), position: tab.position });
+const kept = (tab: BrowserTab) => ({ id: tab.id, owner: tab.owner, url: tab.url ?? '', title: tab.title.slice(0, 500), name: tab.name, favicon: keptFavicon(tab.favicon), position: tab.position, profileId: tab.profileId });
 // The title alone is no reason to write: a page whose title ticks (a timer, an unread count) would write every second.
 // It is saved with the next change of address, name or place; the page says it again when it loads.
 const same = (a: ReturnType<typeof kept>, b: ReturnType<typeof kept>) => a.url === b.url && a.name === b.name && a.favicon === b.favicon && a.position === b.position && a.owner === b.owner;
@@ -66,7 +66,7 @@ export function useBrowserTabsSync(): void {
       ({ tabs }) => {
         useWebPreview.getState().restorePinned(tabs);
         // What the engine has is what is saved; anything pinned meanwhile is saved by the first sync.
-        saved = new Map(tabs.map((t) => [t.id, { id: t.id, owner: t.owner, url: t.url, title: t.title, name: t.name ?? null, favicon: t.favicon ?? null, position: t.position }]));
+        saved = new Map(tabs.map((t) => [t.id, { id: t.id, owner: t.owner, url: t.url, title: t.title, name: t.name ?? null, favicon: t.favicon ?? null, position: t.position, profileId: t.profileId ?? null }]));
         ready = true;
         sync();
       },

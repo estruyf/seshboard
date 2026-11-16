@@ -270,7 +270,6 @@ function setup(
     autoAnswer?: HostManagerDeps['autoAnswer'];
     assertTrusted?: HostManagerDeps['assertTrusted'];
     browserServer?: HostManagerDeps['browserServer'];
-    allowBrowserSite?: HostManagerDeps['allowBrowserSite'];
     orchestratorServer?: HostManagerDeps['orchestratorServer'];
     isOrchestrator?: HostManagerDeps['isOrchestrator'];
     appendSystemFor?: HostManagerDeps['appendSystemFor'];
@@ -346,7 +345,6 @@ function setup(
     autoAnswer: opts.autoAnswer,
     assertTrusted: opts.assertTrusted,
     browserServer: opts.browserServer,
-    allowBrowserSite: opts.allowBrowserSite,
     orchestratorServer: opts.orchestratorServer,
     isOrchestrator: opts.isOrchestrator,
     appendSystemFor: opts.appendSystemFor,
@@ -593,28 +591,32 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
-  it('asks for a browser site in the session’s permission card, and keeps it for the project on Always allow', async () => {
-    const allowed: Array<{ sessionId: string; site: string }> = [];
-    const t = setup({ allowBrowserSite: (sessionId, site) => allowed.push({ sessionId, site }) });
+  it('asks for a browser site, or scripts on it, in the session’s permission card, and reports which choice you picked', async () => {
+    const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
     await until(() => lastState(t.infos, id) === 'idle');
-    const asked = t.manager.askBrowserSite(id, 'https://app.example.com', 'click', { ref: 'e1' });
+    const ask = { kind: 'site' as const, site: 'https://app.example.com', tool: 'click' as const, input: { ref: 'e1' }, profile: null, project: true };
+    const always = t.manager.askBrowser(id, ask);
     await until(() => t.permissions.length === 1);
     expect(t.permissions[0]).toMatchObject({
       sessionId: id,
       toolName: 'mcp__browser__click',
       title: 'Claude Code wants to use app.example.com in the browser',
       alwaysLabel: 'app.example.com in this project',
+      sessionAllow: true,
     });
     t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', always: true });
-    await expect(asked).resolves.toBe(true);
-    expect(allowed).toEqual([{ sessionId: id, site: 'https://app.example.com' }]);
-    // Declined: the call doesn't run, and the project keeps nothing.
-    const declined = t.manager.askBrowserSite(id, 'https://other.example.com', 'open', { url: 'https://other.example.com/' });
+    await expect(always).resolves.toBe('always');
+    // Scripts: their own card, in the browser profile it names; outside an added project, no Always allow.
+    const session = t.manager.askBrowser(id, { ...ask, kind: 'scripts', tool: 'evaluate', input: { script: 'document.title' }, profile: 'Admin', project: false });
     await until(() => t.permissions.length === 2);
-    t.manager.respond(t.permissions[1]!.requestId, { behavior: 'deny' });
-    await expect(declined).resolves.toBe(false);
-    expect(allowed).toHaveLength(1);
+    expect(t.permissions[1]).toMatchObject({ title: 'Claude Code wants to run scripts on app.example.com as you', alwaysLabel: null, description: expect.stringContaining('browser profile Admin') });
+    t.manager.respond(t.permissions[1]!.requestId, { behavior: 'allow', session: true });
+    await expect(session).resolves.toBe('session');
+    const declined = t.manager.askBrowser(id, { ...ask, site: 'https://other.example.com', tool: 'open', input: { url: 'https://other.example.com/' } });
+    await until(() => t.permissions.length === 3);
+    t.manager.respond(t.permissions[2]!.requestId, { behavior: 'deny' });
+    await expect(declined).resolves.toBe('deny');
     t.manager.closeAll();
   });
 

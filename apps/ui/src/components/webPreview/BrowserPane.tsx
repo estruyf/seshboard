@@ -18,6 +18,7 @@ import { Popover } from '../ui/Popover.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { addressSuggestions, autoPick, type AddressSuggestion } from './addressSuggestions.ts';
 import { tabMenu } from './tabMenu.tsx';
+import { ProfileMark, ProfileSwitch, useNewTabMenu } from './ProfileMenus.tsx';
 import { BROWSER_OWNER, sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
 import { NewTabSections } from './NewTabPage.tsx';
 import { openFavoriteInTab } from '../../state/browserViewStore.ts';
@@ -83,14 +84,16 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   const [picked, setPicked] = useState<number | null>(null);
   const [history, setHistory] = useState<readonly BrowserHistoryEntry[]>([]);
   const favorites = useBrowserFavorites((s) => s.favorites);
+  // Only the tab's own browser profile's pages: another profile's history is another account's.
+  const profileId = tab?.profileId ?? null;
   useEffect(() => {
     if (!browser || !draft?.trim()) return;
     let current = true;
-    void searchHistory(draft).then((entries) => current && setHistory(entries));
+    void searchHistory(draft, 50, profileId).then((entries) => current && setHistory(entries));
     return () => {
       current = false;
     };
-  }, [draft, browser]);
+  }, [draft, browser, profileId]);
   const suggestions = useMemo(() => {
     if (!browser || !tab || !draft?.trim()) return [];
     // Pages from the last search still count while the next one runs: those that no longer match drop out.
@@ -241,6 +244,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           />
           {showList && <SuggestionList id={listId} anchor={address} suggestions={suggestions} highlighted={highlighted} onPick={open} onHighlight={setPicked} onClose={closeList} />}
         </form>
+        {/* The tab's browser profile, and the way to move it to another. */}
+        {browser && tab && <ProfileSwitch tab={tab} />}
         {browser && tab && (
           <Button
             variant="quiet"
@@ -445,6 +450,7 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
     useWebPreview.getState().selectTab(next.id);
     focusTab(next.id);
   };
+  const profileMenu = useNewTabMenu(tabs[0]?.owner ?? null);
   return (
     <div className="flex shrink-0 items-center gap-0.5 border-b border-border px-1.5 py-1">
       <div ref={strip} role="tablist" aria-label="Tabs" onKeyDown={onKey} className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" data-web-preview-tabs="">
@@ -473,6 +479,7 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
               >
                 <TabIcon tab={t} />
                 <TabTitle tab={t} confirming={asking} />
+                <ProfileMark tab={t} />
                 <SoundMark tab={t} />
                 {t.pinned && !asking && <Pin size={10} aria-hidden className="shrink-0 text-faint" />}
               </button>
@@ -489,7 +496,8 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
           );
         })}
       </div>
-      {onNewTab && <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} aria-hidden />} aria-label="New tab" shortcut="browser.new-tab" onClick={onNewTab} className="shrink-0" data-browser-new-tab="" />}
+      {onNewTab && <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} aria-hidden />} aria-label="New tab" shortcut="browser.new-tab" onClick={onNewTab} onContextMenu={profileMenu.onContextMenu} className="shrink-0" data-browser-new-tab="" />}
+      {onNewTab && profileMenu.button}
       {menu && <Menu x={menu.x} y={menu.y} entries={tabMenu(menu.tab)} label={`${tabName(menu.tab)} menu`} onClose={() => setMenu(null)} />}
     </div>
   );

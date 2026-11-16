@@ -12,6 +12,8 @@ import { EditFavoriteDialog } from '../webPreview/EditFavoriteDialog.tsx';
 import { RenameTabDialog } from '../webPreview/RenameTabDialog.tsx';
 import { projectOfTab, useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
 import { BookmarkDialog } from '../webPreview/BookmarkDialog.tsx';
+import { DeleteProfileDialog, ResetProfileDialog } from '../webPreview/ResetProfileDialog.tsx';
+import { browserProfileName, useBrowserProfiles } from '../../state/browserProfilesStore.ts';
 import { bookmarkOf } from '../webPreview/bookmarks.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
@@ -59,9 +61,9 @@ export function PaletteDialogs() {
           title={`Clear data for ${siteName(dialog.origin)}?`}
           danger
           confirmLabel="Clear data"
-          body={`Signs you out of ${siteName(dialog.origin)} in Seshboard's browser: its cookies and stored data go. Other sites stay as they are.`}
+          body={`Signs you out of ${siteName(dialog.origin)} in Seshboard's browser${dialog.profileId ? `, in the ${browserProfileName(dialog.profileId)} profile` : ''}: its cookies and stored data go. Other sites stay as they are.`}
           data={{ 'data-clear-site-data-dialog': true }}
-          onConfirm={() => clearBrowsingData(dialog.origin)}
+          onConfirm={() => clearBrowsingData(dialog.origin, dialog.profileId ?? null)}
           onClose={close}
         />
       ) : (
@@ -69,12 +71,16 @@ export function PaletteDialogs() {
           title="Clear all browsing data?"
           danger
           confirmLabel="Clear all data"
-          body="Signs you out of every site in Seshboard's browser: cookies, stored data and the cache go. Your tabs, pins and favourites stay."
+          body="Signs you out of every site in Seshboard's browser, in every browser profile: cookies, stored data and the cache go. Your tabs, pins and favourites stay."
           data={{ 'data-clear-browsing-data-dialog': true }}
-          onConfirm={() => clearBrowsingData(null)}
+          onConfirm={() => clearBrowsingData(null, null, useBrowserProfiles.getState().profiles.map((p) => p.id))}
           onClose={close}
         />
       );
+    case 'reset-browser-profile':
+      return <ResetProfileDialog profileId={dialog.profileId} onClose={close} />;
+    case 'delete-browser-profile':
+      return <DeleteProfileDialog profileId={dialog.profileId} onClose={close} />;
     case 'rename-session':
       return <RenameSessionDialog sessionId={dialog.sessionId} title={dialog.title} onClose={close} />;
     case 'rename-project':

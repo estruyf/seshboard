@@ -1,4 +1,4 @@
-import { browserNavigation, externalSchemeAllowed, localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { browserNavigation, externalSchemeAllowed, isBrowserPartition, isProfilePartition, localPreviewUrl, webPageUrl, type BrowserProfileReset } from '@seshboard/protocol/client';
 
 /**
  * What main does with a key typed in the web preview's page: hand it to the app (`forward`), reload the page, or go
@@ -98,20 +98,44 @@ export interface WebviewAttach {
 }
 
 /**
- * Whether a `<webview>` may attach: only the web preview's, in its own partition, on a local address (any web address
- * with the browser on), or still blank, before its first load. None with both the browser and previews off. Main
- * forces the rest of its preferences itself.
+ * Whether a `<webview>` may attach: only the web preview's, in its own partition (or, with the browser on, a browser
+ * profile's: `persist:browser-<uuid>` exactly, so main needs no database), on a local address (any web address with
+ * the browser on), or still blank, before its first load. None with both the browser and previews off. Main forces the
+ * rest of its preferences itself.
  */
 export function webviewAllowed(params: WebviewAttach, browser = false, preview = true): boolean {
-  if (params.partition !== WEB_PREVIEW_PARTITION || (!browser && !preview)) return false;
+  if (!isBrowserPartition(params.partition) || (!browser && !preview)) return false;
+  if (isProfilePartition(params.partition) && !browser) return false;
   if (!params.src || params.src === 'about:blank') return true;
   return (browser ? webPageUrl(params.src) : localPreviewUrl(params.src)) !== null;
 }
 
+/** What main clears of a browser profile's partition for Reset or Delete (`BrowserProfileReset`, less the history). */
+export interface PartitionClearing {
+  /** `clearStorageData`'s storages; none: nothing to clear there. */
+  storages: Array<'cookies' | 'filesystem' | 'indexdb' | 'localstorage' | 'shadercache' | 'serviceworkers' | 'cachestorage'>;
+  /** `clearAuthCache`: the passwords typed for HTTP sign-ins, which go with the logins. */
+  authCache: boolean;
+  /** `clearCache` and `clearCodeCaches`: the HTTP cache and compiled scripts. */
+  cache: boolean;
+}
+
 /**
- * Whether the preview accepts a certificate Chromium refused: only for this computer, where a dev server's own
- * self-signed certificate (`vite --https`, `mkcert`) is normal and no one else is on the line.
+ * What a Reset with these parts ticked clears: logins are cookies and the HTTP auth cache; site data is what sites
+ * store (local storage, IndexedDB, service workers, Cache Storage, file systems); cache is the HTTP, code and shader caches.
  */
+export function partitionClearing(parts: Pick<BrowserProfileReset, 'cookies' | 'siteData' | 'cache'>): PartitionClearing {
+  return {
+    storages: [
+      ...(parts.cookies ? (['cookies'] as const) : []),
+      ...(parts.siteData ? (['localstorage', 'indexdb', 'serviceworkers', 'cachestorage', 'filesystem'] as const) : []),
+      ...(parts.cache ? (['shadercache'] as const) : []),
+    ],
+    authCache: parts.cookies,
+    cache: parts.cache,
+  };
+}
+
 /**
  * Whether a cookie goes with a site's sign-out (Clear data for this site): a cookie for the site's host or for a domain
  * above it (`.github.com` for gist.github.com), never one for a sibling or a domain merely ending the same way.
@@ -143,6 +167,10 @@ export function iconTooLarge(bytes: Uint8Array, type: string): boolean {
   return false;
 }
 
+/**
+ * Whether the preview accepts a certificate Chromium refused: only for this computer, where a dev server's own
+ * self-signed certificate (`vite --https`, `mkcert`) is normal and no one else is on the line.
+ */
 export function acceptsLocalCertificate(hostname: string): boolean {
   const host = hostname.includes(':') && !hostname.startsWith('[') ? `[${hostname}]` : hostname;
   return localPreviewUrl(`https://${host}/`) !== null;
@@ -174,6 +202,13 @@ export function popupTarget(url: string, browser = false, disposition?: string):
  * What a page may use without asking, as T3 Code allows it: writing to the clipboard (a site's Copy buttons),
  * fullscreen (kept inside the panel), pointer lock, and asking whether this computer is reachable (sign-in widgets
  * check first). Anything else, location, the camera, notifications, reading the clipboard, is refused.
+ *
+ * Local Network Access (a public page loading from this computer, such as SPFx's `debugManifestsFile` on
+ * `https://localhost:4321`) needs nothing here in Electron 44: Chromium marks such a request (a public initiator, a
+ * loopback or local target), but Electron's policy for it is Allow, so it goes through without a permission request,
+ * even with every permission refused (checked with `--ip-address-space-overrides` and the DevTools protocol's
+ * `localNetworkAccessRequestPolicy`). Should a later Electron enforce it, the permission for loopback is
+ * `loopback-network`, allowed here; `local-network` (the LAN) and `local-network-access` stay refused.
  */
 const PAGE_PERMISSIONS: ReadonlySet<string> = new Set(['clipboard-sanitized-write', 'fullscreen', 'pointerLock', 'loopback-network']);
 export const pagePermissionAllowed = (permission: string): boolean => PAGE_PERMISSIONS.has(permission);

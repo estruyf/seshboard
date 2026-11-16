@@ -1005,4 +1005,31 @@ export const migrations: readonly string[] = [
   CREATE INDEX orchestrator_workers_orchestrator ON orchestrator_workers (orchestrator_id);
   CREATE INDEX orchestrator_workers_session ON orchestrator_workers (session_id);
   `,
+  // v63: Browser profiles (docs/browser.md): pages with their own cookies and storage, for one project (its root) or
+  // everywhere (null). Your own choices that nothing else has: keep them when rebuilding. A pinned tab keeps its profile
+  // (null: the built-in Default one), and the history is kept per profile ('' for Default, so the key is never null).
+  `
+  CREATE TABLE browser_profiles (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    color        TEXT NOT NULL,
+    project_root TEXT,
+    position     INTEGER NOT NULL,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX browser_profiles_project ON browser_profiles (project_root);
+  ALTER TABLE browser_tabs ADD COLUMN profile_id TEXT;
+  CREATE TABLE browser_history_by_profile (
+    url        TEXT NOT NULL,
+    profile_id TEXT NOT NULL DEFAULT '',
+    title      TEXT NOT NULL,
+    visits     INTEGER NOT NULL,
+    last_visit INTEGER NOT NULL,
+    PRIMARY KEY (url, profile_id)
+  );
+  INSERT INTO browser_history_by_profile (url, profile_id, title, visits, last_visit) SELECT url, '', title, visits, last_visit FROM browser_history;
+  DROP TABLE browser_history;
+  ALTER TABLE browser_history_by_profile RENAME TO browser_history;
+  CREATE INDEX browser_history_last_visit ON browser_history (last_visit);
+  `,
 ];

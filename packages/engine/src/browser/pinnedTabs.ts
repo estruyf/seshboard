@@ -12,6 +12,8 @@ export interface PinnedTab {
   favicon: string | null;
   position: number;
   pinnedAt: number;
+  /** Its browser profile, null for the built-in Default one: the tab keeps it for life. */
+  profileId: string | null;
 }
 
 interface Row {
@@ -23,12 +25,13 @@ interface Row {
   favicon: string | null;
   position: number;
   pinned_at: number;
+  profile_id: string | null;
 }
 
 /** The Browser view's tabs, which belong to no session. */
 export const BROWSER_OWNER = 'browser';
 
-const toTab = (row: Row): PinnedTab => ({ id: row.id, owner: row.owner, url: row.url, title: row.title, name: row.name, favicon: row.favicon, position: row.position, pinnedAt: row.pinned_at });
+const toTab = (row: Row): PinnedTab => ({ id: row.id, owner: row.owner, url: row.url, title: row.title, name: row.name, favicon: row.favicon, position: row.position, pinnedAt: row.pinned_at, profileId: row.profile_id ?? null });
 
 /**
  * The browser tabs you pinned (`browser_tabs`), so they come back after a restart. Tabs that aren't pinned live only in
@@ -42,7 +45,7 @@ export class PinnedTabs {
     this.statements = {
       list: db.prepare('SELECT * FROM browser_tabs ORDER BY owner, position, pinned_at'),
       save: db.prepare(
-        `INSERT INTO browser_tabs (id, owner, url, title, name, favicon, position, pinned_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO browser_tabs (id, owner, url, title, name, favicon, position, pinned_at, profile_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET owner = excluded.owner, url = excluded.url, title = excluded.title, name = excluded.name, favicon = excluded.favicon, position = excluded.position`,
       ),
       remove: db.prepare('DELETE FROM browser_tabs WHERE id = ?'),
@@ -56,9 +59,12 @@ export class PinnedTabs {
     return (this.statements.list.all() as unknown as Row[]).map(toTab);
   }
 
-  /** Pins a tab, or updates one already pinned (its address and title as you browse, its name, its icon, its place). */
-  save(tab: Omit<PinnedTab, 'pinnedAt' | 'name' | 'favicon'> & { pinnedAt?: number; name?: string | null; favicon?: string | null }): void {
-    this.statements.save.run(tab.id, tab.owner, tab.url, tab.title, tab.name ?? null, tab.favicon ?? null, tab.position, tab.pinnedAt ?? Date.now());
+  /**
+   * Pins a tab, or updates one already pinned (its address and title as you browse, its name, its icon, its place).
+   * Its browser profile is kept from the first save: a tab never changes profile.
+   */
+  save(tab: Omit<PinnedTab, 'pinnedAt' | 'name' | 'favicon' | 'profileId'> & { pinnedAt?: number; name?: string | null; favicon?: string | null; profileId?: string | null }): void {
+    this.statements.save.run(tab.id, tab.owner, tab.url, tab.title, tab.name ?? null, tab.favicon ?? null, tab.position, tab.pinnedAt ?? Date.now(), tab.profileId ?? null);
   }
 
   remove(id: string): void {

@@ -179,7 +179,9 @@ const bridge: SeshboardBridge = {
   markSessionPage: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewSessionPage, contentsId),
   pickElement: (contentsId) => ipcRenderer.invoke(IpcChannel.webPreviewPickElement, contentsId) as Promise<PickedElement | null>,
   cancelPick: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewCancelPick, contentsId),
-  clearBrowsingData: (origin) => ipcRenderer.invoke(IpcChannel.webPreviewClearData, typeof origin === 'string' ? origin : null) as Promise<void>,
+  clearBrowsingData: (origin, partition) => ipcRenderer.invoke(IpcChannel.webPreviewClearData, typeof origin === 'string' ? origin : null, typeof partition === 'string' ? partition : null) as Promise<void>,
+  resetBrowserPartition: (partition, parts) =>
+    ipcRenderer.invoke(IpcChannel.webPreviewResetPartition, partition, { cookies: parts?.cookies === true, siteData: parts?.siteData === true, cache: parts?.cache === true }) as Promise<void>,
   showInMain: (request) => ipcRenderer.send(IpcChannel.showInMain, request),
   onMainRequest(listener) {
     const handler = (_event: unknown, request: MainWindowRequest) => listener(request);

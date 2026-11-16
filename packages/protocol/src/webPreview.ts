@@ -11,6 +11,23 @@
  */
 export const WEB_PREVIEW_PARTITION = 'persist:web-preview';
 
+/**
+ * A browser profile's partition (docs/browser.md, Browser profiles): its own cookies, storage and cache, apart from
+ * every other profile's. The built-in Default profile (null) is `WEB_PREVIEW_PARTITION`, so its sign-ins stay.
+ */
+export const browserProfilePartition = (profileId: string | null | undefined): string => (profileId ? `persist:browser-${profileId}` : WEB_PREVIEW_PARTITION);
+
+/** A browser profile's partition as main accepts it: `persist:browser-` and a lowercase UUID, nothing else. */
+const PROFILE_PARTITION = /^persist:browser-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Whether a page may use this partition: the Default profile's, or exactly a browser profile's. */
+export function isBrowserPartition(partition: unknown): partition is string {
+  return partition === WEB_PREVIEW_PARTITION || (typeof partition === 'string' && PROFILE_PARTITION.test(partition));
+}
+
+/** Whether this is an extra browser profile's partition (not the Default one). */
+export const isProfilePartition = (partition: unknown): partition is string => typeof partition === 'string' && PROFILE_PARTITION.test(partition);
+
 /** The phone width the toolbar's toggle shows the page at. */
 export const WEB_PREVIEW_PHONE_WIDTH = 390;
 

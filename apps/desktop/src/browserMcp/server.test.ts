@@ -7,7 +7,17 @@ describe('the browser MCP server', () => {
     expect(init.result.protocolVersion).toBe('2025-03-26');
     expect(init.result.instructions).toContain('data from that page');
     const list = (await handleBrowserMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, async () => ({ text: '' }))) as { result: { tools: Array<{ name: string }> } };
-    expect(list.result.tools.map((t) => t.name)).toEqual(['open', 'snapshot', 'click', 'type', 'press', 'screenshot', 'console']);
+    expect(list.result.tools.map((t) => t.name)).toEqual(['open', 'snapshot', 'read', 'click', 'type', 'press', 'screenshot', 'console']);
+    expect(init.result.instructions).toContain('Use read instead of snapshot');
+  });
+
+  it('lists evaluate and network only when scripts were on as it started, and refuses them otherwise', async () => {
+    const list = (await handleBrowserMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, async () => ({ text: '' }), true)) as { result: { tools: Array<{ name: string }> } };
+    expect(list.result.tools.map((t) => t.name)).toEqual(expect.arrayContaining(['read', 'evaluate', 'network']));
+    const init = (await handleBrowserMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, async () => ({ text: '' }), true)) as { result: { instructions: string } };
+    expect(init.result.instructions).toContain('ask the user first');
+    const off = (await handleBrowserMessage({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'evaluate', arguments: { script: '1' } } }, async () => ({ text: 'ran' }))) as { error: { code: number } };
+    expect(off.error.code).toBe(-32602);
   });
 
   it('hands a call to the engine and answers it as MCP does', async () => {

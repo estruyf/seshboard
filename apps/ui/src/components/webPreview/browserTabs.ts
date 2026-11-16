@@ -42,6 +42,11 @@ export interface BrowserTab {
   audible: boolean;
   /** Goes up when something asks the page to load `url` (an offer, the address bar), so the same address loads again. */
   seq: number;
+  /**
+   * Its browser profile (docs/browser.md, Browser profiles): the store its page keeps cookies and storage in. Null for
+   * the built-in Default one. A tab keeps it for life: Open in other profile opens a new tab.
+   */
+  profileId: string | null;
 }
 
 export interface TabsState {
@@ -61,6 +66,7 @@ export interface SavedTab {
   name?: string | null;
   favicon?: string | null;
   position: number;
+  profileId?: string | null;
 }
 
 /** How long a tab's name may be. */
@@ -146,23 +152,26 @@ export interface OpenOptions {
   seq: number;
   /** Opened from this favourite: the tab it already has comes forward, wherever it is now. */
   favoriteId?: string | null;
+  /** The browser profile the tab is in (null or left out: the Default one). Only a tab in the same profile is reused. */
+  profileId?: string | null;
 }
 
 /**
- * Opens `url` for an owner, or shows the tab it already has on that address (`sameAddress`) instead of opening another.
- * A null `url` always opens a new, empty tab. Returns the tab that shows it.
+ * Opens `url` for an owner, or shows the tab it already has on that address (`sameAddress`), in the same browser
+ * profile, instead of opening another. A null `url` always opens a new, empty tab. Returns the tab that shows it.
  */
 export function openTab(state: TabsState, owner: string, url: string | null, options: OpenOptions): { state: TabsState; id: string } {
   const focus = options.focus ?? true;
   const favoriteId = options.favoriteId ?? null;
+  const profileId = options.profileId ?? null;
   const existing = favoriteId
     ? state.tabs.find((t) => t.owner === owner && t.favoriteId === favoriteId)
     : url
-      ? ownerTabs(state, owner).find((t) => !t.favoriteId && sameAddress(t.url, url))
+      ? ownerTabs(state, owner).find((t) => !t.favoriteId && t.profileId === profileId && sameAddress(t.url, url))
       : undefined;
   if (existing) return { state: focus ? showTab(state, existing.id, options.now) : state, id: existing.id };
   const own = ownerTabs(state, owner);
-  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, favoriteId, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, zoom: 1, muted: false, audible: false, seq: options.seq };
+  const tab: BrowserTab = { id: options.id, owner, url, title: url ?? 'New tab', name: null, favicon: null, pinned: false, favoriteId, position: own.length, lastShownAt: focus ? options.now : 0, phone: false, zoom: 1, muted: false, audible: false, seq: options.seq, profileId };
   const tabs = [...state.tabs, tab];
   return { state: { tabs, active: focus || !state.active.has(owner) ? withActive(state.active, owner, tab.id) : state.active }, id: tab.id };
 }
@@ -242,12 +251,28 @@ export function restore(state: TabsState, saved: readonly SavedTab[]): TabsState
   const added: BrowserTab[] = [...saved]
     .filter((s) => !have.has(s.id))
     .sort((a, b) => a.position - b.position)
-    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, favoriteId: null, position: s.position, lastShownAt: 0, phone: false, zoom: 1, muted: false, audible: false, seq: 0 }));
+    .map((s) => ({ id: s.id, owner: s.owner, url: s.url, title: s.title || s.url, name: s.name ?? null, favicon: s.favicon ?? null, pinned: true, favoriteId: null, position: s.position, lastShownAt: 0, phone: false, zoom: 1, muted: false, audible: false, seq: 0, profileId: s.profileId ?? null }));
   if (!added.length) return state;
   let tabs = [...state.tabs, ...added];
   for (const owner of new Set(added.map((t) => t.owner))) tabs = renumber(tabs, owner, ownerTabs({ tabs, active: state.active }, owner));
   return { tabs, active: state.active };
 }
+
+/**
+ * The toolbar's profile switcher: a tab keeps its profile for life (its page's partition is set once), so switching
+ * puts a new tab, `options.id`, in the old one's place: the same address, name, place, pin, favourite, width, zoom and
+ * mute, in `profileId`, in front if the old one was. The old tab goes without being remembered as closed.
+ */
+export function switchTabProfile(state: TabsState, id: string, profileId: string | null, options: { id: string; now: number; seq: number }): TabsState {
+  const old = state.tabs.find((t) => t.id === id);
+  if (!old || old.profileId === profileId) return state;
+  const tab: BrowserTab = { ...old, id: options.id, profileId, audible: false, seq: options.seq, lastShownAt: options.now };
+  const front = state.active.get(old.owner) === id;
+  return { tabs: state.tabs.map((t) => (t.id === id ? tab : t)), active: front ? withActive(state.active, old.owner, tab.id) : state.active };
+}
+
+/** Every tab in a browser profile (Reset reloads them, Delete closes them). */
+export const tabsOfProfile = (state: Pick<TabsState, 'tabs'>, profileId: string | null): BrowserTab[] => state.tabs.filter((t) => t.profileId === profileId);
 
 /** Drops every tab of an owner (a session deleted). */
 export function dropOwner(state: TabsState, owner: string): TabsState {

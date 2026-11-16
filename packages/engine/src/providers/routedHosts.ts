@@ -1,4 +1,4 @@
-import { RpcError, type BrowserTool, type Capabilities, type Effort, type ImageAttachment, type PermissionDecision, type PermissionMode, type PermissionRequest, type QueuedMessage, type RewindResult, type SendMode, type SessionHostInfo, type SlashCommand } from '@seshboard/protocol';
+import { RpcError, type BrowserAnswer, type BrowserAsk, type Capabilities, type Effort, type ImageAttachment, type PermissionDecision, type PermissionMode, type PermissionRequest, type QueuedMessage, type RewindResult, type SendMode, type SessionHostInfo, type SlashCommand } from '@seshboard/protocol';
 import { HostManager } from '../host/hostManager.ts';
 import type { AskResult, AskText } from '../host/sideQuestions.ts';
 import type { ProviderHosts } from './providerHosts.ts';
@@ -44,9 +44,9 @@ export class RoutedHostManager extends HostManager {
     if (!this.providers?.respond(requestId, decision)) super.respond(requestId, decision);
   }
 
-  override askBrowserSite(sessionId: string, site: string, tool: BrowserTool, input: Record<string, unknown>): Promise<boolean> {
+  override askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
     const other = this.providerRunning(sessionId);
-    return other ? other.askBrowserSite(sessionId, site, tool, input) : super.askBrowserSite(sessionId, site, tool, input);
+    return other ? other.askBrowser(sessionId, ask) : super.askBrowser(sessionId, ask);
   }
 
   override async setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {

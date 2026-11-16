@@ -1,4 +1,4 @@
-import { BROWSER_INSTRUCTIONS, BROWSER_TOOL_SPECS, BROWSER_TOOLS, toCallToolResult, type BrowserTool, type BrowserToolResult } from '@seshboard/protocol/bridge';
+import { BROWSER_TOOL_SPECS, browserInstructions, browserToolsFor, toCallToolResult, type BrowserTool, type BrowserToolResult } from '@seshboard/protocol/bridge';
 
 /**
  * Seshboard's `browser` MCP server, as any agent starts it (Claude Code, Copilot, Codex): the tools that drive the
@@ -15,8 +15,11 @@ type Call = (tool: BrowserTool, args: Record<string, unknown>) => Promise<Browse
 const isId = (v: unknown): v is string | number => typeof v === 'string' || typeof v === 'number';
 const record = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
-/** Answers one message; null when it needs no answer (a notification, or a response). */
-export async function handleBrowserMessage(message: Message, call: Call): Promise<object | null> {
+/**
+ * Answers one message; null when it needs no answer (a notification, or a response). `scripts`: Settings › Browser ›
+ * Allow scripts in pages was on when the agent started, so evaluate and network are listed (the bridge checks again).
+ */
+export async function handleBrowserMessage(message: Message, call: Call, scripts = false): Promise<object | null> {
   if (!isId(message.id) || typeof message.method !== 'string') return null;
   const id = message.id;
   const params = record(message.params);
@@ -25,15 +28,15 @@ export async function handleBrowserMessage(message: Message, call: Call): Promis
   switch (message.method) {
     case 'initialize': {
       const asked = typeof params.protocolVersion === 'string' ? params.protocolVersion : '';
-      return ok({ protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0], capabilities: { tools: {} }, serverInfo: SERVER_INFO, instructions: BROWSER_INSTRUCTIONS });
+      return ok({ protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0], capabilities: { tools: {} }, serverInfo: SERVER_INFO, instructions: browserInstructions(scripts) });
     }
     case 'ping':
       return ok({});
     case 'tools/list':
-      return ok({ tools: BROWSER_TOOL_SPECS });
+      return ok({ tools: BROWSER_TOOL_SPECS.filter((spec) => browserToolsFor(scripts).includes(spec.name)) });
     case 'tools/call': {
       const name = params.name;
-      if (typeof name !== 'string' || !(BROWSER_TOOLS as readonly string[]).includes(name)) return fail(-32602, `No tool called ${String(name)}`);
+      if (typeof name !== 'string' || !(browserToolsFor(scripts) as string[]).includes(name)) return fail(-32602, `No tool called ${String(name)}`);
       try {
         return ok(toCallToolResult(await call(name as BrowserTool, record(params.arguments))));
       } catch (error) {
@@ -66,7 +69,7 @@ export function lineReader(onLine: (line: string) => void): (chunk: string) => v
 }
 
 /** The server over MCP's stdio transport: `write` gets each answer as a line. Calls can overlap; each answers when done. */
-export function browserMcpServer(write: (line: string) => void, call: Call): (chunk: string) => void {
+export function browserMcpServer(write: (line: string) => void, call: Call, scripts = false): (chunk: string) => void {
   return lineReader((line) => {
     let message: Message;
     try {
@@ -75,6 +78,6 @@ export function browserMcpServer(write: (line: string) => void, call: Call): (ch
       write(`${JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })}\n`);
       return;
     }
-    void handleBrowserMessage(message, call).then((answer) => answer && write(`${JSON.stringify(answer)}\n`));
+    void handleBrowserMessage(message, call, scripts).then((answer) => answer && write(`${JSON.stringify(answer)}\n`));
   });
 }

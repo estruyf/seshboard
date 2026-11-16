@@ -41,6 +41,7 @@ export function WebPreviewHost() {
   const panels = useWebPreview((s) => s.panels);
   const active = useWebPreview((s) => s.active);
   const reloads = useWebPreview((s) => s.reloads);
+  const suspended = useWebPreview((s) => s.suspended);
   const popouts = usePopouts((s) => s.ids);
   const browser = usePreferences((s) => s.prefs.browserEnabled);
   // What is on screen: the Browser view, or the sessions in the panes.
@@ -56,7 +57,8 @@ export function WebPreviewHost() {
     const wanted = livePages(state, LIVE_PAGES, {
       keep,
       // A pop-out shows its session's pages; with the browser off, only this computer's pages run (the dev server preview).
-      allowed: (tab) => (tab.owner === BROWSER_OWNER || !shownElsewhere(tab.owner)) && (browser || localPreviewUrl(tab.url!) !== null),
+      // A browser profile being reset has none until it is done.
+      allowed: (tab) => (tab.owner === BROWSER_OWNER || !shownElsewhere(tab.owner)) && (browser || localPreviewUrl(tab.url!) !== null) && !suspended.has(tab.profileId ?? ''),
     });
     keepPages(new Set(wanted));
     for (const id of wanted) {
@@ -66,7 +68,7 @@ export function WebPreviewHost() {
       page.loaded = tab.seq;
       page.load(tab.url);
     }
-  }, [pagesKey, panels, active, popouts, browser, view, paneIds, selectedId]);
+  }, [pagesKey, panels, active, popouts, browser, view, paneIds, selectedId, suspended]);
 
   // Only a request made while this window is open: counts from before it are old news.
   const seenReloads = useRef(reloads);

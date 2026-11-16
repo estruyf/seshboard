@@ -7,7 +7,7 @@ import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
-import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -87,15 +87,33 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'web page tabs pin github pull request url internet',
       target: '[data-browser-setting]',
     },
+    { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
+
+    // Browser (only while the browser is on)
     {
       id: 'browser-control',
-      page: 'general',
+      page: 'browser',
       label: 'Allow Seshboard to control the browser',
       detail: BROWSER_CONTROL_DETAIL,
       keywords: 'agent claude copilot codex browser tools control click type test check page sites dev server',
       target: '[data-browser-control-setting]',
     },
-    { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
+    {
+      id: 'browser-scripts',
+      page: 'browser',
+      label: 'Allow scripts in pages',
+      detail: BROWSER_SCRIPTS_DETAIL,
+      keywords: 'agent evaluate javascript script run network requests responses fetch api devtools token sharepoint',
+      target: '[data-browser-scripts-setting]',
+    },
+    {
+      id: 'browser-profiles',
+      page: 'browser',
+      label: 'Browser profiles',
+      detail: 'Each profile keeps its own logins, site data and cache, so you can use one site with several accounts side by side.',
+      keywords: 'browser profile account accounts login logins sign in cookies storage partition container separate test users admin customer reset delete new',
+      target: '[data-new-browser-profile]',
+    },
 
     // Theme
     { id: 'appearance', page: 'theme', label: 'Appearance', detail: 'Match System, Light or Dark.', keywords: 'dark mode light mode night colour color scheme', target: '[data-color-scheme]' },

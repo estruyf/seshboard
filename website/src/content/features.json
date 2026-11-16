@@ -852,6 +852,21 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser-profiles",
+      "name": "Browser profiles: separate logins, site data and cache per profile (for a project or everywhere), a coloured mark on their tabs, the profile switcher after the address bar, New tab in a profile, Open in other profile, Reset profile… with what to forget, and agents' open with a profile",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "settings:browser",
+      "name": "Settings › Browser: Allow Seshboard to control the browser, Allow scripts in pages, and browser profiles (shown while the browser is on)",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:settings-browser",
+      "name": "settings-browser",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "feature:browser-terminal-links",
       "name": "Terminal links open in Seshboard's browser: the session's, or the Browser view from the window's terminal",
       "page": "sessions/web-preview"
@@ -4167,8 +4182,18 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser-control-read",
+      "name": "The agent reads a page's full text as it is with read, in parts: a long page, or a REST response opened as a page (XML or JSON)",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "feature:browser-control-sites",
-      "name": "Browser sites: pages on this computer need no approval, other sites ask first, Always allow keeps a site for the project (its settings list them)",
+      "name": "Browser sites: pages on this computer need no approval, other sites ask first, Allow for this session stops asking until the session ends, Always allow keeps a site for the project (its settings list them)",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-scripts",
+      "name": "Allow scripts in pages (Settings › Browser, off by default): the agent runs scripts in its page with evaluate and reads the page's requests and responses with network. Other sites ask on a card of their own; Always allow keeps them in the project's Scripts in pages",
       "page": "sessions/web-preview"
     },
     {

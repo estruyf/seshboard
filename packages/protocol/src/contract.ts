@@ -215,6 +215,8 @@ export const PinnedBrowserTab = z.object({
   favicon: z.string().max(65_536).regex(/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i).nullable().optional(),
   position: z.number().int().min(0),
   pinnedAt: z.number().int(),
+  /** Its browser profile (`BrowserProfile.id`), or null for the Default one. A tab keeps it for life. Optional for an older window. */
+  profileId: z.string().max(100).nullable().optional(),
 });
 export type PinnedBrowserTab = z.infer<typeof PinnedBrowserTab>;
 
@@ -256,6 +258,21 @@ export const BrowserBookmark = z.object({
   createdAt: z.number().int(),
 });
 export type BrowserBookmark = z.infer<typeof BrowserBookmark>;
+
+/**
+ * A browser profile (docs/browser.md, Browser profiles): pages with their own cookies, storage and cache, in the
+ * partition `persist:browser-<id>`, for one project (its root) or everywhere (null). The built-in Default profile has
+ * no row. Not a Claude profile.
+ */
+export const BrowserProfile = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(60),
+  color: ProfileColor,
+  projectRoot: z.string().max(4096).nullable(),
+  position: z.number().int().min(0),
+  createdAt: z.number().int(),
+});
+export type BrowserProfile = z.infer<typeof BrowserProfile>;
 
 export const contract = {
   requests: {
@@ -566,15 +583,34 @@ export const contract = {
     'browser.favorites.save': { params: z.object({ favorite: BrowserFavorite.omit({ createdAt: true }) }), result: z.object({}) },
     'browser.favorites.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
     /** A page opened in the browser (`counted`), or its title as it changes (not counted again), for the history. */
-    'browser.history.visit': { params: z.object({ url: z.string().min(1).max(8000), title: z.string().max(500), counted: z.boolean() }), result: z.object({}) },
+    'browser.history.visit': { params: z.object({ url: z.string().min(1).max(8000), title: z.string().max(500), counted: z.boolean(), profileId: z.string().max(100).nullable().optional() }), result: z.object({}) },
     /** The pages in the history whose address or title holds `query`, most opened and most recent first. */
-    'browser.history.search': { params: z.object({ query: z.string().max(500), limit: z.number().int().min(1).max(100) }), result: z.object({ entries: z.array(BrowserHistoryEntry) }) },
+    'browser.history.search': { params: z.object({ query: z.string().max(500), limit: z.number().int().min(1).max(100), profileId: z.string().max(100).nullable().optional() }), result: z.object({ entries: z.array(BrowserHistoryEntry) }) },
 
     /** Your browser bookmarks, in order: every project's and the ones for everywhere. */
     'browser.bookmarks.list': { params: z.object({}), result: z.object({ bookmarks: z.array(BrowserBookmark) }) },
     /** Adds a bookmark, or updates one (its name, folder, project, icon, place). */
     'browser.bookmarks.save': { params: z.object({ bookmark: BrowserBookmark.omit({ createdAt: true }) }), result: z.object({}) },
     'browser.bookmarks.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Your browser profiles (not the built-in Default one), in order; `browser.profiles.changed` follows each change. */
+    'browser.profiles.list': { params: z.object({}), result: z.object({ profiles: z.array(BrowserProfile) }) },
+    /** A new browser profile, last in the list. Fails when another profile would answer to the same name there. */
+    'browser.profiles.create': {
+      params: z.object({ name: z.string().min(1).max(60), color: ProfileColor, projectRoot: z.string().max(4096).nullable() }),
+      result: z.object({ profile: BrowserProfile }),
+    },
+    /** Renames a browser profile, or gives it another colour or place. */
+    'browser.profiles.update': {
+      params: z.object({ id: z.string().uuid(), name: z.string().min(1).max(60).optional(), color: ProfileColor.optional(), projectRoot: z.string().max(4096).nullable().optional() }),
+      result: z.object({}),
+    },
+    /**
+     * Removes a browser profile, its pinned tabs and its history. Main clears its pages' data first (`window.seshboard`);
+     * the empty partition folder stays on disk.
+     */
+    'browser.profiles.delete': { params: z.object({ id: z.string().uuid() }), result: z.object({}) },
+    /** Reset's part in the engine: forgets the profile's history (`id` null: the Default profile's). Main clears the rest. */
+    'browser.profiles.reset': { params: z.object({ id: z.string().uuid().nullable(), history: z.boolean() }), result: z.object({}) },
     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
     /**
@@ -1761,6 +1797,8 @@ export const contract = {
     'runs.notice': z.object({ notice: PipelineNotice }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
+    /** The browser profiles changed (in any window): the whole list. */
+    'browser.profiles.changed': z.object({ profiles: z.array(BrowserProfile) }),
     /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */
     'limits.changed': LimitsState,
     /** A session armed with Resume when it resets was sent its message after the reset (for the notification). */

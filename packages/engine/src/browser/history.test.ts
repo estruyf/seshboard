@@ -45,3 +45,18 @@ describe('BrowserHistory', () => {
     expect(pages.search('', 10).map((e) => e.url).sort()).toEqual(['https://p3.test/', 'https://p4.test/']);
   });
 });
+
+describe('BrowserHistory per browser profile', () => {
+  it('suggests only the profile’s own pages, and forgets one profile’s', () => {
+    const pages = history();
+    pages.visit('https://shop.test/admin', 'Admin', true, 10, 'p1');
+    pages.visit('https://shop.test/', 'Shop', true, 20);
+    expect(pages.search('shop', 10).map((e) => e.url)).toEqual(['https://shop.test/']);
+    expect(pages.search('shop', 10, 'p1').map((e) => e.url)).toEqual(['https://shop.test/admin']);
+    pages.forget('p1');
+    expect(pages.search('shop', 10, 'p1')).toEqual([]);
+    expect(pages.search('shop', 10)).toHaveLength(1);
+    pages.forget(null);
+    expect(pages.search('shop', 10)).toEqual([]);
+  });
+});

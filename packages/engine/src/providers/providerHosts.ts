@@ -19,8 +19,10 @@ import {
   type StreamDelta,
   ORCHESTRATOR_SERVER,
   PROVIDER_NAMES,
-  siteLabel,
-  type BrowserTool,
+  browserAnswerOf,
+  browserPromptText,
+  type BrowserAnswer,
+  type BrowserAsk,
 } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
@@ -34,8 +36,6 @@ export interface ProviderHostsDeps {
   providers(): ProviderAdapter[];
   /** The browser tools: Seshboard's `browser` MCP server for one session (null while they are off), as Claude Code's get. */
   browserServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
-  /** "Always allow" on a browser site's prompt: the session's project allows that site from now on. */
-  allowBrowserSite?(sessionId: string, site: string): void;
   /**
    * The orchestrator (docs/orchestrator.md), as Claude Code's hosts get it: its `orchestrator` MCP server for one
    * session, whether a session being resumed is one, and what a resumed session reads after the provider's prompt.
@@ -115,8 +115,8 @@ export class ProviderHosts {
   private readonly hosts = new Map<string, Host>();
   /** Permission request id → session. */
   private readonly requests = new Map<string, string>();
-  /** Prompts Seshboard raised itself (a browser site to allow), not the provider: their answer, and the site. */
-  private readonly ownPrompts = new Map<string, { site: string; resolve(allowed: boolean): void }>();
+  /** Prompts Seshboard raised itself (a browser site, or scripts on it, to allow), not the provider: where their answer goes. */
+  private readonly ownPrompts = new Map<string, { resolve(answer: BrowserAnswer): void }>();
 
   constructor(private readonly deps: ProviderHostsDeps) {}
 
@@ -338,30 +338,29 @@ export class ProviderHosts {
   }
 
   /**
-   * The browser tools want a site the session's project doesn't allow: asks in the session's permission card, as the
-   * provider's own prompts do. True when you allowed it; "Always allow" also keeps the site for the project.
+   * The browser tools want a site the session's project doesn't allow, or to run scripts on one: asks in the session's
+   * permission card, as the provider's own prompts do. Your answer (once, this session, always), or 'deny'.
    */
-  askBrowserSite(sessionId: string, site: string, tool: BrowserTool, input: Record<string, unknown>): Promise<boolean> {
+  askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
     const host = this.hosts.get(sessionId);
-    if (!host) return Promise.resolve(false);
+    if (!host) return Promise.resolve('deny');
     return new Promise((resolve) => {
       const requestId = randomUUID();
       const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
       const request: PermissionRequest = {
         requestId,
         sessionId,
-        toolName: `mcp__browser__${tool}`,
+        toolName: `mcp__browser__${ask.tool}`,
         toolUseId: null,
-        input: JSON.parse(JSON.stringify(input)) as PermissionRequest['input'],
-        title: `${agent} wants to use ${siteLabel(site)} in the browser`,
-        description: 'It clicks and types there as you, with your login on that site.',
+        input: JSON.parse(JSON.stringify(ask.input)) as PermissionRequest['input'],
+        ...browserPromptText(agent, ask),
+        sessionAllow: true,
         decisionReason: null,
         blockedPath: null,
-        alwaysLabel: `${siteLabel(site)} in this project`,
         agentId: null,
         createdAt: Date.now(),
       };
-      this.ownPrompts.set(requestId, { site, resolve });
+      this.ownPrompts.set(requestId, { resolve });
       host.permissions.set(requestId, request);
       this.requests.set(requestId, sessionId);
       this.update(host, { state: 'needs-you' });
@@ -405,9 +404,7 @@ export class ProviderHosts {
       this.requests.delete(requestId);
       this.deps.onPermissionResolved(requestId, sessionId);
       if (host.info.state === 'needs-you' && host.permissions.size === 0) this.update(host, { state: host.inTurn ? 'running' : 'idle' });
-      const allowed = decision.behavior === 'allow';
-      if (allowed && decision.always) this.deps.allowBrowserSite?.(sessionId, own.site);
-      own.resolve(allowed);
+      own.resolve(browserAnswerOf(decision));
       return true;
     }
     if (!host?.session) return false;

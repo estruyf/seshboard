@@ -232,7 +232,7 @@ process.parentPort.on('message', (event) => {
     engine.setSkimMarks((data as { enabled?: unknown }).enabled !== false);
     return;
   }
-  // Settings › General › Browser › Allow Seshboard to control the browser: the `browser` server to start, or null.
+  // Settings › Browser › Allow Seshboard to control the browser: the `browser` server to start, or null.
   if (data?.type === 'browserControl') {
     const server = (data as { server?: { command?: unknown; args?: unknown; env?: unknown } | null }).server;
     const valid = server && typeof server.command === 'string' && Array.isArray(server.args) && server.args.every((a) => typeof a === 'string') && server.env && typeof server.env === 'object';

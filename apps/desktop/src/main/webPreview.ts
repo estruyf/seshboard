@@ -1,8 +1,8 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, webContents, type WebContents } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, webContents, type Session, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
-import { localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { isBrowserPartition, localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
-import { acceptsLocalCertificate, cookieOfSite, faviconCap, iconTooLarge, keyForWindow, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, cookieOfSite, faviconCap, partitionClearing, iconTooLarge, keyForWindow, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
 /**
  * Pages whose keys go to their window (`keysToWindow`): the window's document took the focus from them, which Chromium
@@ -32,19 +32,27 @@ export interface WebPreviewGuardDeps {
   askFirst: boolean;
 }
 
+/** The sessions of the partitions pages use (the Default profile's and each browser profile's), once guarded. */
+const guardedSessions = new Map<string, Session>();
+
+/** A session one of the browser's pages uses (`guardPartition` ran on it), for the agent's checks. */
+export const isBrowserSession = (candidate: Session): boolean => [...guardedSessions.values()].includes(candidate);
+
 /**
- * The web preview's `<webview>` (a session's dev server beside the conversation, or with the browser on any web
- * page, in tabs), checked here: one attaches only in its own partition, on an allowed address, sandboxed and without a
- * preload or Node; its page stays on allowed addresses (`previewNavigation`); a new window it asks for becomes a tab
- * or goes to the browser (`popupTarget`), never a window; its permission requests and downloads are refused; and the
- * app's shortcuts typed in it reach the app. Call once, before the first window.
+ * The guards a partition's session needs before its first page (`installWebPreviewGuards`): a few harmless permissions
+ * (`pagePermissionAllowed`), no downloads, and Chromium's verdict on certificates except a dev server's on this computer.
+ * Run once per partition: the Default profile's at start, a browser profile's the first time one of its pages attaches.
+ * Only for a partition `isBrowserPartition` accepts.
  */
-export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
-  const previewSession = session.fromPartition(WEB_PREVIEW_PARTITION);
+function guardPartition(partition: string, deps: WebPreviewGuardDeps): Session {
+  const known = guardedSessions.get(partition);
+  if (known) return known;
+  const pageSession = session.fromPartition(partition);
+  guardedSessions.set(partition, pageSession);
   // A few harmless ones are allowed (`pagePermissionAllowed`); the check answers as the request does.
-  previewSession.setPermissionRequestHandler((_contents, permission, callback) => callback(pagePermissionAllowed(permission)));
-  previewSession.setPermissionCheckHandler((_contents, permission) => pagePermissionAllowed(permission));
-  previewSession.on('will-download', (event, item, contents) => {
+  pageSession.setPermissionRequestHandler((_contents, permission, callback) => callback(pagePermissionAllowed(permission)));
+  pageSession.setPermissionCheckHandler((_contents, permission) => pagePermissionAllowed(permission));
+  pageSession.on('will-download', (event, item, contents) => {
     event.preventDefault();
     // With the browser on, the page says why nothing happened, and offers the browser instead.
     const host = contents?.hostWebContents;
@@ -53,7 +61,20 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
     send(host, { kind: 'download-refused', contentsId: contents.id, url });
   });
   // A dev server's self-signed certificate on this computer is fine; anywhere else Chromium's verdict stands (-3).
-  previewSession.setCertificateVerifyProc((request, callback) => callback(request.errorCode !== 0 && acceptsLocalCertificate(request.hostname) ? 0 : -3));
+  pageSession.setCertificateVerifyProc((request, callback) => callback(request.errorCode !== 0 && acceptsLocalCertificate(request.hostname) ? 0 : -3));
+  return pageSession;
+}
+
+/**
+ * The web preview's `<webview>` (a session's dev server beside the conversation, or with the browser on any web
+ * page, in tabs), checked here: one attaches only in a partition of its own (the Default profile's, or a browser
+ * profile's: docs/browser.md, Browser profiles), on an allowed address, sandboxed and without a preload or Node; its
+ * page stays on allowed addresses (`previewNavigation`); a new window it asks for becomes a tab or goes to the browser
+ * (`popupTarget`), never a window; its permission requests and downloads are refused; and the app's shortcuts typed in
+ * it reach the app. Call once, before the first window.
+ */
+export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
+  guardPartition(WEB_PREVIEW_PARTITION, deps);
 
   // A page's keys go to its window (the palette took the focus from it), or, with null, every page of that window's are its own again.
   ipcMain.on(IpcChannel.webPreviewKeysToWindow, (event, contentsId: unknown) => {
@@ -86,9 +107,12 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
     if (event.sender.getType() === 'window' && guestOf(event.sender, contentsId)) cancelPick(contentsId as number);
   });
 
-  // Clear data for this site (its cookies, which sign you out, and its storage), or everything the pages keep.
-  ipcMain.handle(IpcChannel.webPreviewClearData, async (event, origin: unknown) => {
+  // Clear data for this site (its cookies, which sign you out, and its storage), or everything the pages keep, in a
+  // browser profile's partition (the Default one's when none is given).
+  ipcMain.handle(IpcChannel.webPreviewClearData, async (event, origin: unknown, partition: unknown) => {
     if (!deps.browser() || event.sender.getType() !== 'window') return;
+    if (partition != null && !isBrowserPartition(partition)) return;
+    const previewSession = guardPartition(isBrowserPartition(partition) ? partition : WEB_PREVIEW_PARTITION, deps);
     if (typeof origin !== 'string') {
       await previewSession.clearStorageData();
       await previewSession.clearCache();
@@ -103,6 +127,21 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
       if (!cookieOfSite(hostname, cookie.domain)) continue;
       const url = `${cookie.secure ? 'https' : 'http'}://${(cookie.domain ?? hostname).replace(/^\./, '')}${cookie.path ?? '/'}`;
       await previewSession.cookies.remove(url, cookie.name).catch(() => {});
+    }
+  });
+
+  // Reset or Delete of a browser profile: what its partition keeps, the parts ticked (`partitionClearing`). The window
+  // closed or parked its pages first, so they don't write back. The partition's folder stays on disk, empty.
+  ipcMain.handle(IpcChannel.webPreviewResetPartition, async (event, partition: unknown, parts: unknown) => {
+    if (!deps.browser() || event.sender.getType() !== 'window' || !isBrowserPartition(partition)) return;
+    const ticked = (parts ?? {}) as Record<string, unknown>;
+    const clearing = partitionClearing({ cookies: ticked.cookies === true, siteData: ticked.siteData === true, cache: ticked.cache === true });
+    const pageSession = guardPartition(partition, deps);
+    if (clearing.storages.length) await pageSession.clearStorageData({ storages: clearing.storages });
+    if (clearing.authCache) await pageSession.clearAuthCache();
+    if (clearing.cache) {
+      await pageSession.clearCache();
+      await pageSession.clearCodeCaches({});
     }
   });
 
@@ -126,7 +165,10 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
       preferences.nodeIntegration = false;
       preferences.nodeIntegrationInSubFrames = false;
       preferences.webSecurity = true;
-      preferences.partition = WEB_PREVIEW_PARTITION;
+      // The tab's browser profile, checked by `webviewAllowed`; its session is guarded before the page's first request.
+      const partition = isBrowserPartition(params.partition) ? params.partition : WEB_PREVIEW_PARTITION;
+      guardPartition(partition, deps);
+      preferences.partition = partition;
       // A video's full screen stays in the panel instead of taking the window.
       preferences.disableHtmlFullscreenWindowResize = true;
     });

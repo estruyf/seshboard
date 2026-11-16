@@ -21,7 +21,7 @@ import { ProviderOffer, ProviderReady } from './ProviderSetup.tsx';
 import { offersToMake, suggestedName } from './providerOffer.ts';
 import { PROFILE_DOT } from './ProfileBadge.tsx';
 
-const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60';
+export const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60';
 
 const slug = (name: string) =>
   name
@@ -139,7 +139,7 @@ const COLOR_NAME: Record<ProfileColor, string> = {
 };
 
 /** The profile's colour as a radio group: arrow keys move between swatches, and each one says its colour name. */
-function ColorPicker({ value, onChange }: { value: ProfileColor; onChange(color: ProfileColor): void }) {
+export function ColorPicker({ value, onChange }: { value: ProfileColor; onChange(color: ProfileColor): void }) {
   return (
     <RadioGroup label="Colour" className="flex items-center gap-1">
       {PROFILE_COLORS.map((color) => (

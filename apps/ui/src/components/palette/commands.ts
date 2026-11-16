@@ -132,7 +132,7 @@ import type { PromptScope } from '@seshboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
-import { SETTINGS_SECTIONS } from '../settingsSections.ts';
+import { SETTINGS_SECTIONS, settingsPageShown } from '../settingsSections.ts';
 import type { Way } from '../../state/tilingGeometry.ts';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import { ACTION_ICON } from '../actions/actionIcon.ts';
@@ -1082,7 +1082,7 @@ export const COMMANDS: PaletteCommand[] = [
       group: 'settings',
       icon,
       keywords: 'preferences page',
-      when: (ctx) => ctx.view === 'settings' && ctx.settingsSection !== id,
+      when: (ctx) => ctx.view === 'settings' && ctx.settingsSection !== id && settingsPageShown(id, { browser: !!ctx.browser }),
       run: (api) => api.openSettings(id),
     }),
   ),

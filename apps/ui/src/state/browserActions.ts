@@ -1,4 +1,4 @@
-import { shortUrl, type BrowserFavorite } from '@seshboard/protocol/client';
+import { browserProfilePartition, shortUrl, type BrowserFavorite } from '@seshboard/protocol/client';
 import type { PickedElement } from '@seshboard/protocol/bridge';
 import { elementImage, elementItem, quoteHeading } from '../components/webPreview/pageMessage.ts';
 import { useDrafts } from './draftsStore.ts';
@@ -38,27 +38,29 @@ export function askEditFavorite(favorite: Pick<BrowserFavorite, 'id'>): void {
   usePaletteBus.getState().showDialog({ kind: 'edit-favorite', id: favorite.id });
 }
 
-/** Clear data for this site… (a tab given) or Clear all browsing data… (null): asks first (`PaletteDialogs`). */
-export function askClearData(tab: Pick<BrowserTab, 'url'> | null): void {
+/** Clear data for this site… (a tab given, in its browser profile) or Clear all browsing data… (null): asks first (`PaletteDialogs`). */
+export function askClearData(tab: Pick<BrowserTab, 'url' | 'profileId'> | null): void {
   const origin = tab?.url ? new URL(tab.url).origin : null;
   if (tab && !origin) return;
-  usePaletteBus.getState().showDialog({ kind: 'clear-browser-data', origin });
+  usePaletteBus.getState().showDialog({ kind: 'clear-browser-data', origin, profileId: tab?.profileId ?? null });
 }
 
 /** The host a site's data is cleared for, as the dialog and the toast name it. */
 export const siteName = (origin: string): string => shortUrl(origin).replace(/\/$/, '');
 
 /**
- * Clears a site's data (its cookies and storage, which signs you out of it) or, with null, all of it; then the pages
- * that showed it load again, signed out. Throws when main couldn't.
+ * Clears a site's data (its cookies and storage, which signs you out of it) in one browser profile (`profileId`, null:
+ * Default) or, with no origin, all of it in every profile (`profileIds`: the others); then the pages that showed it load
+ * again, signed out. Throws when main couldn't.
  */
-export async function clearBrowsingData(origin: string | null): Promise<void> {
-  await window.seshboard?.clearBrowsingData(origin);
+export async function clearBrowsingData(origin: string | null, profileId: string | null = null, profileIds: readonly string[] = []): Promise<void> {
+  if (origin) await window.seshboard?.clearBrowsingData(origin, browserProfilePartition(profileId));
+  else for (const id of [null, ...profileIds]) await window.seshboard?.clearBrowsingData(null, browserProfilePartition(id));
   const state = useWebPreview.getState();
   for (const id of livePages(state)) {
     const tab = state.tabs.find((t) => t.id === id);
     if (!tab?.url) continue;
-    if (origin && new URL(tab.url).origin !== origin) continue;
+    if (origin && (new URL(tab.url).origin !== origin || tab.profileId !== profileId)) continue;
     previewPage(id)?.reload(tab.url);
   }
   toast(origin ? `Signed out of ${siteName(origin)}` : 'Browsing data cleared', { icon: 'browser' });

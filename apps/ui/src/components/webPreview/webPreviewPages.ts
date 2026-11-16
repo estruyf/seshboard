@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { browserProfilePartition } from '@seshboard/protocol/client';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { noteVisit } from '../../state/browserHistory.ts';
 import type { PickedElement } from '@seshboard/protocol/bridge';
@@ -113,6 +113,8 @@ class PreviewPage {
   ready = false;
   /** The `seq` of the address it was last asked to load (`SessionWeb.seq`). */
   loaded = -1;
+  /** Its tab's browser profile (null: Default), which its partition is. */
+  readonly profileId: string | null;
   private readonly off: Array<() => void> = [];
 
   constructor(
@@ -120,12 +122,15 @@ class PreviewPage {
     host: HTMLElement,
   ) {
     const element = document.createElement('webview') as WebviewElement;
+    const tab = useWebPreview.getState().tabs.find((t) => t.id === sessionId);
+    // The tab's browser profile, for good: a tab never changes profile, so its page never changes partition.
+    this.profileId = tab?.profileId ?? null;
     // The partition and popups before the first address, which attaches it. Main's handler decides where a new window
     // goes (here or the browser); without `allowpopups` the page's links that open one would do nothing.
-    element.setAttribute('partition', WEB_PREVIEW_PARTITION);
+    element.setAttribute('partition', browserProfilePartition(this.profileId));
     element.setAttribute('allowpopups', '');
     element.dataset.webPreviewPage = sessionId;
-    const tab = useWebPreview.getState().tabs.find((t) => t.id === sessionId);
+    if (this.profileId) element.dataset.webPreviewProfile = this.profileId;
     if (tab) element.dataset.webPreviewOwner = tab.owner;
     // White under the page whatever the theme, as a browser draws it: a page without a background of its own expects that.
     Object.assign(element.style, { position: 'fixed', background: 'white', ...PARKED });
@@ -136,11 +141,11 @@ class PreviewPage {
     // Each also goes in the history (`noteVisit`): an address opened counts as a visit, a new title only names it.
     const title = throttled<string>(NOTE_MS, (text) => {
       useWebPreview.getState().titled(sessionId, text);
-      noteVisit(this.pageUrl(), text, false);
+      noteVisit(this.pageUrl(), text, false, this.profileId);
     });
     const address = throttled<string>(NOTE_MS, (url) => {
       useWebPreview.getState().shown(sessionId, url);
-      noteVisit(url, '', true);
+      noteVisit(url, '', true, this.profileId);
       this.sync();
     });
     this.off.push(title.cancel, address.cancel);
