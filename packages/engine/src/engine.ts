@@ -47,6 +47,8 @@ import {
   type CloneProgress,
   type WorktreePullRequest,
   type WorktreeSize,
+  mergeFacts,
+  mergePullRequests,
   type Transport,
   type UsageSnapshot,
   type TokenCounts,
@@ -107,7 +109,8 @@ import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, 
 import { githubStarStatus, StarFailure, starSeshboard } from './git/githubStar.ts';
 import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
-import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
+import { WorktreeFactsRunner } from './git/worktreeFacts.ts';
+import { fetchPullRequests, ignoredFiles, measureSize, readWorktrees, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
@@ -251,6 +254,8 @@ export interface EngineOptions {
   copilot?: ProviderOptions['copilot'];
   /** A fake `codex` and `codex app-server` (tests). Defaults to the user's own `codex`. */
   codex?: ProviderOptions['codex'];
+  /** How long `worktrees.list` waits for the facts of the worktrees before it answers without them (tests set 0). Defaults to 1.5 seconds. */
+  worktreeFactsWaitMs?: number;
   /** Start watching ~/.claude immediately. Defaults to true. */
   watchSessions?: boolean;
   /** Claude Code itself. Defaults to the Agent SDK (tests pass a fake). */
@@ -2524,6 +2529,11 @@ export function createEngine(options: EngineOptions): Engine {
     }
   };
 
+  /** Worktree facts (changes, ahead and behind, merged, unpushed) read in the background after `worktrees.list`; they go out with `worktrees.facts`. */
+  const worktreeFacts = new WorktreeFactsRunner({ emit: (root, facts) => broadcast('worktrees.facts', { root, facts }) });
+  /** How long `worktrees.list` waits for the facts and pull requests before it answers without them: a few worktrees are read in that time, dozens aren't. */
+  const WORKTREE_FACTS_WAIT_MS = options.worktreeFactsWaitMs ?? 1500;
+
   /** Finds a project action and refuses an unapproved one. */
   const findAction = (projectRoot: string, id: string) => {
     const action = actions.list(projectRoot).actions.find((a) => a.id === id);
@@ -4362,20 +4372,37 @@ export function createEngine(options: EngineOptions): Engine {
       }
       return { terminalId: null };
     },
-    'worktrees.list': async ({ root, fetch }) => {
+    'worktrees.list': async ({ root, fetch, facts }) => {
       if (!resolver.resolve(root).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
-      if (fetch) {
-        // Merged and pushed are only as current as the last fetch. Offline or signed out, the list still comes.
-        await updateCheckout(root, 'fetch', (await shell.ready).env).catch((error: Error) => log('warn', `worktrees: fetch in ${root} failed: ${error.message}`));
-      }
-      // gh and git at the same time; the pull requests are matched to branches afterwards.
-      const pullRequests = pullRequestsFor(root, fetch);
-      const list = await listWorktrees(root, { sessions: sessionPlaces() }).catch((error: Error) => {
+      // The list never waits for what is slow. The fetch runs beside it (offline or signed out, the list still comes),
+      // and the facts are read once it is done, so merged and pushed are as current as it made them.
+      let fetchDone = !fetch;
+      const fetched = fetch
+        ? (async () => updateCheckout(root, 'fetch', (await shell.ready).env))()
+            .then(
+              () => {},
+              (error: Error) => log('warn', `worktrees: fetch in ${root} failed: ${error.message}`),
+            )
+            .then(() => void (fetchDone = true))
+        : undefined;
+      const listing = await readWorktrees(root, { sessions: sessionPlaces() }).catch((error: Error) => {
         throw new RpcError('GIT_FAILED', error.message);
       });
-      const prs = await pullRequests;
-      if (!prs) return list;
-      return { ...list, pullRequests: true, worktrees: list.worktrees.map((w) => (w.branch && !w.isMain ? { ...w, pr: prs.get(w.branch) ?? null } : w)) };
+      // Nothing else is read for a caller that only wants names and branches.
+      if (!facts) return listing.list;
+      // Facts and pull requests that come in while we wait go out in the answer; the rest follow as events. With a
+      // fetch, what was read before it is dropped by `fill` once it is done, and isn't in the answer either.
+      const filled = worktreeFacts.fill(root, listing, { after: fetched });
+      const gh: { done: boolean; prs: Map<string, WorktreePullRequest> | null } = { done: false, prs: null };
+      const answered = pullRequestsFor(root, fetch).then((found) => {
+        Object.assign(gh, { done: true, prs: found });
+        broadcast('worktrees.pullRequests', { root, pullRequests: found ? Object.fromEntries(found) : null });
+      });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([Promise.all([filled, answered]), new Promise((done) => (timer = setTimeout(done, WORKTREE_FACTS_WAIT_MS)))]);
+      clearTimeout(timer);
+      const list = fetchDone ? mergeFacts(listing.list, worktreeFacts.known(listing.list.worktrees)) : listing.list;
+      return gh.done ? mergePullRequests(list, gh.prs) : { ...list, pullRequestsPending: true };
     },
     'worktrees.size': async ({ paths, refresh }) => {
       const known: WorktreeSize[] = [];
@@ -4396,6 +4423,8 @@ export function createEngine(options: EngineOptions): Engine {
         },
       });
       for (const result of results) if (result.removed) worktreeSizes.delete(result.path);
+      // What was read of the removed worktrees is gone with them; the others' facts are unchanged by a removal.
+      worktreeFacts.invalidate(results.filter((r) => r.removed).map((r) => r.path));
       for (const result of results) {
         if (result.ok) log('info', `worktrees: removed ${result.path}${result.branchDeleted ? ' and its branch' : ''}${result.recoveryRef ? ` (kept ${result.recoveryRef})` : ''}`);
       }
@@ -4424,6 +4453,8 @@ export function createEngine(options: EngineOptions): Engine {
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
       }
+      // What is pushed changed: the list read right after must not get the facts from before.
+      worktreeFacts.invalidate([path, status.path]);
       return {};
     },
     'worktrees.ignoredFiles': async ({ path }) => {

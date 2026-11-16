@@ -9,10 +9,13 @@ import {
   freedBytes,
   groupRows,
   ignoredLine,
+  isMerged,
   lockReason,
   mainCheckoutBytes,
+  mayHoldWork,
   mergeLabel,
   NO_SESSIONS,
+  pickedRows,
   removedMessage,
   sessionsLabel,
   toggleSelection,
@@ -140,6 +143,62 @@ describe('selection rules', () => {
   });
 });
 
+describe('worktrees whose facts are still being read', () => {
+  // What the engine sends before the facts: placeholders that would read as "clean, merged, nothing to lose".
+  const pending = (name: string, patch: Partial<WorktreeEntry> = {}) => entry(name, { factsPending: true, uncommitted: 0, ahead: null, behind: null, merged: false, unpushed: 0, pushed: false, ...patch });
+
+  it('never suggests or lets you pick one, however clean the placeholders look', () => {
+    const rows = worktreeRows([main, pending('p1'), pending('p2', { merged: true, ahead: 0 })], () => NO_SESSIONS, NOW);
+    expect(rows.map((r) => r.group)).toEqual(['main', 'reading', 'reading']);
+    expect(rows.slice(1).every((r) => r.pending && r.locked === 'Still reading its changes')).toBe(true);
+    expect(defaultSelection(rows).size).toBe(0);
+    expect(toggleSelection(new Set(), rows, rows[1]!.entry.path, null, false).size).toBe(0);
+    expect(worktreeSummary(rows, new Map())).toMatchObject({ count: 2, safe: 0, reading: 2 });
+  });
+
+  it('says nothing about merges, commits or pull requests until they are known', () => {
+    const e = pending('p3', { merged: true, ahead: 0, pr: { number: 3, state: 'merged', url: 'u' } });
+    expect(mergeLabel(e)).toBeNull();
+    expect(aheadLabel(e)).toBeNull();
+    expect(isMerged(e)).toBe(false);
+    expect(branchChoice([e]).defaultOn).toBe(false);
+  });
+
+  it('keeps a pick across a new read, but removes nothing that is still being read', () => {
+    const picked = new Set([`${ROOT}/.claude/worktrees/p4`]);
+    const rows = worktreeRows([main, pending('p4')], () => NO_SESSIONS, NOW);
+    expect(validSelection(picked, rows)).toEqual(picked);
+    expect(pickedRows(rows, picked)).toEqual([]);
+    const known = worktreeRows([main, entry('p4', { merged: true, ahead: 0 })], () => NO_SESSIONS, NOW);
+    expect(pickedRows(known, picked).map((r) => r.entry.name)).toEqual(['p4']);
+  });
+
+  it('lists a missing folder as stale, but cannot be pruned with its branch before its commits are known', () => {
+    const gone = pending('gone', { missing: true });
+    expect(group(gone).group).toBe('stale');
+    // Its branch may hold commits nobody pushed: unpickable until the facts are in, and deleting the branch would warn.
+    expect(lockReason(gone, NO_SESSIONS)).toBe('Still reading its changes');
+    const rows = worktreeRows([main, gone], () => NO_SESSIONS, NOW);
+    expect(rows[1]).toMatchObject({ group: 'stale', pending: true });
+    expect(defaultSelection(rows).size).toBe(0);
+    expect(mayHoldWork(gone)).toBe(true);
+    expect(branchChoice([gone]).defaultOn).toBe(false);
+    // Once read, a stale row is pickable again, and an unpushed branch is the dialog's warning.
+    const read = entry('gone', { missing: true, unpushed: 2 });
+    expect(lockReason(read, NO_SESSIONS)).toBeNull();
+    expect(mayHoldWork(read)).toBe(false);
+  });
+
+  it('never calls a worktree safe or done when git could not read all of it', () => {
+    const broken = entry('broken', { unreadable: true, ahead: 0, merged: false, pushed: false });
+    expect(group(broken)).toMatchObject({ group: 'keep', reason: "Couldn't read all of it: check before removing" });
+    expect(group(entry('half', { unreadable: true, ahead: 3, pushed: true, lastActivity: NOW - 30 * DAY })).group).toBe('keep');
+    expect(mayHoldWork(broken)).toBe(true);
+    expect(branchChoice([broken]).defaultOn).toBe(false);
+    expect(aheadLabel(broken)).toEqual({ text: "couldn't read", caution: true });
+  });
+});
+
 describe('sizes', () => {
   const size = (path: string, bytes: number): [string, WorktreeSize] => [path, { path, bytes, at: NOW }];
 
@@ -169,7 +228,7 @@ describe('sizes', () => {
     const winA = 'c:\\work\\app\\.claude\\worktrees\\a';
     const winRows = worktreeRows([{ ...main, path: winRoot }, entry('a', { merged: true, ahead: 0, path: winA })], () => NO_SESSIONS, NOW);
     expect(mainCheckoutBytes(winRows, new Map([size(winRoot, 2_000), size(winA, 1_500)]))).toBe(500);
-    expect(worktreeSummary(rows, sizes)).toEqual({ count: 2, bytes: 1_500, unknown: 0, safe: 1, stale: 1 });
+    expect(worktreeSummary(rows, sizes)).toEqual({ count: 2, bytes: 1_500, unknown: 0, safe: 1, stale: 1, reading: 0 });
   });
 });
 

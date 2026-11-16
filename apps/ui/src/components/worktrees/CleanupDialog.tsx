@@ -7,12 +7,12 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Notice } from '../ui/Notice.tsx';
-import { branchChoice, formatBytes, freedBytes, ignoredLine, isMerged, mergeLabel, removedMessage } from './worktreeGroups.ts';
+import { branchChoice, formatBytes, freedBytes, ignoredLine, isMerged, mayHoldWork, mergeLabel, removedMessage } from './worktreeGroups.ts';
 
 /** A worktree's branch and where it stands, for the confirmation: "worktree-x · merged", "folder missing · git worktree prune". */
 function describe(entry: WorktreeEntry): string {
   if (entry.missing) return `${entry.branch ? `${entry.branch} · ` : ''}folder missing · git worktree prune`;
-  const state = mergeLabel(entry)?.text ?? (entry.ahead === 0 ? 'no commits of its own' : entry.unpushed > 0 ? `${entry.unpushed} not pushed` : 'not merged');
+  const state = mayHoldWork(entry) ? "couldn't read its commits" : mergeLabel(entry)?.text ?? (entry.ahead === 0 ? 'no commits of its own' : entry.unpushed > 0 ? `${entry.unpushed} not pushed` : 'not merged');
   return [entry.branch ?? 'detached HEAD', state].join(' · ');
 }
 
@@ -73,7 +73,7 @@ export function CleanupDialog({
     };
   }, [client, entries]);
 
-  const losesWork = (entry: WorktreeEntry) => deleteBranches && !recoveryRef && entry.branch !== null && !keepBranch.has(entry.path) && !pushed.has(entry.path) && entry.unpushed > 0 && !isMerged(entry);
+  const losesWork = (entry: WorktreeEntry) => deleteBranches && !recoveryRef && entry.branch !== null && !keepBranch.has(entry.path) && !pushed.has(entry.path) && (mayHoldWork(entry) || (entry.unpushed > 0 && !isMerged(entry)));
   const atRisk = entries.filter(losesWork);
 
   const push = async (entry: WorktreeEntry) => {
@@ -215,10 +215,18 @@ export function CleanupDialog({
             </>
           }
         >
-          <span className="font-semibold">
-            {entry.name} has {entry.unpushed} {entry.unpushed === 1 ? "commit that isn't" : "commits that aren't"} pushed.
-          </span>{' '}
-          Deleting its branch would lose {entry.unpushed === 1 ? 'it' : 'them'}.
+          {mayHoldWork(entry) ? (
+            <>
+              <span className="font-semibold">{entry.name} may have commits that aren't pushed.</span> Its commits could not be read. Deleting its branch could lose them.
+            </>
+          ) : (
+            <>
+              <span className="font-semibold">
+                {entry.name} has {entry.unpushed} {entry.unpushed === 1 ? "commit that isn't" : "commits that aren't"} pushed.
+              </span>{' '}
+              Deleting its branch would lose {entry.unpushed === 1 ? 'it' : 'them'}.
+            </>
+          )}
         </Notice>
       ))}
       {error && (

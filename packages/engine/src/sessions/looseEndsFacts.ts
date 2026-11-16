@@ -35,7 +35,8 @@ export async function repoFacts(root: string, options: FactsOptions): Promise<{ 
     facts: {
       root: list.root,
       baseBranch: base,
-      checkouts: list.worktrees.filter((w) => !w.missing).map((w) => ({ path: w.path, branch: w.branch, uncommitted: w.uncommitted, unpushed: w.unpushed })),
+      // A checkout git couldn't read is left out: its counts are a guess, and a loose end must be real.
+      checkouts: list.worktrees.filter((w) => !w.missing && !w.unreadable).map((w) => ({ path: w.path, branch: w.branch, uncommitted: w.uncommitted, unpushed: w.unpushed })),
       pullRequests: prs ?? new Map(),
       failing: failing ?? new Map(),
     },

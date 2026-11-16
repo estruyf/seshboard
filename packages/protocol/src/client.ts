@@ -38,6 +38,7 @@ export { continueList, type TextEdit } from './listContinue.ts';
 export { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 export { PR_BODY_LIMIT } from './pullRequestConstants.ts';
 export { randomWorktreeName } from './worktreeName.ts';
+export { anyFactsPending, mergeFacts, mergePullRequests, PENDING_FACTS, withFacts } from './worktreeFacts.ts';
 export { inheritedDefault, inheritedPermissionMode } from './permissionModes.ts';
 export { branchOfBase, isBranchBase, isWorktreeBase, projectPrBase, worktreeRequestBase, type BranchBase, type WorktreeBase } from './worktreeBase.ts';
 export { remoteBaseChoices, remoteBaseListed, remoteBaseName, remoteFreshBase, type RemoteBaseChoice } from './remoteWorktreeBase.ts';

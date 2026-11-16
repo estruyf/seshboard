@@ -1,6 +1,6 @@
 import { Check, FolderOpen, GitBranch, Image, Plus, RotateCcw, Settings2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { ListedAction, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
+import { anyFactsPending, type ListedAction, type ProjectDefaults, type ProjectInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { formatShortcut } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -166,7 +166,7 @@ export function ProjectOverview({ project }: { project: ProjectInfo }) {
         <OverviewPanel title="Worktrees" link={safe > 0 ? { label: `Clean up ${safe}`, onClick: () => cleanUpWorktrees(root), data: { 'data-overview-cleanup': true } } : null} data-overview-worktrees>
           {!project.exists || state.notRepo ? (
             <p className="text-ui text-muted">Not a git repository.</p>
-          ) : !state.list ? (
+          ) : !state.list || (worktrees.length === 0 && anyFactsPending(state.list)) ? (
             <p className="text-ui text-muted">Reading…</p>
           ) : worktrees.length === 0 ? (
             <p className="text-ui text-muted">{others.length === 0 ? 'No worktrees besides the main checkout.' : 'None in use, and none ready to remove.'}</p>
