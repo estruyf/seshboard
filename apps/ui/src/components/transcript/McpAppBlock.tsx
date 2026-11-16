@@ -11,6 +11,7 @@ import { ToolDetails, type ToolItem } from './ToolDetails.tsx';
 import { toolSummary } from './toolSummary.ts';
 import { useDark } from './VisualBlock.tsx';
 import { MAX_VISUAL_HEIGHT, mcpAppStyleVariables } from './visuals.ts';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /** The height each app drew at, by its tool call, so one scrolled away and back keeps its room while it loads again. */
 const heights = new Map<string, number>();
@@ -141,7 +142,7 @@ function McpAppFrame({ item, app, title, sessionId }: { item: ToolItem; app: Mcp
         }
       },
       readResource: (uri) => engine().call('mcpApp.resource', { sessionId, server: app.server, uri, callId: app.callId }),
-      openLink: (link) => void window.open(link, '_blank', 'noopener'),
+      openLink: (link) => openWebLink(link, sessionId),
       message: (text) => useDrafts.getState().requestQuote(sessionId, text, { plain: true }),
       resize(next) {
         heights.set(item.id, next);

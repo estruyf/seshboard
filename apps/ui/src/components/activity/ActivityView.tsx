@@ -24,6 +24,7 @@ import { ActivityExportDialog } from './ActivityExportDialog.tsx';
 import { addDays, barParts, countsByDay, dayLabel, dayNumber, dayOf, daysBetween, dayShort, dayTitle, formatWorked, formatWorkedShort, inDays, inProject, mondayOf, neighbourLine, plural, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sessionsOnce, statsOf, stripBars, summaryParts, timesTypical, typicalLine, WEEK_DAYS, weekdayShort, weekOf, type ActivityRow, type ActivityStats, type DayRange, type DayScore, type ProjectGroup, type ScorePart, type StripBars } from './activityModel.ts';
 import { RangePicker } from './RangePicker.tsx';
 import { useActivityRange, useDaySummary, useTypicalDay, type DaySummary } from './useActivity.ts';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /** From this many lines the list only has the rows in view: a range can hold two months of sessions. */
 const VIRTUALIZE_FROM = 150;
@@ -646,7 +647,7 @@ function SessionRow({ row, needsYou, span, today }: { row: ActivityRow; needsYou
               <span className="text-meta text-faint">Its transcript is gone, so it can’t be opened.</span>
             )}
             {row.prs.map((pr) => (
-              <Button key={pr.url} icon={<GitPullRequest size={13} aria-hidden />} onClick={() => void window.open(pr.url, '_blank')} data-activity-open-pr={pr.number}>
+              <Button key={pr.url} icon={<GitPullRequest size={13} aria-hidden />} onClick={() => openWebLink(pr.url)} data-activity-open-pr={pr.number}>
                 Open #{pr.number}
               </Button>
             ))}

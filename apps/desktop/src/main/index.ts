@@ -6358,7 +6358,7 @@ async function runBranchStep(win: BrowserWindow): Promise<string> {
 /**
  * Read-only: the "Open in" items in the header's ⋯ menu (the default app first, with ⌘O) open on top of
  * the transcript (nothing paints over the menu), offer GitHub with the link git's remotes give when the
- * checkout is on GitHub, and Escape closes the menu. Opens nothing.
+ * checkout is on GitHub, and Escape or a second click on ⋯ closes the menu. Opens nothing.
  */
 async function runOpenInStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -6383,7 +6383,13 @@ async function runOpenInStep(win: BrowserWindow): Promise<string> {
   if (!defaultHint.includes(openKeys)) return `the default app does not show ${openKeys} ("${defaultHint}")`;
   if (github !== null && !/^https:\/\/github\.com\/[^/]+\/[^/]+(\/tree\/.+)?$/.test(github)) return `odd GitHub link "${github}"`;
   if (!(await waitInPage(win, `!${menu}`, 2_000))) return 'Escape did not close the menu';
-  return `ok: Open in items in the More menu (${defaultHint}), on top of the transcript, ${github ? `GitHub → ${github}` : 'no GitHub remote'}, Escape closed it`;
+  // With real mouse events, a click on ⋯ while the menu is open closes it, not closes and opens it again.
+  const button = '[data-current-session] [data-more-menu]';
+  await clickLikeAUser(win, button);
+  if (!(await waitInPage(win, menu, 2_000))) return 'a click on ⋯ did not open the menu';
+  await clickLikeAUser(win, button);
+  if (!(await waitInPage(win, `!${menu}`, 2_000))) return 'a second click on ⋯ did not close the menu';
+  return `ok: Open in items in the More menu (${defaultHint}), on top of the transcript, ${github ? `GitHub → ${github}` : 'no GitHub remote'}, Escape closed it, and so did a second click on ⋯`;
 }
 
 /**

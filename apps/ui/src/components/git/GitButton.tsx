@@ -31,6 +31,7 @@ import { CommitDialog } from './CommitDialog.tsx';
 import { gitSummary, planGit, showsViewPr, STEP_LABEL, stepCount, type GitStep, FORK_READ_ONLY } from './gitPlan.ts';
 import { PullRequestDialog, type CreatedPr } from './PullRequestDialog.tsx';
 import { ariaKeysFor, formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
+import { openWebLink } from '../../state/browserActions.ts';
 
 const ICON: Record<GitStep, typeof GitCommitHorizontal> = { fetch: RefreshCw, commit: GitCommitHorizontal, pull: CloudDownload, push: CloudUpload, pr: GitPullRequest };
 /** The count on the button's face (↓ behind, ↑ ahead, files to commit). It sits on the yellow fill, so it keeps the fill's text colour. */
@@ -277,7 +278,7 @@ export function GitButton({
 
   const openPr = pr?.state === 'open' ? pr : null;
   const viewPr = showsViewPr(plan.primary, openPr);
-  const openUrl = (url: string) => void window.open(url, '_blank');
+  const openUrl = (url: string) => openWebLink(url, sessionId);
   const created = (made: CreatedPr) => {
     setCreatingPr(false);
     setPr({ number: made.number, url: made.url, state: 'open', draft: made.draft });

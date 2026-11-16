@@ -166,6 +166,7 @@ import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useCatchUpShow } from '../../state/catchUpShow.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { WhyPanel } from '../session/WhyPanel.tsx';
+import { openWebLink } from '../../state/browserActions.ts';
 
 const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', sdk: 'SDK', app: 'Seshboard', unknown: '' } as const;
 
@@ -1563,8 +1564,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         ariaLabel: `Open ${githubPage.repo} on GitHub`,
         state: 'closed',
         data: { 'data-rail-app': true },
-        // The main process opens http(s) links from window.open in the browser.
-        onClick: () => void window.open(githubPage.url, '_blank'),
+        onClick: () => openWebLink(githubPage.url, sessionId),
       };
     }
     const editor = editors.find((e) => `app:${e.id}` === id)!;

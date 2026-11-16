@@ -1,4 +1,4 @@
-import { browserProfilePartition, shortUrl, type BrowserFavorite } from '@seshboard/protocol/client';
+import { browserProfilePartition, shortUrl, webPageUrl, type BrowserFavorite } from '@seshboard/protocol/client';
 import type { PickedElement } from '@seshboard/protocol/bridge';
 import { elementImage, elementItem, quoteHeading } from '../components/webPreview/pageMessage.ts';
 import { useDrafts } from './draftsStore.ts';
@@ -8,7 +8,7 @@ import { currentPageTab, openBrowserView, openFavorite } from './browserViewStor
 import { usePaletteBus } from './paletteBus.ts';
 import { useSessions } from './sessionsStore.ts';
 import { toast } from './toastStore.ts';
-import { useWebPreview } from './webPreviewStore.ts';
+import { browserOn, useWebPreview } from './webPreviewStore.ts';
 
 /*
  * What can be done with a browser tab, in one place for the toolbar's ⋯ menu, the tab menus, the palette and the keys:
@@ -134,6 +134,22 @@ export function openFavoriteHere(url: string): void {
   const { view, selectedId } = useSessions.getState();
   if (view === 'session' && selectedId) useWebPreview.getState().open(selectedId, url);
   else openFavorite(url);
+}
+
+/**
+ * A web link the app offers (Open on GitHub, a pull request, a guide), with the browser on: in `sessionId`'s browser when
+ * given, else where Open favourite… puts it (`openFavoriteHere`). The browser off, or an address that is no web page,
+ * leaves it to the system browser.
+ */
+export function openWebLink(url: string, sessionId: string | null = null): void {
+  const page = browserOn() ? webPageUrl(url) : null;
+  if (!page) {
+    // The main process opens http(s) links from window.open in the system browser.
+    window.open(url, '_blank');
+    return;
+  }
+  if (sessionId) useWebPreview.getState().open(sessionId, page);
+  else openFavoriteHere(page);
 }
 
 /** What the palette's browser commands do (`runBrowserAction`): to the tab on screen, except Reopen closed tab and Clear all browsing data. */

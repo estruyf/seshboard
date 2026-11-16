@@ -14,6 +14,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Allow for this session** on the browser's permission cards: the agent can keep using a site until the session ends, without asking at every step.
 - **Agents can use the browser** to check their work: Claude Code, Copilot and Codex open your dev server in the session's Browser panel, read the page, type and click, take a picture and read the console. Pages on this computer need no approval. Any other site asks first, and **Always allow** keeps it for the project. The project's settings list its **Browser sites**. Turn it off in **Settings › Browser › Allow Seshboard to control the browser**.
 - **Terminal links open in Seshboard's browser.** A click on a web address in a terminal opens it in the session's browser, or in the Browser view from the window's own terminal. ⌘-click opens it in your usual browser.
+- **App links open in Seshboard's browser.** With the browser on, **Open in › GitHub**, the GitHub app on the rail, pull request and issue links, and links in a reply's apps open in the session's browser. Outside a session they open in the Browser view. Install guides still open in your usual browser.
 - **Copy a page's address in one click.** The link icon at the start of the browser's address bar copies the address of the page.
 - **Edit a favourite.** Right-click a favourite and pick **Edit favourite…** to change its name or address, or **Use current page's address** to give it the address its tile's tab is on now. A favourite keeps its address as you browse: only you change it.
 - **Suggestions in the browser's address bar.** As you type, it lists your open tabs, your favourites and pages you opened before, matched on the address or the title. Pick one with ↑↓ and Enter, or click it. Enter opens the first one when what you typed is the start of its address.
@@ -60,6 +61,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- A second click on a session's **⋯** button, a project page's **⋯** or the worktree menu closes the menu. It used to close it and open it again.
 - The **⋯** menu of a Copilot or Codex session now has **Open in**, as a Claude Code session does: your editors, terminals and Finder, with its CLI next to them.
 - **A prompt queued at the focus limit starts when a slot frees.** It used to wait for its project to be free too, so it didn't start while another session worked in that project. **Wait for › A free slot** is the new choice, and the one Start picks at the focus limit. Scheduled runs and triggered sessions held at a limit wait for a slot the same way.
 - **Auto's estimate follows today's prices.** The Why popover said Haiku uses about a fifth of what Opus does. It now says under a tenth, and Sonnet about half. Usage also prices Sonnet 5.5's cache reads and Fable 5.2 at their current list prices.

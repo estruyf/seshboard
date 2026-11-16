@@ -872,6 +872,11 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser-app-links",
+      "name": "App links open in Seshboard's browser: Open in › GitHub, pull requests and issues, in the session's browser or the Browser view",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "feature:browser-copy-address",
       "name": "Copy address: the link icon in the browser's address bar copies the page's address",
       "page": "sessions/web-preview"

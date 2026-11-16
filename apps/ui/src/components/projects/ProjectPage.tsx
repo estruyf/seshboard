@@ -95,6 +95,7 @@ export function ProjectPage({ list, narrow = false, onShowList }: { list: readon
   const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null);
   const [switcher, setSwitcher] = useState<{ x: number; y: number } | null>(null);
   const nameRef = useRef<HTMLButtonElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
   const allProjects = useMemo(() => addedProjects(projects), [projects]);
   // Opened from a page of Settings (Memory's list of projects), the breadcrumb leads back there instead of to Projects.
   const fromSettings = useNavHistory((s) => settingsOrigin(s.history, root));
@@ -257,7 +258,8 @@ export function ProjectPage({ list, narrow = false, onShowList }: { list: readon
               aria-label={`Options for ${project.name}`}
               aria-haspopup="menu"
               aria-expanded={!!moreMenu}
-              onClick={(e) => setMoreMenu(menuPoint(e))}
+              ref={moreRef}
+              onClick={(e) => setMoreMenu(moreMenu ? null : menuPoint(e))}
               data-project-more
             />
           </div>
@@ -322,7 +324,7 @@ export function ProjectPage({ list, narrow = false, onShowList }: { list: readon
           )}
         </div>
       </div>
-      {moreMenu && <Menu x={moreMenu.x} y={moreMenu.y} entries={icons.entries(root, moreMenu, { identity: true })} label={`${project.name} options`} onClose={() => setMoreMenu(null)} />}
+      {moreMenu && <Menu x={moreMenu.x} y={moreMenu.y} entries={icons.entries(root, moreMenu, { identity: true })} label={`${project.name} options`} onClose={() => setMoreMenu(null)} anchor={moreRef} />}
       {switcher && <ProjectSwitcher list={allProjects} current={root} x={switcher.x} y={switcher.y} anchor={nameRef} onClose={() => setSwitcher(null)} />}
       {icons.overlays}
     </div>

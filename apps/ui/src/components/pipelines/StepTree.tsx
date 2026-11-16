@@ -10,6 +10,7 @@ import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { PushCard } from './PushCard.tsx';
 import { holdLine, runButtons, stepDetail, stepDuration, stepMeta, stepPills, stepRowName, stopNotice, type StopNotice } from './runView.ts';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /** The time, every 30 seconds while `active`, so a running step's duration moves. */
 export function useNow(active: boolean, every = 30_000): number {
@@ -85,7 +86,7 @@ export function StepTreeCard({ state, className = '' }: { state: PipelineRunStat
           {run.status === 'done' ? `done · ${runHeaderLine(state, now).split(' · ').at(-1)}` : run.status === 'stopped' ? 'stopped' : runHeaderLine(state, now)}
         </span>
         {run.pr && (
-          <Pill tone="link" onClick={() => void window.open(run.pr!.url, '_blank')} data-tooltip="Open on GitHub" data-run-pr>
+          <Pill tone="link" onClick={() => openWebLink(run.pr!.url)} data-tooltip="Open on GitHub" data-run-pr>
             #{run.pr.number}
           </Pill>
         )}

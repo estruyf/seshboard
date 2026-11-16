@@ -8,6 +8,7 @@ import { chipDetail, isReadOnlyFork, typeWord } from '../github/githubText.ts';
 import { ForkFlag, GithubStateIcon, useGithubDetail } from '../github/GithubParts.tsx';
 import { linkDetail } from './sessionLinks.ts';
 import { PastedTextDialog } from './PastedTextDialog.tsx';
+import { openWebLink } from '../../state/browserActions.ts';
 
 const TEXT_ICON: Record<Extract<ContextItem, { kind: 'text' }>['source'], LucideIcon> = {
   selection: TextQuote,
@@ -150,7 +151,7 @@ function GithubChip({ item, root, onRemove }: { item: Extract<ContextChip, { kin
       data-github-chip={`${item.type}:${item.number}`}
       data-tooltip={GITHUB_CHIP_HINT}
     >
-      <button type="button" onClick={() => void window.open(item.url, '_blank')} className="flex min-w-0 items-center gap-1 rounded-sm" aria-label={`${word} ${item.number} attached, open on GitHub`}>
+      <button type="button" onClick={() => openWebLink(item.url)} className="flex min-w-0 items-center gap-1 rounded-sm" aria-label={`${word} ${item.number} attached, open on GitHub`}>
         <GithubStateIcon type={item.type} state={state} draft={detail?.type === 'pr' && 'isDraft' in detail && detail.isDraft} size={12} />
         <span className="shrink-0 font-mono text-meta text-muted">#{item.number}</span>
         <span className={`min-w-0 truncate ${closed ? '' : 'font-semibold'}`}>{item.title}</span>

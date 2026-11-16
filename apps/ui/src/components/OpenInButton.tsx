@@ -9,6 +9,7 @@ import { GitHubIcon } from './GitHubIcon.tsx';
 import type { MenuEntry } from './Menu.tsx';
 import { Popover } from './ui/Popover.tsx';
 import { ariaKeysFor, formatKeys, keysFor } from '../lib/shortcuts.ts';
+import { openWebLink } from '../state/browserActions.ts';
 
 /** Opens a path in the user's editor, terminal or Finder. Used by the header button, ⌘O and file links. */
 export function useOpenIn() {
@@ -116,8 +117,7 @@ export function useOpenInEntries(path: string | null): { entries: MenuEntry[]; e
       label: 'GitHub',
       icon: <GitHubIcon size={13} />,
       hint: github.repo,
-      // The main process opens http(s) links from window.open in the browser.
-      onSelect: () => void window.open(github.url, '_blank'),
+      onSelect: () => openWebLink(github.url),
       data: { 'data-open-github': github.url, 'data-tooltip': github.url },
     });
   }
@@ -286,8 +286,7 @@ export function OpenInButton({ path, shortcut = true }: { path: string | null; /
                 role="menuitem"
                 onClick={() => {
                   setOpen(null);
-                  // The main process opens http(s) links from window.open in the browser.
-                  window.open(github.url, '_blank');
+                  openWebLink(github.url);
                 }}
                 className={item}
                 data-tooltip={github.url}

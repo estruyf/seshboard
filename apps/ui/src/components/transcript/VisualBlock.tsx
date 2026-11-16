@@ -5,6 +5,7 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { frameMessage, visualThemeVars, visualTitle, type Visual } from './visuals.ts';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /**
  * The height each visual drew at, by its tool call: the conversation is virtualised, so a visual scrolled away and back
@@ -92,8 +93,7 @@ function VisualFrame({ id, visual, title, sessionId }: { id: string; visual: Vis
           useDrafts.getState().requestQuote(sessionId, message.text, { plain: true });
           break;
         case 'link':
-          // Main opens http(s) links in the browser.
-          window.open(message.url, '_blank', 'noopener');
+          openWebLink(message.url, sessionId);
           break;
       }
     };

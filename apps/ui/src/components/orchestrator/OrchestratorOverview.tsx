@@ -7,6 +7,7 @@ import { useOrchestrators } from '../../state/orchestratorStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useAllSessionRows } from '../../state/worktreesStore.ts';
 import { Pill } from '../ui/Pill.tsx';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /** The orchestrator's own icon, in the colour pipelines use for work Seshboard hands out. */
 export function OrchestratorIcon({ size = 13, className = '' }: { size?: number; className?: string }) {
@@ -100,7 +101,7 @@ function WorkerRow({ row, state }: { row: OverviewRow; state: WorkerState }) {
           <span className="min-w-0 truncate text-ui font-semibold text-text">{row.title}</span>
           {row.branch && <span className="min-w-0 truncate font-mono text-meta text-muted">{row.branch}</span>}
           {worker.pr && (
-            <Pill tone={worker.pr.state === 'open' ? 'link' : 'muted'} onClick={() => void window.open(worker.pr!.url, '_blank')} data-tooltip="Open on GitHub" data-worker-pr>
+            <Pill tone={worker.pr.state === 'open' ? 'link' : 'muted'} onClick={() => openWebLink(worker.pr!.url)} data-tooltip="Open on GitHub" data-worker-pr>
               #{worker.pr.number}
               {worker.pr.state === 'open' ? '' : ` ${worker.pr.state}`}
             </Pill>

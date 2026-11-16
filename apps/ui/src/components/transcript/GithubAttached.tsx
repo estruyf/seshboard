@@ -4,6 +4,7 @@ import type { GithubBlock } from '@seshboard/protocol/client';
 import { clockTime } from '../../lib/usageLimit.ts';
 import { typeWord } from '../github/githubText.ts';
 import { GithubStateIcon } from '../github/GithubParts.tsx';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /**
  * Under your prompt, one row per issue or pull request it attached: its state, number and title, when it was read
@@ -32,7 +33,7 @@ function AttachedRow({ block, at }: { block: GithubBlock; at: number | null }) {
         <button
           type="button"
           className="shrink-0 font-mono text-ui font-semibold text-text hover:underline"
-          onClick={() => void window.open(block.url, '_blank')}
+          onClick={() => openWebLink(block.url)}
           aria-label={`${typeWord(block.type)} ${block.number}, open on GitHub`}
           data-tooltip="Open on GitHub"
         >

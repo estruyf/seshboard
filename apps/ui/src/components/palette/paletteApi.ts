@@ -19,7 +19,7 @@ import { showWebPanel, useWebPreview } from '../../state/webPreviewStore.ts';
 import { currentPageTab, newBrowserTab, openBrowserView } from '../../state/browserViewStore.ts';
 import { toggleFavorite } from '../../state/browserFavoritesStore.ts';
 import { bookmarkPage } from '../../state/browserBookmarksStore.ts';
-import { runBrowserAction } from '../../state/browserActions.ts';
+import { openWebLink, runBrowserAction } from '../../state/browserActions.ts';
 import { sessionServerOffers } from '../webPreview/serverOffers.ts';
 import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
 import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
@@ -297,7 +297,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       }, 50);
     },
     sessionRequest: (kind) => usePaletteBus.getState().requestSession(kind),
-    openUrl: (url) => void window.open(url, '_blank'),
+    openUrl: (url) => openWebLink(url),
     syncWithRemote: () =>
       cwd &&
       call('sync with the remote', async (c) => {

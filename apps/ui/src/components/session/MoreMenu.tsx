@@ -317,7 +317,7 @@ export function MoreMenu({
       >
         {running > 0 && <span className="absolute top-0.5 right-0.5 size-1.5 animate-pulse rounded-full bg-accent-ink" aria-hidden />}
       </Button>
-      {menu.at && <Menu x={menu.at.x} y={menu.at.y} width={MENU_WIDTH} entries={shownEntries} onClose={menu.close} label="More" />}
+      {menu.at && <Menu x={menu.at.x} y={menu.at.y} width={MENU_WIDTH} entries={shownEntries} onClose={menu.close} label="More" anchor={buttonRef} />}
       {renaming && title !== null && <RenameSessionDialog sessionId={sessionId} title={title} onClose={() => setRenaming(false)} />}
     </div>
   );
