@@ -30,10 +30,29 @@ export function splitUltrathink(text: string): UltrathinkPart[] {
 
 /**
  * The message with ultrathink on its end, for the option that arms it for one message. A message that already has the
- * word goes as it is, so it is never there twice.
+ * word goes as it is, so it is never there twice. A message of several lines gets it on a line of its own after a blank
+ * one: its last line may be a list item, a quote or a code fence, which would take the word as part of itself.
  */
 export function withUltrathink(text: string): string {
   if (hasUltrathink(text)) return text;
   const body = text.trimEnd();
-  return body ? `${body} ${ULTRATHINK}` : ULTRATHINK;
+  if (!body) return ULTRATHINK;
+  return body.includes('\n') ? `${body}\n\n${ULTRATHINK}` : `${body} ${ULTRATHINK}`;
 }
+
+/**
+ * What a send does with "Ultrathink this turn". `typed` is what goes out (with the word when it applies) and `consume`
+ * says the option is used up. Not armed: nothing. A steer goes into the turn that is running, which keeps its effort, so
+ * the word would do nothing: it stays armed for the next message that starts a turn (a queued one, or Send now). A slash
+ * command would take the word as an argument: it stays armed too.
+ */
+export function ultrathinkSend(typed: string, { armed, steer }: { armed: boolean; steer: boolean }): { typed: string; consume: boolean } {
+  if (!armed || steer || typed.trimStart().startsWith('/')) return { typed, consume: false };
+  return { typed: withUltrathink(typed), consume: true };
+}
+
+/** Efforts that already are what the word asks for: the option is not offered. */
+export const ULTRATHINK_NEEDLESS = ['xhigh', 'max'] as const;
+
+/** Whether "Ultrathink this turn" is offered at this effort ('' is the default). */
+export const offersUltrathink = (effort: string): boolean => !(ULTRATHINK_NEEDLESS as readonly string[]).includes(effort);

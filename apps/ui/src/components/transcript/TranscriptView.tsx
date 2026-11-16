@@ -2169,6 +2169,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 <Composer
                   draftKey={sessionId}
                   ultrathink={!otherProvider}
+                  steers={whileWorking === 'steer'}
                   savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
                   links={{ sessionId, root: projectRoot }}
                   github={{ root: options.projectActions ? projectRoot : null }}
@@ -2202,7 +2203,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   }
                   onSubmit={(text, attachments) => send(toRun(text), attachments, openElsewhere, false, whileWorking)}
                   secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, 'now') } : undefined}
-                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, otherMode) }] : undefined}
+                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, otherMode), steers: otherMode === 'steer' }] : undefined}
                   onRecallQueued={() => {
                     const last = lastQueued(upNext);
                     if (!last) return false;

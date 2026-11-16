@@ -135,9 +135,9 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
   const ultrathinkAction: ChoiceAction[] | undefined = ultrathink
     ? [
         {
-          label: ultrathink.armed ? 'Turn off ultrathink' : 'Ultrathink this turn',
-          hint: ultrathink.armed ? undefined : 'xhigh, once',
-          data: { 'data-ultrathink-toggle': ultrathink.armed ? 'on' : 'off' },
+          label: 'Ultrathink this turn',
+          checked: ultrathink.armed,
+          data: { 'data-ultrathink-toggle': ultrathink.armed ? 'on' : 'off', 'data-tooltip': 'The next message runs at xhigh effort, then it goes back' },
           onSelect: ultrathink.onToggle,
         },
       ]

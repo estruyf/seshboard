@@ -21,7 +21,7 @@ import { MAX_ATTACHMENTS } from './images.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
-import { hasUltrathink, withUltrathink } from './ultrathink.ts';
+import { hasUltrathink, ultrathinkSend } from './ultrathink.ts';
 import { UltrathinkMirror } from './UltrathinkMirror.tsx';
 import { useUltrathink } from '../../state/ultrathinkStore.ts';
 import { branchOf, linkableSessions } from './sessionLinks.ts';
@@ -133,7 +133,9 @@ export interface ComposerProps {
    */
   secondary?: { shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false> };
   /** More ways to send what is in the box while Claude works (Steer or Queue, whichever Enter isn't), each on its own shortcut and in `submitControl`. */
-  others?: Array<{ shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false> }>;
+  others?: Array<{ shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false>; steers?: boolean }>;
+  /** While Claude works, Enter steers: the message goes into the turn that is running. Ultrathink waits for a message that starts a turn. */
+  steers?: boolean;
   /** ↑ in an empty box asks for the last message waiting in Up next; true when it took one (the box then fills with it). */
   onRecallQueued?(): boolean;
   /** What the hint line says about messages while Claude works, in place of the default. */
@@ -741,7 +743,7 @@ export function Composer(props: ComposerProps) {
   };
 
   /** `requested`: sent through `submitRequest` rather than Enter or the button. `send`: the secondary action instead of `onSubmit`. */
-  const submit = async (requested = false, send: (value: string, attachments: ImageAttachment[], parts: SentParts) => Promise<void | false> | void | false = (value, sent, parts) => props.onSubmit(value, sent, requested, parts)) => {
+  const submit = async (requested = false, send: (value: string, attachments: ImageAttachment[], parts: SentParts) => Promise<void | false> | void | false = (value, sent, parts) => props.onSubmit(value, sent, requested, parts), steer = !!props.running && !!props.steers) => {
     if (sending || props.disabledReason) return;
     // A saved prompt with a required blank still empty: the keys go to that blank instead of sending.
     if (fillState && left.length) {
@@ -757,10 +759,10 @@ export function Composer(props: ComposerProps) {
     let value = promptWithContext(typed, sentChips, cwd);
     const sentAttachments = attachments;
     if (!value && sentAttachments.length === 0) return;
-    // "Ultrathink this turn": the word goes on this message only. A slash command would take it as an argument, so it keeps the option for the next message.
-    const armedNow = armedKey !== null && !!useUltrathink.getState().armed[armedKey] && !typed.trimStart().startsWith('/');
-    if (armedNow) {
-      typed = withUltrathink(typed);
+    // "Ultrathink this turn": the word goes on this message only (what counts is in `ultrathinkSend`).
+    const sendWord = ultrathinkSend(typed, { armed: armedKey !== null && !!useUltrathink.getState().armed[armedKey], steer });
+    if (sendWord.typed !== typed) {
+      typed = sendWord.typed;
       value = promptWithContext(typed, sentChips, cwd);
     }
     // Said here rather than as the engine's "Invalid params": the text stays, so you can trim it.
@@ -771,7 +773,7 @@ export function Composer(props: ComposerProps) {
     closePalette();
     try {
       if ((await send(value, sentAttachments, { typed, context: sentChips.map(({ id: _id, ...item }) => item as ContextItem) })) === false) return;
-      if (armedNow) useUltrathink.getState().set(armedKey!, false);
+      if (sendWord.consume) useUltrathink.getState().set(armedKey!, false);
       if (sentFill) {
         // Counted for the order of the lists; a prompt deleted meanwhile just isn't.
         void engineClient()?.call('savedPrompts.used', { id: sentFill.prompt.id, scope: sentFill.prompt.scope }).catch(() => {});
@@ -946,7 +948,7 @@ export function Composer(props: ComposerProps) {
       void ask();
     } else if (other) {
       event.preventDefault();
-      void submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts));
+      void submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts), !!props.running && !!other.steers);
     } else if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
       event.preventDefault();
       openPicker();
@@ -968,10 +970,10 @@ export function Composer(props: ComposerProps) {
   /** The box's type and padding, which the coloured copy of the text under it shares, and the sizes only the box has. */
   const boxType = props.large && !fillState ? 'px-1 pt-1 text-title font-normal leading-relaxed' : 'px-1 text-body leading-relaxed';
   const boxSize = props.large && !fillState ? LARGE_BOX : 'max-h-[10lh] min-h-[3lh]';
-  const submitSecondary = () => (props.secondary ? submit(false, (value, sent, parts) => props.secondary!.onSubmit(value, sent, parts)) : Promise.resolve());
+  const submitSecondary = () => (props.secondary ? submit(false, (value, sent, parts) => props.secondary!.onSubmit(value, sent, parts), false) : Promise.resolve());
   const submitOther = (shortcut: ShortcutId) => {
     const other = props.others?.find((o) => o.shortcut === shortcut);
-    return other ? submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts)) : Promise.resolve();
+    return other ? submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts), !!props.running && !!other.steers) : Promise.resolve();
   };
   /** The @ button: an `@` at the caret (after a space, in the middle of a word) opens the list of files and sessions, as typing it does. */
   const mention = () => {
@@ -1232,7 +1234,7 @@ export function Composer(props: ComposerProps) {
           )}
           {/* The wrapper holds the box's place in the row, so the coloured copy of the text can sit over exactly the box. */}
           <div className={`relative min-w-0 ${props.large ? 'flex min-h-0 flex-[0_1_auto] flex-col' : 'flex-1'}`}>
-          {marked && <UltrathinkMirror text={text} textarea={ref} className={boxType} />}
+          {marked && <UltrathinkMirror text={text} textarea={ref} className={boxType} disabled={disabled} />}
           <textarea
             data-composer
             data-history={props.history?.length ?? 0}

@@ -182,6 +182,11 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     remote: solvedHex(toOklch(read(demo.remote)), surfaces, CONTRAST.status, away),
     trigger: keepHue(demo.trigger, CONTRAST.profile),
     pipeline: keepHue(demo.pipeline, CONTRAST.profile),
+    // The ultrathink gradient keeps Demo Time's four colours (a spectrum), each moved until it reads on the canvas.
+    'ultrathink-a': keepHue(demo['ultrathink-a'], CONTRAST.profile),
+    'ultrathink-b': keepHue(demo['ultrathink-b'], CONTRAST.profile),
+    'ultrathink-c': keepHue(demo['ultrathink-c'], CONTRAST.profile),
+    'ultrathink-d': keepHue(demo['ultrathink-d'], CONTRAST.profile),
     unread: blue,
     accent: toHex(read(accent)),
     'accent-ink': accentInk,

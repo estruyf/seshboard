@@ -13620,7 +13620,7 @@ async function runUltrathinkStep(win: BrowserWindow): Promise<string> {
   };
   const toggle = async (expected: 'on' | 'off') => {
     await js(`${chip}.click()`);
-    if (!(await waitInPage(win, `!!document.querySelector('[data-menu="effort"] [data-ultrathink-toggle="${expected}"]')`, 3_000))) {
+    if (!(await waitInPage(win, `!!document.querySelector('[data-menu="effort"] [data-ultrathink-toggle="${expected}"][role="menuitemcheckbox"][aria-checked="${expected === 'on'}"]')`, 3_000))) {
       await js(`document.querySelector('[data-menu="effort"]') && ${chip}.click()`);
       return false;
     }
@@ -13628,7 +13628,7 @@ async function runUltrathinkStep(win: BrowserWindow): Promise<string> {
     return true;
   };
   await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
-  if (!(await waitInPage(win, `!!${box} && !${box}.disabled && !!${chip}`, 10_000))) return 'the session has no message box with an effort chip';
+  if (!(await waitInPage(win, `!!${box} && !${box}.disabled`, 10_000))) return 'the session has no message box to type in';
   if (((await js(`${box}.value`)) as string) !== '') return 'the message box was not empty to start with';
   try {
     // 1. The word is coloured in the box, in any case, and the text is not changed.
@@ -13638,12 +13638,13 @@ async function runUltrathinkStep(win: BrowserWindow): Promise<string> {
     const look = (await js(`(() => {
       const word = document.querySelector('${pane} [data-ultrathink-word]'), mirror = document.querySelector('${pane} [data-ultrathink-mirror]'), box = ${box};
       const lines = mirror.firstElementChild;
-      return { word: word.textContent, gradient: getComputedStyle(word).backgroundImage.includes('linear-gradient'), text: lines.textContent, value: box.value, mirrorHeight: Math.round(lines.getBoundingClientRect().height), boxHeight: Math.round(box.scrollHeight), boxColor: getComputedStyle(box).color };
-    })()`)) as { word: string; gradient: boolean; text: string; value: string; mirrorHeight: number; boxHeight: number; boxColor: string };
+      return { word: word.textContent, gradient: getComputedStyle(word).backgroundImage.includes('linear-gradient'), text: lines.textContent, value: box.value, mirrorWidth: lines.getBoundingClientRect().width, boxWidth: box.clientWidth, mirrorHeight: Math.round(lines.getBoundingClientRect().height), boxHeight: Math.round(box.scrollHeight), boxColor: getComputedStyle(box).color };
+    })()`)) as { word: string; gradient: boolean; text: string; value: string; mirrorWidth: number; boxWidth: number; mirrorHeight: number; boxHeight: number; boxColor: string };
     if (look.word !== 'Ultrathink') return `the coloured word is ${JSON.stringify(look.word)}`;
     if (!look.gradient) return 'the word has no gradient';
     if (look.value !== draft) return `the coloured box changed the text (${JSON.stringify(look.value)})`;
     if (look.text !== draft) return `the coloured copy does not read like the box (${JSON.stringify(look.text)})`;
+    if (Math.abs(look.mirrorWidth - look.boxWidth) > 0.5) return `the coloured copy is ${look.mirrorWidth}px wide and the box ${look.boxWidth}px without its scrollbar: the lines would wrap differently`;
     if (Math.abs(look.mirrorHeight - look.boxHeight) > 2) return `the coloured copy is ${look.mirrorHeight}px tall and the box ${look.boxHeight}px: the lines do not line up`;
     if (!/rgba\(0, 0, 0, 0\)|transparent/.test(look.boxColor)) return `the box's own text is still drawn (${look.boxColor})`;
     await empty();
@@ -13655,7 +13656,16 @@ async function runUltrathinkStep(win: BrowserWindow): Promise<string> {
     if (await js(`!!document.querySelector('${pane} [data-ultrathink-mirror]')`)) return 'a longer word, ultrathinking, was coloured';
     await empty();
 
-    // 2. The effort chip's option arms the next message, shows on the chip, and turns off again.
+    // 2. The effort chip's option arms the next message, shows on the chip, and turns off again. A session without an
+    // effort chip, a tray folded into one chip, or an effort that is xhigh or max already has no option to try.
+    const where = (await js(`(() => { const chip = ${chip}; const tray = document.querySelector('${pane} [data-composer-tray]'); return { chip: !!chip, folded: !!tray?.hasAttribute('data-composer-tray-folded'), effort: chip?.dataset.value ?? '' }; })()`)) as { chip: boolean; folded: boolean; effort: string };
+    if (!where.chip || where.folded) return `ok: ultrathink is coloured in the box (a longer word is not) and the lines line up; skipped the option, ${where.folded ? 'the tray is folded into one chip' : 'this session has no effort chip'}`;
+    if (where.effort === 'xhigh' || where.effort === 'max') {
+      if (await js(`(() => { ${chip}.click(); return true; })()`) && !(await waitInPage(win, "!!document.querySelector('[data-menu=\"effort\"]')", 3_000))) return 'the effort menu did not open';
+      const offered = await js("!!document.querySelector('[data-menu=\"effort\"] [data-ultrathink-toggle]')");
+      await js(`${chip}.click()`);
+      return offered ? `the option is offered at ${where.effort} effort, where the word does nothing` : `ok: ultrathink is coloured in the box and the option is not offered at ${where.effort} effort`;
+    }
     if (!(await toggle('off'))) return 'the effort menu has no "Ultrathink this turn" option';
     if (!(await waitInPage(win, `!!${chip}.querySelector('[data-ultrathink-armed]') && ${chip}.getAttribute('aria-label').includes('ultrathink')`, 3_000))) return 'the effort chip does not show that ultrathink is on';
     if (!(await toggle('on'))) return 'the effort menu does not offer to turn ultrathink off';

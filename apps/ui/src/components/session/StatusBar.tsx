@@ -10,11 +10,22 @@ import { useProfiles } from '../../state/profilesStore.ts';
 import { useSavedSettings, type SavedSettings } from '../../state/savedSettingsStore.ts';
 import { useUltrathink } from '../../state/ultrathinkStore.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
+import { offersUltrathink } from '../composer/ultrathink.ts';
 
-/** The effort menu's "Ultrathink this turn" for a Claude Code session: on or off for the next message from its box. */
-function useUltrathinkOption(sessionId: string) {
+/**
+ * The effort menu's "Ultrathink this turn" for a Claude Code session: on or off for the next message from its box. It is
+ * not offered where the model has no effort or the effort is xhigh or max already; it is turned off there, and when these
+ * controls go away (another model without effort, the session open in another window), so the next message never gets
+ * a word its chip no longer shows.
+ */
+function useUltrathinkOption(sessionId: string, supportsEffort: boolean, effort: string): { armed: boolean; onToggle(): void } | undefined {
   const armed = useUltrathink((s) => !!s.armed[sessionId]);
-  return { armed, onToggle: () => useUltrathink.getState().set(sessionId, !armed) };
+  const offered = supportsEffort && offersUltrathink(effort);
+  useEffect(() => {
+    if (!offered) useUltrathink.getState().set(sessionId, false);
+  }, [sessionId, offered]);
+  useEffect(() => () => useUltrathink.getState().set(sessionId, false), [sessionId]);
+  return offered ? { armed, onToggle: () => useUltrathink.getState().set(sessionId, !armed) } : undefined;
 }
 
 /**
@@ -38,7 +49,7 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
   const choosing = host.autoChoosing === true;
   const row = useRef<HTMLDivElement>(null);
   const openPopover = useAutoPick((s) => s.openPopover);
-  const ultrathink = useUltrathinkOption(host.sessionId);
+  const ultrathink = useUltrathinkOption(host.sessionId, supportsEffort, host.effort ?? '');
 
   return (
     <div ref={row} className="contents">
@@ -86,7 +97,6 @@ export function SavedSessionControls({ sessionId, profileId }: { sessionId: stri
   const client = connection.status === 'connected' ? connection.client : null;
   const saved = useSavedSettings((s) => s.bySession[sessionId]) ?? null;
   const setSaved = useSavedSettings((s) => s.set);
-  const ultrathink = useUltrathinkOption(sessionId);
 
   useEffect(() => {
     if (!client) return;
@@ -113,6 +123,7 @@ export function SavedSessionControls({ sessionId, profileId }: { sessionId: stri
 
   const modelOption = findModelOption(models, saved?.model ?? null);
   const supportsEffort = modelOption?.supportsEffort ?? true;
+  const ultrathink = useUltrathinkOption(sessionId, supportsEffort && !!saved, saved?.effort ?? '');
   return (
     saved && (
       <ComposerChipRow
