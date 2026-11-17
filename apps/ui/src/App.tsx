@@ -39,15 +39,14 @@ import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { WebPreviewHost } from './components/webPreview/WebPreviewHost.tsx';
 import { BrowserView } from './components/browser/BrowserView.tsx';
-import { BROWSER_OWNER } from './components/webPreview/browserTabs.ts';
-import { currentPageTab, followDeletedSessions, followView, newBrowserTab, openBrowserView } from './state/browserViewStore.ts';
-import { previewPage } from './components/webPreview/webPreviewPages.ts';
+import { followDeletedSessions, followView } from './state/browserViewStore.ts';
 import { useBrowserTabsSync } from './state/browserTabsSync.ts';
 import { useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
 import { useBrowserHistorySync } from './state/browserHistory.ts';
-import { bookmarkPage, useBrowserBookmarksSync } from './state/browserBookmarksStore.ts';
+import { useBrowserBookmarksSync } from './state/browserBookmarksStore.ts';
 import { useBrowserProfilesSync } from './state/browserProfilesStore.ts';
-import { browserOn, useWebPreview } from './state/webPreviewStore.ts';
+import { browserOn } from './state/webPreviewStore.ts';
+import { browserKey, mainBrowserScope } from './state/browserKeys.ts';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
@@ -95,6 +94,7 @@ import { openRow } from './state/useRemoteRows.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { runMainRequest } from './state/mainRequests.ts';
 import { usePopoutsSync } from './state/usePopoutsSync.ts';
+import { useBrowserPopoutsSync } from './state/browserWindow.ts';
 import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
@@ -116,72 +116,6 @@ function terminalView(view: MainView, sessionId: string | null): TerminalView {
 function currentTerminalOwner(): string | null {
   const { view, selectedId } = useSessions.getState();
   return terminalOwner(terminalView(view, selectedId), localSessionId(selectedId));
-}
-
-/**
- * The browser's keys (the browser on): ⌘⇧B outside a session shows the Browser view (in one it toggles the
- * session's browser, `web.toggle`), ⌘T opens a tab, ⌘L goes to the address bar, and ⌘W closes the tab while its page
- * or address bar has focus (main hands both over as keys). True when the key was one of them and did something.
- */
-function browserKey(event: KeyboardEvent): boolean {
-  const { view, selectedId } = useSessions.getState();
-  const sessionId = view === 'session' ? localSessionId(selectedId) : null;
-  if (matches(event, 'browser.view')) {
-    if (sessionId) return false;
-    openBrowserView();
-    return true;
-  }
-  if (matches(event, 'browser.new-tab')) {
-    if (view === 'browser') newBrowserTab();
-    else if (sessionId) {
-      useWebPreview.getState().open(sessionId);
-      if (useWebPreview.getState().tabs.find((t) => t.id === useWebPreview.getState().active.get(sessionId))?.url) useWebPreview.getState().openTab(sessionId, null);
-    } else return false;
-    return true;
-  }
-  if (matches(event, 'browser.address')) {
-    const scope = view === 'browser' ? '[data-browser-view]' : sessionId ? `[data-current-session="${CSS.escape(sessionId)}"]` : null;
-    const field = scope ? document.querySelector<HTMLInputElement>(`${scope} [data-browser-address]`) : null;
-    if (!field || field.disabled) return false;
-    field.focus();
-    field.select();
-    return true;
-  }
-  if (matches(event, 'browser.close-tab')) {
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address]')?.dataset.tabId;
-    if (!tabId) return false;
-    useWebPreview.getState().askClose(tabId);
-    if (view === 'browser' && !useWebPreview.getState().active.get(BROWSER_OWNER)) document.querySelector<HTMLElement>('[data-browser-view]')?.focus();
-    return true;
-  }
-  if (matches(event, 'browser.bookmark')) {
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address]')?.dataset.tabId;
-    const tab = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId) : undefined;
-    if (!tab?.url) return false;
-    bookmarkPage(tab);
-    return true;
-  }
-  // ⌘F in a page, its address bar or find bar (or anywhere in the Browser view) finds in the page.
-  if (matches(event, 'browser.find')) {
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address], [data-browser-find]')?.dataset.tabId ?? (view === 'browser' ? currentPageTab()?.id : undefined);
-    const page = tabId ? previewPage(tabId) : undefined;
-    if (!page || !useWebPreview.getState().tabs.find((t) => t.id === tabId)?.url) return false;
-    page.openFind();
-    return true;
-  }
-  // ⌘⇧T: in a page or its address bar, that owner's closed tab; in the Browser view, its own. Elsewhere it is Activity's.
-  if (matches(event, 'browser.reopen-tab')) {
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    const tabId = target?.dataset.webPreviewPage ?? target?.closest<HTMLElement>('[data-browser-address]')?.dataset.tabId;
-    const owner = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId)?.owner : view === 'browser' ? BROWSER_OWNER : undefined;
-    if (!owner) return false;
-    useWebPreview.getState().reopenTab(owner);
-    return true;
-  }
-  return false;
 }
 
 /** What each key of the panes does (keys in `lib/shortcuts.ts`). */
@@ -222,7 +156,7 @@ function useShortcuts() {
       } else if (matches(event, 'upcoming')) {
         event.preventDefault();
         openUpcoming();
-      } else if (browserOn() && browserKey(event)) {
+      } else if (browserOn() && browserKey(event, mainBrowserScope())) {
         // Before Activity: ⌘⇧T reopens a closed tab in the Browser view and in a page.
         event.preventDefault();
       } else if (matches(event, 'activity')) {
@@ -311,6 +245,7 @@ export function App() {
   useSidebarSync();
   useDraftsSync();
   usePopoutsSync();
+  useBrowserPopoutsSync();
   useSessionViewHandoff();
   useUsageSync();
   usePreferencesSync();

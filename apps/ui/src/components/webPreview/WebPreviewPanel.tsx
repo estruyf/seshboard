@@ -1,11 +1,12 @@
-import { Globe, X } from 'lucide-react';
+import { AppWindow, Globe, X } from 'lucide-react';
 import { type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { shortUrl } from '@seshboard/protocol/client';
+import { popOutBrowser } from '../../state/browserWindow.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useWebPreview, type PanelWeb } from '../../state/webPreviewStore.ts';
 import { ASK_MAX_SHARE, ASK_MIN_WIDTH, askWidthForKey } from '../ask/askWidth.ts';
 import { Button } from '../ui/Button.tsx';
-import { BackToConversation, BrowserPane, PanelSize } from './BrowserPane.tsx';
+import { BackToConversation, BrowserPane, NARROW_HIDDEN, PanelSize } from './BrowserPane.tsx';
 import type { ServerOffer } from './serverOffers.ts';
 import { previewPage } from './webPreviewPages.ts';
 
@@ -112,6 +113,18 @@ export function WebPreviewPanel({ sessionId, web, offers, width, onWidth, tabs }
           browser ? (
             <>
               <PanelSize full={full} onChange={setFull} />
+              {/* Its own window, to put on another display: every tab goes along. In ⋯ in a narrow toolbar. */}
+              <Button
+                variant="quiet"
+                size="sm"
+                iconOnly
+                icon={<AppWindow size={14} aria-hidden />}
+                aria-label="Open browser in new window"
+                data-tooltip="Open in new window"
+                data-browser-pop-out=""
+                onClick={() => popOutBrowser(sessionId)}
+                className={NARROW_HIDDEN}
+              />
               {(!tabs || full) && actions}
             </>
           ) : undefined

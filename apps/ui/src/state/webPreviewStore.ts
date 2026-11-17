@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { agentsToggleStep } from './agentsPanel.ts';
+import { browserElsewhere, browserPopoutSession, useBrowserPopouts } from './popoutsStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { frontTab as frontRightTab, useRightPanel } from './rightPanelStore.ts';
 import {
@@ -27,6 +28,7 @@ import {
   type SavedTab,
   type TabsState,
 } from '../components/webPreview/browserTabs.ts';
+import { adoptTabs, takeTabs, type BrowserHandoff } from '../components/webPreview/browserHandoff.ts';
 
 /** One session's web preview as another window takes it over: the page in front and whether it is at phone width. */
 export interface SessionWeb {
@@ -122,6 +124,10 @@ interface WebPreviewState extends TabsState {
   forget(sessionId: string): void;
   /** Another window hands over a session's panel (`sessionView.ts`); null closes it. */
   handOver(sessionId: string, web: SessionWeb | null): void;
+  /** A session's browser moves to a window of its own: its tabs leave this window and its panel closes. Its tabs, to hand over. */
+  takeOut(sessionId: string): BrowserHandoff;
+  /** A session's tabs as its browser window had them (`browserHandoff.ts`), in place of any here. `show`: the panel opens on them. */
+  adopt(sessionId: string, handoff: BrowserHandoff, show: boolean): void;
 }
 
 /** How long a pinned tab waits for the second ask that closes it. */
@@ -162,6 +168,11 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
     suspend: (profileId, on) => set((s) => ({ suspended: on ? withValue(s.suspended, profileId ?? '') : without(s.suspended, profileId ?? '') })),
     open: (sessionId, url) => {
       if (!previewAllowed()) return;
+      // The session's browser is in a window of its own: that window comes to the front, with the address when there is one.
+      if (browserElsewhere(sessionId)) {
+        window.seshboard?.popOutBrowser(sessionId, null, url ?? null);
+        return;
+      }
       const front = frontTab(get(), sessionId);
       if (!browserOn()) {
         // One page per session, as the web preview always had: a new address loads in it.
@@ -264,6 +275,17 @@ export const useWebPreview = create<WebPreviewState>()((set, get) => {
       get().setPhone(id, web.phone);
       set((s) => ({ panels: withValue(s.panels, sessionId) }));
     },
+    takeOut: (sessionId) => {
+      const { handoff, state } = takeTabs(get(), sessionId);
+      set({ tabs: state.tabs, active: state.active, panels: without(get().panels, sessionId), full: without(get().full, sessionId) });
+      return handoff;
+    },
+    adopt: (sessionId, handoff, show) => {
+      tabs((s) => adoptTabs(s, sessionId, handoff, Date.now()));
+      const any = get().tabs.some((t) => t.owner === sessionId);
+      set((s) => ({ panels: any && show ? withValue(s.panels, sessionId) : without(s.panels, sessionId) }));
+      if (any && show) useRightPanel.getState().setTab(sessionId, 'web');
+    },
   };
 });
 
@@ -281,9 +303,11 @@ export function useSessionWeb(sessionId: string): PanelWeb | null {
 const NO_OWN: BrowserTab[] = [];
 
 
-/** How many tabs an owner has (a session's row shows a globe for any). */
+/** How many tabs an owner has (a session's row shows a globe for any), its browser window's included. */
 export function useTabCount(owner: string): number {
-  return useWebPreview((s) => s.tabs.reduce((n, t) => n + (t.owner === owner ? 1 : 0), 0));
+  const here = useWebPreview((s) => s.tabs.reduce((n, t) => n + (t.owner === owner ? 1 : 0), 0));
+  const away = useBrowserPopouts((s) => (browserPopoutSession ? 0 : (s.tabs.get(owner) ?? 0)));
+  return here + away;
 }
 
 export const isWebOpen = (sessionId: string | null) => !!sessionId && useWebPreview.getState().panels.has(sessionId);
@@ -303,6 +327,8 @@ export function sessionWebs(state: Pick<WebPreviewState, 'panels' | 'tabs' | 'ac
  * as they were for the next open; the panel's × closes them. `othersOpen`: another right panel is open too.
  */
 export function toggleWebPanel(sessionId: string, othersOpen: boolean, url?: string | null): void {
+  // In a window of its own, the browser comes to the front there.
+  if (browserElsewhere(sessionId)) return void window.seshboard?.popOutBrowser(sessionId);
   const step = agentsToggleStep(isWebOpen(sessionId), frontRightTab(sessionId) === 'web', othersOpen);
   if (step === 'close') useWebPreview.getState().hide(sessionId);
   else showWebPanel(sessionId, url);

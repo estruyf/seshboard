@@ -2,10 +2,11 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { MenuBarApp } from './components/menuBar/MenuBarApp.tsx';
+import { BrowserPopoutApp } from './components/popout/BrowserPopoutApp.tsx';
 import { PopoutApp } from './components/popout/PopoutApp.tsx';
 import { QuickStartApp } from './components/quickStart/QuickStartApp.tsx';
 import { KEEPS_SELECTION, SELECTABLE } from './lib/selectable.ts';
-import { menuBarWindow, popoutSession, quickStartWindow } from './state/popoutsStore.ts';
+import { browserPopoutSession, menuBarWindow, popoutSession, quickStartWindow } from './state/popoutsStore.ts';
 import { receiveSessionView } from './state/sessionView.ts';
 import './styles.css';
 // Applies the theme (a generated style element) before the first render.
@@ -42,7 +43,7 @@ if (popoutSession) receiveSessionView(popoutSession, window.seshboard?.popoutVie
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {/* A pop-out window shows one session (`?popout=<id>`), the menu bar's and quick start's panels only themselves (`?menubar=1`, `?quickstart=1`); the main window shows the whole app. */}
-    {quickStartWindow ? <QuickStartApp /> : menuBarWindow ? <MenuBarApp /> : popoutSession ? <PopoutApp sessionId={popoutSession} /> : <App />}
+    {/* A pop-out window shows one session (`?popout=<id>`), a browser window one session's browser (`?browserpopout=<id>`), the menu bar's and quick start's panels only themselves (`?menubar=1`, `?quickstart=1`); the main window shows the whole app. */}
+    {quickStartWindow ? <QuickStartApp /> : menuBarWindow ? <MenuBarApp /> : popoutSession ? <PopoutApp sessionId={popoutSession} /> : browserPopoutSession ? <BrowserPopoutApp sessionId={browserPopoutSession} /> : <App />}
   </StrictMode>,
 );

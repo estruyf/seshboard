@@ -285,6 +285,8 @@ export interface PaletteApi {
   closeOtherPanes(): void;
   /** Shows the session on screen in a window of its own. */
   openInNewWindow(): void;
+  /** Moves the session's browser, with its tabs, to a window of its own (or brings that window to the front). */
+  openBrowserInNewWindow(): void;
   newSessionRequest(kind: NewSessionRequest): void;
   /** Opens the New session view (Add to queue… outside it). */
   openNewSession(): void;
@@ -918,6 +920,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'open-web-preview', title: 'Open web preview', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'browser localhost dev server site page', when: (ctx) => hasSession(ctx) && !ctx.browser && ctx.webPreview !== false, run: (api) => api.openWeb() },
   { id: 'reload-web-preview', title: 'Reload web preview', group: 'session', icon: RotateCw, keywords: 'refresh browser localhost dev server page', when: (ctx) => hasSession(ctx) && ctx.session!.web && !ctx.browser && ctx.webPreview !== false, run: (api) => api.reloadWeb() },
   { id: 'open-session-browser', title: 'Open browser', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'web preview page tab github pull request localhost dev server site', when: (ctx) => hasSession(ctx) && !!ctx.browser, run: (api) => api.openWeb() },
+  { id: 'open-browser-in-new-window', title: 'Open browser in new window', group: 'session', icon: AppWindow, keywords: 'pop out popout detach separate window monitor screen display web page tabs', when: (ctx) => hasSession(ctx) && !!ctx.browser, run: (api) => api.openBrowserInNewWindow() },
   { id: 'reload-browser-page', title: 'Reload page', group: 'session', icon: RotateCw, keywords: 'refresh browser web preview tab', when: (ctx) => hasSession(ctx) && ctx.session!.web && !!ctx.browser, run: (api) => api.reloadWeb() },
   { id: 'browser-new-tab', title: 'New tab', group: 'general', shortcut: keysFor('browser.new-tab'), icon: Plus, keywords: 'browser web page open', when: (ctx) => !!ctx.browser && (ctx.view === 'browser' || hasSession(ctx)), run: (api) => api.newBrowserTab() },
   { id: 'browser-bookmark', title: 'Bookmark this page', group: 'general', shortcut: keysFor('browser.bookmark'), icon: Bookmark, keywords: 'bookmark save link star folder browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.url === true && !ctx.browserPage.bookmarked, run: (api) => api.bookmarkPage() },

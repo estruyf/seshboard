@@ -807,6 +807,16 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "palette:open-browser-in-new-window",
+      "name": "Open browser in new window",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-own-window",
+      "name": "A session's browser in a window of its own, with all its tabs, and Move back to the session",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "palette:reload-browser-page",
       "name": "Reload page",
       "page": "sessions/web-preview"

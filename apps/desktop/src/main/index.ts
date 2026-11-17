@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -35,7 +35,7 @@ import { installBrowserAgent } from './browserAgent.ts';
 import { runBrowserAgentStep, runBrowserScriptsStep, runBrowserServerStep } from './browserAgentSmoke.ts';
 import { runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
-import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserViewStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
+import { runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserViewStep, runBrowserWindowStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -448,11 +448,23 @@ let notifier: Notifier;
 let mainWindow: BrowserWindow | null = null;
 /** Pop-out windows by the session each one shows. */
 const popouts = new Map<string, BrowserWindow>();
-/** The browser tools: a session's calls drive its page, in the window that shows it (its pop-out, else the main window). */
+/** Browser windows by the session whose browser each one shows (a session's Browser panel on its own). */
+const browserPopouts = new Map<string, BrowserWindow>();
+/**
+ * Each browser window's tabs, by session: what the session's window had when its browser moved out, then what the browser
+ * window last reported. They go back to the session's window when the browser window goes. In memory only.
+ */
+const browserPopoutTabs = new Map<string, BrowserTabsHandoff>();
+/** The window that shows a session (its pop-out, else the main window), apart from its browser window. */
+function sessionWindow(sessionId: string): BrowserWindow | null {
+  const popout = popouts.get(sessionId);
+  return popout && !popout.isDestroyed() ? popout : mainWindow;
+}
+/** The browser tools: a session's calls drive its page, in the window that shows its browser (its browser window, its pop-out, else the main window). */
 const browserAgent = installBrowserAgent({
   windowFor: (sessionId) => {
-    const popout = popouts.get(sessionId);
-    return popout && !popout.isDestroyed() ? popout : mainWindow;
+    const browser = browserPopouts.get(sessionId);
+    return browser && !browser.isDestroyed() ? browser : sessionWindow(sessionId);
   },
   enabled: () => preferences.get().browserEnabled && preferences.get().browserControl,
   scripts: () => preferences.get().browserScripts,
@@ -1300,7 +1312,7 @@ function createWindow(): BrowserWindow {
   // Pop-outs go with the main window: without it there is no sidebar to come back to.
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
-    for (const popout of [...popouts.values()]) if (!popout.isDestroyed()) popout.close();
+    for (const popout of [...popouts.values(), ...browserPopouts.values()]) if (!popout.isDestroyed()) popout.close();
     // Closing quits (Windows and Linux, Keep running off): the hidden panel mustn't count as a window left open.
     if (quitsWhenAllClosed(process.platform, preferences.get().keepRunning)) {
       menuBarPanel?.destroy();
@@ -1312,7 +1324,7 @@ function createWindow(): BrowserWindow {
 }
 
 /** What every window's page needs: ready tracking, a reload after a crash, links in the browser, and the page itself. */
-function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' | 'quickstart' | null = null): void {
+function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' | 'quickstart' | null = null, browserPopout?: string): void {
   const contentsId = win.webContents.id;
   // Only a new page in the window itself: `did-start-loading` also fires for frames inside it (a previewed HTML file),
   // and the page says it is ready only once, so it would never count as ready again.
@@ -1353,10 +1365,11 @@ function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' 
   if (devUrl) {
     const url = new URL(devUrl);
     if (popout) url.searchParams.set(POPOUT_QUERY, popout);
+    if (browserPopout) url.searchParams.set(BROWSER_POPOUT_QUERY, browserPopout);
     if (panelPage) url.searchParams.set(panelPage === 'menubar' ? MENU_BAR_QUERY : QUICK_START_QUERY, '1');
     void win.loadURL(url.toString());
   } else {
-    const query: Record<string, string> | null = popout ? { [POPOUT_QUERY]: popout } : panelPage ? { [panelPage === 'menubar' ? MENU_BAR_QUERY : QUICK_START_QUERY]: '1' } : null;
+    const query: Record<string, string> | null = popout ? { [POPOUT_QUERY]: popout } : browserPopout ? { [BROWSER_POPOUT_QUERY]: browserPopout } : panelPage ? { [panelPage === 'menubar' ? MENU_BAR_QUERY : QUICK_START_QUERY]: '1' } : null;
     void win.loadFile(join(here, '../renderer/index.html'), query ? { query } : undefined);
   }
 }
@@ -1452,6 +1465,117 @@ ipcMain.on(IpcChannel.popIn, (event) => {
   // The panels first, so the pane shows them from its first paint.
   returnView(entry[0], true);
   openSession(entry[0]);
+});
+/** How many tabs a browser window's handoff has, for the Browser button and the session's row in other windows. */
+function handoffTabCount(tabs: BrowserTabsHandoff | undefined): number {
+  return Array.isArray(tabs?.tabs) ? tabs.tabs.length : 0;
+}
+
+/** The sessions whose browser has a window of its own, with how many tabs each has. */
+function browserPopoutCounts(): Record<string, number> {
+  return Object.fromEntries([...browserPopouts.keys()].map((id) => [id, handoffTabCount(browserPopoutTabs.get(id))]));
+}
+
+/** Tells every window which sessions have their browser in a window of its own. */
+function broadcastBrowserPopouts(): void {
+  const counts = browserPopoutCounts();
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.browserPopoutsChanged, counts);
+}
+
+/**
+ * Moves a session's Browser panel to a window of its own, with the tabs its window had (`tabs`), or brings that window to
+ * the front, showing `url` when given. The browser window is the session's browser and nothing else, so it can go on
+ * another display while the session stays where it is. Closing it hands the tabs back to the session's window; like
+ * pop-outs, browser windows close with the main window and don't come back after a restart.
+ */
+function popOutBrowser(sessionId: string, tabs: unknown = null, url: unknown = null): void {
+  const open = browserPopouts.get(sessionId);
+  if (open && !open.isDestroyed()) {
+    if (typeof url === 'string' && url) sendToWindow(open, IpcChannel.browserOpenUrl, url);
+    return bringToFront(open);
+  }
+  if (isSessionView(tabs)) browserPopoutTabs.set(sessionId, tabs);
+  else browserPopoutTabs.delete(sessionId);
+  const from = sessionWindow(sessionId);
+  const bounds = from && !from.isDestroyed() && !from.isMinimized() ? from.getBounds() : null;
+  const placed = bounds ? placePopout(bounds, screen.getDisplayMatching(bounds).workArea, POPOUT_SIZE, POPOUT_MIN, browserPopouts.size) : undefined;
+  const win = new BrowserWindow({
+    ...POPOUT_SIZE,
+    ...placed,
+    minWidth: POPOUT_MIN.width,
+    minHeight: POPOUT_MIN.height,
+    show: false,
+    ...titleBar(),
+    ...windowIcon(),
+    backgroundColor: windowBackground(),
+    webPreferences: webPreferences(),
+  });
+  browserPopouts.set(sessionId, win);
+  win.once('ready-to-show', () => win.show());
+  // Looking at a browser window is looking at Seshboard: the main window's taskbar button stops flashing (Notifier).
+  if (process.platform !== 'darwin') win.on('focus', () => mainWindow?.flashFrame(false));
+  win.on('closed', () => {
+    if (browserPopouts.get(sessionId) !== win) return;
+    browserPopouts.delete(sessionId);
+    broadcastBrowserPopouts();
+    // Closed with the window's button or its last tab: the session's window gets the tabs back, for the next open.
+    if (!quitting) returnBrowser(sessionId, false);
+  });
+  loadRenderer(win, undefined, null, sessionId);
+  if (typeof url === 'string' && url) sendToWindow(win, IpcChannel.browserOpenUrl, url);
+  broadcastBrowserPopouts();
+}
+
+/**
+ * Hands a session's browser tabs, as its browser window left them, to the window that shows the session, and forgets them
+ * here. `show` (Move back): that window comes to the front with the session and its Browser panel open on them.
+ */
+function returnBrowser(sessionId: string, show: boolean): void {
+  const tabs = browserPopoutTabs.get(sessionId) ?? { tabs: [] };
+  browserPopoutTabs.delete(sessionId);
+  const win = show && !popouts.has(sessionId) ? showWindow() : sessionWindow(sessionId);
+  if (!win || win.isDestroyed()) return;
+  sendToWindow(win, IpcChannel.browserReturned, { sessionId, tabs, show });
+  if (show) openSession(sessionId);
+}
+
+ipcMain.on(IpcChannel.getBrowserPopouts, (event) => {
+  event.returnValue = browserPopoutCounts();
+});
+ipcMain.on(IpcChannel.getBrowserPopoutTabs, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...browserPopouts].find(([, browser]) => browser === win);
+  event.returnValue = entry ? (browserPopoutTabs.get(entry[0]) ?? null) : null;
+});
+ipcMain.on(IpcChannel.popOutBrowser, (_event, sessionId: unknown, tabs: unknown, url: unknown) => {
+  if (typeof sessionId === 'string' && sessionId) popOutBrowser(sessionId, tabs, url);
+});
+// A browser window keeps main up to date with its tabs, for when it goes; the other windows follow how many it has.
+ipcMain.on(IpcChannel.reportBrowserTabs, (event, tabs: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...browserPopouts].find(([, browser]) => browser === win);
+  if (!entry || !isSessionView(tabs)) return;
+  const before = handoffTabCount(browserPopoutTabs.get(entry[0]));
+  browserPopoutTabs.set(entry[0], tabs);
+  if (handoffTabCount(tabs) !== before) broadcastBrowserPopouts();
+});
+// A quote or a picked element for the session's message, which is in the window that shows the session.
+ipcMain.on(IpcChannel.browserToMessage, (event, item: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...browserPopouts].find(([, browser]) => browser === win);
+  const target = entry ? sessionWindow(entry[0]) : null;
+  if (!entry || !target || target.isDestroyed() || !item || typeof item !== 'object') return;
+  sendToWindow(target, IpcChannel.browserMessage, { sessionId: entry[0], item });
+});
+// Move back: the browser window goes first, then the session's window shows the tabs in its Browser panel.
+ipcMain.on(IpcChannel.popInBrowser, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...browserPopouts].find(([, browser]) => browser === win);
+  if (!win || !entry) return;
+  browserPopouts.delete(entry[0]);
+  broadcastBrowserPopouts();
+  win.close();
+  returnBrowser(entry[0], true);
 });
 ipcMain.on(IpcChannel.showSession, (_event, sessionId: unknown) => {
   if (typeof sessionId === 'string' && sessionId) openSession(sessionId);
@@ -14453,6 +14577,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
   await step("browser profiles: two made in Settings, a cookie and local storage kept apart, Open in other profile, the agent's open in a profile, Reset, Delete", () => runBrowserProfilesStep(win, browserDeps), { timeoutMs: 60_000 });
   await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
+  await step('browser window: a session\'s tabs move to a window of their own, the agent finds the page there, Move back and closing put them back', () =>
+    runBrowserWindowStep(win, { ...browserDeps, browserWindowOf: (id) => { const open = browserPopouts.get(id); return open && !open.isDestroyed() ? open : undefined; }, shotOf: (target, name) => shot(target, name) }), { timeoutMs: 60_000 });
   await step('browser pick: an element picked on a session\'s page and the page\'s menu send to the message', () => runBrowserPickStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));

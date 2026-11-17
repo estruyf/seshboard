@@ -111,6 +111,16 @@ export const IpcChannel = {
   getPopoutView: "seshboard:get-popout-view",
   reportView: "seshboard:report-view",
   viewReturned: "seshboard:view-returned",
+  getBrowserPopouts: "seshboard:get-browser-popouts",
+  browserPopoutsChanged: "seshboard:browser-popouts-changed",
+  popOutBrowser: "seshboard:pop-out-browser",
+  popInBrowser: "seshboard:pop-in-browser",
+  getBrowserPopoutTabs: "seshboard:get-browser-popout-tabs",
+  reportBrowserTabs: "seshboard:report-browser-tabs",
+  browserReturned: "seshboard:browser-returned",
+  browserOpenUrl: "seshboard:browser-open-url",
+  browserToMessage: "seshboard:browser-to-message",
+  browserMessage: "seshboard:browser-message",
   menuBarCommand: "seshboard:menu-bar-command",
   menuBarResize: "seshboard:menu-bar-resize",
   menuBarShown: "seshboard:menu-bar-shown",
@@ -124,6 +134,9 @@ export const IpcChannel = {
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
 export const POPOUT_QUERY = "popout";
+
+/** The query parameter that makes a window a session's browser on its own: the id of the session whose tabs it shows. */
+export const BROWSER_POPOUT_QUERY = "browserpopout";
 
 /** The query parameter that makes a window the menu bar's panel (`?menubar=1`). */
 export const MENU_BAR_QUERY = "menubar";
@@ -169,6 +182,15 @@ export type DraftsChange = Record<string, unknown>;
  * the windows a session moves between, in memory, and never looks inside.
  */
 export type SessionView = Record<string, unknown>;
+
+/**
+ * A session's browser tabs as they move to its browser window and back (`BrowserHandoff` in the renderer), as plain data:
+ * main keeps the last one it heard and passes it on without looking inside.
+ */
+export type BrowserTabsHandoff = Record<string, unknown>;
+
+/** What a browser window sends to its session's message, which is in another window: a quote of the page, or an element picked on it. */
+export type BrowserMessageItem = { kind: "quote"; text: string; url: string } | { kind: "element"; element: PickedElement };
 
 /** A key press a pop-out hands to the main window (an app-wide shortcut: the palette, search, New session…). */
 export interface ForwardedKeys {
@@ -1260,6 +1282,34 @@ export interface SeshboardBridge {
   onViewReturned(listener: (sessionId: string, view: SessionView) => void): () => void;
   /** From a pop-out: shows its session in the main window again and closes the pop-out. */
   popIn(): void;
+  /** The session whose browser this window shows on its own (`?browserpopout=<id>`), or null. Read once when the page loads. */
+  readonly browserPopout: string | null;
+  /** The sessions whose browser has a window of its own, with how many tabs each has: read once when the page loads, then follow `onBrowserPopoutsChanged`. */
+  readonly browserPopouts: Readonly<Record<string, number>>;
+  /** Fires in every window when a browser window opens, closes or its number of tabs changes. */
+  onBrowserPopoutsChanged(listener: (tabs: Record<string, number>) => void): () => void;
+  /**
+   * Moves a session's browser to a window of its own with `tabs` (its tabs as this window had them), or brings that window
+   * to the front when it has one. `url`: an address to show there (a link clicked in the conversation).
+   */
+  popOutBrowser(sessionId: string, tabs?: BrowserTabsHandoff | null, url?: string | null): void;
+  /** In a browser window: the tabs it opened with, or null. Read once when the page loads. */
+  readonly browserPopoutTabs: BrowserTabsHandoff | null;
+  /** From a browser window: how its tabs stand now, so they go back to the session's window when it closes. */
+  reportBrowserTabs(tabs: BrowserTabsHandoff): void;
+  /** From a browser window: its tabs go back to the session's window, which shows them, and the browser window closes. */
+  popInBrowser(): void;
+  /**
+   * In the window that shows a session: its browser came back with its tabs. `show`: Move back, so the panel opens on them;
+   * otherwise the browser window was closed and the tabs wait for the next open.
+   */
+  onBrowserReturned(listener: (sessionId: string, tabs: BrowserTabsHandoff, show: boolean) => void): () => void;
+  /** In a browser window: show this address (a link clicked in the session, or its Browser button with a server offered). */
+  onBrowserOpenUrl(listener: (url: string) => void): () => void;
+  /** From a browser window: a quote or a picked element for its session's message, in the window that shows the session. */
+  browserToMessage(item: BrowserMessageItem): void;
+  /** In the window that shows a session: its browser window sent something to its message. */
+  onBrowserMessage(listener: (sessionId: string, item: BrowserMessageItem) => void): () => void;
   /** Whether this window is the menu bar's panel (`?menubar=1`). Read once when the page loads. */
   readonly menuBar: boolean;
   /** From the menu bar's panel: open the main window, quit, or close the panel. */

@@ -150,6 +150,7 @@ const PLANS: Record<string, Plan> = {
   'open-web-preview': 'here',
   'reload-web-preview': 'here',
   'open-session-browser': 'here',
+  'open-browser-in-new-window': 'here',
   'reload-browser-page': 'here',
   // The Browser view is the main window's; a pop-out's new tab would be its session's, kept simple: not offered there.
   'browser-view': 'main',

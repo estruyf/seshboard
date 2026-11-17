@@ -3,6 +3,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { addressBarUrl, browserNavigation, type BrowserHistoryEntry, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { askClearData, askRename, copyAddress, findInPage, pickElement, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
+import { popOutBrowser } from '../../state/browserWindow.ts';
+import { browserPopoutSession } from '../../state/popoutsStore.ts';
 import { bookmarkPage, useBookmarkOf } from '../../state/browserBookmarksStore.ts';
 import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
 import { searchHistory } from '../../state/browserHistory.ts';
@@ -569,11 +571,11 @@ export function TabTitle({ tab, confirming }: { tab: BrowserTab; confirming: boo
 }
 
 /** Toolbar buttons that go to the ⋯ menu in a narrow toolbar, so the address bar keeps its room. */
-const NARROW_HIDDEN = '@max-[520px]/toolbar:hidden';
+export const NARROW_HIDDEN = '@max-[520px]/toolbar:hidden';
 
 /**
- * The toolbar's ⋯: what is used less often for the page on screen, and Clear all browsing data. Pin, the bookmark and
- * Open in browser are here too, as a narrow toolbar hides their buttons.
+ * The toolbar's ⋯: what is used less often for the page on screen, and Clear all browsing data. Pin, the bookmark,
+ * Open in browser and a session's Open browser in new window are here too, as a narrow toolbar hides their buttons.
  */
 function pageMenu(tab: BrowserTab, bookmarked: boolean): MenuEntry[] {
   const blank = !tab.url;
@@ -581,6 +583,7 @@ function pageMenu(tab: BrowserTab, bookmarked: boolean): MenuEntry[] {
     { label: tab.pinned ? 'Unpin tab' : 'Pin tab', icon: <Pin size={13} aria-hidden />, disabled: blank, onSelect: () => (tab.pinned ? useWebPreview.getState().unpin(tab.id) : useWebPreview.getState().pin(tab.id)), data: { 'data-page-pin': true } },
     { label: bookmarked ? 'Edit bookmark…' : 'Bookmark this page…', icon: <Star size={13} aria-hidden />, hint: formatKeys(keysFor('browser.bookmark')), disabled: blank, onSelect: () => bookmarkPage(tab), data: { 'data-page-bookmark': true } },
     { label: 'Open in browser', icon: <ExternalLink size={13} aria-hidden />, disabled: blank, onSelect: () => tab.url && window.open(tab.url, '_blank'), data: { 'data-page-open-external': true } },
+    ...(tab.owner !== BROWSER_OWNER && !browserPopoutSession ? [{ label: 'Open browser in new window', icon: <AppWindow size={13} aria-hidden />, onSelect: () => popOutBrowser(tab.owner), data: { 'data-page-pop-out': true } }] : []),
     'separator',
     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-page-rename': true } },
     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: blank, onSelect: () => copyAddress(tab) },

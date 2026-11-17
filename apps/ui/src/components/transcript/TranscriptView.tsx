@@ -20,7 +20,7 @@ import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../sta
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { realBranch, useSessions } from '../../state/sessionsStore.ts';
-import { popOut, popoutSession, showInMain } from '../../state/popoutsStore.ts';
+import { popOut, popoutSession, showInMain, useBrowserPopouts } from '../../state/popoutsStore.ts';
 import { currentPlatform } from '../../lib/platform.ts';
 import { openInProviderCli, runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
@@ -590,6 +590,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // And the web preview: the session's dev server beside the conversation, while its tab is open.
   const web = useSessionWeb(sessionId);
   const showWeb = web !== null;
+  // Or in a window of its own: its Browser button brings that window to the front.
+  const browserAway = useBrowserPopouts((s) => s.tabs.has(sessionId));
   const allTerminals = useTerminals((s) => s.terminals);
   const serverOffers = useMemo(() => sessionServerOffers(allTerminals.values(), sessionId), [allTerminals, sessionId]);
   const openPreviewHere = useCallback<OpenPreview>((path, line, endLine) => useFilePreview.getState().open(path, { sessionId, line, endLine }), [sessionId]);
@@ -1519,7 +1521,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const railState = (id: RailToolId) => (id === 'terminal' && !terminalOnRight ? (panelOpen ? 'front' : 'closed') : railToolState(id, right.open, right.tab));
   const modTitles = new Map(modPanes.map((p) => [modPaneTab(p.id), p.title]));
   const railTool = (id: RailToolId): RailItem => {
-    const name = id === 'web' && !browserPreview ? 'Web' : id === 'preview' && previewTarget ? `Preview · ${basename(previewTarget.path)}` : modTitles.get(id as `mod:${string}`);
+    const name = id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : id === 'preview' && previewTarget ? `Preview · ${basename(previewTarget.path)}` : modTitles.get(id as `mod:${string}`);
     const shortcut = id === 'changes' ? 'changes.toggle' : id === 'terminal' ? 'terminal.toggle' : id === 'web' ? 'web.toggle' : id === 'agents' ? 'agents.toggle' : id === 'commands' ? 'commands.toggle' : null;
     const state = railState(id);
     const ready = id === 'ask' && ask.ready && !ask.open;
@@ -1541,7 +1543,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       // An answer in Ask, or a server running in the session for the browser to show.
       dot: ready || (id === 'web' && !showWeb && serverOffers.length > 0),
       state,
-      data: { [`data-toggle-${pane !== null ? 'mod-pane' : id}`]: true },
+      data: { [`data-toggle-${pane !== null ? 'mod-pane' : id}`]: true, ...(id === 'web' && browserAway ? { 'data-browser-away': true } : {}) },
       onClick: () => {
         if (pane !== null) return state === 'front' ? closeModPane(pane) : pickRightTab(id);
         if (id === 'changes') toggleChangesHere();
@@ -1585,7 +1587,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       changes: Boolean(cwd && isRepo),
       terminal: true,
       // Only while a dev server runs in the session, or the tab is open; with the browser on, always: it opens any page.
-      web: showWeb || ((serverOffers.length > 0 || browserPreview) && webAllowed),
+      web: showWeb || browserAway || ((serverOffers.length > 0 || browserPreview) && webAllowed),
       preview: previewTarget !== null,
       // Ask forks the session in its own tool: another provider's only when it can.
       ask: canAsk || ask.open,

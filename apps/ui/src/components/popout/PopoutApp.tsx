@@ -21,6 +21,7 @@ import { usePopoutViewReport } from '../../state/useSessionViewSync.ts';
 import { useHostsSync } from '../../state/useHostsSync.ts';
 import { useModsSync } from '../../state/useModsSync.ts';
 import { usePopoutsSync } from '../../state/usePopoutsSync.ts';
+import { useBrowserPopoutsSync } from '../../state/browserWindow.ts';
 import { useRemoteSync } from '../../state/useRemoteSync.ts';
 import { useSessionsSync } from '../../state/useSessionsSync.ts';
 import { AddContextDialogHost } from '../composer/AddContextDialog.tsx';
@@ -79,6 +80,8 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   useTerminalsSync();
   useDraftsSync();
   usePopoutsSync();
+  // The session's browser can be in a window of its own: its tabs come back here when that window goes.
+  useBrowserPopoutsSync();
   useUsageSync();
   usePreferencesSync();
   useThemesSync();
