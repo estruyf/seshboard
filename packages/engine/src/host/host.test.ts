@@ -686,6 +686,14 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it("gives a fork the project's plan mode instructions too", async () => {
+    const t = setup({ cwds: { old: '/with' }, planModeInstructionsFor: (cwd) => (cwd === '/with' ? 'Read first.' : null) });
+    const forked = await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: true });
+    expect(forked.sessionId).not.toBe('old');
+    expect(t.queries[0]!.options).toMatchObject({ forkSession: true, planModeInstructions: 'Read first.' });
+    t.manager.closeAll();
+  });
+
   it('sends back a prompt that a call made before the mode change asks for later', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'serial:Write,Write,Bash' });
@@ -1190,6 +1198,31 @@ describe('HostManager', () => {
     const warm = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan', effort: 'high' });
     expect(warm).toBe(t.warmups[0]!.options.sessionId);
     await until(() => lastState(t.infos, warm) === 'idle');
+    t.manager.closeAll();
+  });
+
+  it("pre-warms with the project's plan mode instructions and adopts the process only while they are the same", async () => {
+    let text: string | null = 'Read first.';
+    const t = setup({ planModeInstructionsFor: () => text });
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[0]!.options.planModeInstructions).toBe('Read first.');
+    // Asking again with the same text keeps the process.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(1);
+    const warm = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    expect(warm).toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, warm) === 'idle');
+    // The text changed while one waited: a new pre-warm replaces it, and a session that comes first starts cold.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(2);
+    text = 'Ask first.';
+    const cold = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    expect(cold).not.toBe(t.warmups[1]!.options.sessionId);
+    await until(() => lastState(t.infos, cold) === 'idle');
+    expect(t.queries.at(-1)!.options.planModeInstructions).toBe('Ask first.');
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(3);
+    expect(t.warmups[2]!.options.planModeInstructions).toBe('Ask first.');
     t.manager.closeAll();
   });
 

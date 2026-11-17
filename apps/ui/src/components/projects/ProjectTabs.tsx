@@ -1,6 +1,6 @@
 import { Check, FolderOpen, GitBranch, Image, Plus, RotateCcw, Settings2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { anyFactsPending, type ListedAction, type ProjectDefaults, type ProjectInfo } from '@seshboard/protocol/client';
+import { anyFactsPending, MAX_ORCHESTRATOR_INSTRUCTIONS, MAX_PLAN_MODE_INSTRUCTIONS, type ListedAction, type ProjectDefaults, type ProjectInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { formatShortcut } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -41,8 +41,7 @@ import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
-import { OrchestratorInstructionsEditor } from './OrchestratorInstructionsEditor.tsx';
-import { PlanModeInstructionsEditor } from './PlanModeInstructionsEditor.tsx';
+import { InstructionsEditor } from './InstructionsEditor.tsx';
 import { BrowserSitesEditor } from './BrowserSitesEditor.tsx';
 import { defaultChips, overviewWorktrees, recentSessions, sessionState } from './projectOverview.ts';
 
@@ -550,7 +549,12 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         hint="What this project's orchestrator and every session it starts read first: which branch to start from, how to check the work, what needs your go-ahead. Rules about the code itself belong in the repository's own instructions file."
         data-project-orchestrator-instructions
       >
-        <OrchestratorInstructionsEditor
+        <InstructionsEditor
+          hook="orchestrator-instructions"
+          label="Orchestrator instructions"
+          max={MAX_ORCHESTRATOR_INSTRUCTIONS}
+          placeholder={'Branch from dev and open one draft pull request per session.\nRun the tests before you call work done.\nAsk me before you change CI.'}
+          savedNote="Saved. Sessions started from now on read them."
           instructions={project.defaults.orchestratorInstructions ?? ''}
           onSave={async (orchestratorInstructions) => {
             if (!client) return;
@@ -559,22 +563,26 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
           }}
         />
       </SettingRow>
-      {(!profile || profile.provider === 'claude') && (
-        <SettingRow
+      <SettingRow
+        label="Plan mode instructions"
+        hint="Replaces the steps Claude Code follows in plan mode: what to look at, what the plan lists, when to ask. Its read-only rules stay. Claude Code sessions only, read when a session starts, so it applies to sessions started from now on."
+        data-project-plan-mode-instructions
+      >
+        <InstructionsEditor
+          hook="plan-mode-instructions"
           label="Plan mode instructions"
-          hint="Replaces the steps Claude Code follows in plan mode: what to look at, what the plan lists, when to ask. Its read-only rules stay. Claude Code reads it when a session starts, so it applies to sessions started from now on."
-          data-project-plan-mode-instructions
-        >
-          <PlanModeInstructionsEditor
-            instructions={project.defaults.planModeInstructions ?? ''}
-            onSave={async (planModeInstructions) => {
-              if (!client) return;
-              await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, planModeInstructions } });
-              reload();
-            }}
-          />
-        </SettingRow>
-      )}
+          max={MAX_PLAN_MODE_INSTRUCTIONS}
+          rows={5}
+          placeholder={'Read the code that matters first.\nList the files you will change and why.\nName the tests you will add, then ask me to approve.'}
+          savedNote="Saved. Sessions started from now on use it."
+          instructions={project.defaults.planModeInstructions ?? ''}
+          onSave={async (planModeInstructions) => {
+            if (!client) return;
+            await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, planModeInstructions } });
+            reload();
+          }}
+        />
+      </SettingRow>
       <SettingRow
         label="Remove"
         hint="Removing a project only takes it off Seshboard's lists: nothing on disk changes, and its sessions stay in search and under sessions from other apps."

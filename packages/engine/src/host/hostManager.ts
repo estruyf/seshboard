@@ -193,6 +193,8 @@ interface Warm {
   profileId: string;
   /** The effort it started with: Claude Code reads it only at startup. */
   effort: Effort | null;
+  /** The project's plan mode instructions it started with (also read only at startup), null for none. */
+  planInstructions: string | null;
   sessionId: string;
   warm: Promise<WarmQuery>;
   /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process, as do the browser tools. */
@@ -299,8 +301,7 @@ export class HostManager {
   async create(params: CreateParams): Promise<string> {
     await this.deps.links?.warm(params.prompt);
     // A warm process started without the read-only hook, the orchestrator's tools and any text after the prompt.
-    // The same for the project's plan mode instructions: a pre-warmed process has none.
-    const warm = params.readOnly || params.orchestrator || params.appendSystem || this.deps.planModeInstructionsFor?.(params.cwd) ? undefined : this.takeWarm(params);
+    const warm = params.readOnly || params.orchestrator || params.appendSystem ? undefined : this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
       {
@@ -1039,7 +1040,7 @@ export class HostManager {
   /** Bumped whenever the warm process is replaced or discarded, so a pre-warm that finishes late knows it lost. */
   private warmGeneration = 0;
   /** The folder, profile and effort a pre-warm is starting for, until it has stored its process. */
-  private warming: { cwd: string; profileId: string; effort: Effort | null } | undefined;
+  private warming: { cwd: string; profileId: string; effort: Effort | null; planInstructions: string | null } | undefined;
 
   /**
    * Starts a Claude Code process for `cwd` so a new session there answers about a second faster. `effort` is the one
@@ -1047,7 +1048,8 @@ export class HostManager {
    */
   async prewarm(cwd: string, profileId: string, effort: Effort | null = null): Promise<void> {
     const target = this.warm ?? this.warming;
-    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort) return;
+    const planInstructions = this.deps.planModeInstructionsFor?.(cwd) ?? null;
+    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort && target.planInstructions === planInstructions) return;
     try {
       this.deps.assertTrusted?.(cwd);
     } catch {
@@ -1056,7 +1058,7 @@ export class HostManager {
     }
     this.discardWarm();
     const generation = this.warmGeneration;
-    this.warming = { cwd, profileId, effort };
+    this.warming = { cwd, profileId, effort, planInstructions };
     let env: Record<string, string>, claudePath: string | undefined, sdk: SdkRuntime;
     try {
       [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
@@ -1082,6 +1084,7 @@ export class HostManager {
         permissionMode: 'default',
         effort,
         worktree: null,
+        planModeInstructions: planInstructions,
         chrome: this.chrome,
         visualize: this.visualize,
         browser,
@@ -1095,7 +1098,7 @@ export class HostManager {
     const warm = sdk.startup({ options });
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    const entry: Warm = { cwd, profileId, effort, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, effort, planInstructions, sessionId, warm, route, timer };
     this.warm = entry;
     // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
     warm.catch((error: unknown) => {
@@ -1138,6 +1141,8 @@ export class HostManager {
   private takeWarm(params: CreateParams): Warm | undefined {
     const warm = this.warm;
     if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || (params.effort ?? null) !== warm.effort) return undefined;
+    // The project's instructions changed since it started: Claude Code reads them only at startup.
+    if ((this.deps.planModeInstructionsFor?.(params.cwd) ?? null) !== warm.planInstructions) return undefined;
     clearTimeout(warm.timer);
     this.warm = undefined;
     this.deps.ephemeral?.delete(warm.sessionId);
@@ -1188,7 +1193,6 @@ export class HostManager {
         browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
         orchestrator: orchestrate ? ((await this.deps.orchestratorServer?.(() => hostRef?.sessionId ?? null)) ?? null) : null,
         skimMarks: this.skimMarks,
-        // A pre-warmed process started without them, so a project that sets them never takes one (see `create`).
         planModeInstructions: this.deps.planModeInstructionsFor?.(config.cwd) ?? null,
       },
       {
