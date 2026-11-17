@@ -160,6 +160,8 @@ export interface HostManagerDeps {
   orchestratorServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
   isOrchestrator?: (sessionId: string) => boolean;
   appendSystemFor?: (sessionId: string) => string | null;
+  /** The project's own plan mode instructions for a session in `cwd`; null for none. Read when a process starts. */
+  planModeInstructionsFor?: (cwd: string) => string | null;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -297,7 +299,8 @@ export class HostManager {
   async create(params: CreateParams): Promise<string> {
     await this.deps.links?.warm(params.prompt);
     // A warm process started without the read-only hook, the orchestrator's tools and any text after the prompt.
-    const warm = params.readOnly || params.orchestrator || params.appendSystem ? undefined : this.takeWarm(params);
+    // The same for the project's plan mode instructions: a pre-warmed process has none.
+    const warm = params.readOnly || params.orchestrator || params.appendSystem || this.deps.planModeInstructionsFor?.(params.cwd) ? undefined : this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
       {
@@ -1185,6 +1188,8 @@ export class HostManager {
         browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
         orchestrator: orchestrate ? ((await this.deps.orchestratorServer?.(() => hostRef?.sessionId ?? null)) ?? null) : null,
         skimMarks: this.skimMarks,
+        // A pre-warmed process started without them, so a project that sets them never takes one (see `create`).
+        planModeInstructions: this.deps.planModeInstructionsFor?.(config.cwd) ?? null,
       },
       {
         info: (info) => this.onInfo(host, info),

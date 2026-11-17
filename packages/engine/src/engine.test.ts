@@ -815,6 +815,12 @@ describe('engine over a MessagePort', () => {
     expect(await defaultsOf()).toMatchObject({ model: 'sonnet', orchestratorInstructions: 'Branch from dev.' });
     await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), orchestratorInstructions: '' } });
     expect(await defaultsOf()).not.toHaveProperty('orchestratorInstructions');
+    // Plan mode's instructions work the same way, apart from the orchestrator's.
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '  List the files.  ' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { model: 'haiku', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } });
+    expect(await defaultsOf()).toMatchObject({ model: 'haiku', planModeInstructions: 'List the files.' });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '' } });
+    expect(await defaultsOf()).not.toHaveProperty('planModeInstructions');
     // No session is an orchestrator yet.
     expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [] });
     await client.call('projects.remove', { root: dataDir });

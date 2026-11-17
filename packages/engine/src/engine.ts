@@ -1395,6 +1395,7 @@ export function createEngine(options: EngineOptions): Engine {
     orchestratorServer,
     isOrchestrator: (id) => orchestrator.isOrchestrator(id),
     appendSystemFor: (id) => orchestrator.systemTextFor(id),
+    planModeInstructionsFor: (cwd) => projects.defaultsOf(resolver.resolve(cwd).root).planModeInstructions?.trim() || null,
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -3526,11 +3527,13 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'projects.setDefaults': ({ root, defaults }) => {
       questions.assertNotProject(root);
-      // The orchestrator's instructions have their own editor: a save that doesn't name them (the defaults editor, Save
-      // as project default) keeps them, and an empty text takes them away.
-      const { orchestratorInstructions: named, ...rest } = defaults;
-      const instructions = (named === undefined ? projects.defaultsOf(root).orchestratorInstructions : named)?.trim();
-      projects.setDefaults(root, instructions ? { ...rest, orchestratorInstructions: instructions } : rest);
+      // The orchestrator's and plan mode's instructions have their own editors: a save that doesn't name them (the
+      // defaults editor, Save as project default) keeps them, and an empty text takes them away.
+      const { orchestratorInstructions: named, planModeInstructions: namedPlan, ...rest } = defaults;
+      const saved = projects.defaultsOf(root);
+      const instructions = (named === undefined ? saved.orchestratorInstructions : named)?.trim();
+      const planInstructions = (namedPlan === undefined ? saved.planModeInstructions : namedPlan)?.trim();
+      projects.setDefaults(root, { ...rest, ...(instructions ? { orchestratorInstructions: instructions } : {}), ...(planInstructions ? { planModeInstructions: planInstructions } : {}) });
       return {};
     },
     'projects.reorder': ({ roots }) => {

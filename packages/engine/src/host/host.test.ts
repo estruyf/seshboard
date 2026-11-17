@@ -273,6 +273,7 @@ function setup(
     orchestratorServer?: HostManagerDeps['orchestratorServer'];
     isOrchestrator?: HostManagerDeps['isOrchestrator'];
     appendSystemFor?: HostManagerDeps['appendSystemFor'];
+    planModeInstructionsFor?: HostManagerDeps['planModeInstructionsFor'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -348,6 +349,7 @@ function setup(
     orchestratorServer: opts.orchestratorServer,
     isOrchestrator: opts.isOrchestrator,
     appendSystemFor: opts.appendSystemFor,
+    planModeInstructionsFor: opts.planModeInstructionsFor,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -666,6 +668,21 @@ describe('HostManager', () => {
     await t.manager.send({ sessionId: 'its-session', text: 'Say hi', attachments: [], fork: false });
     expect(t.queries[3]!.options.mcpServers).toBeUndefined();
     expect(t.queries[3]!.options.systemPrompt).toMatchObject({ append: expect.stringContaining('Branch from dev.') });
+    t.manager.closeAll();
+  });
+
+  it("starts a project's sessions with its plan mode instructions, and passes nothing for a project without", async () => {
+    const t = setup({
+      cwds: { old: '/with' },
+      planModeInstructionsFor: (cwd) => (cwd === '/with' ? 'Read first. List the files.' : null),
+    });
+    await t.manager.create({ ...base, cwd: '/with', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.planModeInstructions).toBe('Read first. List the files.');
+    await t.manager.create({ ...base, cwd: '/without', prompt: 'Say hi' });
+    expect(t.queries[1]!.options).not.toHaveProperty('planModeInstructions');
+    // A resumed session reads them again.
+    await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: false });
+    expect(t.queries[2]!.options.planModeInstructions).toBe('Read first. List the files.');
     t.manager.closeAll();
   });
 
@@ -1795,6 +1812,13 @@ describe('buildOptions', () => {
     expect(options.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: `${SKIM_MARKS_PROMPT}\n\nYou are the orchestrator.` });
     expect(buildOptions({ ...config, appendSystem: 'Branch from dev.' }, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: 'Branch from dev.' });
     expect(buildOptions({ ...config, orchestrator, readOnly: true }, () => {}).mcpServers).toBeUndefined();
+  });
+
+  it("passes plan mode instructions trimmed, and nothing when they are empty", () => {
+    expect(buildOptions({ ...config, planModeInstructions: '  List the files.  ' }, () => {}).planModeInstructions).toBe('List the files.');
+    expect(buildOptions({ ...config, planModeInstructions: '   ' }, () => {})).not.toHaveProperty('planModeInstructions');
+    expect(buildOptions({ ...config, planModeInstructions: null }, () => {})).not.toHaveProperty('planModeInstructions');
+    expect(buildOptions(config, () => {})).not.toHaveProperty('planModeInstructions');
   });
 
   it('maps a new worktree session onto Claude Code options', () => {

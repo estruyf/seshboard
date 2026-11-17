@@ -42,6 +42,7 @@ import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
 import { OrchestratorInstructionsEditor } from './OrchestratorInstructionsEditor.tsx';
+import { PlanModeInstructionsEditor } from './PlanModeInstructionsEditor.tsx';
 import { BrowserSitesEditor } from './BrowserSitesEditor.tsx';
 import { defaultChips, overviewWorktrees, recentSessions, sessionState } from './projectOverview.ts';
 
@@ -558,6 +559,22 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
           }}
         />
       </SettingRow>
+      {(!profile || profile.provider === 'claude') && (
+        <SettingRow
+          label="Plan mode instructions"
+          hint="Replaces the steps Claude Code follows in plan mode: what to look at, what the plan lists, when to ask. Its read-only rules stay. Claude Code reads it when a session starts, so it applies to sessions started from now on."
+          data-project-plan-mode-instructions
+        >
+          <PlanModeInstructionsEditor
+            instructions={project.defaults.planModeInstructions ?? ''}
+            onSave={async (planModeInstructions) => {
+              if (!client) return;
+              await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, planModeInstructions } });
+              reload();
+            }}
+          />
+        </SettingRow>
+      )}
       <SettingRow
         label="Remove"
         hint="Removing a project only takes it off Seshboard's lists: nothing on disk changes, and its sessions stay in search and under sessions from other apps."
