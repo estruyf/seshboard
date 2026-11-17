@@ -1,4 +1,6 @@
-import { createServer, type Server } from 'node:http';
+import { existsSync, readFileSync } from 'node:fs';
+import { createServer, type Server, type ServerResponse } from 'node:http';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { BrowserWindow, session, webContents, type WebContents } from 'electron';
 import { setFieldValue, until, waitInPage } from './pageDriver.ts';
@@ -10,6 +12,12 @@ import { isSessionPage, runPageMenuEntry } from './webPreview.ts';
 // a free port) stands in for the web, so no outside site is needed: a page with a title, a link to a second one, and a
 // link that leaves for example.com.
 
+/** The file "browser download" saves: long enough that its Downloading toast is cut. */
+const DOWNLOAD_NAME = `smoke-download-with-a-name-long-enough-to-be-cut-${'long-'.repeat(6)}.txt`;
+const DOWNLOAD_TEXT = 'Saved by the smoke run.';
+/** The download's response, held open until the step has checked its Downloading toast. */
+let heldDownload: ServerResponse | null = null;
+
 const PAGES: Record<string, string> = {
   // Broken icons around the real one: the tab still gets it, whichever the page reports first.
   '/': '<title>Smoke browser</title><link rel=icon href=/missing-a.png><link rel=icon href=/icon.svg><link rel=icon href=/missing-b.png><h1>One</h1><a id=next href=/two>Two</a> <a id=out href=https://example.com/>Out</a>',
@@ -17,6 +25,7 @@ const PAGES: Record<string, string> = {
   '/long': `<title>Smoke browser long ${'title '.repeat(40)}</title><h1>Long</h1>`,
   // A click that reaches the button marks the body: a pick must keep it from the page.
   '/profile': '<title>Smoke profile</title><h1>Profile</h1>',
+  '/download': `<title>Smoke download</title><a id=file href=/file/${DOWNLOAD_NAME}>File</a>`,
   '/pick': '<title>Smoke pick</title><main><h1 id=heading>Pick me</h1><p id=words>Some words to quote here.</p><button class="cta" data-testid=buy onclick="document.body.dataset.clicked=1">Buy now</button></main>',
 };
 
@@ -36,6 +45,8 @@ export interface BrowserSmokeDeps {
   outside: readonly string[];
   /** Reloads the window, which the run then doesn't take for an engine restart. */
   reload(): void;
+  /** Where pages' downloads go in a smoke run (a folder in the throwaway profile). */
+  downloadsDir: string;
 }
 
 let server: Server | null = null;
@@ -48,6 +59,14 @@ async function site(): Promise<string> {
     if (request.url === '/icon.svg') {
       response.writeHead(200, { 'content-type': 'image/svg+xml' });
       response.end(ICON);
+      return;
+    }
+    if (request.url === `/file/${DOWNLOAD_NAME}`) {
+      // The first half now, the rest when the step says (`heldDownload`). Without nosniff, Chromium waits for more bytes
+      // to guess the type before it starts the download.
+      response.writeHead(200, { 'content-type': 'application/octet-stream', 'x-content-type-options': 'nosniff', 'content-disposition': `attachment; filename="${DOWNLOAD_NAME}"`, 'content-length': String(DOWNLOAD_TEXT.length) });
+      response.write(DOWNLOAD_TEXT.slice(0, 8));
+      heldDownload = response;
       return;
     }
     const body = PAGES[request.url ?? ''];
@@ -916,4 +935,39 @@ export async function runBrowserOutsideLinkStep(win: BrowserWindow, deps: Browse
   if (await js(`!!${q(`${S} [data-web-preview-tabs]`)} || !!${q(`${S} [data-web-preview-pin]`)}`)) return 'the web preview shows tabs or a pin with the browser off';
   await js(`${q(`${S} [data-web-preview-close]`)}.click()`);
   return 'ok: with the browser off, the outside link went to the browser and the page stayed';
+}
+
+/**
+ * "browser download": a link to a file saves it in the Downloads folder (the profile's, in a smoke run). While it runs,
+ * a toast says so, its long name cut, and Show all shows the whole name. Once done, a toast offers to show the file.
+ */
+export async function runBrowserDownloadStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const url = await site();
+  const address = '[data-browser-view] [data-browser-address]';
+  deps.setBrowser(true);
+  if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
+  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
+  if (!(await waitInPage(win, q('[data-browser-tab-list] [data-browser-open-tab]'), 3_000))) return 'no Browser view';
+  await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
+  if (!(await waitInPage(win, `${q(address)} && !${q(address)}.disabled`, 3_000))) return 'Open tab gave no address bar';
+  await setFieldValue(win, address, `${url.replace('http://', '')}download`);
+  await js(`${q(address)}.form.requestSubmit()`);
+  if (!(await until(() => pageWithTitle('Smoke download') !== undefined, 10_000))) return 'the page with the file did not load';
+  heldDownload = null;
+  await pageWithTitle('Smoke download')!.executeJavaScript("document.getElementById('file').click()", true);
+  const started = q('[data-web-preview-download="started"]');
+  if (!(await waitInPage(win, started, 5_000))) return `no Downloading toast after the link was clicked (the server ${heldDownload ? 'sent the file' : 'had no request'}, toasts: ${String(await js(`[...document.querySelectorAll('[data-toast]')].map((t) => t.textContent).join(' | ')`))})`;
+  if (!(await until(() => heldDownload !== null, 3_000))) return 'the download did not reach the server';
+  if ((await js(`${started}.querySelector('[data-toast-text]')?.dataset.toastText`)) !== 'cut') return "the Downloading toast's long name is not cut";
+  await js(`${started}.querySelector('[data-toast-expand]').click()`);
+  if (!(await waitInPage(win, `${started}?.querySelector('[data-toast-text]')?.dataset.toastText === 'open' && ${started}.textContent.includes(${JSON.stringify(DOWNLOAD_NAME)})`, 2_000))) return 'Show all did not show the whole name';
+  await deps.shot('browser-download');
+  (heldDownload as ServerResponse | null)?.end(DOWNLOAD_TEXT.slice(8));
+  const done = q('[data-web-preview-download="done"]');
+  if (!(await waitInPage(win, `${done} && ${q('[data-web-preview-download-show]')} && !${started}`, 5_000))) return `no Downloaded toast with Show in Finder (failed: ${String(await js(`!!${q('[data-web-preview-download="failed"]')}`))})`;
+  const file = join(deps.downloadsDir, DOWNLOAD_NAME);
+  if (!existsSync(file) || readFileSync(file, 'utf8') !== DOWNLOAD_TEXT) return `the file is not in the Downloads folder as it was sent (${file})`;
+  await js(`${done}.querySelector('[data-toast-close]')?.click()`);
+  return 'ok: the file saved in the Downloads folder, its long name cut and shown in full, Show in Finder offered';
 }

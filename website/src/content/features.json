@@ -857,6 +857,16 @@
       "page": "sessions/web-preview"
     },
     {
+      "id": "feature:browser-downloads",
+      "name": "Browser downloads: a file a page downloads goes to the Downloads folder, with a toast while it runs and Show in Finder once done",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:toast-show-all",
+      "name": "A toast whose text is cut has Show all, which shows the whole text",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "feature:panel-half",
       "name": "Panels at half width: Side, Half or Full, the panel and the conversation sharing the session 50/50",
       "page": "sessions/web-preview"

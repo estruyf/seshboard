@@ -6,6 +6,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Downloads in the browser.** A file a page downloads now goes to your Downloads folder, instead of "Downloads aren't supported here yet". A toast shows while it downloads, and **Show in Finder** (File Explorer on Windows) once it is done. A file with the same name is never replaced: the new one gets a number, such as `report (1).pdf`.
+- **Show all on a long toast.** When a toast's text is cut, the ⌄ button after it shows the whole text.
 - **Suggested prompts.** Settings › Prompts suggests two prompts to add with one click: *Use your best judgment*, which keeps a session from waiting on small decisions, and *Throwaway build*, which asks for the feature and tells you where the design got in the way. Nothing is added unless you press Add, and a suggestion goes away once its prompt is saved.
 - **Orchestrator sessions use their judgment.** Every session an orchestrator starts is told to build, make any reversible call itself and check in later with the calls it made, so it doesn't stop for small decisions. Your project's own orchestrator instructions come after it and still apply.
 - **A line while Claude Code retries.** When the API is overloaded, rate limited or fails, Claude Code tries again after a wait. The working line now says so ("API overloaded, retrying (3 of 10) in 8s", or "No response from the API, retrying (1 of 3)") instead of looking stuck, on Home's Working cards, on your phone and in another computer's session too. It goes away when a reply arrives.

@@ -1,8 +1,10 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, webContents, type Session, type WebContents } from 'electron';
+import { existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, shell, webContents, type DownloadItem, type Session, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
 import { isBrowserPartition, localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
-import { acceptsLocalCertificate, cookieOfSite, faviconCap, partitionClearing, iconTooLarge, keyForWindow, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
 /**
  * Pages whose keys go to their window (`keysToWindow`): the window's document took the focus from them, which Chromium
@@ -30,6 +32,34 @@ export interface WebPreviewGuardDeps {
   preview(): boolean;
   /** Ask before a page opens another app (`slack:`, `vscode:`): off in a smoke run, where nobody answers. */
   askFirst: boolean;
+  /** Where pages' downloads go: the Downloads folder, or a folder in the throwaway profile in a smoke run. */
+  downloadsDir(): string;
+}
+
+/** Files pages downloaded this run: the only paths Show in Finder will reveal. */
+const downloaded = new Set<string>();
+/** Paths of downloads still running, which a second download of the same name must not take. */
+const downloading = new Set<string>();
+let nextDownloadId = 1;
+
+/**
+ * Saves a page's download in the Downloads folder, under a name no file there has yet (`downloadFileName`), and tells
+ * the page's window when it starts and ends.
+ */
+function saveDownload(item: DownloadItem, contents: WebContents, host: WebContents, deps: WebPreviewGuardDeps): void {
+  const dir = deps.downloadsDir();
+  mkdirSync(dir, { recursive: true });
+  const name = downloadFileName(item.getFilename(), (candidate) => downloading.has(join(dir, candidate)) || existsSync(join(dir, candidate)));
+  const path = join(dir, name);
+  item.setSavePath(path);
+  downloading.add(path);
+  const base = { kind: 'download' as const, contentsId: contents.id, id: nextDownloadId++, name, path, url: webPageUrl(item.getURL()) ?? webPageUrl(contents.getURL()) ?? '' };
+  send(host, { ...base, state: 'started' });
+  item.once('done', (_event, state) => {
+    downloading.delete(path);
+    if (state === 'completed') downloaded.add(path);
+    send(host, { ...base, state: state === 'completed' ? 'done' : state === 'cancelled' ? 'cancelled' : 'failed' });
+  });
 }
 
 /** The sessions of the partitions pages use (the Default profile's and each browser profile's), once guarded. */
@@ -40,7 +70,7 @@ export const isBrowserSession = (candidate: Session): boolean => [...guardedSess
 
 /**
  * The guards a partition's session needs before its first page (`installWebPreviewGuards`): a few harmless permissions
- * (`pagePermissionAllowed`), no downloads, and Chromium's verdict on certificates except a dev server's on this computer.
+ * (`pagePermissionAllowed`), downloads into the Downloads folder, and Chromium's verdict on certificates except a dev server's on this computer.
  * Run once per partition: the Default profile's at start, a browser profile's the first time one of its pages attaches.
  * Only for a partition `isBrowserPartition` accepts.
  */
@@ -53,12 +83,10 @@ function guardPartition(partition: string, deps: WebPreviewGuardDeps): Session {
   pageSession.setPermissionRequestHandler((_contents, permission, callback) => callback(pagePermissionAllowed(permission)));
   pageSession.setPermissionCheckHandler((_contents, permission) => pagePermissionAllowed(permission));
   pageSession.on('will-download', (event, item, contents) => {
-    event.preventDefault();
-    // With the browser on, the page says why nothing happened, and offers the browser instead.
+    // Only a page in a window: anything else (a page that is gone) has nobody to tell where the file went.
     const host = contents?.hostWebContents;
-    if (!deps.browser() || !host || host.isDestroyed()) return;
-    const url = webPageUrl(item.getURL()) ?? webPageUrl(contents.getURL()) ?? '';
-    send(host, { kind: 'download-refused', contentsId: contents.id, url });
+    if (!host || host.isDestroyed()) return event.preventDefault();
+    saveDownload(item, contents, host, deps);
   });
   // A dev server's self-signed certificate on this computer is fine; anywhere else Chromium's verdict stands (-3).
   pageSession.setCertificateVerifyProc((request, callback) => callback(request.errorCode !== 0 && acceptsLocalCertificate(request.hostname) ? 0 : -3));
@@ -70,7 +98,7 @@ function guardPartition(partition: string, deps: WebPreviewGuardDeps): Session {
  * page, in tabs), checked here: one attaches only in a partition of its own (the Default profile's, or a browser
  * profile's: docs/browser.md, Browser profiles), on an allowed address, sandboxed and without a preload or Node; its
  * page stays on allowed addresses (`previewNavigation`); a new window it asks for becomes a tab or goes to the browser
- * (`popupTarget`), never a window; its permission requests and downloads are refused; and the app's shortcuts typed in
+ * (`popupTarget`), never a window; its permission requests are refused, its downloads go to the Downloads folder; and the app's shortcuts typed in
  * it reach the app. Call once, before the first window.
  */
 export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
@@ -105,6 +133,10 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
   });
   ipcMain.on(IpcChannel.webPreviewCancelPick, (event, contentsId: unknown) => {
     if (event.sender.getType() === 'window' && guestOf(event.sender, contentsId)) cancelPick(contentsId as number);
+  });
+
+  ipcMain.on(IpcChannel.webPreviewShowDownload, (event, path: unknown) => {
+    if (event.sender.getType() === 'window' && typeof path === 'string' && downloaded.has(path)) shell.showItemInFolder(path);
   });
 
   // Clear data for this site (its cookies, which sign you out, and its storage), or everything the pages keep, in a

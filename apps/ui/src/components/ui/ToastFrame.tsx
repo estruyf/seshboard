@@ -1,5 +1,5 @@
-import { X } from 'lucide-react';
-import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { Button } from './Button.tsx';
 
 /**
@@ -38,6 +38,47 @@ export function useToastCountdown(ms: number | null, done: () => void): Pick<HTM
   return { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) };
 }
 
+/**
+ * A toast's line of text, on one line, cut with an ellipsis when it is too long, with a button after it that shows all
+ * of it (and folds it again). The button is there only when the line is cut.
+ */
+export function ToastText({ children, className = '' }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [clipped, setClipped] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const measure = () => setClipped(el.scrollWidth > el.clientWidth + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [open, children]);
+
+  return (
+    <>
+      <span ref={ref} className={`min-w-0 flex-1 ${open ? 'py-1 [overflow-wrap:anywhere]' : 'truncate'} ${className}`} data-toast-text={open ? 'open' : clipped ? 'cut' : 'whole'}>
+        {children}
+      </span>
+      {(clipped || open) && (
+        <Button
+          variant="quiet"
+          size="sm"
+          iconOnly
+          icon={open ? <ChevronUp size={13} aria-hidden /> : <ChevronDown size={13} aria-hidden />}
+          aria-label={open ? 'Show less' : 'Show all'}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="shrink-0"
+          data-toast-expand
+        />
+      )}
+    </>
+  );
+}
+
 interface ToastFrameProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   /** An icon or dot before the title. */
   lead?: ReactNode;
@@ -69,7 +110,7 @@ export function ToastFrame({ lead, title, body, actions, onDismiss, dismissLabel
     >
       <div className="flex min-w-0 items-center gap-2.5">
         {lead}
-        <span className="min-w-0 flex-1 truncate font-semibold">{title}</span>
+        <ToastText className="font-semibold">{title}</ToastText>
         <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label={dismissLabel} onClick={onDismiss} className="shrink-0" data-toast-close />
       </div>
       {/* Errors can carry a long URL or path with no spaces: let it wrap anywhere rather than run out of the card. */}

@@ -168,6 +168,24 @@ export function iconTooLarge(bytes: Uint8Array, type: string): boolean {
 }
 
 /**
+ * The name a page's download is saved under in the Downloads folder: the name the page gave, cut to its last part and
+ * cleared of characters no system takes, and numbered (`report (1).pdf`) while `taken` says a file has it, so a
+ * download never replaces a file that is there.
+ */
+export function downloadFileName(suggested: string, taken: (name: string) => boolean): string {
+  const last = suggested.split(/[\\/]/).pop() ?? '';
+  const clean = last.replace(/[<>:"|?*\u0000-\u001f]/g, '_').replace(/^[.\s]+|[.\s]+$/g, '');
+  const name = clean || 'download';
+  if (!taken(name)) return name;
+  const dot = name.lastIndexOf('.');
+  const [stem, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+  for (let n = 1; ; n++) {
+    const numbered = `${stem} (${n})${extension}`;
+    if (!taken(numbered)) return numbered;
+  }
+}
+
+/**
  * Whether the preview accepts a certificate Chromium refused: only for this computer, where a dev server's own
  * self-signed certificate (`vite --https`, `mkcert`) is normal and no one else is on the line.
  */

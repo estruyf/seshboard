@@ -94,6 +94,7 @@ export const IpcChannel = {
   webPreviewEvent: "seshboard:web-preview-event",
   webPreviewAddressFocus: "seshboard:web-preview-address-focus",
   webPreviewClearData: "seshboard:web-preview-clear-data",
+  webPreviewShowDownload: "seshboard:web-preview-show-download",
   webPreviewResetPartition: "seshboard:web-preview-reset-partition",
   webPreviewKeysToWindow: "seshboard:web-preview-keys-to-window",
   webPreviewSessionPage: "seshboard:web-preview-session-page",
@@ -210,12 +211,16 @@ export interface WebPreviewKeys {
 
 /**
  * What a browser page did that its window shows (the browser on): it opened a new window (`window.open`,
- * `target=_blank`, a sign-in popup), which becomes a tab of the same owner, a download was refused, or its icon came.
- * `contentsId` is the page's.
+ * `target=_blank`, a sign-in popup), which becomes a tab of the same owner, a download started or ended, or its icon
+ * came. `contentsId` is the page's.
  */
 export type WebPreviewEvent =
   | { kind: 'popup'; contentsId: number; url: string }
-  | { kind: 'download-refused'; contentsId: number; url: string }
+  /**
+   * A download into the Downloads folder, by `id` (one per download, this run): `started`, then `done` (`path` is the
+   * file), `failed` or `cancelled`. `url` is the page's address for Open in browser, empty when it has none.
+   */
+  | { kind: 'download'; contentsId: number; id: number; state: 'started' | 'done' | 'failed' | 'cancelled'; name: string; path: string; url: string }
   /** The page's icon, as a `data:` image main fetched in the page's partition. */
   | { kind: 'favicon'; contentsId: number; url: string }
   /** The page started or stopped playing sound. */
@@ -1377,6 +1382,8 @@ export interface SeshboardBridge {
    * Default one's when left out). Resolves once it is done.
    */
   clearBrowsingData(origin: string | null, partition?: string): Promise<void>;
+  /** Shows a file a browser page downloaded this run in Finder (only those, never any other path). */
+  showDownload(path: string): void;
   /**
    * Reset or Delete of a browser profile (docs/browser.md, Browser profiles): clears what main keeps for its partition
    * (`WEB_PREVIEW_PARTITION` for the Default one), the parts ticked. History is the engine's (`browser.profiles.reset`).

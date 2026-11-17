@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react';
 import { browserElsewhere, browserPopoutSession, shownElsewhere, useBrowserPopouts, usePopouts } from '../../state/popoutsStore.ts';
 import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
-import { toast } from '../../state/toastStore.ts';
+import { toast, useToasts } from '../../state/toastStore.ts';
+import { fileManagerName } from '../../lib/platform.ts';
+import type { WebPreviewEvent } from '@seshboard/protocol/bridge';
 import { browserOn, useWebPreview } from '../../state/webPreviewStore.ts';
 import { noteFavicon } from '../../state/browserFavoritesStore.ts';
 import { noteBookmarkFavicon } from '../../state/browserBookmarksStore.ts';
@@ -27,6 +29,36 @@ function movesPages(now: ReturnType<typeof useWebPreview.getState>, before: Retu
 
 /** How many frames a page follows its slot after something moved, to keep up with an animation (the sidebar folding). */
 const FOLLOW_FRAMES = 20;
+
+/** The Downloading toast of each running download, by its id: it goes when the download ends. */
+const downloadToasts = new Map<number, number>();
+
+/** A page's download into the Downloads folder: a toast while it runs, then where it went or that it failed. */
+function showDownload(event: Extract<WebPreviewEvent, { kind: 'download' }>): void {
+  if (event.state === 'started') {
+    downloadToasts.set(event.id, toast(`Downloading ${event.name}…`, { icon: 'browser', data: { 'data-web-preview-download': 'started' } }));
+    return;
+  }
+  const started = downloadToasts.get(event.id);
+  downloadToasts.delete(event.id);
+  if (started !== undefined) useToasts.getState().dismiss(started);
+  if (event.state === 'cancelled') return;
+  if (event.state === 'done') {
+    toast('Downloaded', {
+      icon: 'browser',
+      body: event.name,
+      actions: [{ label: `Show in ${fileManagerName()}`, onSelect: () => window.seshboard?.showDownload(event.path), data: { 'data-web-preview-download-show': true } }],
+      data: { 'data-web-preview-download': 'done' },
+    });
+    return;
+  }
+  toast('Download failed', {
+    tone: 'error',
+    body: event.name,
+    actions: event.url ? [{ label: 'Open in browser', onSelect: () => void window.open(event.url, '_blank'), data: { 'data-web-preview-download-open': true } }] : undefined,
+    data: { 'data-web-preview-download': 'failed' },
+  });
+}
 
 /**
  * The window's web preview pages (`webPreviewPages.ts`): one per browser tab shown lately, at most `LIVE_PAGES` (a tab
@@ -121,8 +153,8 @@ export function WebPreviewHost() {
   // The browser tools ask this window for a session's page (main/browserAgent.ts).
   useEffect(() => listenForBrowserAgent(), []);
 
-  // A page's new window becomes a tab of the same owner; a refused download says so, with the browser instead. A
-  // session's page sends a quote or an element to its message, the dev server's preview too (the browser off).
+  // A page's new window becomes a tab of the same owner. A download says where it went. A session's page sends a quote
+  // or an element to its message. Downloads, quotes and elements come from the dev server's preview too (the browser off).
   useEffect(
     () =>
       window.seshboard?.onWebPreviewEvent((event) => {
@@ -130,6 +162,7 @@ export function WebPreviewHost() {
         const tab = tabId ? useWebPreview.getState().tabs.find((t) => t.id === tabId) : undefined;
         if (event.kind === 'quote') return tab && quoteInMessage(tab, event.text, event.url);
         if (event.kind === 'element') return tab && addElementToMessage(tab, event.element);
+        if (event.kind === 'download') return showDownload(event);
         if (!browserOn()) return;
         if (event.kind === 'popup') {
           if (tab) useWebPreview.getState().openTab(tab.owner, event.url);
@@ -151,11 +184,6 @@ export function WebPreviewHost() {
           });
           return;
         }
-        toast("Downloads aren't supported here yet. Open in browser.", {
-          icon: 'browser',
-          actions: event.url ? [{ label: 'Open in browser', onSelect: () => void window.open(event.url, '_blank'), data: { 'data-web-preview-download-open': true } }] : undefined,
-          data: { 'data-web-preview-download-refused': true },
-        });
       }),
     [],
   );

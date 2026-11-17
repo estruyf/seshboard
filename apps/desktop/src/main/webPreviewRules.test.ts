@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, cookieOfSite, partitionClearing, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, cookieOfSite, downloadFileName, partitionClearing, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
 
 const key = (k: string, mods: Partial<PreviewKeyInput> = {}): PreviewKeyInput => ({ type: 'keyDown', key: k, meta: false, control: false, alt: false, shift: false, ...mods });
 
@@ -260,5 +260,31 @@ describe('pageMenuEntries', () => {
     const entries = pageMenuEntries(field, page);
     expect(ids(entries)).toEqual(['spelling', '-', 'cut', 'copy', 'paste', 'select-all', '-', 'inspect']);
     expect(entries[2]).toMatchObject({ id: 'cut', enabled: false });
+  });
+});
+
+describe('downloadFileName', () => {
+  const none = () => false;
+
+  it('keeps the name the page gave', () => {
+    expect(downloadFileName('report.pdf', none)).toBe('report.pdf');
+  });
+
+  it('numbers the name while a file has it, before the extension', () => {
+    const taken = new Set(['report.pdf', 'report (1).pdf']);
+    expect(downloadFileName('report.pdf', (name) => taken.has(name))).toBe('report (2).pdf');
+    expect(downloadFileName('README', (name) => name === 'README')).toBe('README (1)');
+    expect(downloadFileName('.env', (name) => name === 'env')).toBe('env (1)');
+  });
+
+  it('keeps only the last part of a path and clears what no system takes', () => {
+    expect(downloadFileName('../../etc/passwd', none)).toBe('passwd');
+    expect(downloadFileName('C:\\Windows\\a.exe', none)).toBe('a.exe');
+    expect(downloadFileName('what?.txt', none)).toBe('what_.txt');
+  });
+
+  it('gives a name to a download without one', () => {
+    expect(downloadFileName('', none)).toBe('download');
+    expect(downloadFileName('..', none)).toBe('download');
   });
 });
