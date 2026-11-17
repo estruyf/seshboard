@@ -9871,6 +9871,12 @@ async function runOrchestratorStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${page('[data-orchestrator-instructions]')}?.innerText.includes('Saved') && ${page('[data-orchestrator-instructions-save]')}.disabled`, 5_000))) return 'the instructions did not save';
     await js(`${page('[data-orchestrator-instructions]')}.scrollIntoView({ block: 'center' })`);
     await shot(win, 'orchestrator-instructions.png');
+    // Plan mode's instructions sit next to them, save on their own, and leave the orchestrator's alone.
+    if (!(await waitInPage(win, `!!${page('[data-plan-mode-instructions-input]')}`, 3_000))) return 'the Settings tab has no Plan mode instructions';
+    await setFieldValue(win, `${pageSelector} [data-plan-mode-instructions-input]`, 'List the files you will change before you ask for approval.');
+    await js(`${page('[data-plan-mode-instructions-save]')}.click()`);
+    if (!(await waitInPage(win, `${page('[data-plan-mode-instructions]')}?.innerText.includes('Saved') && ${page('[data-plan-mode-instructions-save]')}.disabled`, 5_000))) return 'the plan mode instructions did not save';
+    if ((await js(`${page('[data-orchestrator-instructions-input]')}.value`)) !== instructions) return 'saving the plan mode instructions changed the orchestrator’s';
     // Back to the orchestrator.
     await js(`document.querySelector('[data-session-list] [data-session-id="${orchestratorId}"]').click()`);
     if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${orchestratorId}"] [data-orchestrator-overview]')`, 5_000))) return 'the orchestrator did not open again from the sidebar';

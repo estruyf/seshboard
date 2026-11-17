@@ -4,6 +4,7 @@ import { AbsolutePath } from './absolutePath.ts';
 import { Effort, PermissionMode, WorktreeBaseSchema } from './host.ts';
 import { SESSION_PROVIDERS } from './providerConstants.ts';
 import { MAX_ORCHESTRATOR_INSTRUCTIONS } from './orchestrator.ts';
+import { MAX_PLAN_MODE_INSTRUCTIONS } from './projectConstants.ts';
 
 /** Where a session was started, derived from Claude Code's `entrypoint`. */
 export const SessionOrigin = z.enum(['cli', 'desktop', 'ide', 'sdk', 'app', 'unknown']);
@@ -116,6 +117,11 @@ export const ProjectDefaults = z.object({
    */
   orchestratorInstructions: z.string().max(MAX_ORCHESTRATOR_INSTRUCTIONS).optional(),
   /**
+   * Replaces the workflow text Claude Code shows in plan mode (the SDK's `planModeInstructions`); its read-only rules
+   * stay. Claude Code sessions only, read when a session starts. Empty is not saved.
+   */
+  planModeInstructions: z.string().max(MAX_PLAN_MODE_INSTRUCTIONS).optional(),
+  /**
    * Sites where the browser tools' scripts (evaluate, network) may run without asking in this project, as origins
    * (docs/browser.md, the script guard); this computer always may. Apart from `browserSites`: a script reaches more.
    */
@@ -127,7 +133,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true, planModeInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({

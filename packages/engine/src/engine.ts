@@ -1187,6 +1187,14 @@ export function createEngine(options: EngineOptions): Engine {
     },
   };
   /**
+   * The added project a folder is in (its own, or the deepest one above it: a project can be a subfolder of a repository
+   * or of a folder that isn't one). Null outside an added project.
+   */
+  const addedProjectOfCwd = (cwd: string): string | null => {
+    const inside = projects.addedEntries().filter((p) => isSameOrInside(cwd, p.root));
+    return inside.sort((a, b) => b.root.length - a.root.length)[0]?.root ?? null;
+  };
+  /**
    * The added project a session belongs to, for its browser sites: its own, or the one its folder is in (a session that
    * isn't indexed yet, a worktree inside the repository). Null outside an added project.
    */
@@ -1195,7 +1203,7 @@ export function createEngine(options: EngineOptions): Engine {
     const added = listProjects().filter((p) => p.added);
     if (summary?.projectRoot && added.some((p) => p.root === summary.projectRoot)) return summary.projectRoot;
     const cwd = summary?.cwd ?? liveList().find((l) => l.sessionId === sessionId)?.cwd ?? null;
-    return cwd ? (added.find((p) => isSameOrInside(cwd, p.root))?.root ?? null) : null;
+    return cwd ? addedProjectOfCwd(cwd) : null;
   };
   /** The sites a session's added project allows the browser tools, and their scripts (none outside an added project). */
   const browserSitesOf = (sessionId: string) => {
@@ -1395,6 +1403,7 @@ export function createEngine(options: EngineOptions): Engine {
     orchestratorServer,
     isOrchestrator: (id) => orchestrator.isOrchestrator(id),
     appendSystemFor: (id) => orchestrator.systemTextFor(id),
+    planModeInstructionsFor: (cwd) => projects.defaultsOf(addedProjectOfCwd(cwd) ?? resolver.resolve(cwd).root).planModeInstructions?.trim() || null,
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -3526,11 +3535,13 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'projects.setDefaults': ({ root, defaults }) => {
       questions.assertNotProject(root);
-      // The orchestrator's instructions have their own editor: a save that doesn't name them (the defaults editor, Save
-      // as project default) keeps them, and an empty text takes them away.
-      const { orchestratorInstructions: named, ...rest } = defaults;
-      const instructions = (named === undefined ? projects.defaultsOf(root).orchestratorInstructions : named)?.trim();
-      projects.setDefaults(root, instructions ? { ...rest, orchestratorInstructions: instructions } : rest);
+      // The orchestrator's and plan mode's instructions have their own editors: a save that doesn't name them (the
+      // defaults editor, Save as project default) keeps them, and an empty text takes them away.
+      const { orchestratorInstructions: named, planModeInstructions: namedPlan, ...rest } = defaults;
+      const saved = projects.defaultsOf(root);
+      const instructions = (named === undefined ? saved.orchestratorInstructions : named)?.trim();
+      const planInstructions = (namedPlan === undefined ? saved.planModeInstructions : namedPlan)?.trim();
+      projects.setDefaults(root, { ...rest, ...(instructions ? { orchestratorInstructions: instructions } : {}), ...(planInstructions ? { planModeInstructions: planInstructions } : {}) });
       return {};
     },
     'projects.reorder': ({ roots }) => {
