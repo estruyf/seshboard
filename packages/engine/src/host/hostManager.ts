@@ -170,6 +170,8 @@ export interface HostManagerDeps {
   orchestratorServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
   isOrchestrator?: (sessionId: string) => boolean;
   appendSystemFor?: (sessionId: string) => string | null;
+  /** The project's own plan mode instructions for a session in `cwd`; null for none. Read when a process starts. */
+  planModeInstructionsFor?: (cwd: string) => string | null;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -203,6 +205,8 @@ interface Warm {
   effort: Effort | null;
   /** The fallback model it started with, fixed at startup like the effort. */
   fallbackModel: string | null;
+  /** The project's plan mode instructions it started with (also read only at startup), null for none. */
+  planInstructions: string | null;
   sessionId: string;
   warm: Promise<WarmQuery>;
   /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process, as do the browser tools. */
@@ -1051,7 +1055,7 @@ export class HostManager {
   /** Bumped whenever the warm process is replaced or discarded, so a pre-warm that finishes late knows it lost. */
   private warmGeneration = 0;
   /** The folder, profile and effort a pre-warm is starting for, until it has stored its process. */
-  private warming: { cwd: string; profileId: string; effort: Effort | null } | undefined;
+  private warming: { cwd: string; profileId: string; effort: Effort | null; fallbackModel: string | null; planInstructions: string | null } | undefined;
 
   /**
    * Starts a Claude Code process for `cwd` so a new session there answers about a second faster. `effort` is the one
@@ -1059,7 +1063,9 @@ export class HostManager {
    */
   async prewarm(cwd: string, profileId: string, effort: Effort | null = null): Promise<void> {
     const target = this.warm ?? this.warming;
-    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort) return;
+    const planInstructions = this.deps.planModeInstructionsFor?.(cwd) ?? null;
+    const fallbackModel = this.deps.fallbackModel?.(cwd, profileId) ?? null;
+    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort && target.fallbackModel === fallbackModel && target.planInstructions === planInstructions) return;
     try {
       this.deps.assertTrusted?.(cwd);
     } catch {
@@ -1068,8 +1074,7 @@ export class HostManager {
     }
     this.discardWarm();
     const generation = this.warmGeneration;
-    this.warming = { cwd, profileId, effort };
-    const fallbackModel = this.deps.fallbackModel?.(cwd, profileId) ?? null;
+    this.warming = { cwd, profileId, effort, fallbackModel, planInstructions };
     let env: Record<string, string>, claudePath: string | undefined, sdk: SdkRuntime;
     try {
       [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
@@ -1096,6 +1101,7 @@ export class HostManager {
         effort,
         fallbackModel,
         worktree: null,
+        planModeInstructions: planInstructions,
         chrome: this.chrome,
         visualize: this.visualize,
         browser,
@@ -1109,7 +1115,7 @@ export class HostManager {
     const warm = sdk.startup({ options });
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    const entry: Warm = { cwd, profileId, effort, fallbackModel, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, effort, fallbackModel, planInstructions, sessionId, warm, route, timer };
     this.warm = entry;
     // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
     warm.catch((error: unknown) => {
@@ -1155,6 +1161,8 @@ export class HostManager {
     // The fallback is fixed at startup too: a settings change since, or a model that is the fallback itself, needs a fresh process.
     const fallback = this.deps.fallbackModel?.(params.cwd, params.profileId) ?? null;
     if (fallback !== warm.fallbackModel || usableFallback(fallback, params.model) !== usableFallback(warm.fallbackModel, null)) return undefined;
+    // The project's instructions changed since it started: Claude Code reads them only at startup.
+    if ((this.deps.planModeInstructionsFor?.(params.cwd) ?? null) !== warm.planInstructions) return undefined;
     clearTimeout(warm.timer);
     this.warm = undefined;
     this.deps.ephemeral?.delete(warm.sessionId);
@@ -1207,6 +1215,7 @@ export class HostManager {
         browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
         orchestrator: orchestrate ? ((await this.deps.orchestratorServer?.(() => hostRef?.sessionId ?? null)) ?? null) : null,
         skimMarks: this.skimMarks,
+        planModeInstructions: this.deps.planModeInstructionsFor?.(config.cwd) ?? null,
       },
       {
         info: (info) => this.onInfo(host, info),

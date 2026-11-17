@@ -122,6 +122,8 @@ export interface HostConfig {
   orchestrator?: McpStdioServer | null;
   /** More text for after Claude Code's prompt: an orchestrator's role, a project's instructions for its sessions. */
   appendSystem?: string | null;
+  /** The project's own workflow text for plan mode (the SDK's `planModeInstructions`); Claude Code keeps its read-only rules. Absent or empty: its default. */
+  planModeInstructions?: string | null;
 }
 
 /**
@@ -199,6 +201,7 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   if (config.effort) options.effort = config.effort;
   const fallback = usableFallback(config.fallbackModel, config.model);
   if (fallback) options.fallbackModel = fallback;
+  if (config.planModeInstructions?.trim()) options.planModeInstructions = config.planModeInstructions.trim();
   if (config.readOnly) {
     // Every tool call goes through it, whatever the mode or the settings allow.
     const guard: HookCallback = async (hook) => {

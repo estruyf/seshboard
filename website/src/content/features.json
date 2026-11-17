@@ -5402,6 +5402,11 @@
       "page": "sessions/pipelines"
     },
     {
+      "id": "feature:plan-mode-instructions",
+      "name": "Plan mode instructions: a project's Settings tab replaces the steps Claude Code follows in plan mode for sessions started from then on",
+      "page": "projects/settings"
+    },
+    {
       "id": "palette:go-to-orchestrator",
       "name": "Go to orchestrator",
       "page": "sessions/pipelines"

@@ -32,7 +32,7 @@ const fakeSource: SessionSource = {
 };
 
 /** A Claude Code stand-in that only records how sessions were started; they never answer. */
-function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?: string; worktree?: string | null; fallbackModel?: string }>): SdkRuntime {
+function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?: string; worktree?: string | null; fallbackModel?: string; planModeInstructions?: string }>): SdkRuntime {
   const quiet = () => ({
     async *[Symbol.asyncIterator]() {
       await new Promise(() => {});
@@ -59,7 +59,7 @@ function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?:
   });
   return {
     query: ({ prompt, options }) => {
-      created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode, worktree: options.extraArgs?.worktree, ...(options.fallbackModel ? { fallbackModel: options.fallbackModel } : {}) });
+      created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode, worktree: options.extraArgs?.worktree, ...(options.fallbackModel ? { fallbackModel: options.fallbackModel } : {}), ...(options.planModeInstructions ? { planModeInstructions: options.planModeInstructions } : {}) });
       return (options.forkSession && options.persistSession === false ? answer(prompt) : quiet()) as never;
     },
     startup: async ({ options }) => ({ query: () => (created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode }), quiet()), close: () => {} }) as never,
@@ -683,6 +683,29 @@ describe('engine over a MessagePort', () => {
     expect(ran).toEqual([`started:${run.title}`, 'skipped:null']);
   });
 
+  it("starts a session with the plan mode instructions of the project its folder is in, the deepest one, and none outside", async () => {
+    const created: Array<{ cwd?: string; planModeInstructions?: string }> = [];
+    const { client, dataDir } = connect({ sdk: fakeSdk(created) });
+    const inner = join(dataDir, 'pkg');
+    mkdirSync(join(inner, 'app'), { recursive: true });
+    mkdirSync(join(dataDir, 'docs'), { recursive: true });
+    const defaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
+    await client.call('projects.add', { path: dataDir });
+    await client.call('projects.add', { path: inner });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...defaults, planModeInstructions: 'List the files.' } });
+    await client.call('projects.setDefaults', { root: inner, defaults: { ...defaults, planModeInstructions: 'Package rules.' } });
+    // A subfolder of a project that isn't a repository takes the project's text.
+    await client.call('session.create', { cwd: join(dataDir, 'docs'), prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).toMatchObject({ cwd: join(dataDir, 'docs'), planModeInstructions: 'List the files.' });
+    // A project that is itself a subfolder wins over the one above it.
+    await client.call('session.create', { cwd: join(inner, 'app'), prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).toMatchObject({ cwd: join(inner, 'app'), planModeInstructions: 'Package rules.' });
+    await client.call('projects.setDefaults', { root: inner, defaults: { ...defaults, planModeInstructions: '' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...defaults, planModeInstructions: '' } });
+    await client.call('session.create', { cwd: inner, prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).not.toHaveProperty('planModeInstructions');
+  });
+
   it('pauses the schedules of a project removed from Seshboard, and a run whose folder is gone', async () => {
     const { client, dataDir } = connect({ sdk: fakeSdk([]) });
     const folder = join(dataDir, 'web');
@@ -852,6 +875,12 @@ describe('engine over a MessagePort', () => {
     expect(await defaultsOf()).toMatchObject({ model: 'sonnet', orchestratorInstructions: 'Branch from dev.' });
     await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), orchestratorInstructions: '' } });
     expect(await defaultsOf()).not.toHaveProperty('orchestratorInstructions');
+    // Plan mode's instructions work the same way, apart from the orchestrator's.
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '  List the files.  ' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { model: 'haiku', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } });
+    expect(await defaultsOf()).toMatchObject({ model: 'haiku', planModeInstructions: 'List the files.' });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '' } });
+    expect(await defaultsOf()).not.toHaveProperty('planModeInstructions');
     // No session is an orchestrator yet.
     expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [] });
     await client.call('projects.remove', { root: dataDir });

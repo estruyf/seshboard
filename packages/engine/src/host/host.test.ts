@@ -277,6 +277,7 @@ function setup(
     isOrchestrator?: HostManagerDeps['isOrchestrator'];
     appendSystemFor?: HostManagerDeps['appendSystemFor'];
     fallbackModel?: HostManagerDeps['fallbackModel'];
+    planModeInstructionsFor?: HostManagerDeps['planModeInstructionsFor'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -357,6 +358,7 @@ function setup(
     isOrchestrator: opts.isOrchestrator,
     appendSystemFor: opts.appendSystemFor,
     fallbackModel: opts.fallbackModel,
+    planModeInstructionsFor: opts.planModeInstructionsFor,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -675,6 +677,29 @@ describe('HostManager', () => {
     await t.manager.send({ sessionId: 'its-session', text: 'Say hi', attachments: [], fork: false });
     expect(t.queries[3]!.options.mcpServers).toBeUndefined();
     expect(t.queries[3]!.options.systemPrompt).toMatchObject({ append: expect.stringContaining('Branch from dev.') });
+    t.manager.closeAll();
+  });
+
+  it("starts a project's sessions with its plan mode instructions, and passes nothing for a project without", async () => {
+    const t = setup({
+      cwds: { old: '/with' },
+      planModeInstructionsFor: (cwd) => (cwd === '/with' ? 'Read first. List the files.' : null),
+    });
+    await t.manager.create({ ...base, cwd: '/with', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.planModeInstructions).toBe('Read first. List the files.');
+    await t.manager.create({ ...base, cwd: '/without', prompt: 'Say hi' });
+    expect(t.queries[1]!.options).not.toHaveProperty('planModeInstructions');
+    // A resumed session reads them again.
+    await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: false });
+    expect(t.queries[2]!.options.planModeInstructions).toBe('Read first. List the files.');
+    t.manager.closeAll();
+  });
+
+  it("gives a fork the project's plan mode instructions too", async () => {
+    const t = setup({ cwds: { old: '/with' }, planModeInstructionsFor: (cwd) => (cwd === '/with' ? 'Read first.' : null) });
+    const forked = await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: true });
+    expect(forked.sessionId).not.toBe('old');
+    expect(t.queries[0]!.options).toMatchObject({ forkSession: true, planModeInstructions: 'Read first.' });
     t.manager.closeAll();
   });
 
@@ -1289,6 +1314,31 @@ describe('HostManager', () => {
     expect(other.infos.some((i) => i.fallbackRan)).toBe(false);
     without.manager.closeAll();
     other.manager.closeAll();
+  });
+
+  it("pre-warms with the project's plan mode instructions and adopts the process only while they are the same", async () => {
+    let text: string | null = 'Read first.';
+    const t = setup({ planModeInstructionsFor: () => text });
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[0]!.options.planModeInstructions).toBe('Read first.');
+    // Asking again with the same text keeps the process.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(1);
+    const warm = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    expect(warm).toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, warm) === 'idle');
+    // The text changed while one waited: a new pre-warm replaces it, and a session that comes first starts cold.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(2);
+    text = 'Ask first.';
+    const cold = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    expect(cold).not.toBe(t.warmups[1]!.options.sessionId);
+    await until(() => lastState(t.infos, cold) === 'idle');
+    expect(t.queries.at(-1)!.options.planModeInstructions).toBe('Ask first.');
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(3);
+    expect(t.warmups[2]!.options.planModeInstructions).toBe('Ask first.');
+    t.manager.closeAll();
   });
 
   it('drops a pre-warmed process that failed, so the next pre-warm tries again and a session starts fresh', async () => {
@@ -2050,6 +2100,13 @@ describe('buildOptions', () => {
     expect(isFallbackModel('claude-opus-5-5', null)).toBe(false);
     expect(isFallbackModel('claude-opus-5-5', 'default')).toBe(false);
   });
+  it("passes plan mode instructions trimmed, and nothing when they are empty", () => {
+    expect(buildOptions({ ...config, planModeInstructions: '  List the files.  ' }, () => {}).planModeInstructions).toBe('List the files.');
+    expect(buildOptions({ ...config, planModeInstructions: '   ' }, () => {})).not.toHaveProperty('planModeInstructions');
+    expect(buildOptions({ ...config, planModeInstructions: null }, () => {})).not.toHaveProperty('planModeInstructions');
+    expect(buildOptions(config, () => {})).not.toHaveProperty('planModeInstructions');
+  });
+
   it('maps a new worktree session onto Claude Code options', () => {
     const options = buildOptions(config, () => {});
     expect(options).toMatchObject({
