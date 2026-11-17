@@ -81,6 +81,12 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Clone from GitHub… says what it is again.** Under New session's projects it shows its name next to **Add project…**, not only an icon. In the clone form, a long folder path is cut at its start, so the folder's name stays in view and the path no longer runs over the message box.
 - **`file:///` links in Claude's replies work.** Clicking one did nothing. It now opens the file as any file link does, as **Settings › Conversation › Clicking a file link** says. On Windows, links to a path such as `E:/repos/notes.md` work too.
 
+## [Unreleased]
+
+### Added
+
+- **Fallback model.** Pick a model Claude Code switches to when your main one is overloaded or unavailable, so a busy Opus doesn't mean waiting. Set it in Settings › General, per Claude profile or per project, next to the model. It is off by default, and covers every Claude Code session Seshboard starts, schedules, pipeline steps and the Orchestrator's sessions too. The main model is tried again on each turn, and when a turn ran on the fallback, the model chip reads "Opus → Sonnet".
+
 ## [1.3.0] - 2026-11-05
 
 ### Added

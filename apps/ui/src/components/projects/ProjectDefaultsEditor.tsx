@@ -34,6 +34,7 @@ export function describeDefaults(d: Omit<ProjectDefaults, 'branch' | 'defaultBra
   const parts = [
     d.model === AUTO_MODEL ? 'Auto' : d.model,
     d.effort && `${d.effort} effort`,
+    d.fallbackModel && `fallback ${d.fallbackModel}`,
     d.permissionMode && d.permissionMode !== 'default' && d.permissionMode,
     d.workspace === 'worktree' ? `worktree${d.baseRef === 'head' ? ' from HEAD' : isBranchBase(d.baseRef) ? ` from ${branchOfBase(d.baseRef)}` : ''}` : d.workspace === 'current' && 'current folder',
     d.branch && `on ${d.branch}`,
@@ -108,6 +109,7 @@ export function ProjectDefaultsEditor({
   const globalMode = globalModeLabel(usePreferences((s) => s.prefs.newSessionMode));
   const globalModel = usePreferences((s) => s.prefs.newSessionModel);
   const globalEffort = usePreferences((s) => s.prefs.newSessionEffort);
+  const globalFallback = usePreferences((s) => s.prefs.newSessionFallbackModel);
   const [branches, setBranches] = useState<{ current: string | null; branches: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
 
   useEffect(() => {
@@ -207,6 +209,26 @@ export function ProjectDefaultsEditor({
         <p className="ml-[122px] text-meta text-muted @max-[560px]:ml-0" data-default-model-auto>
           {autoEnabled ? 'Queued prompts are routed when they start, not when you add them.' : AUTO_OFF_NOTE}
         </p>
+      )}
+      {!provider && (
+        <Row label="Fallback model">
+          <Select
+            label="Fallback model"
+            tooltip="Claude Code switches to this model when the main one is overloaded or unavailable. The main model is tried again on each turn"
+            className={field}
+            value={inheritValue(defaults.fallbackModel ?? null, defaults.globalFallbackModel)}
+            onChange={(value) => set(root ? { fallbackModel: value === GLOBAL ? null : nullable(value), globalFallbackModel: value === GLOBAL || undefined } : { fallbackModel: nullable(value) })}
+            options={[
+              // Unset follows the profile's (then the global one); off when none of them sets one.
+              ...(root ? [{ value: UNSET, label: `Profile default (${profile?.fallbackModel ? modelLabel(models, profile.fallbackModel) : globalFallback ? modelLabel(models, globalFallback) : 'Off'})` }] : []),
+              { value: root ? GLOBAL : UNSET, label: `Global default (${globalFallback ? modelLabel(models, globalFallback) : 'Off'})` },
+              ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
+              ...(defaults.fallbackModel && !models.some((m) => m.value === defaults.fallbackModel) ? [{ value: defaults.fallbackModel, label: defaults.fallbackModel }] : []),
+            ]}
+            menuWidth={260}
+            dataAttrs={{ 'data-default-fallback-model': true }}
+          />
+        </Row>
       )}
       <Row label="Permissions">
         <Select

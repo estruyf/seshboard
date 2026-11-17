@@ -95,6 +95,10 @@ export const ProjectDefaults = z.object({
   effort: Effort.nullable().default(null),
   /** With no `effort`: skip the profile's effort and start with the global one (see `inheritedDefault`). */
   globalEffort: z.boolean().optional(),
+  /** The model Claude Code switches to when `model` is overloaded or unavailable (Claude Code sessions only); null follows the profile's, then the global one. */
+  fallbackModel: z.string().max(200).nullable().optional(),
+  /** With no `fallbackModel`: skip the profile's and follow the global one (see `inheritedDefault`). */
+  globalFallbackModel: z.boolean().optional(),
   permissionMode: PermissionMode.nullable().default(null),
   /** With no `permissionMode`: skip the profile's mode and start in the global one (see `inheritedPermissionMode`). */
   globalPermissionMode: z.boolean().optional(),
@@ -127,7 +131,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, globalFallbackModel: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({

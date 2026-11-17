@@ -10,7 +10,7 @@ import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
 import type { LimitStop } from '../usageLimit/usageLimit.ts';
 import { describeSuggestions, RECHECK_MESSAGE } from './permissions.ts';
-import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, toModelOption, type HostConfig } from './sessionHost.ts';
+import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, isFallbackModel, toModelOption, type HostConfig } from './sessionHost.ts';
 import { createMemorySessionSettings, createSessionSettingsStore, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
@@ -63,6 +63,8 @@ class FakeQuery {
   inputEnded = false;
   mode: string;
   model = 'fake-model';
+  /** The model its plain replies come from (`message.model`); the fallback when the main one is overloaded. */
+  replyModel = 'fake';
   /** The folder Claude's shell is in, which `cd` moves; each turn's init reports it. */
   shellCwd: string | undefined;
   constructor(
@@ -80,7 +82,7 @@ class FakeQuery {
     const sessionId = (this.options.sessionId ?? this.options.resume)!;
     const state = (s: string) => this.out.push({ type: 'system', subtype: 'session_state_changed', state: s, session_id: sessionId });
     const assistant = (text: string) =>
-      this.out.push({ type: 'assistant', uuid: `a-${text}`, parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text }] } });
+      this.out.push({ type: 'assistant', uuid: `a-${text}`, parent_tool_use_id: null, session_id: sessionId, message: { model: this.replyModel, content: [{ type: 'text', text }] } });
     for await (const message of this.prompt) {
       const text = (message.message.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text')?.text ?? '';
       this.received.push({ text, ...(message.priority ? { priority: message.priority } : {}) });
@@ -274,6 +276,7 @@ function setup(
     orchestratorServer?: HostManagerDeps['orchestratorServer'];
     isOrchestrator?: HostManagerDeps['isOrchestrator'];
     appendSystemFor?: HostManagerDeps['appendSystemFor'];
+    fallbackModel?: HostManagerDeps['fallbackModel'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -353,6 +356,7 @@ function setup(
     orchestratorServer: opts.orchestratorServer,
     isOrchestrator: opts.isOrchestrator,
     appendSystemFor: opts.appendSystemFor,
+    fallbackModel: opts.fallbackModel,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -1181,6 +1185,74 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('passes the fallback model its resolver gives, for a new session, a resume and a pre-warmed process, and only when it is not the model itself', async () => {
+    const asked: Array<[string, string]> = [];
+    const t = setup({
+      cwds: { old: '/work/app' },
+      fallbackModel: (cwd, profileId) => {
+        asked.push([cwd, profileId]);
+        return cwd === '/work/none' ? null : 'sonnet';
+      },
+    });
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.fallbackModel).toBe('sonnet');
+    expect(asked).toContainEqual(['/work/app', 'default']);
+    // Nothing set: the option is not there at all.
+    const none = await t.manager.create({ ...base, cwd: '/work/none', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(t.infos, none) === 'idle');
+    expect('fallbackModel' in t.queries[1]!.options).toBe(false);
+    // The fallback is the model itself: Claude Code would refuse it, so it is left out.
+    const same = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'sonnet' });
+    await until(() => lastState(t.infos, same) === 'idle');
+    expect('fallbackModel' in t.queries[2]!.options).toBe(false);
+    // A resume starts a new process, so it asks again.
+    await t.manager.send({ sessionId: 'old', text: 'hello', attachments: [], fork: false });
+    await until(() => t.queries.length === 4);
+    expect(t.queries[3]!.options.fallbackModel).toBe('sonnet');
+    // A pre-warmed process starts with it too, and is adopted by a session that can use it.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[0]!.options.fallbackModel).toBe('sonnet');
+    const warm = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'opus' });
+    expect(warm).toBe(t.warmups[0]!.options.sessionId);
+    t.manager.closeAll();
+  });
+
+  it('starts a session cold when its model is the fallback of the pre-warmed process', async () => {
+    const t = setup({ fallbackModel: () => 'sonnet' });
+    await t.manager.prewarm('/work/app', 'default');
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'sonnet' });
+    expect(id).not.toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect('fallbackModel' in t.queries[0]!.options).toBe(false);
+    t.manager.closeAll();
+  });
+
+  it('shows a turn that ran on the fallback model, until a turn runs on the main one again', async () => {
+    const t = setup({ fallbackModel: () => 'sonnet', onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5-20260101') });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(t.infos, id) === 'idle' && t.infos.at(-1)!.fallbackRan === 'claude-sonnet-5-5-20260101');
+    // Claude Code tries the main model again at the next turn: its reply clears it.
+    t.queries[0]!.replyModel = 'fake-model';
+    await t.manager.send({ sessionId: id, text: 'again', attachments: [], fork: false });
+    await until(() => t.infos.at(-1)!.fallbackRan === null);
+    t.manager.closeAll();
+  });
+
+  it('says nothing about the fallback when none is set, or when a reply is from some other model', async () => {
+    const without = setup({ onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5') });
+    const a = await without.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(without.infos, a) === 'idle');
+    expect(without.infos.some((i) => i.fallbackRan)).toBe(false);
+    // A fallback is set, but the reply is from neither: not something to report.
+    const other = setup({ fallbackModel: () => 'sonnet', onQuery: (q) => void (q.replyModel = 'claude-haiku-5') });
+    const b = await other.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(other.infos, b) === 'idle');
+    expect(other.infos.some((i) => i.fallbackRan)).toBe(false);
+    without.manager.closeAll();
+    other.manager.closeAll();
+  });
+
   it('drops a pre-warmed process that failed, so the next pre-warm tries again and a session starts fresh', async () => {
     const t = setup({ warmFails: { message: 'Claude Code process exited with code 1' } });
     await t.manager.prewarm('/work/app', 'default');
@@ -1908,6 +1980,24 @@ describe('buildOptions', () => {
     expect(buildOptions({ ...config, orchestrator, readOnly: true }, () => {}).mcpServers).toBeUndefined();
   });
 
+  it('passes the fallback model only when one is set and it is not the model', () => {
+    expect('fallbackModel' in buildOptions(config, () => {})).toBe(false);
+    expect(buildOptions({ ...config, fallbackModel: null }, () => {}).fallbackModel).toBeUndefined();
+    expect(buildOptions({ ...config, fallbackModel: 'sonnet' }, () => {}).fallbackModel).toBe('sonnet');
+    // A list, as the SDK takes it; the main model drops out of it.
+    expect(buildOptions({ ...config, fallbackModel: 'opus, sonnet,haiku' }, () => {}).fallbackModel).toBe('sonnet,haiku');
+    expect(buildOptions({ ...config, fallbackModel: 'Opus[1m]' }, () => {}).fallbackModel).toBeUndefined();
+    // With no model of its own (Claude Code's default), nothing to compare with.
+    expect(buildOptions({ ...config, model: null, fallbackModel: 'opus' }, () => {}).fallbackModel).toBe('opus');
+  });
+  it('recognises a reply from a fallback model by its id', () => {
+    expect(isFallbackModel('claude-sonnet-5-5-20260101', 'sonnet')).toBe(true);
+    expect(isFallbackModel('claude-sonnet-5-5-20260101', 'claude-sonnet-5-5')).toBe(true);
+    expect(isFallbackModel('claude-sonnet-5-5-20260101', 'haiku,sonnet[1m]')).toBe(true);
+    expect(isFallbackModel('claude-opus-5-5', 'sonnet')).toBe(false);
+    expect(isFallbackModel('claude-opus-5-5', null)).toBe(false);
+    expect(isFallbackModel('claude-opus-5-5', 'default')).toBe(false);
+  });
   it('maps a new worktree session onto Claude Code options', () => {
     const options = buildOptions(config, () => {});
     expect(options).toMatchObject({

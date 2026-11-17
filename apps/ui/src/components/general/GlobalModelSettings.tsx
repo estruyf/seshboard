@@ -1,6 +1,6 @@
 import { AUTO_MODEL, type NewSessionEffort } from '@seshboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
-import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
+import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { EFFORT_LABEL, EFFORTS } from '../newSession/route.ts';
@@ -18,6 +18,7 @@ const select = 'h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui 
 export function GlobalModelSettings() {
   const model = usePreferences((s) => s.prefs.newSessionModel);
   const effort = usePreferences((s) => s.prefs.newSessionEffort);
+  const fallback = usePreferences((s) => s.prefs.newSessionFallbackModel);
   const autoEnabled = usePreferences((s) => s.prefs.autoModel.enabled);
   const update = usePreferences((s) => s.update);
   const models = useHosts((s) => s.models);
@@ -29,6 +30,11 @@ export function GlobalModelSettings() {
     ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
     // A model Claude Code no longer lists (or hasn't listed yet) still shows what is saved.
     ...(model && model !== AUTO_MODEL && !models.some((m) => m.value === model) ? [{ value: model, label: modelLabel(models, model) }] : []),
+  ];
+  const fallbackOptions = [
+    { value: '', label: 'Off' },
+    ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
+    ...(fallback && !models.some((m) => m.value === fallback) ? [{ value: fallback, label: modelLabel(models, fallback) }] : []),
   ];
   const effortOptions: Array<{ value: NewSessionEffort; label: string }> = [{ value: '', label: CLAUDE_DEFAULT }, ...EFFORTS.map((e) => ({ value: e, label: EFFORT_LABEL[e] }))];
 
@@ -62,6 +68,21 @@ export function GlobalModelSettings() {
           menuWidth={220}
           className={select}
           dataAttrs={{ 'data-new-session-effort': true }}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4" data-setting-row>
+        <span>
+          <span className="block text-ui">Global fallback model</span>
+          <span className="block text-meta text-muted">{GLOBAL_FALLBACK_DETAIL}</span>
+        </span>
+        <Select<string>
+          label="Global fallback model"
+          value={fallback}
+          onChange={(newSessionFallbackModel) => update({ newSessionFallbackModel })}
+          options={fallbackOptions}
+          menuWidth={220}
+          className={select}
+          dataAttrs={{ 'data-new-session-fallback-model': true }}
         />
       </div>
     </>

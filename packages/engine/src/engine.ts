@@ -97,6 +97,7 @@ import {
   writeRunStub,
   PipelineRunState,
   projectPrBase,
+  fallbackModelFor,
   type PipelineNotice,
   type ProviderDetection,
   type RemoteAppUpdate,
@@ -410,6 +411,8 @@ export interface Engine {
   setGlobalPermissionMode(mode: PermissionMode): void;
   /** Settings › General › Global model and Global effort, from main: what a phone's new session starts with where its profile and project set none. */
   setGlobalModel(globals: GlobalModel): void;
+  /** Settings › General › Global fallback model, from main (null: off): Claude Code sessions started or resumed after it changes use it where their project and profile set none. */
+  setGlobalFallbackModel(model: string | null): void;
   /**
    * Settings › Focus, from main: the focus limit (null when off) and whether terminal and IDE sessions count. A
    * queued item that starts by itself never asks at the limit; it waits for a free slot.
@@ -1068,6 +1071,8 @@ export function createEngine(options: EngineOptions): Engine {
   let resumeAtLimit: ResumeAtLimit = 'ask';
   let globalPermissionMode: PermissionMode = 'default';
   let globalModel: GlobalModel = NO_GLOBAL_MODEL;
+  /** Settings › General › Global fallback model, from main: null is off. */
+  let globalFallbackModel: string | null = null;
   const limits = new UsageLimits({
     store: new LimitStore(cache.db),
     // A session that is already working again (you sent something yourself) needs no nudge.
@@ -1342,6 +1347,8 @@ export function createEngine(options: EngineOptions): Engine {
   /** The smoke test calls a tool as the session's own server would: with a token the bridge gave out for that session. */
   const smokeOrchestratorToken = async (sessionId: string) => (await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId)).env[ORCHESTRATOR_TOKEN_ENV] ?? '';
   const hosts = new RoutedHostManager({
+    // The project's, else its profile's, else the global one: for every Claude Code process Seshboard starts.
+    fallbackModel: (cwd, profileId) => fallbackModelFor(projects.defaultsOf(resolver.resolve(cwd).root), profiles.defaultsOf(profileId), globalFallbackModel),
     limits,
     signIns,
     sdk,
@@ -4906,6 +4913,9 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setGlobalModel: (globals) => {
       globalModel = globals;
+    },
+    setGlobalFallbackModel: (model) => {
+      globalFallbackModel = model;
     },
     smokeQueueHost: standInHost,
     smokeStubCreate: (on) => {

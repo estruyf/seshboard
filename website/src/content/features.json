@@ -3627,6 +3627,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:fallback-model",
+      "name": "Fallback model: Claude Code switches to it when the main model is overloaded or unavailable. Global in Settings › General, per profile and per project, off by default; the model chip shows when a turn ran on it",
+      "page": "settings"
+    },
+    {
       "id": "feature:project-permission-default",
       "name": "Project Settings › Permissions: Profile default or Global default, each with a Change link to where it is set",
       "page": "projects/settings"

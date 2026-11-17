@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { inheritedDefault, inheritedPermissionMode } from './permissionModes.ts';
+import { fallbackModelFor, inheritedDefault, inheritedPermissionMode } from './permissionModes.ts';
+
+describe('fallbackModelFor', () => {
+  it('is off unless something sets one', () => {
+    expect(fallbackModelFor(null, null, '')).toBeNull();
+    expect(fallbackModelFor({ fallbackModel: null }, { fallbackModel: null }, null)).toBeNull();
+  });
+
+  it("goes global, then the profile's, then the project's", () => {
+    expect(fallbackModelFor({}, {}, 'haiku')).toBe('haiku');
+    expect(fallbackModelFor({ fallbackModel: null }, { fallbackModel: 'sonnet' }, 'haiku')).toBe('sonnet');
+    expect(fallbackModelFor({ fallbackModel: 'opus' }, { fallbackModel: 'sonnet' }, 'haiku')).toBe('opus');
+    expect(fallbackModelFor(undefined, { fallbackModel: 'sonnet' }, 'haiku')).toBe('sonnet');
+  });
+
+  it("lets a project skip its profile's for the global one", () => {
+    expect(fallbackModelFor({ fallbackModel: null, globalFallbackModel: true }, { fallbackModel: 'sonnet' }, 'haiku')).toBe('haiku');
+    expect(fallbackModelFor({ fallbackModel: null, globalFallbackModel: true }, { fallbackModel: 'sonnet' }, '')).toBeNull();
+    expect(fallbackModelFor({ fallbackModel: 'opus', globalFallbackModel: true }, { fallbackModel: 'sonnet' }, 'haiku')).toBe('opus');
+  });
+});
 
 describe('inheritedPermissionMode', () => {
   it("takes the project's mode, else its profile's", () => {

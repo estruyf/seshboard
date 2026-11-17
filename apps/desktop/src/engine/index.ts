@@ -266,6 +266,12 @@ process.parentPort.on('message', (event) => {
     });
     return;
   }
+  // Settings › General › Global fallback model: Claude Code sessions use it where their project and profile set none.
+  if (data?.type === 'fallbackModel') {
+    const model = (data as { model?: unknown }).model;
+    engine.setGlobalFallbackModel(typeof model === 'string' && model ? model : null);
+    return;
+  }
   // Settings › General › Global permission mode, for sessions started from a phone.
   if (data?.type === 'permissionMode') {
     const mode = (data as { mode?: unknown }).mode;

@@ -35,7 +35,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import type { ModsEvents, ModsSurface } from './modsSurface.ts';
-import { buildOptions, SessionHost, systemPromptFor, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
+import { buildOptions, SessionHost, systemPromptFor, toModelOption, usableFallback, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
 import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
@@ -107,6 +107,12 @@ export interface HostManagerDeps {
   installedPlugins?: (profileId: string) => PluginInfo[];
   /** What each session last ran with; without it, resumes only remember it until the engine restarts. */
   sessionSettings?: SessionSettingsStore;
+  /**
+   * The fallback model for a session in `cwd` under `profileId` (project, then profile, then Settings › General), or
+   * null for none. Asked each time a Claude Code process starts, whoever starts it (a window, a phone, a schedule, a
+   * pipeline step, an orchestrator): they all come through here.
+   */
+  fallbackModel?: (cwd: string, profileId: string) => string | null;
   /** The model list saved last time, until Claude Code reports a fresh one. */
   models?: ModelOption[] | null;
   /** Claude Code reported a (new) model list. */
@@ -195,6 +201,8 @@ interface Warm {
   profileId: string;
   /** The effort it started with: Claude Code reads it only at startup. */
   effort: Effort | null;
+  /** The fallback model it started with, fixed at startup like the effort. */
+  fallbackModel: string | null;
   sessionId: string;
   warm: Promise<WarmQuery>;
   /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process, as do the browser tools. */
@@ -1058,6 +1066,7 @@ export class HostManager {
     this.discardWarm();
     const generation = this.warmGeneration;
     this.warming = { cwd, profileId, effort };
+    const fallbackModel = this.deps.fallbackModel?.(cwd, profileId) ?? null;
     let env: Record<string, string>, claudePath: string | undefined, sdk: SdkRuntime;
     try {
       [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
@@ -1082,6 +1091,7 @@ export class HostManager {
         model: null,
         permissionMode: 'default',
         effort,
+        fallbackModel,
         worktree: null,
         chrome: this.chrome,
         visualize: this.visualize,
@@ -1096,7 +1106,7 @@ export class HostManager {
     const warm = sdk.startup({ options });
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    const entry: Warm = { cwd, profileId, effort, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, effort, fallbackModel, sessionId, warm, route, timer };
     this.warm = entry;
     // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
     warm.catch((error: unknown) => {
@@ -1139,6 +1149,9 @@ export class HostManager {
   private takeWarm(params: CreateParams): Warm | undefined {
     const warm = this.warm;
     if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || (params.effort ?? null) !== warm.effort) return undefined;
+    // The fallback is fixed at startup too: a settings change since, or a model that is the fallback itself, needs a fresh process.
+    const fallback = this.deps.fallbackModel?.(params.cwd, params.profileId) ?? null;
+    if (fallback !== warm.fallbackModel || usableFallback(fallback, params.model) !== usableFallback(warm.fallbackModel, null)) return undefined;
     clearTimeout(warm.timer);
     this.warm = undefined;
     this.deps.ephemeral?.delete(warm.sessionId);
@@ -1175,9 +1188,11 @@ export class HostManager {
           return started ? started.query(args.prompt) : sdk.query(args);
         }
       : (args) => sdk.query(args);
+    const fallbackModel = config.fallbackModel !== undefined ? config.fallbackModel : (this.deps.fallbackModel?.(config.cwd, config.profileId) ?? null);
     const host = new SessionHost(
       {
         ...config,
+        fallbackModel,
         env,
         claudePath,
         canUseTool,
