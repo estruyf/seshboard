@@ -12,7 +12,7 @@ import { removeDir } from '../util/removeDir.ts';
 import { SessionIndex } from './sessionIndex.ts';
 import { MultiProfileSource } from '../profiles/profileSources.ts';
 import { diagnoseTranscript, transcriptFindings } from './transcriptDiagnosis.ts';
-import { diffTranscript, TranscriptHub } from './transcriptHub.ts';
+import { diffTranscript, TranscriptHub, withNotices } from './transcriptHub.ts';
 
 // Last made, first undone: indexes and databases close before their folders go (Windows won't delete open files).
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -553,6 +553,144 @@ describe('TranscriptHub', () => {
     await until(() => updates.length === 2);
     expect(updates[1]!.error).toBeUndefined();
     expect(uuids(updates[1]!.messages)).toEqual(['1']);
+    hub.stop();
+  });
+});
+
+describe('withNotices', () => {
+  const at = (uuid: string, time: number) => ({ uuid, timestamp: time }) as TranscriptMessage;
+  it('puts a notice before the first message written after it, or at the end', () => {
+    const notice = at('n', 15);
+    expect(uuids(withNotices([at('a', 10), at('b', 20)], [notice]))).toEqual(['a', 'n', 'b']);
+    expect(uuids(withNotices([at('a', 10), at('b', 12)], [notice]))).toEqual(['a', 'b', 'n']);
+    expect(uuids(withNotices([], [notice]))).toEqual(['n']);
+  });
+  it('shows a notice once, and leaves out retracted messages', () => {
+    expect(uuids(withNotices([at('a', 10), at('n', 15)], [at('n', 15)]))).toEqual(['a', 'n']);
+    expect(uuids(withNotices([at('a', 10), at('r', 11), at('b', 20)], [], new Set(['r'])))).toEqual(['a', 'b']);
+  });
+});
+
+describe('TranscriptHub notices and retractions', () => {
+  const at = (uuid: string, time: number): RawSessionMessage => ({ type: 'assistant', uuid, parent_tool_use_id: null, timestamp: new Date(time).toISOString(), message: { content: uuid } });
+  const notice = (time: number): RawSessionMessage => ({ type: 'system', uuid: 'refusal', parent_tool_use_id: null, timestamp: new Date(time).toISOString(), message: { content: 'Claude switched this session to Sonnet after a refusal' } });
+
+  it('keeps a notice in place across file reloads, a reopened session and a plain read', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000), at('2', 2000)]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    const stop = hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+
+    hub.notice(ID_A, notice(2500));
+    expect(uuids(updates[1]!.messages)).toEqual(['refusal']);
+
+    // The file moves on with the reply that followed it: the notice stays between the two, with no flicker (an append).
+    hub.pushLive(ID_A, [at('3', 3000)]);
+    messages.set(ID_A, [at('1', 1000), at('2', 2000), at('3', 3000)]);
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(updates.filter((u) => u.mode === 'replace')).toHaveLength(1);
+
+    // A plain read (a phone's transcript.get) has it where it happened.
+    expect(uuids(await hub.read(ID_A))).toEqual(['1', '2', 'refusal', '3']);
+    expect(uuids(await hub.readWithHeld(ID_A))).toEqual(['1', '2', 'refusal', '3']);
+
+    // A window that opens the session later, with nobody watching meanwhile.
+    stop();
+    const again: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => again.push(u));
+    await until(() => again.length === 1);
+    expect(uuids(again[0]!.messages)).toEqual(['1', '2', 'refusal', '3']);
+    hub.stop();
+  });
+
+  it('does not bring back a live message older than the file\u2019s last one when it rebuilds', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000), at('2', 2000)]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+
+    // `old` is live and the file never writes it under that uuid; the file has moved on past it.
+    hub.pushLive(ID_A, [at('old', 1500), at('refused', 2100), at('fresh', 3500)]);
+    messages.set(ID_A, [at('1', 1000), at('2', 2000), at('3', 3000)]);
+    hub.retract(ID_A, ['refused']);
+    await until(() => updates.some((u) => u.mode === 'replace' && updates.indexOf(u) > 0));
+    // What the file has, then only what is newer than it.
+    expect(uuids(updates.at(-1)!.messages)).toEqual(['1', '2', '3', 'fresh']);
+    hub.stop();
+  });
+
+  it('forgets live messages when the turn settles, so a later rebuild does not bring them back', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000)]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+    hub.pushLive(ID_A, [at('gone', 2000), at('refused', 2100)]);
+    hub.settled(ID_A);
+    hub.retract(ID_A, ['refused']);
+    await until(() => updates.length === 3);
+    expect(uuids(updates[2]!.messages)).toEqual(['1']);
+    hub.stop();
+  });
+
+  it('sends the rebuilds of one refusal as one update, built from the last read', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000)]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+    hub.pushLive(ID_A, [at('r1', 2000), at('r2', 2100), at('r3', 2200)]);
+    hub.retract(ID_A, ['r1']);
+    hub.retract(ID_A, ['r2']);
+    messages.set(ID_A, [at('1', 1000), at('2', 3000)]);
+    hub.retract(ID_A, ['r3']);
+    await until(() => updates.length === 3);
+    await new Promise((r) => setTimeout(r, 300));
+    // One rebuild for the three retractions, with what the file had when it ran.
+    expect(updates).toHaveLength(3);
+    expect(updates[2]!.mode).toBe('replace');
+    expect(uuids(updates[2]!.messages)).toEqual(['1', '2']);
+    hub.stop();
+  });
+
+  it('keeps a notice nobody was watching for', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000)]);
+    const hub = new TranscriptHub(source, () => {});
+    hub.notice(ID_A, notice(1500));
+    expect(uuids(await hub.read(ID_A))).toEqual(['1', 'refusal']);
+    hub.stop();
+  });
+
+  it('drops retracted messages from the windows and from every later read', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000)]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+
+    // The refused partial and an earlier live message are shown; the file has neither yet.
+    hub.pushLive(ID_A, [at('2', 2000), at('refused', 2100)]);
+    expect(updates).toHaveLength(2);
+    hub.retract(ID_A, ['refused']);
+    await until(() => updates.length === 3);
+    expect(updates[2]!.mode).toBe('replace');
+    expect(uuids(updates[2]!.messages)).toEqual(['1', '2']);
+
+    // The file has the refused message after all: it stays out.
+    messages.set(ID_A, [at('1', 1000), at('2', 2000), at('refused', 2100)]);
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(updates).toHaveLength(3);
+    expect(uuids(await hub.read(ID_A))).toEqual(['1', '2']);
     hub.stop();
   });
 });

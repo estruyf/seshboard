@@ -9,4 +9,12 @@ describe('workingLabel', () => {
     expect(workingLabel({ waiting: false, compacting: false, block: { kind: 'thinking', text: '' } })).toBe('Thinking');
     expect(workingLabel({ waiting: false, compacting: false, block: { kind: 'text', text: 'Hi' } })).toBe('Working');
   });
+
+  it('says Claude Code is retrying after waiting and compacting, before what it is doing', () => {
+    const retry = 'API overloaded, retrying (3 of 10) in 8s';
+    expect(workingLabel({ waiting: false, compacting: false, block: { kind: 'tool', text: 'Bash' }, retry })).toBe(retry);
+    expect(workingLabel({ waiting: false, compacting: true, block: undefined, retry })).toBe('Compacting the conversation');
+    expect(workingLabel({ waiting: true, compacting: false, block: undefined, retry })).toBe('Waiting for you');
+    expect(workingLabel({ waiting: false, compacting: false, block: undefined, retry: null })).toBe('Working');
+  });
 });

@@ -2792,6 +2792,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:api-retry-line",
+      "name": "A line under the reply while Claude Code retries a failed API call (API overloaded, retrying 3 of 10 in 8s), on the phone too, and a line where a refusal switched the session to another model",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:prompt-outline",
       "name": "Prompt outline beside the conversation, and Show prompt outline in Settings, Conversation",
       "page": "sessions/conversation"
@@ -3619,6 +3624,11 @@
     {
       "id": "feature:new-session-model-effort",
       "name": "Global model and Global effort: what new sessions start with where the profile and project set none, or Claude Code's default",
+      "page": "settings"
+    },
+    {
+      "id": "feature:fallback-model",
+      "name": "Fallback model: Claude Code switches to it when the main model is overloaded or unavailable. Global in Settings › General, per profile and per project, off by default; the model chip shows when a turn ran on it",
       "page": "settings"
     },
     {

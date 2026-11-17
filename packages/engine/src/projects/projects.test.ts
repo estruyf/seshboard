@@ -234,6 +234,11 @@ describe('project list', () => {
     expect(project().defaults).toEqual({ ...unset, globalPermissionMode: true });
     registry.setDefaults(root, { ...unset, globalModel: true, globalEffort: true });
     expect(project().defaults).toEqual({ ...unset, globalModel: true, globalEffort: true });
+    // The fallback model and its flag to skip the profile's survive the same way.
+    registry.setDefaults(root, { ...unset, fallbackModel: 'sonnet' });
+    expect(project().defaults).toEqual({ ...unset, fallbackModel: 'sonnet' });
+    registry.setDefaults(root, { ...unset, globalFallbackModel: true });
+    expect(project().defaults).toEqual({ ...unset, globalFallbackModel: true });
     registry.setDefaults(root, unset);
     expect(project().defaults).not.toHaveProperty('globalPermissionMode');
     expect(project().defaults).toEqual(unset);

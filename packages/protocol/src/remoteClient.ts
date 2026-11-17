@@ -7,9 +7,10 @@ export { lineTransport, LineDecoder, type TextStream } from './lineTransport.ts'
 export type { Transport, WireMessage } from './wire.ts';
 export type * from './remote.ts';
 export type { CompanionStatus } from './companion.ts';
-export type { BackgroundTask, Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+export type { ApiRetry, BackgroundTask, Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 export type { UsageLimit, UsageSnapshot } from './usage.ts';
 export type { RemoteLimitStanding } from './usageLimit.ts';
+export { apiRetryLine } from './apiRetry.ts';
 export { clockTime, limitKindName } from './queueStates.ts';
 export { safeLocale } from './locale.ts';
 export { continueList, type TextEdit } from './listContinue.ts';

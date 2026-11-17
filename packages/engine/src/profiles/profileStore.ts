@@ -148,6 +148,11 @@ export class ProfileStore {
     return row ? providerOfRow(row) : 'claude';
   }
 
+  /** A profile's defaults (unset ones for a profile that doesn't exist). */
+  defaultsOf(id: string): ProfileDefaults {
+    return readProfileDefaults(this.rows().find((r) => r.id === id)?.defaults_json ?? null);
+  }
+
   has(id: string): boolean {
     return this.rows().some((r) => r.id === id);
   }

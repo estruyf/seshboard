@@ -38,6 +38,7 @@ import {
   type ModelOption,
   type RpcServer,
   type AskEvent,
+  type ApiRetry,
   type SessionHostInfo,
   type TerminalInfo,
   type SlashCommand,
@@ -96,6 +97,7 @@ import {
   writeRunStub,
   PipelineRunState,
   projectPrBase,
+  fallbackModelFor,
   type PipelineNotice,
   type ProviderDetection,
   type RemoteAppUpdate,
@@ -409,6 +411,8 @@ export interface Engine {
   setGlobalPermissionMode(mode: PermissionMode): void;
   /** Settings › General › Global model and Global effort, from main: what a phone's new session starts with where its profile and project set none. */
   setGlobalModel(globals: GlobalModel): void;
+  /** Settings › General › Global fallback model, from main (null: off): Claude Code sessions started or resumed after it changes use it where their project and profile set none. */
+  setGlobalFallbackModel(model: string | null): void;
   /**
    * Settings › Focus, from main: the focus limit (null when off) and whether terminal and IDE sessions count. A
    * queued item that starts by itself never asks at the limit; it waits for a free slot.
@@ -419,7 +423,7 @@ export interface Engine {
    * a turn, `idle` ends it with `outcome`, `closed` takes it away. `needs-you` holds a made-up permission prompt, which
    * goes when the session moves on, or when Allow or Deny answers it (the menu bar's Allow).
    */
-  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; fast?: { blocked: string | null; on?: boolean } }): void;
+  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; apiRetry?: ApiRetry | null; fast?: { blocked: string | null; on?: boolean } }): void;
   /**
    * The smoke test (`stubQueueStarts` only): while on, `session.create` starts a stand-in session (`smokeQueueHost`)
    * instead of Claude Code, and records what it got. For the menu bar's new work.
@@ -1067,6 +1071,8 @@ export function createEngine(options: EngineOptions): Engine {
   let resumeAtLimit: ResumeAtLimit = 'ask';
   let globalPermissionMode: PermissionMode = 'default';
   let globalModel: GlobalModel = NO_GLOBAL_MODEL;
+  /** Settings › General › Global fallback model, from main: null is off. */
+  let globalFallbackModel: string | null = null;
   const limits = new UsageLimits({
     store: new LimitStore(cache.db),
     // A session that is already working again (you sent something yourself) needs no nudge.
@@ -1122,7 +1128,7 @@ export function createEngine(options: EngineOptions): Engine {
    * What hosts report, the same for Claude Code's (`HostManager`) and other providers' (`ProviderHosts`): the windows,
    * the transcript, catch-up, pipelines, triggers and the queue treat both alike.
    */
-  const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
+  const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onNotice' | 'onRetract' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
     onInfo: (info) => {
       if (info.state === 'idle') transcripts.settled(info.sessionId);
       awake.update(info.sessionId, info);
@@ -1141,6 +1147,8 @@ export function createEngine(options: EngineOptions): Engine {
       transcripts.pushLive(id, messages, held);
       catchUp.messages(id, messages);
     },
+    onNotice: (id, message) => transcripts.notice(id, message),
+    onRetract: (id, uuids) => transcripts.retract(id, uuids),
     onClosed: (id) => transcripts.dropHeld(id),
     onPermission: (request) => {
       broadcast('session.permission', request);
@@ -1347,6 +1355,8 @@ export function createEngine(options: EngineOptions): Engine {
   /** The smoke test calls a tool as the session's own server would: with a token the bridge gave out for that session. */
   const smokeOrchestratorToken = async (sessionId: string) => (await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId)).env[ORCHESTRATOR_TOKEN_ENV] ?? '';
   const hosts = new RoutedHostManager({
+    // The project's, else its profile's, else the global one: for every Claude Code process Seshboard starts.
+    fallbackModel: (cwd, profileId) => fallbackModelFor(projects.defaultsOf(resolver.resolve(cwd).root), profiles.defaultsOf(profileId), globalFallbackModel),
     limits,
     signIns,
     sdk,
@@ -1831,7 +1841,7 @@ export function createEngine(options: EngineOptions): Engine {
    * A stand-in session this app "runs" (`stubQueueStarts` only): the smoke test drives one through a turn, and the
    * screenshots' demo shows a session queued items start after (`DemoUsage.queueHosts`).
    */
-  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, fast }) => {
+  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, apiRetry, fast }) => {
     if (!options.stubQueueStarts) return;
     const before = smokeHosts.get(sessionId);
     const info: HostInfo = {
@@ -1854,6 +1864,7 @@ export function createEngine(options: EngineOptions): Engine {
       }),
       state,
       ...(compacting !== undefined ? { compacting } : {}),
+      ...(apiRetry !== undefined ? { apiRetry: apiRetry ?? undefined } : {}),
       // A model that has fast mode, whatever this computer's Claude Code lists.
       ...(fast ? { model: SMOKE_FAST_MODEL.value, fastModeBlocked: fast.blocked, ...(fast.on ? { fastMode: 'on' as const } : {}) } : {}),
       promptedAt: state === 'running' ? Date.now() : (before?.promptedAt ?? null),
@@ -4913,6 +4924,9 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setGlobalModel: (globals) => {
       globalModel = globals;
+    },
+    setGlobalFallbackModel: (model) => {
+      globalFallbackModel = model;
     },
     smokeQueueHost: standInHost,
     smokeStubCreate: (on) => {
