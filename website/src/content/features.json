@@ -1172,6 +1172,11 @@
       "page": "sessions/saved-prompts"
     },
     {
+      "id": "saved-prompts:starters",
+      "name": "Suggested prompts in Settings › Prompts, each added with one click",
+      "page": "sessions/saved-prompts"
+    },
+    {
       "id": "saved-prompts:save-as-prompt",
       "name": "Save as prompt… on a message you sent",
       "page": "sessions/saved-prompts"
