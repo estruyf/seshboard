@@ -82,6 +82,8 @@ export class TranscriptHub {
   private readonly retracted = new Map<string, Set<string>>();
   /** The last live messages the file may not have yet, so a retraction can rebuild the list without losing them. */
   private readonly liveTail = new Map<string, Map<string, TranscriptMessage>>();
+  /** Sessions whose next reload sends the whole list again (after a retraction). */
+  private readonly rebuilds = new Set<string>();
   readonly images = new ImageStore();
 
   constructor(
@@ -208,8 +210,11 @@ export class TranscriptHub {
     for (const uuid of uuids) gone.add(uuid);
     this.retracted.set(sessionId, gone);
     for (const uuid of uuids) this.liveTail.get(sessionId)?.delete(uuid);
-    const watchers = this.watchers.get(sessionId);
-    if (watchers?.size) void this.push(sessionId, [...watchers], false, true);
+    // Through the session's reload, so several retractions in a row (a refusal sends two or three) are one rebuild, and
+    // an older read can't finish after a newer one.
+    if (!this.watchers.get(sessionId)?.size) return;
+    this.rebuilds.add(sessionId);
+    this.reload(sessionId).trigger();
   }
 
   /** The session stopped: what it held back will never reach the file. */
@@ -221,6 +226,8 @@ export class TranscriptHub {
 
   /** The session's turn ended, so what you sent is in the file; only what Claude Code doesn't have yet stays held. */
   settled(sessionId: string): void {
+    // The turn is over and the file has what it will have: nothing live is left for a rebuild to bring back.
+    this.liveTail.delete(sessionId);
     const sent = this.sent.get(sessionId);
     if (!sent) return;
     this.sent.delete(sessionId);
@@ -232,12 +239,21 @@ export class TranscriptHub {
   /** Called when a transcript file changed on disk. Reloads are coalesced per session. */
   changed(sessionId: string): void {
     if (!this.watchers.has(sessionId)) return;
+    this.reload(sessionId).trigger();
+  }
+
+  private isNotice(sessionId: string, uuid: string): boolean {
+    return this.notices.get(sessionId)?.some((m) => m.uuid === uuid) ?? false;
+  }
+
+  /** The session's one coalesced reload: never two reads at once, and the last one wins. */
+  private reload(sessionId: string): ReturnType<typeof coalesce> {
     let reload = this.reloads.get(sessionId);
     if (!reload) {
-      reload = coalesce(() => this.push(sessionId, [...(this.watchers.get(sessionId) ?? [])], false), 100);
+      reload = coalesce(() => this.push(sessionId, [...(this.watchers.get(sessionId) ?? [])], false, this.rebuilds.delete(sessionId)), 100);
       this.reloads.set(sessionId, reload);
     }
-    reload.trigger();
+    return reload;
   }
 
   /** `rebuild`: send the whole list again even where the file is merely behind (after a retraction). */
@@ -269,7 +285,10 @@ export class TranscriptHub {
     const tail = this.liveTail.get(sessionId);
     for (const m of file) tail?.delete(m.uuid);
     const inList = new Set(messages.map((m) => m.uuid));
-    const pending = rebuild && tail ? [...tail.values()].filter((m) => !inList.has(m.uuid)) : [];
+    // Only what is newer than the file's last message: an older one the file never wrote under its uuid would come back
+    // after newer messages.
+    const fileEnd = file.reduce<number | null>((end, m) => (m.timestamp !== null && !this.isNotice(sessionId, m.uuid) && (end === null || m.timestamp > end) ? m.timestamp : end), null);
+    const pending = rebuild && tail ? [...tail.values()].filter((m) => !inList.has(m.uuid) && (fileEnd === null || m.timestamp === null || m.timestamp > fileEnd)) : [];
     const whole = pending.length ? [...messages, ...pending] : messages;
     for (const watcher of targets) {
       if (!initial && watcher.uuids === null) {

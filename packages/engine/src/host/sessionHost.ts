@@ -779,7 +779,6 @@ export class SessionHost {
         this.retract(supersededBy(message));
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
-        this.clearApiRetry();
         if (message.error) {
           this.assistantError = textOf(message) ?? this.assistantError;
           this.assistantErrorCode = message.error;

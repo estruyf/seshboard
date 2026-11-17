@@ -606,6 +606,60 @@ describe('TranscriptHub notices and retractions', () => {
     hub.stop();
   });
 
+  it('does not bring back a live message older than the file\u2019s last one when it rebuilds', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000), at('2', 2000)]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+
+    // `old` is live and the file never writes it under that uuid; the file has moved on past it.
+    hub.pushLive(ID_A, [at('old', 1500), at('refused', 2100), at('fresh', 3500)]);
+    messages.set(ID_A, [at('1', 1000), at('2', 2000), at('3', 3000)]);
+    hub.retract(ID_A, ['refused']);
+    await until(() => updates.some((u) => u.mode === 'replace' && updates.indexOf(u) > 0));
+    // What the file has, then only what is newer than it.
+    expect(uuids(updates.at(-1)!.messages)).toEqual(['1', '2', '3', 'fresh']);
+    hub.stop();
+  });
+
+  it('forgets live messages when the turn settles, so a later rebuild does not bring them back', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000)]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+    hub.pushLive(ID_A, [at('gone', 2000), at('refused', 2100)]);
+    hub.settled(ID_A);
+    hub.retract(ID_A, ['refused']);
+    await until(() => updates.length === 3);
+    expect(uuids(updates[2]!.messages)).toEqual(['1']);
+    hub.stop();
+  });
+
+  it('sends the rebuilds of one refusal as one update, built from the last read', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [at('1', 1000)]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+    hub.pushLive(ID_A, [at('r1', 2000), at('r2', 2100), at('r3', 2200)]);
+    hub.retract(ID_A, ['r1']);
+    hub.retract(ID_A, ['r2']);
+    messages.set(ID_A, [at('1', 1000), at('2', 3000)]);
+    hub.retract(ID_A, ['r3']);
+    await until(() => updates.length === 3);
+    await new Promise((r) => setTimeout(r, 300));
+    // One rebuild for the three retractions, with what the file had when it ran.
+    expect(updates).toHaveLength(3);
+    expect(updates[2]!.mode).toBe('replace');
+    expect(uuids(updates[2]!.messages)).toEqual(['1', '2']);
+    hub.stop();
+  });
+
   it('keeps a notice nobody was watching for', async () => {
     const { source, messages } = fakeSource([]);
     messages.set(ID_A, [at('1', 1000)]);

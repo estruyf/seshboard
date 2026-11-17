@@ -733,12 +733,21 @@ function WorkingLine({ streaming, since, retry }: { streaming: Streaming; since:
         <WorkingPanel />
       </span>
       {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
+      {/* The countdown changes every second: it stays out of the live region, which has the cause and the count of tries. */}
       <span className="shrink-0" aria-live="polite">
-        {retry ? apiRetryLine(retry, now) : workingLabel(streaming)}
+        {retry ? apiRetryLine(retry, null) : workingLabel(streaming)}
       </span>
+      {retry && <span className="shrink-0 text-faint tabular-nums">{retryWait(retry, now)}</span>}
       {streaming.kind === 'thinking' && streaming.text && <span className="min-w-0 truncate text-faint italic">{streaming.text.slice(-160)}</span>}
     </p>
   );
+}
+
+/** "in 8s": the wait that is left, outside the live region. */
+function retryWait(retry: ApiRetry, now: number): string {
+  const line = apiRetryLine(retry, now);
+  const bare = apiRetryLine(retry, null);
+  return line.startsWith(bare) ? line.slice(bare.length).trim() : '';
 }
 
 /** Claude's turn ended but something it started still runs, in the background's green: it carries on when that finishes. */
