@@ -6,6 +6,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Suggested prompts.** Settings › Prompts suggests two prompts to add with one click: *Use your best judgment*, which keeps a session from waiting on small decisions, and *Throwaway build*, which asks for the feature and tells you where the design got in the way. Nothing is added unless you press Add, and a suggestion goes away once its prompt is saved.
+- **Orchestrator sessions use their judgment.** Every session an orchestrator starts is told to build, make any reversible call itself and check in later with the calls it made, so it doesn't stop for small decisions. Your project's own orchestrator instructions come after it and still apply.
 - **Codex window costs, and Copilot's AI credits.** Codex's 5-hour and weekly windows show their estimated cost under a session's message box and in the Usage view, like Claude Code's. A Copilot account billed per token in AI credits now shows the credits its sessions on this computer used in the last 30 days, in place of premium requests.
 - **Copilot and Codex tokens in Usage.** A Copilot or Codex profile in the Usage view now has the **Tokens** tab: its tokens by session, project, model and day, with the estimated cost. Copilot's cost is what it charged in AI credits. Codex's is at OpenAI's API prices. The cost also shows under a Copilot or Codex session's message box. Copilot writes its tokens when a session ends, so a running session counts once it stops.
 - **Compacted while idle.** A conversation Claude Code compacted by itself while it sat idle in a terminal session shows *Compacted while idle* instead of *Conversation compacted*.

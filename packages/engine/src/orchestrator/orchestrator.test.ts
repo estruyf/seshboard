@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isSessionUpdate, ORCHESTRATOR_MAX_WORKING, ORCHESTRATOR_PROMPT, type CatchUp, type LaterDraft, type ProjectDefaults, type WorkerStatus } from '@seshboard/protocol';
+import { isSessionUpdate, ORCHESTRATOR_MAX_WORKING, ORCHESTRATOR_PROMPT, WORKER_JUDGMENT, type CatchUp, type LaterDraft, type ProjectDefaults, type WorkerStatus } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { Orchestrator, type OrchestratorDeps } from './orchestrator.ts';
 import { OrchestratorBridge } from './orchestratorBridge.ts';
@@ -67,7 +67,7 @@ describe('Orchestrator: start_session', () => {
     const { orchestrator, started, parents, store } = setup();
     const result = await orchestrator.run('orc', 'start_session', { title: 'Fix login', prompt: 'Fix the redirect.' });
     expect(result).toEqual({ text: expect.stringContaining('Started "Fix login" as session worker-1, in its own worktree') });
-    expect(started[0]).toMatchObject({ title: 'Fix login', instructions: null, draft: { cwd: ROOT, prompt: 'Fix the redirect.', workspace: 'worktree', permissionMode: 'acceptEdits', profileId: null, baseRef: 'fresh' } });
+    expect(started[0]).toMatchObject({ title: 'Fix login', instructions: expect.stringContaining(WORKER_JUDGMENT), draft: { cwd: ROOT, prompt: 'Fix the redirect.', workspace: 'worktree', permissionMode: 'acceptEdits', profileId: null, baseRef: 'fresh' } });
     expect(parents.get('worker-1')).toBe('orc');
     expect(store.workersOf('orc')).toMatchObject([{ sessionId: 'worker-1', itemId: null, title: 'Fix login' }]);
     expect(orchestrator.infos()).toMatchObject([{ sessionId: 'orc', projectRoot: ROOT, workers: [{ sessionId: 'worker-1', title: 'Fix login', pr: null }] }]);
@@ -162,7 +162,9 @@ describe('Orchestrator: its sessions', () => {
     const { orchestrator, setDefaults } = setup();
     await orchestrator.run('orc', 'start_session', { title: 'Fix login', prompt: 'x' });
     expect(orchestrator.systemTextFor('orc')).toBe(ORCHESTRATOR_PROMPT);
-    expect(orchestrator.systemTextFor('worker-1')).toBeNull();
+    // Without instructions of the project's own, it still gets the built-in judgment line.
+    expect(orchestrator.systemTextFor('worker-1')).toContain(WORKER_JUDGMENT);
+    expect(orchestrator.systemTextFor('worker-1')).not.toContain('Instructions for this project');
     setDefaults({ orchestratorInstructions: 'Run make test.' });
     expect(orchestrator.systemTextFor('orc')).toContain('Run make test.');
     expect(orchestrator.systemTextFor('worker-1')).toContain('Run make test.');

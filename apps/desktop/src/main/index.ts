@@ -9429,6 +9429,22 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, one('[data-settings-section="prompts"]'), 3_000))) return 'Settings has no Prompts page';
     await click('[data-settings-section="prompts"]');
     if (!(await waitInPage(win, one('[data-saved-prompts-new]'), 3_000))) return 'Settings › Prompts has no New prompt';
+    // Starter prompts are only offered: adding one saves it for every project, and then it is no longer offered. Deleted again, so the rest of the step starts clean.
+    const starter = '[data-saved-prompt-starter="throwaway-build"]';
+    const starterRow = '[data-saved-prompt-row="throwaway-build"]';
+    if (!(await waitInPage(win, `${one(starter)} && ${one('[data-saved-prompt-starter="best-judgment"]')} && !${one(starterRow)}`, 3_000))) return 'Settings › Prompts did not offer the two starter prompts';
+    await click('[data-saved-prompt-starter-add="throwaway-build"]');
+    if (!(await waitInPage(win, `${one(starterRow)}?.dataset.savedPromptScope === 'global' && !${one(starter)} && ${one('[data-saved-prompt-starter="best-judgment"]')} && ${one(starterRow)}.innerText.includes('1 blank · text')`, 3_000))) return 'Add did not save the throwaway build for every project, with its blank, and stop offering it';
+    await click('[data-saved-prompt-starter-add="best-judgment"]');
+    if (!(await waitInPage(win, `${one('[data-saved-prompt-row="use-your-best-judgment"]')} && !${one('[data-saved-prompts-starters]')}`, 3_000))) return 'adding the second starter did not hide the suggestions';
+    await shot(win, 'saved-prompt-starters-added.png');
+    for (const rowId of ['throwaway-build', 'use-your-best-judgment']) {
+      await click(`[data-saved-prompt-row="${rowId}"] [data-saved-prompt-menu]`);
+      if (!(await waitInPage(win, one('[role=menu] [data-prompt-delete]'), 2_000))) return 'a starter prompt had no Delete in its menu';
+      await click('[role=menu] [data-prompt-delete]');
+      if (!(await waitInPage(win, `!${one(`[data-saved-prompt-row="${rowId}"]`)}`, 3_000))) return 'Delete did not remove a starter prompt';
+    }
+    if (!(await waitInPage(win, one(starter), 3_000))) return 'a deleted starter prompt was not offered again';
     await click('[data-saved-prompts-new]');
     if (!(await waitInPage(win, `${one('[data-prompt-editor-dialog]')} && ${one('[data-prompt-use-in="personal"]')}?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'New prompt did not open with "just for you" picked';
     await setFieldValue(win, '[data-prompt-editor-name]', 'Smoke: fix a pull request');
