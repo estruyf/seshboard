@@ -7,17 +7,30 @@ import { isSameOrInside, type WorktreeEntry, type WorktreeSize } from '@seshboar
 export const INACTIVE_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** The table's groups, in the order they show. */
-export type WorktreeGroup = 'main' | 'safe' | 'done' | 'keep' | 'stale';
-export const GROUP_ORDER: readonly WorktreeGroup[] = ['main', 'safe', 'done', 'keep', 'stale'];
+/**
+ * The table's groups, in the order they show. Reading holds the worktrees whose changes and commits are still being
+ * read (a repository with dozens of them lists at once and fills in): nothing is decided about them until they are in.
+ */
+export type WorktreeGroup = 'main' | 'safe' | 'done' | 'keep' | 'stale' | 'reading';
+export const GROUP_ORDER: readonly WorktreeGroup[] = ['main', 'safe', 'done', 'keep', 'stale', 'reading'];
 
-export const GROUP_LABEL: Record<Exclude<WorktreeGroup, 'main'>, string> = { safe: 'Safe to remove', done: 'Probably done', keep: 'Keep', stale: 'Stale' };
+export const GROUP_LABEL: Record<Exclude<WorktreeGroup, 'main'>, string> = { safe: 'Safe to remove', done: 'Probably done', keep: 'Keep', stale: 'Stale', reading: 'Reading' };
 export const GROUP_NOTE: Record<Exclude<WorktreeGroup, 'main'>, string> = {
   safe: 'merged or no extra commits, clean, no session',
   done: `pushed, clean, inactive ${INACTIVE_DAYS}+ days`,
   keep: '',
   stale: 'folder is gone; git still lists it',
+  reading: 'changes and commits are still being read',
 };
+
+/**
+ * The facts of this worktree are not in yet, so none of what follows from them can be judged. A missing folder is no
+ * exception: its branch may still hold commits nobody pushed, and deleting the branch with it would lose them.
+ */
+export const isPending = (entry: WorktreeEntry) => entry.factsPending === true;
+
+/** Something the facts rest on couldn't be read, or isn't read yet: never a reason to call it clean, pushed or safe to delete a branch of. */
+export const mayHoldWork = (entry: WorktreeEntry) => isPending(entry) || entry.unreadable === true;
 
 /** How the sessions in a worktree stand, from the sidebar's rows. */
 export interface WorktreeSessions {
@@ -39,17 +52,21 @@ export interface WorktreeRow {
   /** Why it can't be picked for clean-up, or null when it can. */
   locked: string | null;
   sessions: WorktreeSessions;
+  /** Its facts are not in yet (`isPending`): the table shows "…" for them. */
+  pending: boolean;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Merged by ancestry, or its pull request was merged (a squash merge leaves the branch's own commits behind). */
-export const isMerged = (entry: WorktreeEntry) => entry.merged || entry.pr?.state === 'merged';
+/** Merged by ancestry, or its pull request was merged (a squash merge leaves the branch's own commits behind). Not while its facts are unknown. */
+export const isMerged = (entry: WorktreeEntry) => !isPending(entry) && (entry.merged || entry.pr?.state === 'merged');
 
 /** Why a worktree can't be picked for clean-up; null when it can. The engine refuses the same. */
 export function lockReason(entry: WorktreeEntry, sessions: WorktreeSessions): string | null {
   if (entry.isMain) return 'The main checkout is never removed';
   if (entry.isLocked) return `Locked by git${entry.lockReason ? `: ${entry.lockReason}` : ''}`;
+  // Never pickable on placeholders (a missing folder too: its branch may hold commits): not known yet.
+  if (isPending(entry)) return 'Still reading its changes';
   if (entry.missing) return null;
   if (sessions.busy > 0) return 'A session is working here';
   if (entry.uncommitted > 0) return `${plural(entry.uncommitted, 'uncommitted change', 'uncommitted changes')}: commit or revert first`;
@@ -60,7 +77,8 @@ export function lockReason(entry: WorktreeEntry, sessions: WorktreeSessions): st
 export function classify(entry: WorktreeEntry, sessions: WorktreeSessions, now: number, inactiveDays = INACTIVE_DAYS): { group: WorktreeGroup; reason: string | null } {
   if (entry.isMain) return { group: 'main', reason: null };
   if (entry.missing) return { group: 'stale', reason: null };
-  const clean = entry.uncommitted === 0 && sessions.busy === 0 && !entry.isLocked;
+  if (isPending(entry)) return { group: 'reading', reason: null };
+  const clean = entry.uncommitted === 0 && !entry.unreadable && sessions.busy === 0 && !entry.isLocked;
   const inactive = entry.lastActivity === null || now - entry.lastActivity >= inactiveDays * DAY_MS;
   // Only worktrees Claude Code made are suggested; others are listed, and removed only when you pick them.
   if (clean && entry.underClaudeDir) {
@@ -74,6 +92,7 @@ function keepReason(entry: WorktreeEntry, sessions: WorktreeSessions, inactive: 
   if (sessions.busy > 0) return 'A session is working here';
   if (entry.uncommitted > 0) return plural(entry.uncommitted, 'uncommitted change', 'uncommitted changes');
   if (entry.isLocked) return 'Locked by git';
+  if (entry.unreadable) return "Couldn't read all of it: check before removing";
   if (entry.unpushed > 0) return entry.unpushed === 1 ? "1 commit isn't pushed anywhere" : `${entry.unpushed} commits aren't pushed anywhere`;
   if (!entry.underClaudeDir) return 'Outside .claude/worktrees';
   if (!inactive) return `Active in the last ${inactiveDays} days`;
@@ -84,7 +103,7 @@ function keepReason(entry: WorktreeEntry, sessions: WorktreeSessions, inactive: 
 export function worktreeRows(entries: readonly WorktreeEntry[], sessionsOf: (entry: WorktreeEntry) => WorktreeSessions, now: number): WorktreeRow[] {
   const rows = entries.map((entry) => {
     const sessions = sessionsOf(entry);
-    return { entry, ...classify(entry, sessions, now), locked: lockReason(entry, sessions), sessions };
+    return { entry, ...classify(entry, sessions, now), locked: lockReason(entry, sessions), sessions, pending: isPending(entry) };
   });
   return rows.sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || (b.entry.lastActivity ?? 0) - (a.entry.lastActivity ?? 0));
 }
@@ -99,11 +118,17 @@ export function defaultSelection(rows: readonly WorktreeRow[]): Set<string> {
   return new Set(rows.filter((r) => !r.locked && (r.group === 'safe' || r.group === 'stale')).map((r) => r.entry.path));
 }
 
-/** Drops picks that can't be picked any more (a session started there, a file changed) or are gone. */
+/**
+ * Drops picks that can't be picked any more (a session started there, a file changed) or are gone. A row whose facts
+ * are being read again keeps its pick (the list was read again); `pickedRows` leaves it out until they are in.
+ */
 export function validSelection(selected: ReadonlySet<string>, rows: readonly WorktreeRow[]): Set<string> {
-  const pickable = new Set(rows.filter((r) => !r.locked).map((r) => r.entry.path));
+  const pickable = new Set(rows.filter((r) => !r.locked || r.pending).map((r) => r.entry.path));
   return new Set([...selected].filter((path) => pickable.has(path)));
 }
+
+/** The picked rows that can be removed now: never one whose changes are still being read. */
+export const pickedRows = (order: readonly WorktreeRow[], selected: ReadonlySet<string>): WorktreeRow[] => order.filter((r) => selected.has(r.entry.path) && !r.pending && !r.locked);
 
 /**
  * A click on a row's checkbox. With shift, every pickable row from the last one clicked (`anchor`) to this one takes
@@ -146,6 +171,8 @@ export function worktreeSummary(rows: readonly WorktreeRow[], sizes: ReadonlyMap
     ),
     safe: others.filter((r) => r.group === 'safe').length,
     stale: others.filter((r) => r.group === 'stale').length,
+    /** Worktrees whose changes and commits are still being read, the main checkout's too: its are what keeps the spinner going. */
+    reading: rows.filter((r) => r.pending).length,
   };
 }
 
@@ -188,7 +215,7 @@ export function sessionsLabel(s: WorktreeSessions): { text: string; tone: 'worki
 
 /** The Merged / PR column: "merged", "PR #41 merged", "PR #38 open", "PR #12 closed", or null. */
 export function mergeLabel(entry: WorktreeEntry): { text: string; tone: 'ok' | 'link' | 'muted' } | null {
-  if (entry.isMain) return null;
+  if (entry.isMain || isPending(entry)) return null;
   if (entry.pr?.state === 'merged') return { text: `PR #${entry.pr.number} merged`, tone: 'ok' };
   if (entry.merged) return { text: 'merged', tone: 'ok' };
   if (entry.pr?.state === 'open') return { text: `PR #${entry.pr.number} open`, tone: 'link' };
@@ -198,7 +225,8 @@ export function mergeLabel(entry: WorktreeEntry): { text: string; tone: 'ok' | '
 
 /** The Ahead column: "3 ↑ · not pushed", "4 ↑ · pushed", "0", or null ("—") for the main checkout and merged branches. */
 export function aheadLabel(entry: WorktreeEntry): { text: string; caution: boolean } | null {
-  if (entry.isMain || entry.missing || entry.ahead === null || entry.merged) return null;
+  if (entry.isMain || entry.missing || isPending(entry) || entry.ahead === null || entry.merged) return null;
+  if (entry.unreadable) return { text: "couldn't read", caution: true };
   if (entry.ahead === 0) return { text: '0', caution: false };
   if (entry.unpushed > 0) return { text: `${entry.ahead} ↑ · not pushed`, caution: true };
   return { text: `${entry.ahead} ↑${entry.pushed ? ' · pushed' : ''}`, caution: false };
@@ -208,7 +236,7 @@ export function aheadLabel(entry: WorktreeEntry): { text: string; caution: boole
 export function branchChoice(entries: readonly WorktreeEntry[]): { defaultOn: boolean; note: string | null } {
   const withBranch = entries.filter((e) => e.branch);
   if (withBranch.length === 0) return { defaultOn: false, note: null };
-  const notMerged = withBranch.filter((e) => !isMerged(e) && e.ahead !== 0).length;
+  const notMerged = withBranch.filter((e) => mayHoldWork(e) || (!isMerged(e) && e.ahead !== 0)).length;
   return { defaultOn: notMerged === 0, note: notMerged === 0 ? 'all merged' : `${notMerged} not merged` };
 }
 

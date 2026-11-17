@@ -62,6 +62,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Worktrees in a repository with many of them no longer time out.** The Worktrees tab used to fail with "worktrees.list timed out" at around 35 worktrees. The rows now show at once and the changes, commits and pull requests fill in as they are read. Until a worktree's changes are in, it sits under **Reading** and can't be picked for clean-up.
 - A second click on a session's **⋯** button, a project page's **⋯** or the worktree menu closes the menu. It used to close it and open it again.
 - The **⋯** menu of a Copilot or Codex session now has **Open in**, as a Claude Code session does: your editors, terminals and Finder, with its CLI next to them.
 - **A prompt queued at the focus limit starts when a slot frees.** It used to wait for its project to be free too, so it didn't start while another session worked in that project. **Wait for › A free slot** is the new choice, and the one Start picks at the focus limit. Scheduled runs and triggered sessions held at a limit wait for a slot the same way.

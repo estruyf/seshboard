@@ -11,6 +11,7 @@ export * from './terminal.ts';
 export * from './actions.ts';
 export * from './git.ts';
 export * from './worktrees.ts';
+export * from './worktreeFacts.ts';
 export * from './branches.ts';
 export * from './capabilities.ts';
 export * from './usage.ts';

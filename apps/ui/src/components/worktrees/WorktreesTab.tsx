@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, HardDrive, Lock, LockOpen, MessagesSquare, RefreshCw, Search, SquarePen, Trash2, ArrowUp } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
-import { isSameOrInside, type WorktreeEntry, type WorktreeRemoveResult } from '@seshboard/protocol/client';
+import { anyFactsPending, isSameOrInside, type WorktreeEntry, type WorktreeRemoveResult } from '@seshboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
@@ -34,6 +34,7 @@ import {
   groupRows,
   mainCheckoutBytes,
   mergeLabel,
+  pickedRows,
   sessionsLabel,
   toggleSelection,
   validSelection,
@@ -44,7 +45,7 @@ import {
 
 /** Above this many worktrees the table only renders the rows in view. */
 const VIRTUALIZE_FROM = 50;
-const GROUP_TONE: Record<Exclude<WorktreeGroup, 'main'>, SectionTone> = { safe: 'ok', done: 'info', keep: 'caution', stale: 'error' };
+const GROUP_TONE: Record<Exclude<WorktreeGroup, 'main'>, SectionTone> = { safe: 'ok', done: 'info', keep: 'caution', stale: 'error', reading: 'neutral' };
 /** The table's columns; a narrow pane drops Ahead and Last active. */
 const COLUMNS =
   'grid items-center gap-x-3 grid-cols-[24px_minmax(0,2.6fr)_minmax(0,1.2fr)_84px_minmax(0,1.1fr)_minmax(0,1.2fr)_72px_80px_28px] @max-[900px]:grid-cols-[24px_minmax(0,2.6fr)_minmax(0,1.2fr)_84px_minmax(0,1.2fr)_72px_28px]';
@@ -63,6 +64,16 @@ async function revealInFileManager(client: EngineClient, path: string): Promise<
 }
 
 const dash = <span className="text-faint">—</span>;
+
+/** A cell whose fact is still being read: a quiet ellipsis, and the word for screen readers. */
+const Reading = () => (
+  <>
+    <span className="text-faint" aria-hidden>
+      …
+    </span>
+    <span className="sr-only">Reading</span>
+  </>
+);
 
 function Stat({ value, label, tone = '' }: { value: ReactNode; label: string; tone?: string }) {
   return (
@@ -100,29 +111,33 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
   const [merging, setMerging] = useState<{ entry: WorktreeEntry; sessionId: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Safe and stale rows start picked, the first time the list is read; later reads keep your picks where still allowed.
+  // What is slow to read (changes, commits, pull requests) arrives after the rows; nothing is suggested before it is all in.
+  const reading = state.list ? anyFactsPending(state.list) : false;
+
+  // Safe and stale rows start picked, once the list is read in full; later reads keep your picks where still allowed.
   useEffect(() => {
     if (!state.list) return;
     if (!seeded.current) {
+      if (reading) return;
       seeded.current = true;
       setSelected(defaultSelection(rows));
     } else setSelected((s) => validSelection(s, rows));
-  }, [rows, state.list]);
+  }, [rows, state.list, reading]);
 
-  // "Clean up worktrees in …" from the palette: the confirmation for what is suggested, once the list is here.
+  // "Clean up worktrees in …" from the palette: the confirmation for what is suggested, once the list is here in full.
   useEffect(() => {
-    if (pendingCleanup !== root || !state.list) return;
+    if (pendingCleanup !== root || !state.list || reading) return;
     useProjectPage.getState().clearCleanup();
     const picks = rows.filter((r) => defaultSelection(rows).has(r.entry.path)).map((r) => r.entry);
     if (picks.length) setCleanup(picks);
     else toast(`Nothing to clean up in ${name}`);
-  }, [pendingCleanup, root, state.list, rows, name]);
+  }, [pendingCleanup, root, state.list, reading, rows, name]);
 
   const groups = useMemo(() => groupRows(rows), [rows]);
   const order = useMemo(() => groups.flatMap((g) => g.rows), [groups]);
   const lines = useMemo<Line[]>(() => groups.flatMap((g): Line[] => (g.group === 'main' ? g.rows.map((row) => ({ kind: 'row', row })) : [{ kind: 'header', group: g.group, rows: g.rows }, ...g.rows.map((row): Line => ({ kind: 'row', row }))])), [groups]);
   const summary = worktreeSummary(rows, sizes);
-  const picked = order.filter((r) => selected.has(r.entry.path));
+  const picked = pickedRows(order, selected);
   const frees = freedBytes(
     picked.filter((r) => !r.entry.missing).map((r) => r.entry.path),
     sizes,
@@ -256,14 +271,16 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
       ? 'The folder is gone'
       : !entry.branch
         ? 'HEAD is detached'
-        : entry.uncommitted > 0
+        : row.pending
+          ? 'Still reading its changes and commits'
+          : entry.uncommitted > 0
           ? 'Commit or revert the uncommitted changes first'
           : entry.merged || entry.ahead === 0
             ? `Nothing to merge into ${baseName}`
             : !session
               ? 'A merge runs in the terminal of a session here; start one first'
               : null;
-    const pushBlocked = entry.missing ? 'The folder is gone' : !entry.branch ? 'HEAD is detached' : entry.upstream && entry.pushed && entry.unpushed === 0 ? 'Everything is pushed' : null;
+    const pushBlocked = entry.missing ? 'The folder is gone' : !entry.branch ? 'HEAD is detached' : row.pending ? 'Still reading its commits' : entry.upstream && entry.pushed && entry.unpushed === 0 ? 'Everything is pushed' : null;
     const why = [mergeBlocked && `Merge: ${mergeBlocked}.`, pushBlocked && entry.branch && !entry.missing && `Push: ${pushBlocked}.`, row.locked && `Remove: ${row.locked}.`].filter((t): t is string => !!t);
     return [
       ...general,
@@ -278,7 +295,8 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
 
   const renderRow = (row: WorktreeRow) => {
     const { entry } = row;
-    const isPicked = selected.has(entry.path);
+    // A pick on a row that is being read again is kept, but not counted or shown as picked until its facts are in.
+    const isPicked = selected.has(entry.path) && !row.pending;
     const sessions = sessionsLabel(row.sessions);
     const ahead = aheadLabel(entry);
     const merge = mergeLabel(entry);
@@ -304,7 +322,11 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
         className={`${COLUMNS} min-h-14 border-t border-border px-4 py-2.5 ${isPicked ? 'bg-selected' : 'hover:bg-border/45'}`}
       >
         <span role="cell" className="flex justify-center" onClickCapture={(e) => (shift.current = e.shiftKey)}>
-          {row.locked ? (
+          {row.pending ? (
+            <span data-tooltip={row.locked ?? undefined} data-worktree-reading>
+              <Reading />
+            </span>
+          ) : row.locked ? (
             <span role="img" aria-label={row.locked} data-tooltip={row.locked} className="text-faint">
               <Lock size={13} aria-hidden />
             </span>
@@ -335,20 +357,30 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
         <span role="cell" className="min-w-0">
           {entry.missing ? (
             <span className="text-ui text-muted">missing</span>
+          ) : row.pending ? (
+            <span className="text-ui">
+              <Reading />
+            </span>
           ) : entry.uncommitted > 0 ? (
             <Pill tone="caution">{entry.uncommitted === 1 ? '1 file' : `${entry.uncommitted} files`}</Pill>
+          ) : entry.unreadable ? (
+            <Pill tone="caution" data-tooltip="Git could not read all of this worktree (it timed out or failed)">
+              unknown
+            </Pill>
           ) : (
             <Pill tone="ok">clean</Pill>
           )}
         </span>
         <span role="cell" className={`truncate text-ui ${ahead?.caution ? 'text-caution' : ''} ${NARROW_HIDDEN}`}>
-          {ahead ? ahead.text : dash}
+          {row.pending && !entry.isMain ? <Reading /> : ahead ? ahead.text : dash}
         </span>
         <span role="cell" className="flex min-w-0">
           {merge ? (
             <Pill tone={merge.tone === 'muted' ? 'muted' : merge.tone} shrink icon={merge.tone === 'ok' ? <GitMerge size={11} className="shrink-0" aria-hidden /> : undefined} data-tooltip={entry.pr?.url}>
               <span className="truncate">{merge.text}</span>
             </Pill>
+          ) : !entry.isMain && (row.pending || state.list?.pullRequestsPending) ? (
+            <Reading />
           ) : (
             dash
           )}
@@ -455,7 +487,7 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
 
   const onlyMain = rows.length === 1;
   return (
-    <div className="grid gap-4" data-worktrees-tab>
+    <div className="grid gap-4" data-worktrees-tab data-reading={reading || undefined}>
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-border bg-card px-5 py-3.5" data-worktree-summary>
         <Stat value={summary.count} label={summary.count === 1 ? 'worktree' : 'worktrees'} />
         <Stat value={summary.bytes === 0 && summary.unknown ? '…' : `${formatBytes(summary.bytes)}${summary.unknown ? '…' : ''}`} label="on disk" />
@@ -463,8 +495,13 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
         <Stat value={summary.stale} label="stale" tone={summary.stale ? 'text-error' : ''} />
         <span className="ml-auto flex items-center gap-1.5 text-meta text-muted">
           <HardDrive size={12} aria-hidden />
+          {summary.reading > 0 && (
+            <span data-worktrees-reading>
+              Reading changes, {summary.reading} left ·
+            </span>
+          )}
           {sizesNote && <span>{sizesNote} ·</span>}
-          <Button variant="quiet" size="sm" icon={<RefreshCw size={12} aria-hidden className={refreshing ? 'animate-spin' : ''} />} disabled={refreshing || state.loading} onClick={() => void refresh()} data-tooltip="Fetch, then read every worktree and measure them again" data-worktree-refresh>
+          <Button variant="quiet" size="sm" icon={<RefreshCw size={12} aria-hidden className={refreshing || reading ? 'animate-spin' : ''} />} disabled={refreshing || state.loading} onClick={() => void refresh()} data-tooltip="Fetch, then read every worktree and measure them again" data-worktree-refresh>
             Refresh
           </Button>
         </span>

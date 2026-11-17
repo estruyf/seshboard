@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
+import { createRpcClient, mergeFacts, messagePortTransport, type WorktreeFacts, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine, type EngineOptions, type TrashScope } from './engine.ts';
 import { fakeAppServer, thread } from './providers/codex/codexFakes.ts';
@@ -72,7 +72,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; trashScopes?: TrashScope[]; codex?: EngineOptions['codex']; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
+function connect(extra: { worktreeFactsWaitMs?: number; trashed?: string[][]; trashScopes?: TrashScope[]; codex?: EngineOptions['codex']; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -86,6 +86,7 @@ function connect(extra: { trashed?: string[][]; trashScopes?: TrashScope[]; code
     // No login shell and an empty PATH, so the test never depends on the machine (a test that runs git with it passes its own).
     shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: extra.path ?? '' }, resolved: false, durationMs: 0 }),
     claudeBinary: '/nonexistent/claude',
+    ...(extra.worktreeFactsWaitMs !== undefined ? { worktreeFactsWaitMs: extra.worktreeFactsWaitMs } : {}),
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
     ...(extra.onKeepAwake ? { onKeepAwake: extra.onKeepAwake } : {}),
@@ -1479,4 +1480,70 @@ describe('Claude profiles', () => {
     await expect(client.call('worktree.finish', { sessionId: SESSION_ID, cwd: tree, action: 'remove' })).rejects.toMatchObject({ code: 'SESSION_BUSY' });
     expect(existsSync(tree)).toBe(true);
   });
+});
+
+describe('worktrees.list in a repository with many worktrees', () => {
+  it('answers without the slow facts, then sends them as they are read', async () => {
+    const { client } = connect({ worktreeFactsWaitMs: 0 });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-many-worktrees-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    const run = (cwd: string, ...args: string[]) => git(cwd, args);
+    await run(repo, 'init', '-q', '-b', 'main');
+    await run(repo, 'config', 'user.email', 'test@example.com');
+    await run(repo, 'config', 'user.name', 'Test');
+    writeFileSync(join(repo, 'a.txt'), 'one\n');
+    await run(repo, 'add', '.');
+    await run(repo, 'commit', '-qm', 'initial');
+    const trees: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      const tree = join(repo, '.worktrees', `wt-${i}`);
+      await run(repo, 'worktree', 'add', '-q', '-b', `wt-${i}`, tree);
+      trees.push(tree);
+    }
+    // One with a file nobody committed, one with a commit of its own.
+    writeFileSync(join(trees[3]!, 'wip.txt'), 'wip\n');
+    writeFileSync(join(trees[5]!, 'b.txt'), 'b\n');
+    await run(trees[5]!, 'add', '.');
+    await run(trees[5]!, 'commit', '-qm', 'own');
+
+    const facts: WorktreeFacts[] = [];
+    const pullRequests: Array<unknown> = [];
+    client.on('worktrees.facts', (event) => event.root === repo && facts.push(...event.facts));
+    client.on('worktrees.pullRequests', (event) => event.root === repo && pullRequests.push(event.pullRequests));
+
+    const list = await client.call('worktrees.list', { root: repo });
+    expect(list.worktrees).toHaveLength(41);
+    // Rows and what is cheap are there at once; every slow fact is still to come, and says so.
+    expect(list.worktrees.every((w) => w.factsPending)).toBe(true);
+    expect(list.worktrees[0]).toMatchObject({ isMain: true, branch: 'main' });
+    expect(list.worktrees.find((w) => w.name === 'wt-5')).toMatchObject({ branch: 'wt-5', missing: false, underClaudeDir: false });
+    // No gh here (the test's PATH is empty): that is answered at once, with none known.
+    expect(list.pullRequests).toBe(false);
+    expect(list.pullRequestsPending).toBeUndefined();
+
+    await vi.waitFor(() => expect(new Set(facts.map((f) => f.path)).size).toBe(41), { timeout: 60_000, interval: 50 });
+    await vi.waitFor(() => expect(pullRequests).toEqual([null]));
+    const full = mergeFacts(list, facts);
+    expect(full.worktrees.some((w) => w.factsPending)).toBe(false);
+    expect(full.worktrees.find((w) => w.name === 'wt-3')).toMatchObject({ uncommitted: 1, ahead: 0 });
+    expect(full.worktrees.find((w) => w.name === 'wt-5')).toMatchObject({ uncommitted: 0, ahead: 1, unpushed: 1, merged: false });
+    expect(full.worktrees.find((w) => w.name === 'wt-7')).toMatchObject({ uncommitted: 0, ahead: 0 });
+
+    // Asked again, whatever it leaves pending (that depends on how long ago the facts were read) is told by events,
+    // and nothing it does carry is a placeholder.
+    const again = await client.call('worktrees.list', { root: repo });
+    const asked = mergeFacts(again, facts);
+    expect(asked.worktrees.some((w) => w.factsPending)).toBe(false);
+    for (const w of again.worktrees.filter((x) => !x.factsPending)) {
+      const { uncommitted, ahead, unpushed, merged } = full.worktrees.find((x) => x.path === w.path)!;
+      expect(w).toMatchObject({ uncommitted, ahead, unpushed, merged });
+    }
+
+    // A caller that only needs names reads nothing in the background.
+    const before = facts.length;
+    const names = await client.call('worktrees.list', { root: repo, facts: false });
+    expect(names.worktrees.every((w) => w.factsPending)).toBe(true);
+    await new Promise((done) => setTimeout(done, 100));
+    expect(facts.length).toBe(before);
+  }, 120_000);
 });

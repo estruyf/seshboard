@@ -4366,6 +4366,9 @@ async function runProjectPageStep(win: BrowserWindow, root: string): Promise<str
 
   const main = '[data-worktree-row][data-group="main"]';
   if (!(await js(`!!${q(main)}`))) return 'the main checkout is not listed';
+  // The rows come at once; their changes, commits and pull requests are read after. Nothing is suggested or picked before that.
+  if (!(await waitInPage(win, `!${q('[data-worktrees-tab]')}.hasAttribute('data-reading')`, 20_000))) return 'the worktrees were still being read after 20 seconds';
+  if (await js(`!!${q('[data-group="reading"]')}`)) return 'a worktree is still in the Reading group after the facts were in';
   if (!(await js(`${q(main)}.hasAttribute('data-locked') && !${q(`${main} [data-worktree-pick]`)}`))) return 'the main checkout can be picked';
   const rows = (await js(`document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-worktree-row]`)}).length`)) as number;
   const groups = (await js(`[...document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-worktree-group]`)})].map((e) => e.dataset.worktreeGroup)`)) as string[];
