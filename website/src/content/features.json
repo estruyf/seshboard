@@ -27,6 +27,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:note-panel",
+      "name": "Note in the session header and the Note panel",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "palette:remind",
       "name": "remind",
       "page": "sessions/upcoming"

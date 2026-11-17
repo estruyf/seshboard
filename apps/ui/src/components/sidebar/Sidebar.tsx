@@ -429,6 +429,12 @@ export const SessionRow = memo(function SessionRow({
   const chevron = tree && <TreeChevron open={tree.open} count={tree.count} noun={orchestrated ? 'session' : 'step'} className={hideForActions} onToggle={tree.onToggle} />;
   // An unsent message: a pen in the same corner, never in a status colour.
   const pen = draft !== null && <PencilLine size={11} className="shrink-0 text-faint" aria-hidden data-row-pen />;
+  // A note the row has no line for (compact rows, or while what the session needs takes the line): a mark in the same corner.
+  const noteMark = note !== null && (style === 'compact' || status === 'needs-you') && (
+    <span className="flex shrink-0 text-faint" data-tooltip={`Note: ${note}`} aria-hidden data-row-note-mark>
+      <NotebookPen size={11} aria-hidden />
+    </span>
+  );
   // Loose ends: what it left behind in git or on GitHub, or a queued prompt. The tooltip lists them, the unsent message too.
   const gitEnds = useRowLooseEnds(data.id);
   const queued = useLater((s) => s.items.some((item) => item.waitFor.kind === 'session' && item.waitFor.sessionId === data.id));
@@ -565,6 +571,7 @@ export const SessionRow = memo(function SessionRow({
         {pin}
         {windowMark}
         {pen}
+        {noteMark}
         {loose}
         {warning}
         {status === 'error' && <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} agent={agent} /></span>}
@@ -586,6 +593,7 @@ export const SessionRow = memo(function SessionRow({
           {pin}
           {windowMark}
           {pen}
+          {noteMark}
           {loose}
           {warning}
           {age}

@@ -20,6 +20,8 @@ export interface RailAvailable {
   ask: boolean;
   agents: boolean;
   commands: boolean;
+  /** The session has a note, or its panel is open. */
+  note: boolean;
   /** The ids of the mods' panes open in the session. */
   mods: readonly string[];
   /** The apps pinned to the rail that are installed, by editor id, while the session has a folder to open. */
@@ -29,7 +31,7 @@ export interface RailAvailable {
 /** The rail's groups, top to bottom: what the session made, then questions about it, then the mods' panes, then the apps. */
 const GROUPS: readonly (readonly Exclude<RailTool, 'mods'>[])[] = [
   ['changes', 'terminal', 'web', 'preview'],
-  ['ask', 'agents', 'commands'],
+  ['ask', 'agents', 'commands', 'note'],
 ];
 
 /**
@@ -68,7 +70,7 @@ export interface RailCounts {
   commands?: number;
 }
 
-const NAMES: Record<Exclude<RailTool, 'mods'>, string> = { changes: 'Changes', terminal: 'Terminal', web: 'Browser', preview: 'Preview', ask: 'Ask', agents: 'Agents', commands: 'Commands' };
+const NAMES: Record<Exclude<RailTool, 'mods'>, string> = { changes: 'Changes', terminal: 'Terminal', web: 'Browser', preview: 'Preview', ask: 'Ask', agents: 'Agents', commands: 'Commands', note: 'Note' };
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** What the badge says in words: "3 files", "2 tabs", "1 running". Null with nothing to count. */

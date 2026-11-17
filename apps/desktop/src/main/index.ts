@@ -12197,7 +12197,8 @@ async function runCatchUpPassStep(win: BrowserWindow): Promise<string> {
 
 /**
  * What's left in a session: N on its row opens the note, Save shows it under the title, the sidebar's search finds the
- * session by it, and Note… in the row's menu clears it again. The note lives in the throwaway profile.
+ * session by it, the header shows it and opens it in the Note panel, where it changes, and Note… in the row's menu
+ * clears it again. The note lives in the throwaway profile.
  */
 async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -12221,6 +12222,20 @@ async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
   const found = await waitInPage(win, `!!${row} && [...document.querySelectorAll('[data-session-list] [data-session-id]')].every((r) => r.dataset.sessionId === ${JSON.stringify(smokeSessionId)} || (r.innerText + (r.dataset.tooltip ?? '')).toLowerCase().includes('push after review'))`, 3_000);
   await setFieldValue(win, 'input[placeholder="Search sessions"]', '');
   if (!found) return 'search did not find the session by its note';
+  // The header shows it too; a click opens the Note panel, where a change shows on the row.
+  const view = `document.querySelector('[data-current-session="${smokeSessionId}"]')`;
+  const headerNote = `${view}?.querySelector('[data-session-header-note]')`;
+  const panel = `${view}?.querySelector('[data-note-panel]')`;
+  if (!(await waitInPage(win, `(${headerNote}?.getAttribute('aria-label') ?? '').includes(${JSON.stringify(text)})`, 3_000))) return 'the header does not show the note';
+  await js(`${headerNote}.click()`);
+  if (!(await waitInPage(win, `${panel}?.querySelector('[data-note-panel-input]')?.value === ${JSON.stringify(text)} && !!${view}.querySelector('[data-toggle-note][data-rail-state="front"]')`, 3_000))) return 'the header did not open the note in the Note panel';
+  await shot(win, 'session-note-panel.png');
+  const changed = 'smoke note: merge on Friday';
+  await setFieldValue(win, `[data-current-session="${smokeSessionId}"] [data-note-panel-input]`, changed);
+  await js(`${panel}.querySelector('[data-note-panel-save]').click()`);
+  if (!(await waitInPage(win, `(${headerNote}?.getAttribute('aria-label') ?? '').includes(${JSON.stringify(changed)}) && ((${row}?.querySelector('[data-row-note]')?.innerText ?? '') + (${row}?.dataset.tooltip ?? '')).includes(${JSON.stringify(changed)})`, 3_000))) return 'a change in the Note panel did not show on the header and the row';
+  await js(`${panel}.querySelector('[data-note-close]').click()`);
+  if (!(await waitInPage(win, `!${panel}`, 3_000))) return 'the Note panel did not close';
   // Clear it from the row's menu.
   await waitInPage(win, `!!${row}`, 3_000);
   await js(`(() => { const r = ${row}; const b = r.getBoundingClientRect(); r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 40, clientY: b.top + 20 })); })()`);
@@ -12228,8 +12243,8 @@ async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[role=menu] [data-session-note]').click()");
   if (!(await waitInPage(win, "!!document.querySelector('[data-session-note-clear]')", 3_000))) return 'the note has no Clear';
   await js("document.querySelector('[data-session-note-clear]').click()");
-  if (!(await waitInPage(win, `!${dialog} && !!${row} && !${row}.querySelector('[data-row-note]') && !(${row}.dataset.tooltip ?? '').includes('Note:')`, 3_000))) return 'Clear left the note on the row';
-  return 'ok: N opened the note, it showed under the title and in the row\'s label, search found it, Clear from the menu took it away';
+  if (!(await waitInPage(win, `!${dialog} && !!${row} && !${row}.querySelector('[data-row-note]') && !(${row}.dataset.tooltip ?? '').includes('Note:') && !${headerNote}`, 3_000))) return 'Clear left the note on the row or the header';
+  return 'ok: N opened the note, it showed under the title and in the row\'s label, search found it, the header opened it in the Note panel where it changed, Clear from the menu took it away';
 }
 
 /**
@@ -14605,7 +14620,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('tool rail order: ⌥↑ and ⌥↓ move a tool inside its group', () => runToolRailOrderStep(win, smokeSessionId));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
-  await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));
+  await step("session note: N, shown under the title, found by search, in the header and its panel, cleared", () => runSessionNoteStep(win));
   await step('loose ends: the marker on a session with uncommitted files', () => runLooseEndsStep(win));
   await step('remind me later: L, gone from the list, Upcoming, Remind now, back under Reminders, cleared on open', () => runRemindStep(win));
   await step('star on GitHub', () => runStarStep(win));

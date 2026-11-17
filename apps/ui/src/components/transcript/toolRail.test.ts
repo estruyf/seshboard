@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { moveRailButton, railEntries, railLabel, railStep, railToolState, sameRailGroup, stepRailButton, toggleRailApp, toggleRailTool, type RailAvailable, type RailEntry } from './toolRail.ts';
 
-const ALL: RailAvailable = { changes: true, terminal: true, web: true, preview: true, ask: true, agents: true, commands: true, mods: ['notes'], apps: [] };
+const ALL: RailAvailable = { changes: true, terminal: true, web: true, preview: true, ask: true, agents: true, commands: true, note: false, mods: ['notes'], apps: [] };
 const short = (entries: RailEntry[]) => entries.map((e) => (e.kind === 'divider' ? '|' : e.id)).join(' ');
 
 describe('railEntries', () => {
@@ -21,7 +21,12 @@ describe('railEntries', () => {
     expect(short(railEntries({ ...ALL, ask: false, agents: false, commands: false }))).toBe('changes terminal web preview | mod:notes');
     expect(short(railEntries({ ...ALL, mods: [] }))).toBe('changes terminal web preview | ask agents commands');
     expect(short(railEntries({ ...ALL, changes: false, terminal: false, web: false, preview: false, mods: [] }))).toBe('ask agents commands');
-    expect(railEntries({ changes: false, terminal: false, web: false, preview: false, ask: false, agents: false, commands: false, mods: [], apps: [] })).toEqual([]);
+    expect(railEntries({ changes: false, terminal: false, web: false, preview: false, ask: false, agents: false, commands: false, note: false, mods: [], apps: [] })).toEqual([]);
+  });
+
+  it('puts the Note after Commands, while the session has a note', () => {
+    expect(short(railEntries({ ...ALL, note: true, mods: [] }))).toBe('changes terminal web preview | ask agents commands note');
+    expect(short(railEntries({ ...ALL, ask: false, agents: false, commands: false, note: true, mods: [] }))).toBe('changes terminal web preview | note');
   });
 
   it('puts the pinned apps last, in their own group, also when the mods are hidden', () => {

@@ -1,6 +1,6 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, NotebookPen, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
 import { apiRetryLine, isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -125,6 +125,7 @@ import { PreviewOpenerContext, type OpenPreview } from '../filePreview/previewOp
 import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.ts';
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
 import { CommandsPanel } from '../commands/CommandsPanel.tsx';
+import { NotePanel } from '../notes/NotePanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
 import { ProviderMark } from '../providers/ProviderMark.tsx';
 import { ProviderUsage } from '../providers/ProviderUsage.tsx';
@@ -143,6 +144,7 @@ import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
 import { closeCommands, openCommands, pickCommand, toggleCommandsPanel, useSessionCommands } from '../../state/commandsPanelStore.ts';
+import { closeNote, toggleNotePanel, useNotePanel } from '../../state/notePanelStore.ts';
 import { closeChanges, toggleChangesPanel, useSessionChanges } from '../../state/changesPanelStore.ts';
 import { toggleTerminalPanel, useRightPanel, useRightTab } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
@@ -185,6 +187,7 @@ const RAIL_ICONS = {
   ask: <MessageCircleQuestion size={17} aria-hidden />,
   agents: <Bot size={17} aria-hidden />,
   commands: <ScrollText size={17} aria-hidden />,
+  note: <NotebookPen size={17} aria-hidden />,
 };
 
 /** A session view narrower than this (without its rail) gives a panel on the right the whole view, as a sheet. */
@@ -586,6 +589,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const { commands: backgroundCommands, running: commandsRunning } = useCommandRuns(items, live !== null, activeHost?.backgroundTasks ?? null);
   const commandsState = useSessionCommands(sessionId);
   const showCommands = commandsState.open;
+  // And your note on the session, in full: the header and the sidebar row cut it short.
+  const note = summary?.note ?? null;
+  const showNote = useNotePanel((s) => s.open.has(sessionId));
   // And a file opened from a link in this session, unless the preview was detached to a dialog.
   const previewTarget = useSessionPreview(sessionId);
   const showPreview = previewTarget !== null;
@@ -622,17 +628,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     () => (sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
     [sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
   );
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, preview: showPreview, web: showWeb, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, note: showNote, preview: showPreview, web: showWeb, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   const panesOpen = modPanes.length > 0;
   // A session view can be narrower than a panel and a usable conversation together: then the panel opens over the
   // conversation as a sheet, and the rail (or the panel's ×) brings the conversation back.
   const narrowPanel = (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_PANEL;
-  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
-  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
-  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
-  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showNote || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showNote || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showNote || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showNote || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleNoteHere = () => toggleNotePanel(sessionId, showChanges || ask.open || showAgents || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
   // The Web button, ⌘⇧B and the palette: opened, it starts on the newest server running in the session.
   const toggleWebHere = () => toggleWebPanel(sessionId, right.open.some((tab) => tab !== 'web'), serverOffers[0]?.url ?? null);
   const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
@@ -1552,6 +1559,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         else if (id === 'ask') toggleAskHere();
         else if (id === 'agents') toggleAgentsHere();
         else if (id === 'commands') toggleCommandsHere();
+        else if (id === 'note') toggleNoteHere();
         else if (id === 'preview') togglePreviewHere();
         else if (id === 'web') toggleWebHere();
         else toggleTerminalPanel(sessionId);
@@ -1595,6 +1603,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       ask: canAsk || ask.open,
       agents: agents.length > 0 || agentsState.open,
       commands: backgroundCommands.length > 0 || commandsState.open,
+      note: note !== null || showNote,
       mods: modPanes.map((p) => p.id),
       apps: cwd ? railApps.filter((id) => (id === RAIL_GITHUB ? githubPage !== null : editors.some((e) => e.id === id))) : [],
     },
@@ -1608,6 +1617,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (ask.open) closeAskHere();
     if (showAgents) closeAgents(sessionId);
     if (showCommands) closeCommands(sessionId);
+    if (showNote) closeNote(sessionId);
     if (showPreview) useFilePreview.getState().closePanel(sessionId);
     if (showWeb) useWebPreview.getState().hide(sessionId);
     if (terminalOnRight) useTerminals.getState().togglePanel(sessionId, false);
@@ -1705,6 +1715,24 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   </span>
                 </>
               )
+            )}
+            {/* Your note, last: a click shows it in full in the Note panel, where it can be changed. In a narrow pane, the icon. */}
+            {note && (
+              <>
+                <Sep />
+                <button
+                  type="button"
+                  onClick={toggleNoteHere}
+                  aria-label={`Note: ${note}`}
+                  aria-pressed={right.tab === 'note'}
+                  data-tooltip={`Note: ${note}`}
+                  className={`no-drag inline-flex max-w-56 min-w-0 items-center gap-1 rounded px-0.5 hover:text-text ${right.tab === 'note' ? 'text-text' : 'text-muted'}`}
+                  data-session-header-note
+                >
+                  <NotebookPen size={11} className="shrink-0" aria-hidden />
+                  <span className="min-w-0 truncate @max-[560px]:hidden">{note}</span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -2377,6 +2405,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onClose={() => closeCommands(sessionId)}
           />
         )}
+        {!whyRequest && right.tab === 'note' && !terminalMaximized && <NotePanel sessionId={sessionId} note={note} width={panelWidth} onWidth={setRightWidth} onClose={() => closeNote(sessionId)} />}
         {!whyRequest && right.tab === 'preview' && previewTarget && !terminalMaximized && (
           <PreviewOpenerContext.Provider value={openPreviewHere}>
             <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={panelWidth} onWidth={setRightWidth} />

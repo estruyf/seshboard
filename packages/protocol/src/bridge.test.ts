@@ -65,9 +65,9 @@ describe('sidebar view and rail preferences', () => {
   });
 
   it("keeps the rail's order with every tool once, a missing one at its own place", () => {
-    expect(DEFAULT_PREFERENCES.railOrder).toEqual(['changes', 'terminal', 'web', 'preview', 'ask', 'agents', 'commands']);
-    expect(sanitizePreferences({ railOrder: ['web', 'changes', 'terminal', 'preview', 'commands', 'agents', 'ask'] })).toEqual({ railOrder: ['web', 'changes', 'terminal', 'preview', 'commands', 'agents', 'ask'] });
-    expect(sanitizePreferences({ railOrder: ['terminal', 'changes', 'mods', 'nope', 'terminal'] })).toEqual({ railOrder: ['terminal', 'changes', 'web', 'preview', 'ask', 'agents', 'commands'] });
+    expect(DEFAULT_PREFERENCES.railOrder).toEqual(['changes', 'terminal', 'web', 'preview', 'ask', 'agents', 'commands', 'note']);
+    expect(sanitizePreferences({ railOrder: ['web', 'changes', 'terminal', 'preview', 'commands', 'agents', 'ask'] })).toEqual({ railOrder: ['web', 'changes', 'terminal', 'preview', 'commands', 'agents', 'ask', 'note'] });
+    expect(sanitizePreferences({ railOrder: ['terminal', 'changes', 'mods', 'nope', 'terminal'] })).toEqual({ railOrder: ['terminal', 'changes', 'web', 'preview', 'ask', 'agents', 'commands', 'note'] });
     expect(sanitizePreferences({ railOrder: 'web' })).toEqual({});
   });
 

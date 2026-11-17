@@ -340,7 +340,7 @@ export type SidebarSort = "recent" | "quickest";
 /** How the sidebar groups its sessions: by state (Needs you, Working, To review, Open) or by project. */
 export type SidebarGroup = "state" | "project";
 /** The session tools the rail at a session's right edge can show (a mod's panes go under `mods`). */
-export const RAIL_TOOLS = ["changes", "terminal", "web", "preview", "ask", "agents", "commands", "mods"] as const;
+export const RAIL_TOOLS = ["changes", "terminal", "web", "preview", "ask", "agents", "commands", "note", "mods"] as const;
 export type RailTool = (typeof RAIL_TOOLS)[number];
 /** The rail's tools in their default order, as `railOrder` starts (the mods' panes keep their own place). */
 export const RAIL_ORDER: readonly Exclude<RailTool, "mods">[] = RAIL_TOOLS.filter((tool): tool is Exclude<RailTool, "mods"> => tool !== "mods");

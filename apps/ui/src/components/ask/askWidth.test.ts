@@ -21,7 +21,7 @@ describe('Ask panel width', () => {
 });
 
 describe('the right panel', () => {
-  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false, preview = false, web = false) => ({ changes, ask, agents, commands, preview, web, terminal });
+  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false, preview = false, web = false, note = false) => ({ changes, ask, agents, commands, note, preview, web, terminal });
 
   it('shows tabs only when more than one panel is open, on the tab picked last', () => {
     expect(rightPanel(open(true, true), 'ask')).toEqual({ tab: 'ask', tabs: true, open: ['changes', 'ask'] });
@@ -47,6 +47,11 @@ describe('the right panel', () => {
     expect(rightPanel(open(false, false, false, false, true), 'changes')).toEqual({ tab: 'commands', tabs: false, open: ['commands'] });
   });
 
+  it('puts the Note after Commands and before a file preview', () => {
+    expect(rightPanel(open(false, false, false, false, true, true, false, true), 'note')).toEqual({ tab: 'note', tabs: true, open: ['commands', 'note', 'preview'] });
+    expect(rightPanel(open(false, false, false, false, false, false, false, true), 'changes')).toEqual({ tab: 'note', tabs: false, open: ['note'] });
+  });
+
   it('puts a file preview after Commands and before the terminal', () => {
     expect(rightPanel(open(true, false, false, true, true, true), 'preview')).toEqual({ tab: 'preview', tabs: true, open: ['changes', 'commands', 'preview', 'terminal'] });
     expect(rightPanel(open(false, false, false, false, false, true), 'changes')).toEqual({ tab: 'preview', tabs: false, open: ['preview'] });
@@ -64,6 +69,7 @@ describe('the right panel', () => {
     expect(readTab('agents')).toBe('agents');
     expect(readTab('terminal')).toBe('terminal');
     expect(readTab('commands')).toBe('commands');
+    expect(readTab('note')).toBe('note');
     expect(readTab(null)).toBe('changes');
     expect(readTab('junk')).toBe('changes');
   });
