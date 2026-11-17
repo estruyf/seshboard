@@ -202,7 +202,7 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
   const autoPicked = model.auto ?? null;
   const isAuto = autoPicked !== null || model.value === AUTO_MODEL;
   const ranOn = model.fallback ?? null;
-  const modelTitle = autoPicked !== null ? `Model: Auto picked ${autoPicked}` : ranOn !== null ? `Model: ${model.label}. The last turn ran on ${ranOn}: ${model.label} was overloaded` : `Model: ${model.label}`;
+  const modelTitle = autoPicked !== null ? `Model: Auto picked ${autoPicked}` : ranOn !== null ? `Model: ${model.label}. The last turn ran on ${ranOn}: ${model.label} was busy or unavailable` : `Model: ${model.label}`;
   chips.push({
     key: 'model',
     face: (l) =>

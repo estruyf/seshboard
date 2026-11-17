@@ -1239,6 +1239,44 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('does not call a reply the fallback after you switch to the fallback model yourself', async () => {
+    const t = setup({ fallbackModel: () => 'sonnet', onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5-20260101') });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });
+    await until(() => t.infos.at(-1)!.fallbackRan === 'claude-sonnet-5-5-20260101');
+    // /model sonnet: the next turn's init names Sonnet, which is the main model now.
+    t.queries[0]!.model = 'claude-sonnet-5-5-20260101';
+    await t.manager.send({ sessionId: id, text: 'again', attachments: [], fork: false });
+    await until(() => t.infos.at(-1)!.fallbackRan === null);
+    await t.manager.send({ sessionId: id, text: 'and again', attachments: [], fork: false });
+    await until(() => t.queries[0]!.received.length === 3 && lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)!.fallbackRan).toBeNull();
+    t.manager.closeAll();
+  });
+
+  it('gives a fork, a start on another profile and a question the fallback model of their own folder and profile', async () => {
+    const asked: Array<[string, string]> = [];
+    const t = setup({
+      cwds: { plan: '/work/app', old: '/work/app' },
+      profiles: { old: 'work' },
+      openElsewhere: ['old'],
+      fallbackModel: (cwd, profileId) => {
+        asked.push([cwd, profileId]);
+        return profileId === 'work' ? 'haiku' : 'sonnet';
+      },
+    });
+    const fork = await t.manager.fork({ from: 'plan', text: 'Build it', model: 'opus', effort: null, permissionMode: 'default' });
+    await until(() => lastState(t.infos, fork) === 'idle');
+    expect(t.queries[0]!.options).toMatchObject({ forkSession: true, fallbackModel: 'sonnet' });
+    const work = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'opus', profileId: 'work' });
+    await until(() => lastState(t.infos, work) === 'idle');
+    expect(t.queries[1]!.options.fallbackModel).toBe('haiku');
+    expect(asked).toContainEqual(['/work/app', 'work']);
+    // Ask about this session: the helper fork of a session on the work profile, and not on its own model.
+    await t.manager.askAbout('old', '<side-question>\n</side-question>\n\nWhat changed?', () => {});
+    expect(t.queries[2]!.options).toMatchObject({ forkSession: true, persistSession: false, fallbackModel: 'haiku' });
+    t.manager.closeAll();
+  });
+
   it('says nothing about the fallback when none is set, or when a reply is from some other model', async () => {
     const without = setup({ onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5') });
     const a = await without.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });

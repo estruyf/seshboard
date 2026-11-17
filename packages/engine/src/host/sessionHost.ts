@@ -891,8 +891,8 @@ export class SessionHost {
         return;
       }
       const first = this.info.state === 'starting';
-      // Every turn's init names the model; one that is the fallback (if Claude Code ever reports it so) is not the session's own.
-      if (typeof init.model === 'string' && init.model && (!this.mainModel || !isFallbackModel(init.model, usableFallback(this.config.fallbackModel, this.config.model)))) this.mainModel = init.model;
+      // Every turn's init comes before any API call and names the main model (Claude Code tries it again each turn), so it is always taken as the main one: a /model change or a swap that stuck is not shown as the fallback.
+      if (typeof init.model === 'string' && init.model) this.mainModel = init.model;
       this.update({
         sessionId: init.session_id,
         cwd: typeof init.cwd === 'string' && init.cwd ? sessionFolder(this.info.cwd, init.cwd) : this.info.cwd,

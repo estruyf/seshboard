@@ -842,6 +842,7 @@ export class HostManager {
     const settings = this.settings.get(sessionId);
     const model = running?.model ?? settings?.model ?? null;
     const effort = running?.effort ?? settings?.effort ?? null;
+    const fallback = usableFallback(this.deps.fallbackModel?.(cwd, profileId), model);
     this.deps.assertTrusted?.(cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
     const helperId = randomUUID();
@@ -876,6 +877,8 @@ export class HostManager {
         canUseTool: async (name, toolInput) => (isReadOnlyTool(name, toolInput) ? { behavior: 'allow', updatedInput: toolInput } : { behavior: 'deny', message: READ_ONLY_REASON }),
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),
+        // So the question is answered while the main model is overloaded.
+        ...(fallback ? { fallbackModel: fallback } : {}),
         stderr: (data) => this.deps.log('debug', `[claude ask] ${data.trimEnd()}`),
       },
     });

@@ -214,7 +214,7 @@ export function ProjectDefaultsEditor({
         <Row label="Fallback model">
           <Select
             label="Fallback model"
-            tooltip="Claude Code switches to this model when the main one is overloaded or unavailable. The main model is tried again on each turn"
+            tooltip="Claude Code switches to this model when the main one is overloaded or unavailable. The main model is tried again on each turn."
             className={field}
             value={inheritValue(defaults.fallbackModel ?? null, defaults.globalFallbackModel)}
             onChange={(value) => set(root ? { fallbackModel: value === GLOBAL ? null : nullable(value), globalFallbackModel: value === GLOBAL || undefined } : { fallbackModel: nullable(value) })}
