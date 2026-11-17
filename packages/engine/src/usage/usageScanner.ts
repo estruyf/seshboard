@@ -1,16 +1,36 @@
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { open, readdir, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import { longPromptOver } from '@seshboard/protocol';
+import { longPromptOver, type SessionProvider } from '@seshboard/protocol';
+import { CODEX_USAGE_MARKERS, codexUsage, COPILOT_USAGE_MARKERS, copilotUsage } from './providerUsage.ts';
 import { hourOf, parsePromptLine, parseUsageLine, PROMPT_MARKER, PROMPT_NOT, USAGE_MARKER, type PromptLine, type UsageLine } from './transcriptUsage.ts';
 
-/** A config folder to read: its `projects/` transcripts count for `scope`. */
+/** A config folder to read: its `projects/` transcripts count for `scope`, or another provider's session files in its folder. */
 export interface ScanTarget {
   scope: string;
   configDir: string;
+  /** Whose folder it is (Claude Code's when left out). */
+  provider?: SessionProvider;
 }
+
+/** Where each provider keeps its session files in its folder, and which of the files under them to read. */
+const LAYOUT: Record<SessionProvider, { dirs: string[]; file: (name: string) => boolean }> = {
+  claude: { dirs: ['projects'], file: (name) => name.endsWith('.jsonl') },
+  copilot: { dirs: ['session-state'], file: (name) => name === 'events.jsonl' },
+  // A thread that is archived moves to `archived_sessions/`: its responses are already counted, by their ids.
+  codex: { dirs: ['sessions', 'archived_sessions'], file: (name) => name.startsWith('rollout-') && name.endsWith('.jsonl') },
+};
+
+/**
+ * Another provider's reader: the lines with one of `markers`, of a whole file, as usage. Read whole because a line's
+ * meaning depends on earlier ones; responses already counted stay counted once.
+ */
+const READERS: Partial<Record<SessionProvider, { markers: Buffer[]; read: (lines: string[], path: string) => UsageLine[] }>> = {
+  copilot: { markers: COPILOT_USAGE_MARKERS.map((m) => Buffer.from(m)), read: (lines, path) => copilotUsage(lines, basename(dirname(path))) },
+  codex: { markers: CODEX_USAGE_MARKERS.map((m) => Buffer.from(m)), read: (lines) => codexUsage(lines) },
+};
 
 /** The scope a config folder counts under: its real path, so two profiles on one folder (or a link to it) count once. */
 export function scopeOf(configDir: string): string {
@@ -29,12 +49,13 @@ const USER_MARKER = Buffer.from(PROMPT_MARKER);
 const NOT_USER_MARKER = Buffer.from(PROMPT_NOT);
 
 /** Whether a response's prompt was over its model's long-prompt size, where all of its tokens cost more (`costEstimate.ts`). */
-const isLong = (line: UsageLine) => line.input + line.cacheRead + line.cacheWrite > (longPromptOver(line.model) ?? Infinity);
+// A line whose cost the provider gave needs no price, and its totals may stand for several requests.
+const isLong = (line: UsageLine) => line.usd == null && line.input + line.cacheRead + line.cacheWrite > (longPromptOver(line.model) ?? Infinity);
 
 const hashOf = (bytes: Buffer) => createHash('sha1').update(bytes).digest('hex');
 
-/** Every `.jsonl` under a folder: session transcripts, and subagent transcripts in `<session>/subagents/`. */
-async function transcripts(dir: string, depth = 0): Promise<string[]> {
+/** Every session file under a folder: for Claude Code, session transcripts and subagent transcripts in `<session>/subagents/`. */
+async function transcripts(dir: string, file: (name: string) => boolean, depth = 0): Promise<string[]> {
   if (depth > 4) return [];
   let entries;
   try {
@@ -45,8 +66,8 @@ async function transcripts(dir: string, depth = 0): Promise<string[]> {
   const found: string[] = [];
   for (const entry of entries) {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...(await transcripts(path, depth + 1)));
-    else if (entry.isFile() && entry.name.endsWith('.jsonl')) found.push(path);
+    if (entry.isDirectory()) found.push(...(await transcripts(path, file, depth + 1)));
+    else if (entry.isFile() && file(entry.name)) found.push(path);
   }
   return found;
 }
@@ -57,7 +78,7 @@ export interface ScanProgress {
 }
 
 /**
- * Reads token usage from Claude Code's transcripts into `session_usage`. Transcripts are append-only, so each file is
+ * Reads token usage from Claude Code's transcripts (and other providers' session files, `READERS`) into `session_usage`. Transcripts are append-only, so each file is
  * read from where the last scan stopped (its last complete line); a file that shrank or whose bytes before that point
  * changed is read again from the start. Every response is counted once (`usage_messages`), however many lines and
  * files repeat it. Reading yields between files, so the engine keeps answering during a long first scan.
@@ -77,15 +98,16 @@ export class UsageScanner {
       seen: db.prepare('INSERT OR IGNORE INTO usage_messages (key, scope, session_id, at, split, long) VALUES (?, ?, ?, ?, 1, 1)'),
       add: db.prepare(
         `INSERT INTO session_usage (scope, session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context,
-           long_input, long_output, long_cache_read, long_cache_write, long_cache_write_1h)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+           long_input, long_output, long_cache_read, long_cache_write, long_cache_write_1h, usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (scope, session_id, hour, model) DO UPDATE SET
            input = input + excluded.input, output = output + excluded.output, cache_read = cache_read + excluded.cache_read,
            cache_write = cache_write + excluded.cache_write, cache_write_1h = cache_write_1h + excluded.cache_write_1h,
-           turns = turns + 1, fast_turns = fast_turns + excluded.fast_turns, max_context = MAX(max_context, excluded.max_context),
+           turns = turns + excluded.turns, fast_turns = fast_turns + excluded.fast_turns, max_context = MAX(max_context, excluded.max_context),
            long_input = long_input + excluded.long_input, long_output = long_output + excluded.long_output,
            long_cache_read = long_cache_read + excluded.long_cache_read, long_cache_write = long_cache_write + excluded.long_cache_write,
-           long_cache_write_1h = long_cache_write_1h + excluded.long_cache_write_1h`,
+           long_cache_write_1h = long_cache_write_1h + excluded.long_cache_write_1h,
+           usd = CASE WHEN excluded.usd IS NULL THEN usd ELSE COALESCE(usd, 0) + excluded.usd END`,
       ),
       // A response counted before the cache writes were split (schema v30): its hour-long part is added once.
       split: db.prepare('UPDATE usage_messages SET split = 1 WHERE key = ? AND split = 0'),
@@ -120,11 +142,12 @@ export class UsageScanner {
       const unique = [...new Map(targets.map((t) => [t.scope, t])).values()];
       let added = false;
       for (const target of unique) {
-        const files = await transcripts(join(target.configDir, 'projects'));
+        const layout = LAYOUT[target.provider ?? 'claude'];
+        const files = (await Promise.all(layout.dirs.map((dir) => transcripts(join(target.configDir, dir), layout.file)))).flat();
         let done = 0;
         hooks.onProgress?.(target.scope, { done, total: files.length });
         for (const path of files) {
-          if (await this.readFile(target.scope, path)) {
+          if (await this.readFile(target.scope, path, target.provider ?? 'claude')) {
             added = true;
             hooks.onFile?.(target.scope);
           }
@@ -144,8 +167,9 @@ export class UsageScanner {
     return next;
   }
 
-  /** Reads one file's new lines. True when it added tokens. */
-  private async readFile(scope: string, path: string): Promise<boolean> {
+  /** Reads one file's new lines (another provider's: all of them). True when it added tokens. */
+  private async readFile(scope: string, path: string, provider: SessionProvider): Promise<boolean> {
+    const reader = READERS[provider];
     let info;
     try {
       info = await stat(path);
@@ -164,7 +188,7 @@ export class UsageScanner {
       return false;
     }
     try {
-      let start = known?.offset ?? 0;
+      let start = reader ? 0 : (known?.offset ?? 0);
       if (known && start > 0) {
         // Rewritten or replaced rather than appended to: read it all again (counted responses stay counted once).
         const tail = Buffer.alloc(Math.min(TAIL, start));
@@ -173,6 +197,7 @@ export class UsageScanner {
       }
       const lines: UsageLine[] = [];
       const prompts: PromptLine[] = [];
+      const raw: string[] = [];
       let offset = start;
       let pending: Buffer[] = [];
       let position = start;
@@ -188,7 +213,9 @@ export class UsageScanner {
           const line = pending.length ? Buffer.concat([...pending, piece]) : piece;
           pending = [];
           // Lines without the marker (tool results can be megabytes) are never decoded.
-          if (line.indexOf(MARKER) !== -1) {
+          if (reader) {
+            if (reader.markers.some((marker) => line.indexOf(marker) !== -1)) raw.push(line.toString('utf8'));
+          } else if (line.indexOf(MARKER) !== -1) {
             const parsed = parseUsageLine(line.toString('utf8'));
             if (parsed) lines.push(parsed);
           } else if (line.indexOf(USER_MARKER) !== -1 && line.indexOf(NOT_USER_MARKER) === -1) {
@@ -209,6 +236,7 @@ export class UsageScanner {
         await handle.read(tail, 0, tail.length, offset - tail.length);
         tailHash = hashOf(tail);
       }
+      if (reader) lines.push(...reader.read(raw, path));
       return this.store(scope, path, { size, mtime, offset, tailHash }, lines, prompts);
     } finally {
       await handle.close();
@@ -244,9 +272,11 @@ export class UsageScanner {
           line.cacheRead,
           line.cacheWrite,
           line.cacheWrite1h,
+          line.turns ?? 1,
           line.fast ? 1 : 0,
           line.input + line.cacheRead + line.cacheWrite,
           ...(long ? [line.input, line.output, line.cacheRead, line.cacheWrite, line.cacheWrite1h] : [0, 0, 0, 0, 0]),
+          line.usd ?? null,
         );
         if (line.cwd) this.statements.cwd.run(scope, line.sessionId, line.cwd);
       }

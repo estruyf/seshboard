@@ -2,10 +2,11 @@ import { safeLocale } from './locale.ts';
 import type { TokenCounts } from './usage.ts';
 
 /**
- * What tokens would cost at Anthropic's API list prices, for the estimate next to the plan's usage bars. A plan is
- * not billed per token, so this is never a charge: it says what the same work would have cost on the API. Prices are
- * per million tokens, in US dollars; a cache write is 1.25 times the input price for the 5-minute cache and twice it for
- * the hour-long one (Claude Code uses either; the transcript says which). Fast mode's premium is left out.
+ * What tokens would cost at the API list prices of their model's maker (Anthropic, or OpenAI for Codex and Copilot's
+ * GPT models), for the estimate next to the plan's usage bars. A plan is not billed per token, so this is never a
+ * charge: it says what the same work would have cost on the API. Prices are per million tokens, in US dollars; for
+ * Anthropic a cache write is 1.25 times the input price for the 5-minute cache and twice it for the hour-long one (Claude
+ * Code uses either; the transcript says which). Fast mode's premium is left out.
  */
 export interface ModelPrice {
   input: number;
@@ -23,6 +24,25 @@ export interface ModelPrice {
 }
 
 const price = (input: number, output: number, cacheRead = input / 10): ModelPrice => ({ input, output, cacheRead, cacheWrite: input * 1.25, cacheWrite1h: input * 2 });
+
+/**
+ * An OpenAI price: its cache writes last 30 minutes (`cacheWrite`) or 12 hours (`cacheWrite1h`), and a model without
+ * them listed writes at the input price. A request over 272k prompt tokens pays twice for its prompt and 1.5 times for
+ * its output, unless `long` is false.
+ */
+const openai = (input: number, cacheRead: number, output: number, cacheWrite?: [number, number], long = true): ModelPrice => {
+  const p = (scale: number, outScale: number): ModelPrice => ({
+    input: input * scale,
+    output: output * outScale,
+    cacheRead: cacheRead * scale,
+    cacheWrite: (cacheWrite?.[0] ?? input) * scale,
+    cacheWrite1h: (cacheWrite?.[1] ?? input) * scale,
+  });
+  return long ? { ...p(1, 1), longPrompt: { over: 272_000, price: p(2, 1.5) } } : p(1, 1);
+};
+
+/** An OpenAI model's whole name, with or without its snapshot date: `gpt-5-4` is not `gpt-5-4-nano`. */
+const named = (name: string) => new RegExp(`${name}(-\\d{4}-\\d{2}-\\d{2})?$`);
 
 const FABLE_5_2 = price(8, 40, 0.2);
 const OPUS_5_5 = price(4, 20, 0.2);
@@ -54,14 +74,27 @@ const PRICES: ReadonlyArray<readonly [RegExp, ModelPrice]> = [
   [/opus/, OPUS_5_5],
   [/sonnet/, SONNET_5_5],
   [/haiku/, HAIKU_5_5],
+  // OpenAI's, for Codex and Copilot. Checked against OpenAI's pricing on 2026-11-17; no family line, as the names don't
+  // say which a newer model is like.
+  [named('gpt-6-1-sol'), openai(2, 0.1, 10, [2.5, 5])],
+  [named('gpt-6-luna'), openai(0.1, 0.01, 0.5, [0.125, 0.25])],
+  [named('gpt-6-astra'), openai(10, 1, 50, [12.5, 25])],
+  [named('gpt-5-6-terra'), openai(2, 0.2, 12, [2.5, 5])],
+  [named('gpt-5-6-luna'), openai(0.2, 0.02, 1.2, [0.25, 0.5])],
+  [named('gpt-5-5'), openai(5, 0.5, 30)],
+  [named('gpt-5-4'), openai(2.5, 0.25, 15)],
+  [named('gpt-5-3-codex'), openai(1.75, 0.175, 14, undefined, false)],
+  // Microsoft's, in Copilot (Azure's list price).
+  [named('mai-code-1-1-flash'), openai(0.2, 0.02, 1.2, undefined, false)],
 ];
 
 /**
- * A model's list price, or null for one this table doesn't know (`<synthetic>`, another provider's). `prompt`: the
+ * A model's list price, or null for one this table doesn't know (`<synthetic>`, a newer GPT). `prompt`: the
  * request's prompt tokens, for a model that costs more over some prompt size (`longPrompt`); left out, the lower price.
  */
 export function priceOf(model: string, prompt = 0): ModelPrice | null {
-  const id = model.toLowerCase();
+  // Copilot writes versions with a dot (`claude-sonnet-4.6`, `gpt-5.4`), the APIs with a dash.
+  const id = model.toLowerCase().replace(/(\d)\.(?=\d)/g, '$1-');
   const p = PRICES.find(([pattern]) => pattern.test(id))?.[1] ?? null;
   return p?.longPrompt && prompt > p.longPrompt.over ? p.longPrompt.price : p;
 }

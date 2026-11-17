@@ -5,7 +5,7 @@ import type { SessionPr } from '../links/linkStore.ts';
 import { oneLine } from '../catchUp/turn.ts';
 import { attributeCommits, localClock, parseCommits, prDay, sessionDays, uniquePrs, type Commit, type MessageRow, type PromptRow, type SessionDay, type UsageRow } from './activityDays.ts';
 import { ActivityStore, type StoredSummary } from './activityStore.ts';
-import { LONG_COLUMNS } from '../usage/usageQuery.ts';
+import { PRICE_COLUMNS } from '../usage/usageQuery.ts';
 import { DAY_SUMMARY_SYSTEM_PROMPT, daySummaryInput, parseDaySummary } from './daySummary.ts';
 
 const HOUR = 3_600_000;
@@ -56,7 +56,7 @@ export class ActivityService {
     this.statements = {
       messages: db.prepare('SELECT session_id, at FROM usage_messages WHERE at >= ? AND at < ?'),
       prompts: db.prepare('SELECT session_id, at, text FROM usage_prompts WHERE at >= ? AND at < ?'),
-      usage: db.prepare(`SELECT session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, ${LONG_COLUMNS} FROM session_usage WHERE hour >= ? AND hour < ?`),
+      usage: db.prepare(`SELECT session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, ${PRICE_COLUMNS} FROM session_usage WHERE hour >= ? AND hour < ?`),
       turns: db.prepare('SELECT session_id, at, did_json FROM catchup_turns WHERE at >= ? AND at < ? ORDER BY at'),
       hidden: db.prepare('SELECT id FROM session_flags WHERE hidden_at IS NOT NULL'),
       cwd: db.prepare('SELECT cwd FROM usage_sessions WHERE session_id = ? AND cwd IS NOT NULL LIMIT 1'),

@@ -2263,10 +2263,20 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   // ring, with every number in its tooltip.
                   info={
                     foldFooter ? null : otherProvider && !planUsage ? (
-                      otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
+                      otherProfileId && (
+                        <>
+                          <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
+                          <SessionCost sessionId={sessionId} profileId={otherProfileId} />
+                        </>
+                      )
                     ) : otherProvider ? (
-                      // Codex's windows, without Claude Code's session cost (read from its transcripts).
-                      otherProfileId && <UsageBand profileId={otherProfileId} footer />
+                      // Codex's windows, and the session's cost from its rollout files.
+                      otherProfileId && (
+                        <>
+                          <UsageBand profileId={otherProfileId} footer />
+                          <SessionCost sessionId={sessionId} profileId={otherProfileId} />
+                        </>
+                      )
                     ) : (
                       <>
                         <UsageBand profileId={profileId} footer />

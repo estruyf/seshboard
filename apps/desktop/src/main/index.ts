@@ -3392,14 +3392,20 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return waitInPage(win, `document.querySelector('[data-usage-view]')?.dataset.usageProfile === ${JSON.stringify(value)}`, 3_000);
     };
     if (!(await pickUsageProfile(profileId))) return "Usage's profile menu could not pick the Copilot profile";
-    const quotaShown = await waitInPage(win, "(document.querySelector('[data-provider-quota=\"copilot\"]')?.textContent ?? '').includes('212 of 1,500 used') && !document.querySelector('[data-usage-tab]')?.offsetParent", 5_000);
+    await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
+    const quotaShown = await waitInPage(win, "(document.querySelector('[data-provider-quota=\"copilot\"]')?.textContent ?? '').includes('212 of 1,500 used')", 5_000);
     const quotaText = (await js("document.querySelector('[data-provider-quota], [data-provider-quota-status]')?.textContent ?? 'nothing'")) as string;
     await shot(win, 'usage-copilot.png');
+    // Its tokens, read from Copilot's session files, in the Tokens tab; then back on Limits for later steps.
+    await js("document.querySelector('[data-usage-tab=\"tokens\"]')?.click()");
+    const copilotTokens = await waitInPage(win, "document.querySelector('[data-usage-tab=\"tokens\"]')?.getAttribute('aria-selected') === 'true' && !!document.querySelector('[data-usage-view] [data-usage-headline], [data-usage-view] [data-usage-scan]')", 10_000);
+    await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
     // Back on a Claude Code profile, so later steps find Usage as it was.
     if (claudeProfile) await pickUsageProfile(claudeProfile);
     await js("document.querySelector('[data-usage-back]')?.click()");
     await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
     if (!quotaShown) return `Usage for the Copilot profile doesn't show its premium requests (${quotaText})`;
+    if (!copilotTokens) return "Usage for the Copilot profile has no Tokens tab with totals";
     // Home's card for the profile: its premium requests too, never Claude Code's 5-hour and weekly windows.
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
     const homeCard = `document.querySelector('[data-home-profile=${JSON.stringify(profileId)}]')`;
@@ -3515,14 +3521,20 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${band}.includes('5-hour limit: 23% used') && ${band}.includes('Weekly limit: 41% used') && !${view}.querySelector('[data-usage-cost]')`, 10_000))) {
       return `the Codex session's tray doesn't show its windows (${JSON.stringify(await js(band))})`;
     }
-    // Usage for the Codex profile: its windows, without Claude Code's tabs, periods, costs and charts.
+    // Usage for the Codex profile: its windows in Limits, without Claude Code's history, and its tokens in Tokens.
     await js(`${view}.querySelector('[data-usage-band]').click()`);
-    const usageOk = await waitInPage(win, "document.querySelectorAll('[data-usage-view] [data-usage-plan-windows] > *').length === 2 && !document.querySelector('[data-usage-view] [data-usage-tab]')?.offsetParent && !document.querySelector('[data-usage-view] [data-usage-history]')", 10_000);
+    await waitInPage(win, "!!document.querySelector('[data-usage-view] [data-usage-tab]')", 5_000);
+    await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
+    const usageOk = await waitInPage(win, "document.querySelectorAll('[data-usage-view] [data-usage-plan-windows] > *').length === 2 && !document.querySelector('[data-usage-view] [data-usage-history]')", 10_000);
     const usageText = usageOk ? '' : String(await js("document.querySelector('[data-usage-view]')?.innerText.slice(0, 200) ?? 'no Usage view'"));
     if (usageOk) await shot(win, 'usage-codex.png');
+    await js("document.querySelector('[data-usage-tab=\"tokens\"]')?.click()");
+    const codexTokens = await waitInPage(win, "document.querySelector('[data-usage-tab=\"tokens\"]')?.getAttribute('aria-selected') === 'true' && !!document.querySelector('[data-usage-view] [data-usage-headline], [data-usage-view] [data-usage-scan]')", 10_000);
+    await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
     await js("document.querySelector('[data-usage-back]')?.click()");
     await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
     if (!usageOk) return `Usage for the Codex profile doesn't show just its two windows (${usageText})`;
+    if (!codexTokens) return 'Usage for the Codex profile has no Tokens tab with totals';
     await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
     if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 5_000))) return 'the Codex session did not open again after Usage';
     // A finished turn folds its tool calls into one line (Skim); opened, each is a step, with Codex's file read as a Read.

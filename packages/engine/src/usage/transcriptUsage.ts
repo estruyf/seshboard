@@ -24,6 +24,10 @@ export interface UsageLine {
   /** The part of `cacheWrite` that went to the hour-long prompt cache, which costs more (`costEstimate.ts`). */
   cacheWrite1h: number;
   fast: boolean;
+  /** How many API responses the line stands for (Copilot's totals cover a run); 1 when left out. */
+  turns?: number;
+  /** What the tokens cost, when the provider says (Copilot's AI credits); left out, the price table prices them. */
+  usd?: number | null;
 }
 
 const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);

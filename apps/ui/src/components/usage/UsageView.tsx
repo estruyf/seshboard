@@ -61,10 +61,12 @@ export function UsageView() {
   const paired = useComputers((s) => s.status?.computers.length ?? 0) > 0;
   const profiles = useProfiles((s) => s.profiles);
   const profile = profiles.find((p) => p.id === profileId);
-  /** A profile of another provider with premium requests (GitHub Copilot): those, not Claude Code's limits and tokens. */
+  /** A profile of another provider with premium requests (GitHub Copilot): those in Limits, not Claude Code's limits. */
   const provider = profile && profile.provider !== 'claude' && !hasPlanUsage(profile.provider) ? profile.provider : null;
-  /** A profile with plan windows only (OpenAI Codex): its windows, without Claude Code's tabs, periods, costs and charts. */
+  /** A profile with plan windows only (OpenAI Codex): its windows in Limits, without Claude Code's history and costs. */
   const windowsOnly = !!profile && planWindowsOnly(profile.provider);
+  /** Another provider's Limits tab has no periods: its numbers are the account's now. */
+  const noPeriods = (!!provider || windowsOnly) && tab === 'limits';
   const [quotaAsked, setQuotaAsked] = useState(0);
   const entry = useUsageFor(provider ? null : profileId);
   const connection = useEngineConnection();
@@ -174,7 +176,7 @@ export function UsageView() {
           </div>
       </ViewHeader>
       {/* The tabs, under the header. */}
-      <div className={`shrink-0 border-b border-border px-6 @max-[860px]:px-4 ${provider || windowsOnly ? 'hidden' : ''}`}>
+      <div className="shrink-0 border-b border-border px-6 @max-[860px]:px-4">
         <div className="no-drag flex items-end gap-3">
           <div role="tablist" aria-label="Usage" className="-mb-px flex gap-1" onKeyDown={onTabKey}>
             {TABS.map(({ id, label }) => (
@@ -198,7 +200,7 @@ export function UsageView() {
               </button>
             ))}
           </div>
-          {paired && (
+          {paired && !noPeriods && (
             <SegmentedControl<UsageComputers>
               mode="radio"
               label="Computers"
@@ -214,7 +216,7 @@ export function UsageView() {
           <SegmentedControl<UsagePeriod>
             mode="radio"
             label="Period"
-            className={`mb-1.5 ${paired ? '' : 'ml-auto'}`}
+            className={`mb-1.5 ${paired ? '' : 'ml-auto'} ${noPeriods ? 'invisible' : ''}`}
             value={period}
             onChange={setPeriod}
             segments={PERIODS.map((value, i) => ({ value, label: PERIOD_LABEL[value], kbd: String(i + 1), data: { 'data-usage-period': value } }))}
@@ -223,14 +225,14 @@ export function UsageView() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div role="tabpanel" id="usage-tab-panel" aria-labelledby={`usage-tab-${tab}`} className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)] gap-4 px-6 py-5">
-          {provider ? (
+          {tab === 'tokens' ? (
+            <TokensTab profileId={profileId} profileName={profile?.name ?? 'Claude'} period={period} />
+          ) : provider ? (
             <ProviderUsagePanel profileId={profileId} provider={provider} refresh={quotaAsked} />
           ) : windowsOnly ? (
             <PlanWindows profileId={profileId} />
-          ) : tab === 'limits' ? (
-            <LimitsTab profileId={profileId} period={period} />
           ) : (
-            <TokensTab profileId={profileId} profileName={profile?.name ?? 'Claude'} period={period} />
+            <LimitsTab profileId={profileId} period={period} />
           )}
         </div>
       </div>

@@ -1045,4 +1045,10 @@ export const migrations: readonly string[] = [
   ALTER TABLE usage_messages ADD COLUMN long INTEGER NOT NULL DEFAULT 0;
   UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL WHERE EXISTS (SELECT 1 FROM session_usage WHERE model LIKE '%haiku-5%');
   `,
+
+  // v65: Tokens of other providers' sessions (Copilot, Codex) count in the Usage view too, under their profile's folder.
+  // Copilot says what its tokens cost (AI credits): `usd`, null where the price table prices them.
+  `
+  ALTER TABLE session_usage ADD COLUMN usd REAL;
+  `,
 ];
