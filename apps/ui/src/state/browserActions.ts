@@ -2,6 +2,7 @@ import { browserProfilePartition, shortUrl, webPageUrl, type BrowserFavorite } f
 import type { PickedElement } from '@seshboard/protocol/bridge';
 import { elementImage, elementItem, quoteHeading } from '../components/webPreview/pageMessage.ts';
 import { useDrafts } from './draftsStore.ts';
+import { browserPopoutSession } from './popoutsStore.ts';
 import { BROWSER_OWNER, livePages, nextZoom, type BrowserTab } from '../components/webPreview/browserTabs.ts';
 import { previewPage, usePreviewPages } from '../components/webPreview/webPreviewPages.ts';
 import { currentPageTab, openBrowserView, openFavorite } from './browserViewStore.ts';
@@ -91,6 +92,12 @@ const messageHidden = (owner: string): boolean => useWebPreview.getState().full.
 /** Quote in message: text selected on a session's page, quoted in its message box under the page it came from. */
 export function quoteInMessage(tab: Pick<BrowserTab, 'owner'>, text: string, url: string): void {
   if (tab.owner === BROWSER_OWNER) return;
+  // A browser window has no message box: the session's window takes it.
+  if (tab.owner === browserPopoutSession) {
+    window.seshboard?.browserToMessage({ kind: 'quote', text, url });
+    toast('Quoted in the message', { icon: 'browser' });
+    return;
+  }
   useDrafts.getState().requestQuote(tab.owner, text, { heading: quoteHeading(url) });
   if (messageHidden(tab.owner)) toast('Quoted in the message', { icon: 'browser' });
 }
@@ -98,6 +105,11 @@ export function quoteInMessage(tab: Pick<BrowserTab, 'owner'>, text: string, url
 /** An element of a session's page in its message: a chip with where it is and its HTML, and its picture. */
 export function addElementToMessage(tab: Pick<BrowserTab, 'owner'>, element: PickedElement): void {
   if (tab.owner === BROWSER_OWNER) return;
+  if (tab.owner === browserPopoutSession) {
+    window.seshboard?.browserToMessage({ kind: 'element', element });
+    toast('Element added to the message', { icon: 'browser' });
+    return;
+  }
   const drafts = useDrafts.getState();
   drafts.addContext(tab.owner, [elementItem(element)]);
   const image = elementImage(element);

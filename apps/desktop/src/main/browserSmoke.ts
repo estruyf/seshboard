@@ -370,6 +370,97 @@ export async function runSessionBrowserStep(win: BrowserWindow, deps: BrowserSmo
 }
 
 /**
+ * "browser window": Open in new window in a session's Browser panel moves both its tabs to a window of their own (the
+ * page in front loads there), the panel leaves the session and its Browser button says where the tabs are, and the
+ * agent's tools find the page in that window. Move back puts the tabs back in the panel, in front; the window's close
+ * button puts them back without opening it. Closes the panel at the end.
+ */
+export async function runBrowserWindowStep(win: BrowserWindow, deps: BrowserSmokeDeps & { browserWindowOf(sessionId: string): BrowserWindow | undefined; shotOf(win: BrowserWindow, name: string): Promise<void> }): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  deps.setBrowser(true);
+  if (!(await waitInPage(win, q('[data-nav="home"]'), 3_000))) return 'no Home icon';
+  await js(`${q('[data-nav="home"]')}.click()`);
+  const row = `[...document.querySelectorAll('[data-session-list] [data-session-id]')].find((r) => r.textContent.includes('Fix the cart button typo'))`;
+  if (!(await waitInPage(win, row, 5_000))) return 'the demo session "Fix the cart button typo" is not in the sidebar';
+  const id = (await js(`${row}.dataset.sessionId`)) as string;
+  await js(`${row}.click()`);
+  const S = `[data-current-session="${id}"]`;
+  const P = `${S} [data-web-preview]`;
+  const rail = q(`${S} [data-tool-rail] [data-toggle-web]`);
+  if (!(await waitInPage(win, rail, 5_000))) return 'the session has no Browser button on its rail';
+  if (!(await js(`!!${q(P)}`))) await js(`${rail}.click()`);
+  if (!(await waitInPage(win, q(`${P} [data-browser-address]`), 3_000))) return 'the Browser button did not open the panel';
+  const url = await site();
+  const go = async (path: string) => {
+    await setFieldValue(win, `${P} [data-browser-address]`, `${url.replace('http://', '')}${path}`);
+    await js(`${q(`${P} [data-browser-address]`)}.form.requestSubmit()`);
+  };
+  await go('');
+  if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the local page did not load in the panel';
+  const strip = (root: string) => `document.querySelectorAll(${JSON.stringify(`${root} [data-web-preview-tabs] [data-browser-tab]`)}).length`;
+  await js(`${q(`${P} [data-browser-new-tab]`)}.click()`);
+  if (!(await waitInPage(win, `${strip(P)} === 2`, 3_000))) return '+ did not open a second tab';
+  await go('two');
+  if (!(await until(() => pageWithTitle('Smoke browser two') !== undefined, 10_000))) return 'the second page did not load in the panel';
+
+  const popOut = q(`${P} [data-browser-pop-out]`);
+  if (!(await js(`!!${popOut}`))) return 'the panel has no Open in new window button';
+  await js(`${popOut}.click()`);
+  let browser: BrowserWindow | undefined;
+  try {
+    if (!(await until(() => deps.browserWindowOf(id) !== undefined, 5_000))) return 'the browser window did not open';
+    browser = deps.browserWindowOf(id)!;
+    const W = `[data-browser-window="${id}"]`;
+    const inWindow = (expression: string, timeoutMs = 5_000) => waitInPage(browser!, expression, timeoutMs);
+    if (!(await inWindow(`${strip(W)} === 2 && ${q(`${W} [data-browser-address]`)}?.value.includes('/two')`, 20_000))) return 'the browser window does not show both tabs with the second in front';
+    const here = () => webContents.getAllWebContents().find((c) => c.getType() === 'webview' && !c.isDestroyed() && c.getTitle() === 'Smoke browser two' && c.hostWebContents === browser!.webContents);
+    if (!(await until(() => here() !== undefined, 10_000))) return 'the page in front did not load in the browser window';
+    if (!(await waitInPage(win, `!${q(P)} && !!${q(`${S} [data-tool-rail] [data-toggle-web][data-browser-away]`)}`, 3_000))) return 'the panel is still in the session, or its Browser button does not say the browser is in its own window';
+    if (!(await js(`!!${q(`[data-session-list] [data-session-id="${id}"] [data-session-open="browser"]`)}`))) return 'the session row lost its browser mark';
+    // The agent's tools find the page in the browser window.
+    if (deps.agent) {
+      const where = await deps.agent({ sessionId: id, tool: 'where', args: {} });
+      if (where.url !== `${url}two`) return `the agent's tools did not find the page in the browser window (${where.url ?? where.text})`;
+    }
+    // Quote in message, on the page in the browser window, lands in the session's message box in the main window.
+    const page = here()!;
+    const text = 'Two';
+    runPageMenuEntry(browser.webContents, page, { x: 0, y: 0, linkURL: '', srcURL: '', selectionText: text }, 'quote');
+    const box = q(`${S} [data-composer]`);
+    if (!(await waitInPage(win, `${box}?.value.includes(${JSON.stringify(`> ${text}`)})`, 3_000))) return `Quote in message in the browser window did not reach the session's message (box: ${JSON.stringify(await js(`${box}?.value ?? null`))})`;
+    await setFieldValue(win, `${S} [data-composer]`, '');
+    // The Browser button and ⌘⇧B leave the tabs where they are.
+    await js(`${rail}.click()`);
+    if (await waitInPage(win, q(P), 500)) return 'the Browser button opened the panel in the session while the browser has its own window';
+    await deps.shot('browser-window');
+    await deps.shotOf(browser, 'browser-window-own.png');
+
+    // Move back: the tabs return to the panel, which opens on the one in front.
+    await browser.webContents.executeJavaScript(`${q(`${W} [data-browser-move-back]`)}.click()`);
+    if (!(await until(() => deps.browserWindowOf(id) === undefined, 5_000))) return 'Move back did not close the browser window';
+    if (!(await waitInPage(win, `${strip(P)} === 2 && ${q(`${P} [data-browser-address]`)}?.value.includes('/two')`, 8_000))) return `Move back did not put both tabs back in the panel (${String(await js(`${strip(P)} + ' tabs, ' + (${q(`${P} [data-browser-address]`)}?.value ?? 'no panel')`))})`;
+    if (await js(`!!${q(`${S} [data-browser-away]`)}`)) return 'the Browser button still says the browser is in its own window';
+
+    // Again, and closed with its button: the tabs come back without the panel opening.
+    await js(`${popOut}.click()`);
+    if (!(await until(() => deps.browserWindowOf(id) !== undefined, 5_000))) return 'the browser window did not open the second time';
+    browser = deps.browserWindowOf(id)!;
+    if (!(await waitInPage(browser, `${strip(W)} === 2`, 20_000))) return 'the second browser window does not show both tabs';
+    await browser.webContents.executeJavaScript(`${q(`${W} [data-close-window]`)}.click()`);
+    if (!(await until(() => deps.browserWindowOf(id) === undefined, 5_000))) return 'the browser window did not close with its button';
+    if (!(await waitInPage(win, `!${q(P)} && !!${q(`[data-session-list] [data-session-id="${id}"] [data-session-open="browser"]`)}`, 3_000))) return 'closed, the browser window opened the panel or lost the tabs';
+    await js(`${rail}.click()`);
+    if (!(await waitInPage(win, `${strip(P)} === 2`, 3_000))) return 'after the browser window closed, the panel did not show both tabs';
+    await js(`${q(`${P} [data-web-preview-close]`)}.click()`);
+    if (!(await waitInPage(win, `!${q(P)}`, 3_000))) return 'the panel did not close';
+    return 'ok: both tabs moved to a window of their own and loaded there, the panel left the session with its Browser button marked, the agent found the page there, Quote in message reached the session message box, Move back put them back in front and the close button put them back closed';
+  } finally {
+    const open = deps.browserWindowOf(id);
+    if (open && !open.isDestroyed()) open.close();
+  }
+}
+
+/**
  * "browser pick": a session's page is marked as one (its menu sends to the message). Pick an element outlines what the
  * pointer is over, Esc stops it, and a click puts the element in the message as a chip with its picture, without the
  * page getting the click. Quote in message and Add element to message (the page's right-click menu, run as its

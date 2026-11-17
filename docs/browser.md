@@ -24,7 +24,7 @@ Each of these exists only because of `<webview>`. If one breaks and can't be fix
 | A page parked off screen is likely still "visible" to Chromium: its timers and animations keep running. | At most `LIVE_PAGES` (8) live pages; the rest are dropped and load again when shown. | `browserTabs.ts` (`livePages`) |
 | A page's focus can't be read reliably: every page of a focused window reports `isFocused()`. | Read `focusedFrame` (null unless the page holds the keyboard), as T3 Code does; smoke steps skip focus checks while another app is in front. | `webPreviewSmoke.ts` |
 | A click in a page gives the `<webview>` the focus but no mouse event, so the app's menus stay open. | The page's `focus` event dispatches `pointerdown` and `mousedown` on it. | `webPreviewPages.ts` |
-| A window reload kills every page; a session moved to a pop-out loads its page again. | None: accepted. | |
+| A window reload kills every page; a session moved to a pop-out, or its browser to a browser window, loads its pages again. | None: accepted. | |
 | Electron's docs advise against `<webview>`, whose base in Chromium keeps changing. | Watch Electron's release notes for `<webview>` changes before each Electron upgrade. | |
 
 ## When to move to `WebContentsView`
@@ -74,7 +74,7 @@ A session's agent can drive its own Browser panel to check its work: open the de
 - **Always allow** keeps the origin in `ProjectDefaults.browserScriptSites` (like `browserSites`, not in `ProfileDefaults`), listed and removable in the project's settings under **Scripts in pages** (shown with the setting on, or while the list has sites). Allow for this session works as on the site card.
 - A read-only pipeline step gets no browser server at all, so neither tool. Claude Code gets the tools in `allowedTools`, and Copilot approves Seshboard's own servers, so the agent's own prompt never asks a second time.
 
-**The path of a call.** Bridge → main (`browser-tool` on the parent port, `apps/desktop/src/engine/index.ts`) → `main/browserAgent.ts`. Main asks the window that shows the session (its pop-out, else the main window) which page to use (`BrowserAgentTargetRequest`, answered by `browserAgentTarget.ts` in the renderer). The agent works in a tab of its own in the session's panel, so your tabs keep their pages; `open` makes it (or loads the address in it) and shows the panel. Main checks the page is one of that window's browser pages, then:
+**The path of a call.** Bridge → main (`browser-tool` on the parent port, `apps/desktop/src/engine/index.ts`) → `main/browserAgent.ts`. Main asks the window that shows the session's browser (its browser window, else its pop-out, else the main window) which page to use (`BrowserAgentTargetRequest`, answered by `browserAgentTarget.ts` in the renderer). The agent works in a tab of its own in the session's panel, so your tabs keep their pages; `open` makes it (or loads the address in it) and shows the panel. Main checks the page is one of that window's browser pages, then:
 
 - `snapshot` runs `SNAPSHOT_SCRIPT` in the page: headings, text, and each element you can act on with its role, name, state and a ref (`e12`). Refs live in a map on the page (`__seshboardRefs`), so the DOM never changes. Open shadow roots are read; frames are named, not read.
 - `click` scrolls the element into view and sends a real mouse click at its middle (`sendInputEvent`, scaled by the page's zoom). `type` focuses the field, selects what it holds and inserts the text; `press` sends a key.
@@ -86,6 +86,15 @@ A session's agent can drive its own Browser panel to check its work: open the de
 Every result says where the page is after the call, and text from a page is marked as data, not instructions.
 
 `open` takes an optional `profile`: the name of a browser profile (next section), matched without case among the session's project's and the ones for everywhere ("Default" or none is the built-in one). The bridge finds it (`BrowserBridgeDeps.profile`, an unknown name fails with the names there are) and hands main its id, so the agent can't name a partition itself. The agent has a tab of its own per profile, so it can drive two accounts at once; the other tools work on the tab it opened last. The site permission card names the profile when it isn't Default (`browserSiteDescription`).
+
+## A session's browser in its own window
+
+A session's Browser panel can move to a window of its own (a browser window, `?browserpopout=<id>`), to put on another display while the session stays where it is: **Open in new window** in the panel's toolbar (in ⋯ when the toolbar is narrow) and **Open browser in new window** in the palette.
+
+- **Tabs move, pages load again.** Every tab goes, with its pin, name, browser profile, zoom, phone width and place, and the one in front (`browserHandoff.ts`, pure). The session's window drops them (`takeOut`), main keeps the last list the browser window reported (`browserPopoutTabs`, in memory) and hands it back when the window goes (`browserReturned`): Move back opens the panel on them, the close button only puts them back, the last tab closing puts back none. Like pop-outs, browser windows close with the main window and don't come back after a restart.
+- **While it is out.** Every window knows which sessions' browsers are out and how many tabs each has (`useBrowserPopouts`, `onBrowserPopoutsChanged`): the rail's Browser button keeps its count and brings the window to the front, and so do ⌘⇧B, the palette's Open browser and links in the conversation (`open` and `toggleWebPanel` call `popOutBrowser`, with the address). Quote in message and Add element to message go to the session's window through main (`browserToMessage`).
+- **Pinned tabs** are saved by the browser window while they are there (`useBrowserTabsSync` with `browserPopoutSession`, no restore); the main window doesn't take their leaving for a close (`browserElsewhere`).
+- **Agents** work in the browser window: main's `windowFor` asks it first.
 
 ## Browser profiles
 

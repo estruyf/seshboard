@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { BrowserTab } from '../components/webPreview/browserTabs.ts';
 import { keptFavicon } from '../components/webPreview/favorites.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
-import { popoutSession } from './popoutsStore.ts';
+import { browserElsewhere, browserPopoutSession, popoutSession } from './popoutsStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useWebPreview } from './webPreviewStore.ts';
 
@@ -18,8 +18,8 @@ const same = (a: ReturnType<typeof kept>, b: ReturnType<typeof kept>) => a.url =
 /**
  * Pinned browser tabs that last (the browser on): once per connection the engine's list is restored (their pages
  * load when first shown), then every pin, unpin, move, rename and close is saved, and a pinned tab's address and title
- * as you browse, at most once a second. Tabs that aren't pinned live only in the window. The main window only: a pop-out's
- * tabs are the same session's, kept there.
+ * as you browse, at most once a second. Tabs that aren't pinned live only in the window. The main window, and a browser
+ * window for its session's tabs (which left the main window with it); not a pop-out, whose tabs are the same session's, kept there.
  */
 export function useBrowserTabsSync(): void {
   const connection = useEngineConnection();
@@ -53,8 +53,9 @@ export function useBrowserTabsSync(): void {
           void client.call('browser.pinned.save', { tab }).catch(fail);
         } else if (!same(before, tab)) save(tab);
       }
-      for (const id of saved.keys()) {
-        if (now.has(id)) continue;
+      for (const [id, tab] of saved) {
+        // A session's tabs that moved to its browser window are saved there now, not closed.
+        if (now.has(id) || browserElsewhere(tab.owner)) continue;
         clearTimeout(timers.get(id));
         timers.delete(id);
         void client.call('browser.pinned.remove', { id }).catch(fail);
@@ -62,6 +63,15 @@ export function useBrowserTabsSync(): void {
       saved = now;
     };
     const off = useWebPreview.subscribe((state, previous) => state.tabs !== previous.tabs && sync());
+    // A browser window has only its session's tabs, which the window they came from had restored and saved.
+    if (browserPopoutSession) {
+      saved = new Map(useWebPreview.getState().tabs.filter((t) => t.pinned && t.url).map((t) => [t.id, kept(t)]));
+      ready = true;
+      return () => {
+        off();
+        for (const timer of timers.values()) clearTimeout(timer);
+      };
+    }
     void client.call('browser.pinned.list', {}).then(
       ({ tabs }) => {
         useWebPreview.getState().restorePinned(tabs);

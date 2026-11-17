@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { shownElsewhere, usePopouts } from '../../state/popoutsStore.ts';
+import { browserElsewhere, browserPopoutSession, shownElsewhere, useBrowserPopouts, usePopouts } from '../../state/popoutsStore.ts';
 import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -43,6 +43,7 @@ export function WebPreviewHost() {
   const reloads = useWebPreview((s) => s.reloads);
   const suspended = useWebPreview((s) => s.suspended);
   const popouts = usePopouts((s) => s.ids);
+  const browserPopouts = useBrowserPopouts((s) => s.tabs);
   const browser = usePreferences((s) => s.prefs.browserEnabled);
   // What is on screen: the Browser view, or the sessions in the panes.
   const view = useSessions((s) => s.view);
@@ -51,14 +52,14 @@ export function WebPreviewHost() {
 
   useEffect(() => {
     const state = useWebPreview.getState();
-    // Each panel on screen keeps its tab in front live, however many were picked since.
-    const owners = [...(view === 'browser' ? [BROWSER_OWNER] : []), ...new Set([...paneIds, ...(selectedId ? [selectedId] : [])])].filter((owner) => owner === BROWSER_OWNER || state.panels.has(owner));
+    // Each panel on screen keeps its tab in front live, however many were picked since. A browser window shows one session's.
+    const owners = browserPopoutSession ? [browserPopoutSession] : [...(view === 'browser' ? [BROWSER_OWNER] : []), ...new Set([...paneIds, ...(selectedId ? [selectedId] : [])])].filter((owner) => owner === BROWSER_OWNER || state.panels.has(owner));
     const keep = owners.flatMap((owner) => state.active.get(owner) ?? []);
     const wanted = livePages(state, LIVE_PAGES, {
       keep,
-      // A pop-out shows its session's pages; with the browser off, only this computer's pages run (the dev server preview).
+      // A pop-out shows its session's pages, and a browser window its session's (whichever window shows the session); with the browser off, only this computer's pages run (the dev server preview).
       // A browser profile being reset has none until it is done.
-      allowed: (tab) => (tab.owner === BROWSER_OWNER || !shownElsewhere(tab.owner)) && (browser || localPreviewUrl(tab.url!) !== null) && !suspended.has(tab.profileId ?? ''),
+      allowed: (tab) => (tab.owner === BROWSER_OWNER || tab.owner === browserPopoutSession || (!shownElsewhere(tab.owner) && !browserElsewhere(tab.owner))) && (browser || localPreviewUrl(tab.url!) !== null) && !suspended.has(tab.profileId ?? ''),
     });
     keepPages(new Set(wanted));
     for (const id of wanted) {
@@ -68,7 +69,7 @@ export function WebPreviewHost() {
       page.loaded = tab.seq;
       page.load(tab.url);
     }
-  }, [pagesKey, panels, active, popouts, browser, view, paneIds, selectedId, suspended]);
+  }, [pagesKey, panels, active, popouts, browserPopouts, browser, view, paneIds, selectedId, suspended]);
 
   // Only a request made while this window is open: counts from before it are old news.
   const seenReloads = useRef(reloads);

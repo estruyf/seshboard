@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
+import { BROWSER_POPOUT_QUERY, ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type BrowserMessageItem, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -122,6 +122,33 @@ const bridge: SeshboardBridge = {
     return () => ipcRenderer.off(IpcChannel.viewReturned, handler);
   },
   popIn: () => ipcRenderer.send(IpcChannel.popIn),
+  browserPopout: new URLSearchParams(window.location.search).get(BROWSER_POPOUT_QUERY),
+  browserPopouts: ipcRenderer.sendSync(IpcChannel.getBrowserPopouts) as Record<string, number>,
+  onBrowserPopoutsChanged(listener) {
+    const handler = (_event: unknown, tabs: Record<string, number>) => listener(tabs);
+    ipcRenderer.on(IpcChannel.browserPopoutsChanged, handler);
+    return () => ipcRenderer.off(IpcChannel.browserPopoutsChanged, handler);
+  },
+  popOutBrowser: (sessionId, tabs, url) => ipcRenderer.send(IpcChannel.popOutBrowser, sessionId, tabs ?? null, url ?? null),
+  browserPopoutTabs: new URLSearchParams(window.location.search).get(BROWSER_POPOUT_QUERY) === null ? null : (ipcRenderer.sendSync(IpcChannel.getBrowserPopoutTabs) as BrowserTabsHandoff | null),
+  reportBrowserTabs: (tabs) => ipcRenderer.send(IpcChannel.reportBrowserTabs, tabs),
+  popInBrowser: () => ipcRenderer.send(IpcChannel.popInBrowser),
+  onBrowserReturned(listener) {
+    const handler = (_event: unknown, message: { sessionId: string; tabs: BrowserTabsHandoff; show: boolean }) => listener(message.sessionId, message.tabs, message.show);
+    ipcRenderer.on(IpcChannel.browserReturned, handler);
+    return () => ipcRenderer.off(IpcChannel.browserReturned, handler);
+  },
+  onBrowserOpenUrl(listener) {
+    const handler = (_event: unknown, url: string) => listener(url);
+    ipcRenderer.on(IpcChannel.browserOpenUrl, handler);
+    return () => ipcRenderer.off(IpcChannel.browserOpenUrl, handler);
+  },
+  browserToMessage: (item) => ipcRenderer.send(IpcChannel.browserToMessage, item),
+  onBrowserMessage(listener) {
+    const handler = (_event: unknown, message: { sessionId: string; item: BrowserMessageItem }) => listener(message.sessionId, message.item);
+    ipcRenderer.on(IpcChannel.browserMessage, handler);
+    return () => ipcRenderer.off(IpcChannel.browserMessage, handler);
+  },
   menuBar: new URLSearchParams(window.location.search).has(MENU_BAR_QUERY),
   menuBarCommand: (command: MenuBarCommand) => ipcRenderer.send(IpcChannel.menuBarCommand, command),
   menuBarResize: (height) => ipcRenderer.send(IpcChannel.menuBarResize, height),

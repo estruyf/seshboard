@@ -32,6 +32,7 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from '../../state/sessionNav.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { popOut } from '../../state/popoutsStore.ts';
+import { popOutBrowser } from '../../state/browserWindow.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { openUpcoming } from '../../state/upcomingStore.ts';
@@ -345,6 +346,10 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     openInNewWindow: () => {
       const { selectedId } = useSessions.getState();
       if (selectedId) popOut(selectedId);
+    },
+    openBrowserInNewWindow: () => {
+      const { selectedId } = useSessions.getState();
+      if (selectedId) popOutBrowser(selectedId);
     },
     newSessionRequest: (kind) => usePaletteBus.getState().requestNewSession(kind),
     openNewSession: () => useSessions.getState().openNewSession(),
