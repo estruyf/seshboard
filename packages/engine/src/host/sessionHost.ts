@@ -98,6 +98,8 @@ export interface HostConfig {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Effort | null;
+  /** The model Claude Code switches to when `model` is overloaded or unavailable (a name or alias; null: none). */
+  fallbackModel?: string | null;
   worktree: ClaudeWorktreeRequest | null;
   env: Record<string, string>;
   claudePath: string | undefined;
@@ -195,6 +197,8 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   };
   if (config.model) options.model = config.model;
   if (config.effort) options.effort = config.effort;
+  const fallback = usableFallback(config.fallbackModel, config.model);
+  if (fallback) options.fallbackModel = fallback;
   if (config.readOnly) {
     // Every tool call goes through it, whatever the mode or the settings allow.
     const guard: HookCallback = async (hook) => {
@@ -241,6 +245,34 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     options.allowedTools = [...(options.allowedTools ?? []), ...ORCHESTRATOR_TOOL_NAMES];
   }
   return options;
+}
+
+/** A model name or alias without its context-size note, lower-cased, to compare ("Opus[1m]" and "opus"). */
+const modelKey = (model: string) => model.replace(/\[.*?\]/g, '').trim().toLowerCase();
+
+/**
+ * The fallback models (a comma-separated list, as the SDK takes it) to pass: none when unset, and none that are the
+ * session's own model, which Claude Code refuses to fall back to. Null when nothing is left.
+ */
+export function usableFallback(fallback: string | null | undefined, model: string | null | undefined): string | null {
+  const own = model ? modelKey(model) : null;
+  const kept = (fallback ?? '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter((m) => m && modelKey(m) !== own);
+  return kept.length ? kept.join(',') : null;
+}
+
+/**
+ * Whether `ran` (the full model id of a reply) is one of `fallback`'s models: an alias ("sonnet") is in the id
+ * ("claude-sonnet-5-5-2026…"), so a name matches when the id holds it.
+ */
+export function isFallbackModel(ran: string, fallback: string | null | undefined): boolean {
+  const id = ran.toLowerCase();
+  return (fallback ?? '')
+    .split(',')
+    .map(modelKey)
+    .some((m) => m !== '' && m !== 'default' && id.includes(m));
 }
 
 /** The text of an assistant message (Claude Code's error messages are one text block). */
@@ -314,6 +346,8 @@ export class SessionHost {
   readonly openToolCalls = new Set<string>();
   /** The prompt cache of this turn's last response: reported with the turn's end, so the window hears it once a turn. */
   private cacheSeen: { at: number; ttl: CacheTtl | null } | null = null;
+  /** The model Claude Code said the session runs on (its init), to tell a reply from the fallback model apart. */
+  private mainModel: string | null = null;
   /** When the process ended (closed or crashed), for telling our own exiting process apart from another window. */
   closedAt: number | undefined;
   info: SessionHostInfo;
@@ -649,7 +683,9 @@ export class SessionHost {
 
   async setModel(model: string | null): Promise<void> {
     await (await this.query)?.setModel(model ?? undefined);
-    this.update({ model });
+    // Until the next init says what it resolves to, a reply's model has nothing to be compared with.
+    this.mainModel = null;
+    this.update({ model, fallbackRan: null });
   }
 
   close(): void {
@@ -784,6 +820,7 @@ export class SessionHost {
           this.assistantErrorCode = message.error;
         }
         this.noteCache(message.message as unknown as { usage?: Record<string, unknown> | null } | undefined);
+        this.noteFallback((message.message as { model?: unknown } | undefined)?.model);
         this.events.messages(this.sessionId, [toRaw(message)]);
         this.pushStream('clear', '');
         return;
@@ -854,6 +891,8 @@ export class SessionHost {
         return;
       }
       const first = this.info.state === 'starting';
+      // Every turn's init comes before any API call and names the main model (Claude Code tries it again each turn), so it is always taken as the main one: a /model change or a swap that stuck is not shown as the fallback.
+      if (typeof init.model === 'string' && init.model) this.mainModel = init.model;
       this.update({
         sessionId: init.session_id,
         cwd: typeof init.cwd === 'string' && init.cwd ? sessionFolder(this.info.cwd, init.cwd) : this.info.cwd,
@@ -908,6 +947,11 @@ export class SessionHost {
       this.events.notice?.(this.sessionId, refusal.notice);
       // The fallback stays for the rest of the session: the model chip shows what runs now.
       if (refusal.model && refusal.model !== this.info.model) this.update({ model: refusal.model });
+      // That model is the session's own now, so replies from it are not the overload fallback (`fallbackRan`).
+      if (refusal.model) {
+        this.mainModel = refusal.model;
+        if (this.info.fallbackRan) this.update({ fallbackRan: null });
+      }
       return;
     }
     if (message.subtype === 'notification') {
@@ -1065,6 +1109,21 @@ export class SessionHost {
     const touched = [usage.cache_read_input_tokens, usage.cache_creation_input_tokens].some((n) => typeof n === 'number' && n > 0);
     if (!touched) return;
     this.cacheSeen = { at: Date.now(), ttl: cacheTtlOf(usage) ?? this.cacheSeen?.ttl ?? this.info.cacheTtl ?? null };
+  }
+
+  /**
+   * Claude Code reports no event when it swaps to the fallback model, so a reply is told by its model: the full id in
+   * `message.model` is one of the fallback models and not the one the session runs on. Replies from the main model
+   * clear it again (Claude Code tries the main model at the start of each turn).
+   */
+  private noteFallback(ran: unknown): void {
+    const fallback = usableFallback(this.config.fallbackModel, this.config.model);
+    // Synthetic messages (Claude Code's own errors) name no model.
+    if (!fallback || !this.mainModel || typeof ran !== 'string' || !ran || ran.startsWith('<')) return;
+    const own = modelKey(this.mainModel);
+    const same = modelKey(ran) === own || modelKey(ran).includes(own) || own.includes(modelKey(ran));
+    const next = !same && isFallbackModel(ran, fallback) ? ran : null;
+    if ((this.info.fallbackRan ?? null) !== next) this.update({ fallbackRan: next });
   }
 
   private takeCache(): Pick<SessionHostInfo, 'cacheAt' | 'cacheTtl'> {

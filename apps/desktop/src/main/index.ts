@@ -331,6 +331,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'permissionMode', mode: prefs.newSessionMode === 'remember' ? 'default' : prefs.newSessionMode });
   // Settings › General › Global model and Global effort: the same, for the model and effort (empty: Claude Code's own).
   engine?.sendStanding({ type: 'globalModel', model: prefs.newSessionModel, effort: prefs.newSessionEffort });
+  // Settings › General › Global fallback model: Claude Code sessions switch to it when their own model is overloaded (empty: off).
+  engine?.sendStanding({ type: 'fallbackModel', model: prefs.newSessionFallbackModel });
   // Settings › Mods › Show mods: sessions attach or detach their mods without a restart.
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
@@ -3956,6 +3958,18 @@ async function runGlobalModelStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-settings-section=\"general\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-new-session-effort]') && document.querySelector('[data-new-session-model]')", 2_000))) return 'Settings › General has no Global model and Global effort';
     if (model && !(await chooseOption(win, '[data-new-session-model]', ''))) return "the Global model menu has no Claude Code's default";
+    if (model) {
+      // The Global fallback model is off until one is picked, and Off puts it back.
+      const fallback = '[data-new-session-fallback-model]';
+      if (!(await waitInPage(win, `document.querySelector('${fallback}')?.dataset.value === ''`, 2_000))) return 'Settings › General has no Global fallback model, or it is not off';
+      await js(`document.querySelector('${fallback}').click()`);
+      if (!(await waitInPage(win, "document.querySelectorAll('[data-select-list] [data-option-value]').length > 1", 3_000))) return 'the Global fallback model menu lists no models';
+      const picked = (await js("document.querySelectorAll('[data-select-list] [data-option-value]')[1].dataset.optionValue")) as string;
+      await js("document.querySelectorAll('[data-select-list] [data-option-value]')[1].click()");
+      if (!(await until(() => preferences.get().newSessionFallbackModel === picked))) return `the Global fallback model was not saved as ${picked}`;
+      if (!(await chooseOption(win, fallback, ''))) return 'could not turn the Global fallback model off again';
+      if (!(await until(() => preferences.get().newSessionFallbackModel === ''))) return 'the Global fallback model did not go back to off';
+    }
     if (!(await chooseOption(win, '[data-new-session-effort]', effort))) return `could not pick ${effort || 'the default'} as the Global effort`;
     if (effort) await shot(win, 'settings-global-model.png');
     await js("document.querySelector('[data-close-settings]').click()");
@@ -4232,6 +4246,10 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, 'global'))) return 'could not pick Global default for the model';
   if (!(await waitInPage(win, `${page('[data-default-model]')}?.dataset.value === 'global'`, 2_000))) return 'the model did not stay on Global default';
   if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, ''))) return 'could not put the model back on Profile default';
+  // The fallback model is off until one is set, and can skip its profile's for the global one as well.
+  if (!(await waitInPage(win, `${page('[data-default-fallback-model]')}?.dataset.value === ''`, 2_000))) return 'the fallback model did not start on Profile default';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-fallback-model]`, 'global'))) return 'could not pick Global default for the fallback model';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-fallback-model]`, ''))) return 'could not put the fallback model back on Profile default';
 
   // The page's other tabs, read-only: Overview, Sessions, and the worktrees of a real repository.
   const pageResult = await smokeRun.step('project page and worktrees', () => runProjectPageStep(win, root), { cleanup: false });

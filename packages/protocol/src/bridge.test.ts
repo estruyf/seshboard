@@ -174,6 +174,14 @@ describe('global model and effort preferences', () => {
     expect(sanitizePreferences({ newSessionModel: null })).toEqual({});
   });
 
+  it('keeps the global fallback model off by default, trimmed when set, and drops what is no model', () => {
+    expect(DEFAULT_PREFERENCES.newSessionFallbackModel).toBe('');
+    for (const model of ['', 'sonnet', 'claude-sonnet-5-5[1m]']) expect(sanitizePreferences({ newSessionFallbackModel: model })).toEqual({ newSessionFallbackModel: model });
+    expect(sanitizePreferences({ newSessionFallbackModel: ' sonnet ' })).toEqual({ newSessionFallbackModel: 'sonnet' });
+    expect(sanitizePreferences({ newSessionFallbackModel: 'x'.repeat(201) })).toEqual({});
+    expect(sanitizePreferences({ newSessionFallbackModel: null })).toEqual({});
+  });
+
   it('keeps the effort levels and empty, and drops anything else', () => {
     for (const effort of ['', 'low', 'medium', 'high', 'xhigh', 'max']) expect(sanitizePreferences({ newSessionEffort: effort })).toEqual({ newSessionEffort: effort });
     expect(sanitizePreferences({ newSessionEffort: 'extreme' })).toEqual({});

@@ -111,6 +111,11 @@ export const SessionHostInfo = z.object({
    * requests fall back to standard speed while it still reports `on`. Null or missing: nothing stands in its way.
    */
   fastModeBlocked: z.string().nullable().optional(),
+  /**
+   * The model the last turn ran on when that was the fallback model (`fallbackModel`) and not the session's own: the
+   * full id Claude Code reported. Null or missing: the last turn ran on the session's model.
+   */
+  fallbackRan: z.string().nullable().optional(),
   /** Cost reported by Claude Code for this process so far. */
   costUsd: z.number(),
   contextPercent: z.number().nullable(),

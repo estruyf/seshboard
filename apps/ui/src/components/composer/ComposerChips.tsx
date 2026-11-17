@@ -38,8 +38,9 @@ export interface ComposerChipRowProps {
   /**
    * `auto`: a session on the model Auto picked ("Sonnet", or "Default model" when picking failed); the chip reads
    * "Auto · Sonnet". `actions` go under the models (the session's "Why Auto picked Sonnet").
+   * `fallback`: the model the last turn ran on when that was the fallback model ("Sonnet"); the chip reads "Opus → Sonnet".
    */
-  model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
+  model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[]; fallback?: string | null };
   /**
    * Null when the model has no effort setting. `levels`: the ones the model takes (another provider's model says);
    * every level otherwise. `defaultDescription`: what Default means, in its provider's words. `ultrathink`: a Claude Code
@@ -200,7 +201,8 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
   }
   const autoPicked = model.auto ?? null;
   const isAuto = autoPicked !== null || model.value === AUTO_MODEL;
-  const modelTitle = autoPicked !== null ? `Model: Auto picked ${autoPicked}` : `Model: ${model.label}`;
+  const ranOn = model.fallback ?? null;
+  const modelTitle = autoPicked !== null ? `Model: Auto picked ${autoPicked}` : ranOn !== null ? `Model: ${model.label}. The last turn ran on ${ranOn}: ${model.label} was busy or unavailable` : `Model: ${model.label}`;
   chips.push({
     key: 'model',
     face: (l) =>
@@ -223,6 +225,16 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
         <>
           <Cpu size={13} className="shrink-0" aria-hidden />
           <span>{chipShape(l).modelVersion ? modelName : modelFamily(model.label)}</span>
+          {ranOn !== null && (
+            <>
+              <span aria-hidden className="text-faint" data-model-fallback-arrow>
+                →
+              </span>
+              <span className="font-semibold text-text" data-model-fallback={ranOn}>
+                {chipShape(l).modelVersion ? shortModelName(ranOn) : modelFamily(ranOn)}
+              </span>
+            </>
+          )}
         </>
       ),
     menu: (face) => (
@@ -315,7 +327,7 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
     return use?.dim ?? false;
   };
 
-  const modelShown = autoPicked !== null ? `Auto · ${shortModelName(autoPicked)}` : isAuto ? 'Auto' : modelName;
+  const modelShown = autoPicked !== null ? `Auto · ${shortModelName(autoPicked)}` : isAuto ? 'Auto' : ranOn !== null ? `${modelName} → ${shortModelName(ranOn)}` : modelName;
   const sections: FoldedSection[] = [
     { key: 'model', heading: 'Model', shown: modelShown, value: model.value, choices: model.choices, onChange: model.onChange, actions: model.actions, name: names.model },
     ...(effort ? [{ key: 'effort' as const, heading: 'Effort', shown: ultrathink?.armed ? `${effortLabel} + ultrathink` : effortLabel, value: effort.value, choices: effortChoices, onChange: (v: string) => effort.onChange(v as Effort | ''), actions: ultrathinkAction, name: names.effort }] : []),
