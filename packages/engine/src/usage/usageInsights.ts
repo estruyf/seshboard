@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { LogLevel, PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from '@seshboard/protocol';
+import type { LogLevel, PlanHistory, SessionProvider, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from '@seshboard/protocol';
 import { PlanHistoryStore, type RateLimitInfo } from './planHistory.ts';
 import { breakdown, periodRange, sessionCost, windowCosts, windowCostsFrom, type PlanWindow, type SessionLookup } from './usageQuery.ts';
 import { scopeOf, UsageScanner } from './usageScanner.ts';
@@ -11,8 +11,8 @@ const NOTIFY_MS = 1_000;
 
 export interface UsageInsightsOptions {
   db: DatabaseSync;
-  /** Every profile and its config folder. */
-  profiles: () => Array<{ id: string; configDir: string }>;
+  /** Every profile, its config folder and whose it is (Claude Code's when left out). */
+  profiles: () => Array<{ id: string; configDir: string; provider?: SessionProvider }>;
   lookup: SessionLookup;
   /** The profile's latest /usage numbers, for when the current window started and how much of it is used. */
   snapshot: (profileId: string) => UsageSnapshot | null;
@@ -58,7 +58,7 @@ export class UsageInsights {
   refresh(force = false): void {
     if (this.scanning || (!force && Date.now() - this.lastScan < RESCAN_MS)) return;
     this.scanning = true;
-    const targets = this.options.profiles().map((p) => ({ scope: scopeOf(p.configDir), configDir: p.configDir }));
+    const targets = this.options.profiles().map((p) => ({ scope: scopeOf(p.configDir), configDir: p.configDir, provider: p.provider }));
     void this.scanner
       .scan(targets, {
         // Progress is shown for the first read only; later reads are quick and quiet.

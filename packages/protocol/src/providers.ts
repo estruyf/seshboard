@@ -82,5 +82,10 @@ export const ProviderQuota = z.object({
   percentUsed: z.number().min(0).max(100),
   /** When it resets (ISO date), if the provider says. */
   resetsAt: z.string().nullable(),
+  /**
+   * The account is billed per token, in AI credits (Copilot since June 2026), not by premium requests: `used` and
+   * `entitlement` say nothing then. Left out by older engines (a paired computer's), which meant requests.
+   */
+  tokenBilling: z.boolean().optional(),
 });
 export type ProviderQuota = z.infer<typeof ProviderQuota>;

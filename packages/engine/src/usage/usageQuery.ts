@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { costOf, tierOf, type TokenCounts, UsageBreakdown, UsageBucket, UsageGroup, type UsageLimit, UsagePeriod, UsageRow, type WindowCost } from '@seshboard/protocol';
+import { costOf, requestCostOf, tierOf, type TokenCounts, UsageBreakdown, UsageBucket, UsageGroup, type UsageLimit, UsagePeriod, UsageRow, type WindowCost } from '@seshboard/protocol';
 import { hourOf } from './transcriptUsage.ts';
 import { measuredDeltas, sharesOf, weightOf, type PlanSample } from './shares.ts';
 
@@ -83,7 +83,36 @@ export interface BreakdownQuery {
   measure?: { percent: number; samples: readonly PlanSample[] } | null;
 }
 
-interface Hourly {
+/**
+ * What an hourly row needs for its price beyond its tokens: the part from requests over the model's long-prompt size,
+ * which cost more (`ModelPrice.longPrompt`), and the cost the provider gave (Copilot's AI credits), null when none.
+ */
+export interface PriceColumns {
+  long_input: number;
+  long_output: number;
+  long_cache_read: number;
+  long_cache_write: number;
+  long_cache_write_1h: number;
+  usd: number | null;
+}
+
+export const PRICE_COLUMNS = 'long_input, long_output, long_cache_read, long_cache_write, long_cache_write_1h, usd';
+
+/** What an hourly `session_usage` row's tokens cost: the provider's cost when it gave one, else long-prompt requests at their price. */
+export const hourlyCostOf = (row: { model: string; input: number; output: number; cache_read: number; cache_write: number; cache_write_1h: number } & Partial<PriceColumns>): number | null =>
+  row.usd ?? costOf(
+    {
+      input: row.input,
+      output: row.output,
+      cacheRead: row.cache_read,
+      cacheWrite: row.cache_write,
+      cacheWrite1h: row.cache_write_1h,
+      long: { input: row.long_input ?? 0, output: row.long_output ?? 0, cacheRead: row.long_cache_read ?? 0, cacheWrite: row.long_cache_write ?? 0, cacheWrite1h: row.long_cache_write_1h ?? 0 },
+    },
+    row.model,
+  );
+
+interface Hourly extends PriceColumns {
   session_id: string;
   hour: number;
   model: string;
@@ -130,7 +159,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   const { scope, from, to, groupBy, model, bucket } = query;
   const rows = db
     .prepare(
-      `SELECT session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context
+      `SELECT session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context, ${PRICE_COLUMNS}
        FROM session_usage WHERE scope = ? AND hour >= ? AND hour <= ? ${model ? 'AND model = ?' : ''}`,
     )
     .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Hourly[];
@@ -169,7 +198,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
 
   for (const row of rows) {
     const tokens: TokenCounts = { input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write };
-    const cost = costOf({ ...tokens, cacheWrite1h: row.cache_write_1h }, row.model) ?? 0;
+    const cost = hourlyCostOf(row) ?? 0;
     const key = keyOf(row);
     let group = groups.get(key);
     if (!group) groups.set(key, (group = newGroup(key)));
@@ -208,7 +237,8 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[];
   const addApart = (row: Routed, rowKey: string, count: (group: Group) => void) => {
     const tokens: TokenCounts = { input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write };
-    const cost = costOf(tokens, row.model) ?? 0;
+    // Each row is one call (a question's per model), priced by its own prompt size.
+    const cost = requestCostOf(tokens, row.model) ?? 0;
     const hour = hourOf(row.at);
     const key = groupBy === 'day' ? dayOf(hour) : rowKey;
     let group = groups.get(key);
@@ -345,33 +375,42 @@ export interface PlanWindow {
  * windows are the account's and this computer may not have checked its plan lately.
  */
 export function windowCostsFrom(db: DatabaseSync, scope: string, windows: readonly PlanWindow[], now: number): WindowCost[] {
-  const perModel = (from: number): Array<{ model: string; tokens: TokenCounts & { cacheWrite1h: number } }> => {
-    const rows = db
-      .prepare(
-        `SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cacheRead, SUM(cache_write) AS cacheWrite, SUM(cache_write_1h) AS cacheWrite1h FROM (
-           SELECT model, input, output, cache_read, cache_write, cache_write_1h FROM session_usage WHERE scope = ? AND hour >= ? AND hour <= ?
-           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ?
-           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM side_question_usage WHERE scope = ? AND at >= ? AND at <= ?
-           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM catchup_usage WHERE scope = ? AND at >= ? AND at <= ?
-         ) GROUP BY model`,
-      )
-      .all(scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
-    return rows.map(({ model, ...tokens }) => ({ model, tokens }));
-  };
   const result: WindowCost[] = [];
   for (const { kind, scope: windowScope, from } of windows) {
     const family = windowScope?.split(/\s+/)[0]?.toLowerCase() ?? null;
-    let usd = 0;
-    let partial = false;
-    for (const { model, tokens } of perModel(from)) {
-      if (family && !model.toLowerCase().includes(family)) continue;
-      const cost = costOf(tokens, model);
-      if (cost === null) partial ||= tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite > 0;
-      else usd += cost;
-    }
-    result.push({ kind, scope: windowScope, from, usd, partial });
+    const rows = pricedRows(db, 'scope = ? AND hour >= ? AND hour <= ?', 'scope = ? AND at >= ? AND at <= ?', [scope, hourOf(from), now]);
+    result.push({ kind, scope: windowScope, from, ...costOfRows(family ? rows.filter((r) => r.model.toLowerCase().includes(family)) : rows) });
   }
   return result;
+}
+
+/** A row to price: an hour of a session's transcript tokens (`call` 0) or one of Seshboard's helper calls (`call` 1). */
+type PricedRow = { model: string; input: number; output: number; cache_read: number; cache_write: number; cache_write_1h: number; call: number } & PriceColumns;
+
+/**
+ * The transcript's hourly rows and the helper calls (Auto model's picks, catch-up summaries, side questions) that match
+ * `hourly` and `calls`, each a condition with the same `params`. Priced row by row, as a long prompt is a request's.
+ */
+function pricedRows(db: DatabaseSync, hourly: string, calls: string, params: Array<string | number>): PricedRow[] {
+  const call = (table: string) => `UNION ALL SELECT model, input, output, cache_read, cache_write, 0, 0, 0, 0, 0, 0, NULL, 1 FROM ${table} WHERE ${calls}`;
+  return db
+    .prepare(
+      `SELECT model, input, output, cache_read, cache_write, cache_write_1h, ${PRICE_COLUMNS}, 0 AS call FROM session_usage WHERE ${hourly}
+       ${call('auto_routing')} ${call('side_question_usage')} ${call('catchup_usage')}`,
+    )
+    .all(...params, ...params, ...params, ...params) as unknown as PricedRow[];
+}
+
+/** What rows cost at list prices; `partial` when some had a model without a known price. */
+function costOfRows(rows: readonly PricedRow[]): { usd: number; partial: boolean } {
+  let usd = 0;
+  let partial = false;
+  for (const row of rows) {
+    const cost = row.call ? requestCostOf({ input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write }, row.model) : hourlyCostOf(row);
+    if (cost === null) partial ||= row.input + row.output + row.cache_read + row.cache_write > 0;
+    else usd += cost;
+  }
+  return { usd, partial };
 }
 
 /**
@@ -380,23 +419,6 @@ export function windowCostsFrom(db: DatabaseSync, scope: string, windows: readon
  * about it). `partial`: tokens of a model without a known price were left out. Null when no tokens were counted.
  */
 export function sessionCost(db: DatabaseSync, scope: string, sessionId: string): { usd: number; partial: boolean } | null {
-  const rows = db
-    .prepare(
-      `SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cacheRead, SUM(cache_write) AS cacheWrite, SUM(cache_write_1h) AS cacheWrite1h FROM (
-         SELECT model, input, output, cache_read, cache_write, cache_write_1h FROM session_usage WHERE scope = ? AND session_id = ?
-         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM auto_routing WHERE scope = ? AND session_id = ?
-         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM side_question_usage WHERE scope = ? AND session_id = ?
-         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM catchup_usage WHERE scope = ? AND session_id = ?
-       ) GROUP BY model`,
-    )
-    .all(scope, sessionId, scope, sessionId, scope, sessionId, scope, sessionId) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
-  if (rows.length === 0) return null;
-  let usd = 0;
-  let partial = false;
-  for (const { model, ...tokens } of rows) {
-    const cost = costOf(tokens, model);
-    if (cost === null) partial ||= tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite > 0;
-    else usd += cost;
-  }
-  return { usd, partial };
+  const rows = pricedRows(db, 'scope = ? AND session_id = ?', 'scope = ? AND session_id = ?', [scope, sessionId]);
+  return rows.length ? costOfRows(rows) : null;
 }

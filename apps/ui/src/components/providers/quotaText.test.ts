@@ -10,6 +10,12 @@ describe("a provider's premium requests", () => {
     expect(quotaLine('Copilot', { ...quota, entitlement: null, percentUsed: 0 }, 'en-US')).toBe('Copilot · Premium requests 212 used · resets Nov 1');
   });
 
+  it('says the account is billed per token in AI credits, without request counts', () => {
+    const credits = { used: 0, entitlement: null, percentUsed: 0, resetsAt: '2026-11-17T07:26:09Z', tokenBilling: true };
+    expect(quotaLine('Copilot', credits, 'en-US')).toBe('Copilot · Billed per token in AI credits');
+    expect(quotaSummary(credits, 'en-US')).toBe('Billed per token in AI credits. The Tokens tab in Usage shows what each session cost.');
+  });
+
   it("reads as a session's footer", () => {
     expect(quotaFooter(quota, 'en-US')).toBe('Premium requests 212 of 1,500');
     expect(quotaFooter({ ...quota, entitlement: null }, 'en-US')).toBe('212 premium requests');
