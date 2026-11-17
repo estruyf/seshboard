@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, checkRemoteSessions, RemoteSessions, type Pipeline, type PipelineRunState, type SessionSummary, type TranscriptMessage } from '@seshboard/protocol';
+import { BUILT_IN_PIPELINES, checkRemoteSessions, RemoteSessions, type Pipeline, type PipelineRunState, type SessionHostInfo, type SessionSummary, type TranscriptMessage } from '@seshboard/protocol';
 import { projectIdOf, remoteMessage, remoteRuns, remoteSessions } from './remoteView.ts';
 
 const msg = (role: TranscriptMessage['role'], blocks: TranscriptMessage['blocks']): TranscriptMessage => ({ uuid: 'm1', role, timestamp: 1, parentToolUseId: null, model: null, blocks });
@@ -158,6 +158,17 @@ describe('remoteSessions with runs', () => {
     // One a later version sends in another shape is left out, not the session.
     const odd = RemoteSessions.parse({ ...parsed, sessions: parsed.sessions.map((s) => ({ ...s, trigger: { name: 1 } })) });
     expect(odd.sessions.map((s) => s.trigger)).toEqual([undefined, undefined]);
+  });
+
+  it('sends a running session\u2019s API retry, and nothing for one that is not retrying', () => {
+    const apiRetry = { attempt: 3, maxRetries: 10, delayMs: 8000, status: 529, at: 5 };
+    const host = { sessionId: 'parent', cwd: ROOT, state: 'running', model: 'opus', effort: null, permissionMode: 'default', profileId: 'work', backgroundTasks: [] } as unknown as SessionHostInfo;
+    const options = { archiveAfterDays: 7, scope: 'switchboard' as const, projectNames: new Map(), now: NOW };
+    const list = remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [{ ...host, apiRetry }] }, options);
+    expect(list.sessions[0]!.apiRetry).toEqual(apiRetry);
+    // What another computer reads keeps it.
+    expect(RemoteSessions.parse(list).sessions[0]!.apiRetry).toEqual(apiRetry);
+    expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [host] }, options).sessions[0]).not.toHaveProperty('apiRetry');
   });
 
   it('sends no runs from an engine without pipelines', () => {

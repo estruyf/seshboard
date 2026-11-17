@@ -489,6 +489,11 @@ export interface Preferences {
   /** The global effort (Settings › General): as the model, `""` leaves it to Claude Code. */
   newSessionEffort: NewSessionEffort;
   /**
+   * The global fallback model (Settings › General): the model Claude Code sessions switch to when their own is
+   * overloaded or unavailable, where the profile and the project set none. `""` is off.
+   */
+  newSessionFallbackModel: string;
+  /**
    * Settings › General: "Use Claude in Chrome". On, sessions start with `--chrome`, so they get the Claude in Chrome
    * extension's browser tools. Claude Code's own "Enabled by default" only applies in a terminal, so an SDK host has to
    * ask for it. Off by default: not everyone has the extension.
@@ -691,6 +696,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   newSessionMode: "default",
   newSessionModel: "",
   newSessionEffort: "",
+  newSessionFallbackModel: "",
   chrome: false,
   agentVisuals: true,
   browserControl: true,
@@ -884,6 +890,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   // Models come from Claude Code at runtime, so any short id is kept; one it no longer lists is shown as it is.
   if (typeof raw.newSessionModel === "string" && raw.newSessionModel.length <= NEW_SESSION_MODEL_MAX)
     out.newSessionModel = raw.newSessionModel.trim();
+  if (typeof raw.newSessionFallbackModel === "string" && raw.newSessionFallbackModel.length <= NEW_SESSION_MODEL_MAX)
+    out.newSessionFallbackModel = raw.newSessionFallbackModel.trim();
   if (oneOf(NEW_SESSION_EFFORTS, raw.newSessionEffort))
     out.newSessionEffort = raw.newSessionEffort;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;

@@ -1,4 +1,4 @@
-import { safeLocale, type PlanSeries, type TokenCounts, type UsageBucket, type UsageLimit, type UsagePeriod, type UsageRow } from '@seshboard/protocol/client';
+import { modelName, safeLocale, type PlanSeries, type TokenCounts, type UsageBucket, type UsageLimit, type UsagePeriod, type UsageRow } from '@seshboard/protocol/client';
 
 /** The periods in their order on screen (and keys 1 to 4). */
 export const PERIODS: readonly UsagePeriod[] = ['window', 'day', 'week', 'month'];
@@ -48,14 +48,7 @@ export function formatShare(share: number): string {
   return `${Math.round(percent)}%`;
 }
 
-/** "Fable" for `claude-fable-5-1`, "Sonnet" for `claude-3-5-sonnet-20241022`: the model's family, as the plan names it. */
-export function modelName(model: string | null | undefined): string {
-  if (!model) return 'Unknown';
-  const family = model
-    .split(/[-_]/)
-    .find((part) => part !== 'claude' && /^[a-z]+$/i.test(part));
-  return family ? family[0]!.toUpperCase() + family.slice(1) : model;
-}
+export { modelName };
 
 /** A limit card's name and what it covers: "Session · 5 hours", "Weekly · all models", "Weekly · Fable · one model". */
 export function limitTitle(limit: UsageLimit): { name: string; scope: string } {

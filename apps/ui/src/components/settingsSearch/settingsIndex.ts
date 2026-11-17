@@ -6,7 +6,7 @@ import { BACKGROUND_LABEL, backgroundDetail, NEEDS_YOU_DETAIL, NEEDS_YOU_LABEL, 
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
-import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
+import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
@@ -54,6 +54,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: GLOBAL_EFFORT_DETAIL,
       keywords: 'new session default effort thinking reasoning low medium high extra max claude code profile project',
       target: '[data-new-session-effort]',
+    },
+    {
+      id: 'new-session-fallback-model',
+      page: 'general',
+      label: 'Global fallback model',
+      detail: GLOBAL_FALLBACK_DETAIL,
+      keywords: 'fallback backup model overloaded unavailable busy switch retry opus sonnet haiku claude code profile project',
+      target: '[data-new-session-fallback-model]',
     },
     {
       id: 'chrome',

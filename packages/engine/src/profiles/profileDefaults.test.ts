@@ -25,7 +25,7 @@ describe('profile defaults', () => {
       const store = new ProfileStore(cache.db, createAppStateStore(cache.db), builtin, (snapshot) => changes.push(snapshot));
       work = store.add('Work', 'blue', join(base, 'work'));
       expect(store.snapshot().profiles.map((p) => p.defaults)).toEqual([unset, unset]);
-      store.setDefaults(work, { ...unset, model: 'opus', permissionMode: 'plan', workspace: 'worktree' });
+      store.setDefaults(work, { ...unset, model: 'opus', permissionMode: 'plan', workspace: 'worktree', fallbackModel: 'sonnet' });
       expect(changes.length).toBe(2);
       expect(() => store.setDefaults('missing', unset)).toThrow(/No such profile/);
     } finally {
@@ -35,7 +35,9 @@ describe('profile defaults', () => {
     try {
       const store = new ProfileStore(cache.db, createAppStateStore(cache.db), builtin);
       const { profiles } = store.snapshot();
-      expect(profiles.find((p) => p.id === work)?.defaults).toEqual({ ...unset, model: 'opus', permissionMode: 'plan', workspace: 'worktree' });
+      expect(profiles.find((p) => p.id === work)?.defaults).toEqual({ ...unset, model: 'opus', permissionMode: 'plan', workspace: 'worktree', fallbackModel: 'sonnet' });
+      expect(store.defaultsOf(work).fallbackModel).toBe('sonnet');
+      expect(store.defaultsOf('missing')).toEqual(unset);
       expect(profiles.find((p) => p.builtin)?.defaults).toEqual(unset);
       // Clearing every field stores nothing.
       store.setDefaults(work, unset);

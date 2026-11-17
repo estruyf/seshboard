@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRpcClient, mergeFacts, messagePortTransport, type WorktreeFacts, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
+import { createRpcClient, mergeFacts, messagePortTransport, ProfileDefaults, ProjectDefaults,type WorktreeFacts, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine, type EngineOptions, type TrashScope } from './engine.ts';
 import { fakeAppServer, thread } from './providers/codex/codexFakes.ts';
@@ -32,7 +32,7 @@ const fakeSource: SessionSource = {
 };
 
 /** A Claude Code stand-in that only records how sessions were started; they never answer. */
-function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?: string; worktree?: string | null }>): SdkRuntime {
+function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?: string; worktree?: string | null; fallbackModel?: string; planModeInstructions?: string }>): SdkRuntime {
   const quiet = () => ({
     async *[Symbol.asyncIterator]() {
       await new Promise(() => {});
@@ -59,7 +59,7 @@ function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?:
   });
   return {
     query: ({ prompt, options }) => {
-      created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode, worktree: options.extraArgs?.worktree });
+      created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode, worktree: options.extraArgs?.worktree, ...(options.fallbackModel ? { fallbackModel: options.fallbackModel } : {}), ...(options.planModeInstructions ? { planModeInstructions: options.planModeInstructions } : {}) });
       return (options.forkSession && options.persistSession === false ? answer(prompt) : quiet()) as never;
     },
     startup: async ({ options }) => ({ query: () => (created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode }), quiet()), close: () => {} }) as never,
@@ -683,6 +683,29 @@ describe('engine over a MessagePort', () => {
     expect(ran).toEqual([`started:${run.title}`, 'skipped:null']);
   });
 
+  it("starts a session with the plan mode instructions of the project its folder is in, the deepest one, and none outside", async () => {
+    const created: Array<{ cwd?: string; planModeInstructions?: string }> = [];
+    const { client, dataDir } = connect({ sdk: fakeSdk(created) });
+    const inner = join(dataDir, 'pkg');
+    mkdirSync(join(inner, 'app'), { recursive: true });
+    mkdirSync(join(dataDir, 'docs'), { recursive: true });
+    const defaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
+    await client.call('projects.add', { path: dataDir });
+    await client.call('projects.add', { path: inner });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...defaults, planModeInstructions: 'List the files.' } });
+    await client.call('projects.setDefaults', { root: inner, defaults: { ...defaults, planModeInstructions: 'Package rules.' } });
+    // A subfolder of a project that isn't a repository takes the project's text.
+    await client.call('session.create', { cwd: join(dataDir, 'docs'), prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).toMatchObject({ cwd: join(dataDir, 'docs'), planModeInstructions: 'List the files.' });
+    // A project that is itself a subfolder wins over the one above it.
+    await client.call('session.create', { cwd: join(inner, 'app'), prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).toMatchObject({ cwd: join(inner, 'app'), planModeInstructions: 'Package rules.' });
+    await client.call('projects.setDefaults', { root: inner, defaults: { ...defaults, planModeInstructions: '' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...defaults, planModeInstructions: '' } });
+    await client.call('session.create', { cwd: inner, prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).not.toHaveProperty('planModeInstructions');
+  });
+
   it('pauses the schedules of a project removed from Seshboard, and a run whose folder is gone', async () => {
     const { client, dataDir } = connect({ sdk: fakeSdk([]) });
     const folder = join(dataDir, 'web');
@@ -723,6 +746,43 @@ describe('engine over a MessagePort', () => {
     const { item: missing } = await client.call('later.add', { draft: { cwd: join(dataDir, 'gone'), prompt: 'Nowhere' } });
     await expect(client.call('later.start', { id: missing.id })).rejects.toThrow(/Folder not found/);
     expect((await client.call('later.list', {})).items.map((i) => i.id)).toEqual([next.id, missing.id]);
+  });
+
+  it('starts every Claude Code session with the fallback model of its project, else its profile, else the global one', async () => {
+    const created: Array<{ cwd?: string; model?: string; fallbackModel?: string }> = [];
+    const { engine, client, dataDir } = connect({ sdk: fakeSdk(created) });
+    const folder = join(dataDir, 'shop');
+    const workHome = join(dataDir, 'work-claude');
+    mkdirSync(folder);
+    mkdirSync(workHome);
+    await client.call('projects.add', { path: folder });
+    const start = async (extra: { model?: string; profileId?: string } = {}) => {
+      created.length = 0;
+      await client.call('session.create', { cwd: folder, prompt: 'Hello', ...extra });
+      return created.at(-1)?.fallbackModel;
+    };
+    const none = ProjectDefaults.parse({});
+    // Off by default.
+    expect(await start()).toBeUndefined();
+    // Settings › General, for a folder without defaults of its own.
+    engine.setGlobalFallbackModel('haiku');
+    expect(await start()).toBe('haiku');
+    // A profile's wins over the global one; a session started on that profile (a profile switch) gets it.
+    const { id: work } = await client.call('profiles.add', { name: 'Work', color: 'blue', configDir: workHome });
+    await client.call('profiles.setDefaults', { id: work, defaults: ProfileDefaults.parse({ fallbackModel: 'sonnet' }) });
+    expect(await start()).toBe('haiku');
+    expect(await start({ profileId: work })).toBe('sonnet');
+    // The project's wins over its profile's, found by the folder's root.
+    await client.call('projects.setDefaults', { root: folder, defaults: { ...none, fallbackModel: 'opus' } });
+    expect(await start({ profileId: work })).toBe('opus');
+    // Or it skips the profile's for the global one.
+    await client.call('projects.setDefaults', { root: folder, defaults: { ...none, globalFallbackModel: true } });
+    expect(await start({ profileId: work })).toBe('haiku');
+    // A fallback that is the session's own model is left out.
+    expect(await start({ profileId: work, model: 'haiku' })).toBeUndefined();
+    // Off again.
+    engine.setGlobalFallbackModel(null);
+    expect(await start({ profileId: work })).toBeUndefined();
   });
 
   it('starts a queued worktree from a saved branch, and lets Claude Code make the others', async () => {
@@ -815,6 +875,12 @@ describe('engine over a MessagePort', () => {
     expect(await defaultsOf()).toMatchObject({ model: 'sonnet', orchestratorInstructions: 'Branch from dev.' });
     await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), orchestratorInstructions: '' } });
     expect(await defaultsOf()).not.toHaveProperty('orchestratorInstructions');
+    // Plan mode's instructions work the same way, apart from the orchestrator's.
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '  List the files.  ' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { model: 'haiku', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } });
+    expect(await defaultsOf()).toMatchObject({ model: 'haiku', planModeInstructions: 'List the files.' });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '' } });
+    expect(await defaultsOf()).not.toHaveProperty('planModeInstructions');
     // No session is an orchestrator yet.
     expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [] });
     await client.call('projects.remove', { root: dataDir });

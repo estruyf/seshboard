@@ -56,6 +56,7 @@ export * from './usageWeights.ts';
 export * from './costEstimate.ts';
 export * from './locale.ts';
 export * from './contextCache.ts';
+export { modelName } from './modelName.ts';
 export * from './accountKey.ts';
 export * from './savedPrompts.ts';
 export * from './savedPromptSchema.ts';

@@ -35,7 +35,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import type { ModsEvents, ModsSurface } from './modsSurface.ts';
-import { buildOptions, SessionHost, systemPromptFor, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
+import { buildOptions, SessionHost, systemPromptFor, toModelOption, usableFallback, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
 import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
@@ -69,6 +69,10 @@ export interface HostManagerDeps {
   onStream: (delta: StreamDelta) => void;
   /** `held`: a message Claude Code doesn't have yet (see `HostEvents.messages`). */
   onMessages: (sessionId: string, messages: RawSessionMessage[], held?: boolean) => void;
+  /** A line Claude Code didn't write to the transcript (see `HostEvents.notice`). */
+  onNotice?: (sessionId: string, message: RawSessionMessage) => void;
+  /** Messages Claude Code took back (see `HostEvents.retract`). */
+  onRetract?: (sessionId: string, uuids: string[]) => void;
   /** A session this app ran was stopped: a message it still held back will never be sent. */
   onClosed?: (sessionId: string) => void;
   onPermission: (request: PermissionRequest) => void;
@@ -103,6 +107,12 @@ export interface HostManagerDeps {
   installedPlugins?: (profileId: string) => PluginInfo[];
   /** What each session last ran with; without it, resumes only remember it until the engine restarts. */
   sessionSettings?: SessionSettingsStore;
+  /**
+   * The fallback model for a session in `cwd` under `profileId` (project, then profile, then Settings › General), or
+   * null for none. Asked each time a Claude Code process starts, whoever starts it (a window, a phone, a schedule, a
+   * pipeline step, an orchestrator): they all come through here.
+   */
+  fallbackModel?: (cwd: string, profileId: string) => string | null;
   /** The model list saved last time, until Claude Code reports a fresh one. */
   models?: ModelOption[] | null;
   /** Claude Code reported a (new) model list. */
@@ -160,6 +170,8 @@ export interface HostManagerDeps {
   orchestratorServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
   isOrchestrator?: (sessionId: string) => boolean;
   appendSystemFor?: (sessionId: string) => string | null;
+  /** The project's own plan mode instructions for a session in `cwd`; null for none. Read when a process starts. */
+  planModeInstructionsFor?: (cwd: string) => string | null;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -191,6 +203,10 @@ interface Warm {
   profileId: string;
   /** The effort it started with: Claude Code reads it only at startup. */
   effort: Effort | null;
+  /** The fallback model it started with, fixed at startup like the effort. */
+  fallbackModel: string | null;
+  /** The project's plan mode instructions it started with (also read only at startup), null for none. */
+  planInstructions: string | null;
   sessionId: string;
   warm: Promise<WarmQuery>;
   /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process, as do the browser tools. */
@@ -830,6 +846,7 @@ export class HostManager {
     const settings = this.settings.get(sessionId);
     const model = running?.model ?? settings?.model ?? null;
     const effort = running?.effort ?? settings?.effort ?? null;
+    const fallback = usableFallback(this.deps.fallbackModel?.(cwd, profileId), model);
     this.deps.assertTrusted?.(cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
     const helperId = randomUUID();
@@ -864,6 +881,8 @@ export class HostManager {
         canUseTool: async (name, toolInput) => (isReadOnlyTool(name, toolInput) ? { behavior: 'allow', updatedInput: toolInput } : { behavior: 'deny', message: READ_ONLY_REASON }),
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),
+        // So the question is answered while the main model is overloaded.
+        ...(fallback ? { fallbackModel: fallback } : {}),
         stderr: (data) => this.deps.log('debug', `[claude ask] ${data.trimEnd()}`),
       },
     });
@@ -1036,7 +1055,7 @@ export class HostManager {
   /** Bumped whenever the warm process is replaced or discarded, so a pre-warm that finishes late knows it lost. */
   private warmGeneration = 0;
   /** The folder, profile and effort a pre-warm is starting for, until it has stored its process. */
-  private warming: { cwd: string; profileId: string; effort: Effort | null } | undefined;
+  private warming: { cwd: string; profileId: string; effort: Effort | null; fallbackModel: string | null; planInstructions: string | null } | undefined;
 
   /**
    * Starts a Claude Code process for `cwd` so a new session there answers about a second faster. `effort` is the one
@@ -1044,7 +1063,9 @@ export class HostManager {
    */
   async prewarm(cwd: string, profileId: string, effort: Effort | null = null): Promise<void> {
     const target = this.warm ?? this.warming;
-    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort) return;
+    const planInstructions = this.deps.planModeInstructionsFor?.(cwd) ?? null;
+    const fallbackModel = this.deps.fallbackModel?.(cwd, profileId) ?? null;
+    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort && target.fallbackModel === fallbackModel && target.planInstructions === planInstructions) return;
     try {
       this.deps.assertTrusted?.(cwd);
     } catch {
@@ -1053,7 +1074,7 @@ export class HostManager {
     }
     this.discardWarm();
     const generation = this.warmGeneration;
-    this.warming = { cwd, profileId, effort };
+    this.warming = { cwd, profileId, effort, fallbackModel, planInstructions };
     let env: Record<string, string>, claudePath: string | undefined, sdk: SdkRuntime;
     try {
       [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
@@ -1078,7 +1099,9 @@ export class HostManager {
         model: null,
         permissionMode: 'default',
         effort,
+        fallbackModel,
         worktree: null,
+        planModeInstructions: planInstructions,
         chrome: this.chrome,
         visualize: this.visualize,
         browser,
@@ -1092,7 +1115,7 @@ export class HostManager {
     const warm = sdk.startup({ options });
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    const entry: Warm = { cwd, profileId, effort, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, effort, fallbackModel, planInstructions, sessionId, warm, route, timer };
     this.warm = entry;
     // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
     warm.catch((error: unknown) => {
@@ -1135,6 +1158,11 @@ export class HostManager {
   private takeWarm(params: CreateParams): Warm | undefined {
     const warm = this.warm;
     if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || (params.effort ?? null) !== warm.effort) return undefined;
+    // The fallback is fixed at startup too: a settings change since, or a model that is the fallback itself, needs a fresh process.
+    const fallback = this.deps.fallbackModel?.(params.cwd, params.profileId) ?? null;
+    if (fallback !== warm.fallbackModel || usableFallback(fallback, params.model) !== usableFallback(warm.fallbackModel, null)) return undefined;
+    // The project's instructions changed since it started: Claude Code reads them only at startup.
+    if ((this.deps.planModeInstructionsFor?.(params.cwd) ?? null) !== warm.planInstructions) return undefined;
     clearTimeout(warm.timer);
     this.warm = undefined;
     this.deps.ephemeral?.delete(warm.sessionId);
@@ -1171,9 +1199,11 @@ export class HostManager {
           return started ? started.query(args.prompt) : sdk.query(args);
         }
       : (args) => sdk.query(args);
+    const fallbackModel = config.fallbackModel !== undefined ? config.fallbackModel : (this.deps.fallbackModel?.(config.cwd, config.profileId) ?? null);
     const host = new SessionHost(
       {
         ...config,
+        fallbackModel,
         env,
         claudePath,
         canUseTool,
@@ -1185,11 +1215,14 @@ export class HostManager {
         browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
         orchestrator: orchestrate ? ((await this.deps.orchestratorServer?.(() => hostRef?.sessionId ?? null)) ?? null) : null,
         skimMarks: this.skimMarks,
+        planModeInstructions: this.deps.planModeInstructionsFor?.(config.cwd) ?? null,
       },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
         messages: (id, messages, held) => this.deps.onMessages(id, messages, held),
+        notice: (id, message) => this.deps.onNotice?.(id, message),
+        retract: (id, uuids) => this.deps.onRetract?.(id, uuids),
         log: this.deps.log,
         usageHint: () => this.deps.onUsageHint?.(config.profileId),
         rateLimit: (sessionId, info) => this.deps.onRateLimit?.(config.profileId, sessionId, info),
