@@ -2612,6 +2612,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:idle-compaction",
+      "name": "A compaction Claude Code made by itself while a terminal session sat idle shows as Compacted while idle",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:quit-large-context",
       "name": "Quitting with a large session open warns once, or every time with Warn when quitting",
       "page": "settings"
@@ -2784,6 +2789,11 @@
     {
       "id": "feature:composer-chips",
       "name": "Profile, model, effort and mode chips",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:ultrathink",
+      "name": "Ultrathink: the word is coloured in the message box, and Ultrathink this turn on the effort chip adds it to the next message only",
       "page": "sessions/conversation"
     },
     {

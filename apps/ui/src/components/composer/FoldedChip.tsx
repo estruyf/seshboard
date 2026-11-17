@@ -18,7 +18,7 @@ export interface FoldedSection {
   name: string;
 }
 
-const ITEMS = '[role=menuitemradio]:not(:disabled),[role=menuitem]:not(:disabled)';
+const ITEMS = '[role=menuitemradio]:not(:disabled),[role=menuitemcheckbox]:not(:disabled),[role=menuitem]:not(:disabled)';
 const ROW = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-ui text-text outline-none hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-40 disabled:hover:bg-transparent';
 
 /**
@@ -147,7 +147,8 @@ export function FoldedChip({ sections, face, label, disabled, tools, usage }: { 
                 <button
                   key={action.label}
                   type="button"
-                  role="menuitem"
+                  role={action.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+                  aria-checked={action.checked}
                   disabled={action.disabled}
                   {...action.data}
                   onClick={() => {
@@ -156,7 +157,8 @@ export function FoldedChip({ sections, face, label, disabled, tools, usage }: { 
                   }}
                   className={`${ROW} border-t border-edge`}
                 >
-                  {action.label}
+                  <span className="min-w-0 flex-1">{action.label}</span>
+                  {action.checked !== undefined && <Check size={13} aria-hidden className={`shrink-0 text-accent-ink ${action.checked ? '' : 'invisible'}`} />}
                 </button>
               ))}
             </>

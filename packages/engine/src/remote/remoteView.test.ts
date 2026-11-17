@@ -37,6 +37,7 @@ describe('remoteMessage', () => {
     // Skim's keep line is for the desktop's fade only.
     expect(remoteMessage(msg('assistant', [{ type: 'text', text: 'It works.\n\n<!-- keep: "It works" -->' }])).blocks).toEqual([{ type: 'text', text: 'It works.' }]);
     expect(remoteMessage(msg('system', [{ type: 'unknown', kind: 'compact_boundary' }]))).toMatchObject({ role: 'system', blocks: [{ type: 'text', text: 'Conversation compacted' }] });
+    expect(remoteMessage(msg('system', [{ type: 'unknown', kind: 'compact_boundary_idle' }]))).toMatchObject({ role: 'system', blocks: [{ type: 'text', text: 'Compacted while idle' }] });
     // A tool result is left alone, even when its output looks like markup.
     const result = remoteMessage(msg('user', [{ type: 'tool_result', toolUseId: 't', isError: false, text: '<task-notification>', truncated: false, images: [] }]));
     expect(result.role).toBe('user');

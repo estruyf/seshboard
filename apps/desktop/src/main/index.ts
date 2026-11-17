@@ -4378,6 +4378,9 @@ async function runProjectPageStep(win: BrowserWindow, root: string): Promise<str
 
   const main = '[data-worktree-row][data-group="main"]';
   if (!(await js(`!!${q(main)}`))) return 'the main checkout is not listed';
+  // The rows come at once; their changes, commits and pull requests are read after. Nothing is suggested or picked before that.
+  if (!(await waitInPage(win, `!${q('[data-worktrees-tab]')}.hasAttribute('data-reading')`, 20_000))) return 'the worktrees were still being read after 20 seconds';
+  if (await js(`!!${q('[data-group="reading"]')}`)) return 'a worktree is still in the Reading group after the facts were in';
   if (!(await js(`${q(main)}.hasAttribute('data-locked') && !${q(`${main} [data-worktree-pick]`)}`))) return 'the main checkout can be picked';
   const rows = (await js(`document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-worktree-row]`)}).length`)) as number;
   const groups = (await js(`[...document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-worktree-group]`)})].map((e) => e.dataset.worktreeGroup)`)) as string[];
@@ -9779,8 +9782,20 @@ async function runOrchestratorStep(win: BrowserWindow): Promise<string> {
     return 'ok: the project kept its instructions and gave them to each session; Run as › Orchestrator started the orchestrator; its three sessions showed as Working in the overview and under its row; one moved to Waiting on you, one to Idle with the orchestrator told; Open and the way back work';
   } finally {
     engine.send({ type: 'smokeStubCreate', on: false });
-    for (const id of [...started, orchestratorId].filter(Boolean)) host(id, 'closed');
+    const ids = [...started, orchestratorId].filter(Boolean);
+    for (const id of ids) host(id, 'closed');
+    // Closed without a transcript, each session counts as failed to start, and its prompt comes back as its unsent
+    // message when its row goes. Left, the + opens this folder for every later step: gone, as a draft emptied elsewhere is.
+    for (const id of ids) await waitInPage(win, `!document.querySelector('[data-session-list] [data-session-id="${id}"]')`, 5_000);
+    win.webContents.send(IpcChannel.draftsRelayed, Object.fromEntries([...ids, `new:${folder}`].map((key) => [key, null])));
+    // Starting it added the folder to your projects. Through Projects, so the UI's list knows too: later steps expect none.
+    if (orchestratorId) await removeProjectInProjects(win, folder);
     engine.send({ type: 'smokeProject', path: folder, add: false });
+    // Back to the session the next steps work in, out of Projects.
+    if (smokeSessionId) {
+      await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+      await waitInPage(win, `!!document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    }
     try {
       rmSync(folder, { recursive: true, force: true });
     } catch {
@@ -13611,6 +13626,87 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Ultrathink in the message box: the word is drawn in colour over a copy of the text that lines up with the box, and the
+ * effort chip's "Ultrathink this turn" turns on and off (the chip shows it). Types a draft and empties the box again;
+ * nothing is sent.
+ */
+async function runUltrathinkStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!smokeSessionId) return 'no smoke session';
+  const pane = `[data-current-session="${smokeSessionId}"]`;
+  const box = `document.querySelector('${pane} [data-composer]')`;
+  const chip = `document.querySelector('${pane} [data-composer-tray] [data-effort-select]')`;
+  // Long enough to wrap onto several lines, past the box's minimum height, so the height says whether the lines break in the same places.
+  const draft = `smoke draft, never sent: Ultrathink about this ${'word '.repeat(90)}\nsecond line`;
+  const empty = async () => {
+    await js(`${box}.focus()`);
+    win.webContents.selectAll();
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
+    await settle(win);
+  };
+  const toggle = async (expected: 'on' | 'off') => {
+    await js(`${chip}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-menu="effort"] [data-ultrathink-toggle="${expected}"][role="menuitemcheckbox"][aria-checked="${expected === 'on'}"]')`, 3_000))) {
+      await js(`document.querySelector('[data-menu="effort"]') && ${chip}.click()`);
+      return false;
+    }
+    await js(`document.querySelector('[data-menu="effort"] [data-ultrathink-toggle]').click()`);
+    return true;
+  };
+  await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  if (!(await waitInPage(win, `!!${box} && !${box}.disabled`, 10_000))) return 'the session has no message box to type in';
+  if (((await js(`${box}.value`)) as string) !== '') return 'the message box was not empty to start with';
+  try {
+    // 1. The word is coloured in the box, in any case, and the text is not changed.
+    await js(`${box}.focus()`);
+    await win.webContents.insertText(draft);
+    if (!(await waitInPage(win, `document.querySelectorAll('${pane} [data-ultrathink-word]').length === 1`, 3_000))) return 'the word ultrathink was not coloured in the message box';
+    const look = (await js(`(() => {
+      const word = document.querySelector('${pane} [data-ultrathink-word]'), mirror = document.querySelector('${pane} [data-ultrathink-mirror]'), box = ${box};
+      const lines = mirror.firstElementChild;
+      return { word: word.textContent, gradient: getComputedStyle(word).backgroundImage.includes('linear-gradient'), text: lines.textContent, value: box.value, mirrorWidth: lines.getBoundingClientRect().width, boxWidth: box.clientWidth, mirrorHeight: Math.round(lines.getBoundingClientRect().height), boxHeight: Math.round(box.scrollHeight), boxColor: getComputedStyle(box).color };
+    })()`)) as { word: string; gradient: boolean; text: string; value: string; mirrorWidth: number; boxWidth: number; mirrorHeight: number; boxHeight: number; boxColor: string };
+    if (look.word !== 'Ultrathink') return `the coloured word is ${JSON.stringify(look.word)}`;
+    if (!look.gradient) return 'the word has no gradient';
+    if (look.value !== draft) return `the coloured box changed the text (${JSON.stringify(look.value)})`;
+    if (look.text !== draft) return `the coloured copy does not read like the box (${JSON.stringify(look.text)})`;
+    if (Math.abs(look.mirrorWidth - look.boxWidth) > 0.5) return `the coloured copy is ${look.mirrorWidth}px wide and the box ${look.boxWidth}px without its scrollbar: the lines would wrap differently`;
+    if (Math.abs(look.mirrorHeight - look.boxHeight) > 2) return `the coloured copy is ${look.mirrorHeight}px tall and the box ${look.boxHeight}px: the lines do not line up`;
+    if (!/rgba\(0, 0, 0, 0\)|transparent/.test(look.boxColor)) return `the box's own text is still drawn (${look.boxColor})`;
+    await empty();
+    if (!(await waitInPage(win, `!document.querySelector('${pane} [data-ultrathink-mirror]') && ${box}.value === ''`, 3_000))) return 'the coloured copy stayed after the box was emptied';
+    // A longer word is not the word.
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('ultrathinking is not the word');
+    await settle(win);
+    if (await js(`!!document.querySelector('${pane} [data-ultrathink-mirror]')`)) return 'a longer word, ultrathinking, was coloured';
+    await empty();
+
+    // 2. The effort chip's option arms the next message, shows on the chip, and turns off again. A session without an
+    // effort chip, a tray folded into one chip, or an effort that is xhigh or max already has no option to try.
+    const where = (await js(`(() => { const chip = ${chip}; const tray = document.querySelector('${pane} [data-composer-tray]'); return { chip: !!chip, folded: !!tray?.hasAttribute('data-composer-tray-folded'), effort: chip?.dataset.value ?? '' }; })()`)) as { chip: boolean; folded: boolean; effort: string };
+    if (!where.chip || where.folded) return `ok: ultrathink is coloured in the box (a longer word is not) and the lines line up; skipped the option, ${where.folded ? 'the tray is folded into one chip' : 'this session has no effort chip'}`;
+    if (where.effort === 'xhigh' || where.effort === 'max') {
+      if (await js(`(() => { ${chip}.click(); return true; })()`) && !(await waitInPage(win, "!!document.querySelector('[data-menu=\"effort\"]')", 3_000))) return 'the effort menu did not open';
+      const offered = await js("!!document.querySelector('[data-menu=\"effort\"] [data-ultrathink-toggle]')");
+      await js(`${chip}.click()`);
+      return offered ? `the option is offered at ${where.effort} effort, where the word does nothing` : `ok: ultrathink is coloured in the box and the option is not offered at ${where.effort} effort`;
+    }
+    if (!(await toggle('off'))) return 'the effort menu has no "Ultrathink this turn" option';
+    if (!(await waitInPage(win, `!!${chip}.querySelector('[data-ultrathink-armed]') && ${chip}.getAttribute('aria-label').includes('ultrathink')`, 3_000))) return 'the effort chip does not show that ultrathink is on';
+    if (!(await toggle('on'))) return 'the effort menu does not offer to turn ultrathink off';
+    if (!(await waitInPage(win, `!${chip}.querySelector('[data-ultrathink-armed]')`, 3_000))) return 'ultrathink stayed on the chip after turning it off';
+    return 'ok: ultrathink is coloured in the box (a longer word is not), the lines line up with the box, the effort chip arms it and turns it off again, nothing sent';
+  } finally {
+    // Whatever happened: an empty box, and the option off.
+    await empty();
+    if (await js(`!!${chip}?.querySelector('[data-ultrathink-armed]')`)) await toggle('on');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  }
+}
+
+/**
  * Right-click → Archive moves a session out of the main list, even one that's working (its updates
  * used to bring it straight back); "Unarchive" returns it. Flags live in the throwaway profile.
  */
@@ -14233,6 +14329,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('quick actions on hover: Archive with Undo, a working session asks first, U and ⌘Z', () => runQuickActionsStep(win));
   await step('drop target', () => runDropStep(win));
   await step('prompt history', () => runHistoryStep(win));
+  await step('ultrathink: coloured in the box, one turn from the effort chip', () => runUltrathinkStep(win));
   await step('send now only while Claude works', () => runSendNowStep(win));
   await step('Ask about this session, nothing added to the conversation', () => runAskStep(win));
   await step('controls', () => runControlsStep(win));

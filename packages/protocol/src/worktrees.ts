@@ -49,8 +49,39 @@ export const WorktreeEntry = z.object({
   lastActivity: z.number().nullable(),
   /** Known sessions whose folder is in this worktree (not in a worktree nested inside it). */
   sessions: z.array(z.string()),
+  /**
+   * The slow facts are not in yet: `uncommitted`, `ahead`, `behind`, `merged`, `unpushed`, `pushed` and `pr` hold
+   * placeholders and mean nothing. `worktrees.facts` brings them (`mergeFacts`). Left out once they are known, and by
+   * an engine from before this existed.
+   */
+  factsPending: z.boolean().optional(),
+  /**
+   * A git call that these facts rest on failed or timed out (`git status`, or the commit counts): the numbers above are
+   * a guess, never a reason to call the worktree clean, pushed or safe. Left out when everything was read.
+   */
+  unreadable: z.boolean().optional(),
 });
 export type WorktreeEntry = z.infer<typeof WorktreeEntry>;
+
+/**
+ * What takes a few git calls per worktree (`git status` walks the whole folder): read in the background after the
+ * list and sent with `worktrees.facts`. `head` is what it was read at, so a fact for a checkout that has moved since is ignored.
+ */
+export const WorktreeFacts = z.object({
+  path: z.string(),
+  head: z.string().nullable(),
+  /** Read again with the facts: a fetch before them may have moved it. */
+  upstream: z.string().nullable(),
+  uncommitted: z.number(),
+  ahead: z.number().nullable(),
+  behind: z.number().nullable(),
+  merged: z.boolean(),
+  unpushed: z.number(),
+  pushed: z.boolean(),
+  /** See `WorktreeEntry.unreadable`. */
+  unreadable: z.boolean(),
+});
+export type WorktreeFacts = z.infer<typeof WorktreeFacts>;
 
 export const WorktreeList = z.object({
   /** The main checkout. */
@@ -59,6 +90,8 @@ export const WorktreeList = z.object({
   baseBranch: z.string().nullable(),
   /** `gh` answered, so pull requests are known. */
   pullRequests: z.boolean(),
+  /** `gh` hasn't answered yet; `worktrees.pullRequests` follows (with null when it can't). Left out once settled. */
+  pullRequestsPending: z.boolean().optional(),
   worktrees: z.array(WorktreeEntry),
 });
 export type WorktreeList = z.infer<typeof WorktreeList>;

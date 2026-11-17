@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import { isAbsolutePath, type WorktreeEntry, type WorktreeList, type WorktreeSize } from '@seshboard/protocol/client';
+import { anyFactsPending, isAbsolutePath, type WorktreeEntry, type WorktreeList, type WorktreeSize } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
+import { addEarly, applyEarly, listIsFresh, pendingCount, PENDING_STALE_MS, type EarlyFacts } from './worktreeFactsFeed.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { NO_SESSIONS, worktreeRows, type WorktreeRow, type WorktreeSessions } from '../components/worktrees/worktreeGroups.ts';
 import { useHosts } from './hostsStore.ts';
@@ -20,8 +21,6 @@ export interface WorktreesOf {
 }
 
 const EMPTY: WorktreesOf = { list: null, notRepo: false, error: null, loading: false, loadedAt: null };
-/** A list this recent is shown without asking again (opening a tab, the Projects view). */
-const FRESH_MS = 30_000;
 
 interface WorktreesState {
   byRoot: Map<string, WorktreesOf>;
@@ -65,22 +64,48 @@ export function requestSizes(client: EngineClient, list: WorktreeList, refresh =
 export async function loadWorktrees(client: EngineClient, root: string, options: { fetch?: boolean } = {}): Promise<WorktreeList | null> {
   const { patch } = useWorktrees.getState();
   patch(root, { loading: true });
+  early.delete(root);
   try {
-    const list = await client.call('worktrees.list', { root, fetch: options.fetch ?? false });
+    // The engine answers at once, even for dozens of worktrees: what is slow in them follows with `worktrees.facts`.
+    const answer = await client.call('worktrees.list', { root, fetch: options.fetch ?? false });
+    // What the list before it knew is not carried over: a change that doesn't move HEAD would still read as clean. The
+    // engine keeps the facts of a read under way for reloads (`held`), so they come back in the answer.
+    const list = applyEarly(answer, early.get(root));
+    early.delete(root);
     patch(root, { list, notRepo: false, error: null, loading: false, loadedAt: Date.now() });
     return list;
   } catch (error) {
+    early.delete(root);
     const code = (error as { code?: string }).code;
     patch(root, { loading: false, loadedAt: Date.now(), notRepo: code === 'NOT_A_REPO', error: code === 'NOT_A_REPO' ? null : (error as Error).message });
     return null;
   }
 }
 
-/** Takes in sizes as the engine measures them. Mount once. */
+/** What reached us while a project's list was being read, to go on the list when it is here. */
+const early = new Map<string, EarlyFacts>();
+
+/** Puts late facts or pull requests on a project's list; while it is being read they are kept for the answer, too. */
+function takeIn(root: string, event: Parameters<typeof addEarly>[1]): void {
+  const state = useWorktrees.getState();
+  const current = state.byRoot.get(root);
+  if (current?.loading) early.set(root, addEarly(early.get(root), event));
+  if (current?.list) state.patch(root, { list: applyEarly(current.list, addEarly(undefined, event)) });
+}
+
+/** Takes in sizes, and the facts of the worktrees, as the engine measures and reads them. Mount once. */
 export function useWorktreesSync(): void {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  useEffect(() => client?.on('worktrees.sizes', ({ sizes }) => useWorktrees.getState().addSizes(sizes)), [client]);
+  useEffect(() => {
+    if (!client) return;
+    const offs = [
+      client.on('worktrees.sizes', ({ sizes }) => useWorktrees.getState().addSizes(sizes)),
+      client.on('worktrees.facts', ({ root, facts }) => takeIn(root, { facts })),
+      client.on('worktrees.pullRequests', ({ root, pullRequests }) => takeIn(root, { pullRequests })),
+    ];
+    return () => offs.forEach((off) => off());
+  }, [client]);
 }
 
 /** A project's worktrees, read when first shown and again once the list is older than half a minute. */
@@ -91,9 +116,23 @@ export function useWorktreesOf(root: string | null): WorktreesOf {
   useEffect(() => {
     if (!client || !root || !isAbsolutePath(root)) return;
     const current = useWorktrees.getState().byRoot.get(root);
-    if (current?.loading || (current?.loadedAt && Date.now() - current.loadedAt < FRESH_MS)) return;
+    if (current?.loading || (current?.loadedAt && listIsFresh(current.loadedAt, current.list, Date.now()))) return;
     void loadWorktrees(client, root);
   }, [client, root]);
+  // A list that is still being read after a while may have lost a fact (a worktree moved on, an event missed): read it
+  // again. The engine joins reads already under way, so a slow repository isn't started over.
+  // The timer starts over with every fact that comes in: only 15 seconds without progress count as stuck, so a big
+  // repository that is slowly being read is left alone.
+  const waiting = pendingCount(state?.list);
+  const readAt = state?.loadedAt ?? null;
+  useEffect(() => {
+    if (!client || !root || waiting === 0) return;
+    const timer = setTimeout(() => {
+      const current = useWorktrees.getState().byRoot.get(root);
+      if (current && !current.loading && current.list && anyFactsPending(current.list)) void loadWorktrees(client, root);
+    }, PENDING_STALE_MS);
+    return () => clearTimeout(timer);
+  }, [client, root, waiting, readAt]);
   return state ?? EMPTY;
 }
 
@@ -101,9 +140,11 @@ export function useWorktreesOf(root: string | null): WorktreesOf {
 export function useWorktreeSizes(list: WorktreeList | null): ReadonlyMap<string, WorktreeSize> {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
+  // Facts arriving one by one make a new list each time; the sizes are only asked for again when the worktrees change.
+  const paths = list ? list.worktrees.filter((w) => !w.missing).map((w) => w.path).join('\n') : null;
   useEffect(() => {
-    if (client && list) requestSizes(client, list);
-  }, [client, list]);
+    if (client && list && paths !== null) requestSizes(client, list);
+  }, [client, paths]);
   return useWorktrees((s) => s.sizes);
 }
 

@@ -44,7 +44,7 @@ import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageS
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
 import { ChangesBase, CheckLog, ChecksFinished, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
-import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
+import { WorktreeFacts, WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
 import { OptionalProviderSchema, ProviderDetection, ProviderQuota, ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
@@ -1103,8 +1103,14 @@ export const contract = {
      * Every worktree of the repository at `root` (`git worktree list`), main checkout first, with what it takes to decide
      * whether it can go. `fetch` runs `git fetch` first so "merged" and "pushed" are current; pull requests come from `gh`
      * (cached for a few minutes; `fetch` asks again). NOT_A_REPO outside git.
+     *
+     * It answers fast however many worktrees there are: the slow facts (changes, ahead and behind, merged, unpushed, the
+     * pull request) are read in the background, a second and a half's wait at most. Entries still waiting say `factsPending` and
+     * hold placeholders (and the list says `pullRequestsPending` while `gh` hasn't answered); `worktrees.facts` and
+     * `worktrees.pullRequests` bring the rest as they finish, and the `fetch` runs before the facts are read. With `facts: false` nothing is read in the background: for a caller that only
+     * needs the names and branches (every entry is pending).
      */
-    'worktrees.list': { params: z.object({ root: AbsolutePath, fetch: z.boolean().default(false) }), result: WorktreeList },
+    'worktrees.list': { params: z.object({ root: AbsolutePath, fetch: z.boolean().default(false), facts: z.boolean().default(true) }), result: WorktreeList },
     /**
      * Sizes on disk measured so far (cached), right away. Missing ones, and with `refresh` all of them, are measured in
      * the background and arrive through `worktrees.sizes`.
@@ -1759,6 +1765,10 @@ export const contract = {
     'providerUpdate.changed': z.object({ updates: z.array(ProviderUpdateState) }),
     /** Worktree sizes measured in the background (`worktrees.size`), as they finish. */
     'worktrees.sizes': z.object({ sizes: z.array(WorktreeSize) }),
+    /** Facts of a project's worktrees read in the background after `worktrees.list`, as they finish. */
+    'worktrees.facts': z.object({ root: z.string(), facts: z.array(WorktreeFacts) }),
+    /** The pull requests of a project's branches, by branch, once `gh` answered after `worktrees.list` (null: it can't, so none are known). */
+    'worktrees.pullRequests': z.object({ root: z.string(), pullRequests: z.record(z.string(), WorktreePullRequest).nullable() }),
     /** A `git.prCreate` moved on: pushing, creating, done or failed. */
     'git.pr': PrProgress,
     /** A pull request's checks were read (`git.prChecks`, or the engine reading running ones again). */

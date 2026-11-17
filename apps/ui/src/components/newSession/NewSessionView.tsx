@@ -530,7 +530,7 @@ function LocalNewSession() {
       if (!item) return fail(found ? (reasonLine(found.reason, found.message) ?? `Couldn't read ${ref}.`) : `Couldn't read ${ref}.`);
       if (status?.repo && item.repo.toLowerCase() !== status.repo.toLowerCase()) return fail(otherRepository(type, name));
       // A worktree named after it, made unique against the worktrees and branches there already.
-      const [listed, branches] = await Promise.all([client.call('worktrees.list', { root }).catch(() => null), client.call('git.branches', { cwd: root }).catch(() => null)]);
+      const [listed, branches] = await Promise.all([client.call('worktrees.list', { root, facts: false }).catch(() => null), client.call('git.branches', { cwd: root }).catch(() => null)]);
       if (cancelled) return;
       const worktreeName = uniqueWorktreeName(worktreeNameFor(type, item.number, item.title), takenWorktreeNames(listed?.worktrees ?? [], branches?.branches ?? []));
       touchedFor.current = root;
@@ -1762,6 +1762,8 @@ function LocalNewSession() {
               key={fromLater ? `queued:${fromLater.id}` : fromSchedule ? `schedule:${fromSchedule.id}` : 'new'}
               draftKey={draftKey}
               carryOver
+              // Claude Code's word: colour it in the box (the one-turn option is on a running session's chip only).
+              ultrathink={!runWith}
               savedPrompts={{ root: cwd && !question ? cwd : null, projectName: projectName ?? 'This project' }}
               links={{ sessionId: null, root: cwd }}
               github={{ root: cwd && !question ? cwd : null }}
