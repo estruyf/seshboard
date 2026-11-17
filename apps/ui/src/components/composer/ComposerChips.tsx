@@ -1,4 +1,4 @@
-import { Cpu, WandSparkles, Zap, ZapOff } from 'lucide-react';
+import { Cpu, Sparkles, WandSparkles, Zap, ZapOff } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
 import { useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode } from '@seshboard/protocol/client';
@@ -42,9 +42,10 @@ export interface ComposerChipRowProps {
   model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
   /**
    * Null when the model has no effort setting. `levels`: the ones the model takes (another provider's model says);
-   * every level otherwise. `defaultDescription`: what Default means, in its provider's words.
+   * every level otherwise. `defaultDescription`: what Default means, in its provider's words. `ultrathink`: a Claude Code
+   * session's "Ultrathink this turn", which adds the word to the next message only; `armed` while it will.
    */
-  effort: { value: Effort | ''; onChange(effort: Effort | ''): void; levels?: readonly Effort[]; defaultDescription?: string } | null;
+  effort: { value: Effort | ''; onChange(effort: Effort | ''): void; levels?: readonly Effort[]; defaultDescription?: string; ultrathink?: { armed: boolean; onToggle(): void } } | null;
   /** The fast mode toggle of a running session on a model that has it. Stays a chip of its own in a folded tray. */
   fast?: { face: FastModeFace; onToggle(on: boolean): void } | null;
   /**
@@ -129,6 +130,18 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
 
   const modelName = shortModelName(model.label);
   const effortLabel = effort ? (effort.value ? EFFORT_LABEL[effort.value] : 'Default effort') : '';
+  const ultrathink = effort?.ultrathink;
+  /** The effort menu's one-turn option: it says what it does now, so it reads the same as the chip's state. */
+  const ultrathinkAction: ChoiceAction[] | undefined = ultrathink
+    ? [
+        {
+          label: 'Ultrathink this turn',
+          checked: ultrathink.armed,
+          data: { 'data-ultrathink-toggle': ultrathink.armed ? 'on' : 'off', 'data-tooltip': 'The next message runs at xhigh effort, then it goes back' },
+          onSelect: ultrathink.onToggle,
+        },
+      ]
+    : undefined;
   const modeDot = mode ? (MODE_DOT[mode.value] ?? 'bg-faint') : 'bg-faint';
   const effortChoices: Array<Choice<Effort | ''>> = effort ? [{ value: '', label: 'Default', description: effort.defaultDescription ?? 'What Claude Code would pick' }, ...(effort.levels ?? EFFORTS).map((e) => ({ value: e, label: EFFORT_LABEL[e] }))] : [];
   const modeChoices: Array<Choice<PermissionMode>> = modes.map((m) => ({ value: m, label: modeChoice(m)?.label ?? MODE_LABEL[m], description: modeChoice(m)?.description ?? MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }));
@@ -248,8 +261,8 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
       key: 'effort',
       face: (l) => (
         <>
-          <EffortBars effort={effort.value} />
-          {chipShape(l).effortLabel && <span>{effortLabel}</span>}
+          {ultrathink?.armed ? <Sparkles size={13} className="shrink-0 text-accent-ink" aria-hidden data-ultrathink-armed /> : <EffortBars effort={effort.value} />}
+          {chipShape(l).effortLabel && (ultrathink?.armed ? <span className="ultrathink-word font-semibold">Ultrathink</span> : <span>{effortLabel}</span>)}
         </>
       ),
       menu: (face) => (
@@ -258,12 +271,13 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
           value={effort.value}
           onChange={effort.onChange}
           disabled={disabled}
-          label={`Effort: ${effortLabel}`}
-          title={withNote(`Effort: ${effortLabel}`, pipeline?.effort)}
+          label={`Effort: ${effortLabel}${ultrathink?.armed ? ', ultrathink for the next message' : ''}`}
+          title={withNote(`Effort: ${effortLabel}${ultrathink?.armed ? '. The next message runs at xhigh with ultrathink.' : ''}`, pipeline?.effort)}
           heading="Effort"
           placement="auto"
           choices={effortChoices}
-          width={200}
+          actions={ultrathinkAction}
+          width={ultrathink ? 230 : 200}
         >
           {face}
         </ChoiceMenu>
@@ -304,7 +318,7 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
   const modelShown = autoPicked !== null ? `Auto · ${shortModelName(autoPicked)}` : isAuto ? 'Auto' : modelName;
   const sections: FoldedSection[] = [
     { key: 'model', heading: 'Model', shown: modelShown, value: model.value, choices: model.choices, onChange: model.onChange, actions: model.actions, name: names.model },
-    ...(effort ? [{ key: 'effort' as const, heading: 'Effort', shown: effortLabel, value: effort.value, choices: effortChoices, onChange: (v: string) => effort.onChange(v as Effort | ''), name: names.effort }] : []),
+    ...(effort ? [{ key: 'effort' as const, heading: 'Effort', shown: ultrathink?.armed ? `${effortLabel} + ultrathink` : effortLabel, value: effort.value, choices: effortChoices, onChange: (v: string) => effort.onChange(v as Effort | ''), actions: ultrathinkAction, name: names.effort }] : []),
     ...(mode ? [{ key: 'mode' as const, heading: 'Mode', shown: modeShort, value: mode.value, choices: modeChoices, onChange: (v: string) => mode.onChange(v as PermissionMode), name: names.mode }] : []),
   ];
   const shownChips = tray.folded ? chips.filter((chip) => chip.key === 'profile' || chip.key === 'fast') : chips;
