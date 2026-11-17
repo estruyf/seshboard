@@ -16,7 +16,8 @@ const HOVER = 'no-drag cursor-pointer hover:bg-border/45 focus-visible:bg-border
  */
 export function ProviderUsage({ profileId, provider, form = 'line' }: { profileId: string; provider: OptionalProvider; form?: 'line' | 'footer' }) {
   const quota = useProviderQuota(profileId);
-  if (!quota) return null;
+  // Billed per token: no requests to show, and the footer has the session's cost.
+  if (!quota || (quota.tokenBilling && form === 'footer')) return null;
   const level = quota.entitlement === null ? null : levelOf(quota.percentUsed);
   const summary = quotaSummary(quota);
   if (form === 'line') {

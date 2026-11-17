@@ -168,6 +168,8 @@ describe('copilotDriver', () => {
     });
     expect(premiumQuota({ premium_interactions: { isUnlimitedEntitlement: true, entitlementRequests: -1, usedRequests: 40, remainingPercentage: 100 } })).toEqual({ used: 40, entitlement: null, percentUsed: 0, resetsAt: null });
     expect(premiumQuota({ chat: { isUnlimitedEntitlement: true, entitlementRequests: -1, usedRequests: 0, remainingPercentage: 100 } })).toBeNull();
+    // Billed per token in AI credits: the request counts stay at zero, and the quota says so.
+    expect(premiumQuota({ premium_interactions: { isUnlimitedEntitlement: true, entitlementRequests: 0, usedRequests: 0, remainingPercentage: 100, tokenBasedBilling: true } })).toMatchObject({ tokenBilling: true });
   });
 
   it('runs in Copilot\'s agent modes, approves edits itself where the mode says so, and reports usage', async () => {

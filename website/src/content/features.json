@@ -1982,6 +1982,16 @@
       "page": "usage"
     },
     {
+      "id": "feature:usage-codex-window-costs",
+      "name": "Codex's 5-hour and weekly windows with their estimated cost, under a session's message box and in Usage",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-copilot-ai-credits",
+      "name": "Copilot billed per token: Usage shows the AI credits this computer's sessions used in the last 30 days, in place of premium requests",
+      "page": "usage"
+    },
+    {
       "id": "feature:usage-other-providers",
       "name": "Usage: Copilot and Codex profiles have the Tokens tab, with their tokens and estimated cost (Copilot's at what it charged in AI credits, Codex's at OpenAI's prices), and the cost under their sessions' message box",
       "page": "usage"

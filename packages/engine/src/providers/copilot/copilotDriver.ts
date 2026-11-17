@@ -101,6 +101,8 @@ export interface CopilotQuotaSnapshot {
   usedRequests: number;
   remainingPercentage: number;
   resetDate?: string;
+  /** Billed per token in AI credits: the request counts stay at zero. */
+  tokenBasedBilling?: boolean;
 }
 
 /** The premium requests of a quota answer, in Seshboard's shape; null when Copilot says nothing about them. */
@@ -109,7 +111,8 @@ export function premiumQuota(snapshots: Record<string, CopilotQuotaSnapshot | un
   if (!premium) return null;
   const unlimited = premium.isUnlimitedEntitlement || premium.entitlementRequests < 0;
   const percentUsed = unlimited ? 0 : Math.min(100, Math.max(0, 100 - premium.remainingPercentage));
-  return { used: Math.max(0, premium.usedRequests), entitlement: unlimited ? null : premium.entitlementRequests, percentUsed, resetsAt: premium.resetDate ?? null };
+  const quota: ProviderQuota = { used: Math.max(0, premium.usedRequests), entitlement: unlimited ? null : premium.entitlementRequests, percentUsed, resetsAt: premium.resetDate ?? null };
+  return premium.tokenBasedBilling ? { ...quota, tokenBilling: true } : quota;
 }
 
 /** Makes the client for the user's `copilot` (the real one loads the SDK; tests pass a fake). */

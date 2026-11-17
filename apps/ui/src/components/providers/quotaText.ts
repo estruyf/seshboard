@@ -22,8 +22,12 @@ export function resetDay(resetsAt: string, locale?: string): string {
   return Number.isNaN(date.getTime()) ? resetsAt : date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 }
 
+/** Copilot's line when it bills per token: there are no requests to count. */
+export const TOKEN_BILLING = 'Billed per token in AI credits';
+
 /** New session's usage line for a provider profile: "Copilot · Premium requests 14% · resets Dec 1". */
 export function quotaLine(short: string, quota: ProviderQuota, locale?: string): string {
+  if (quota.tokenBilling) return `${short} · ${TOKEN_BILLING}`;
   const used = quota.entitlement === null ? `${quota.used.toLocaleString(locale)} used` : `${Math.round(quota.percentUsed)}%`;
   return [`${short}`, `Premium requests ${used}`, ...(quota.resetsAt ? [`resets ${resetDay(quota.resetsAt, locale)}`] : [])].join(' · ');
 }
@@ -43,6 +47,7 @@ export function quotaUsed(quota: ProviderQuota, locale?: string): string {
 
 /** The ring's tooltip: "Premium requests: 212 of 1,500 used (14%) · resets Dec 1". */
 export function quotaSummary(quota: ProviderQuota, locale?: string): string {
+  if (quota.tokenBilling) return `${TOKEN_BILLING}. The Tokens tab in Usage shows what each session cost.`;
   const used = quota.entitlement === null ? `${quota.used.toLocaleString(locale)} used, no limit on this plan` : `${quotaUsed(quota, locale)} (${Math.round(quota.percentUsed)}%)`;
   return [`Premium requests: ${used}`, ...(quota.resetsAt ? [`resets ${resetDay(quota.resetsAt, locale)}`] : [])].join(' · ');
 }
