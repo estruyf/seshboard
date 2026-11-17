@@ -947,6 +947,11 @@ export class SessionHost {
       this.events.notice?.(this.sessionId, refusal.notice);
       // The fallback stays for the rest of the session: the model chip shows what runs now.
       if (refusal.model && refusal.model !== this.info.model) this.update({ model: refusal.model });
+      // That model is the session's own now, so replies from it are not the overload fallback (`fallbackRan`).
+      if (refusal.model) {
+        this.mainModel = refusal.model;
+        if (this.info.fallbackRan) this.update({ fallbackRan: null });
+      }
       return;
     }
     if (message.subtype === 'notification') {

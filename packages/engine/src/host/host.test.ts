@@ -1891,6 +1891,20 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('does not show the overload fallback for the model a refusal moved the session to', async () => {
+    const t = setup({ fallbackModel: () => 'sonnet', onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5') });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', model: 'opus' });
+    await until(() => t.infos.at(-1)?.fallbackRan === 'claude-sonnet-5-5');
+    const out = t.queries[0]!.out;
+    // A refusal makes Sonnet the session's own model: it is not the overload fallback any more.
+    out.push({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', scope: 'session', original_model: 'claude-opus-5-5', fallback_model: 'claude-sonnet-5-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
+    await until(() => t.infos.at(-1)?.model === 'claude-sonnet-5-5' && t.infos.at(-1)?.fallbackRan === null);
+    out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: null, message: { model: 'claude-sonnet-5-5', role: 'assistant', content: [{ type: 'text', text: 'Hi' }] }, session_id: id });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(t.infos.at(-1)!.fallbackRan).toBeNull();
+    t.manager.closeAll();
+  });
+
   it('clears an API retry when a subagent or a tool result shows the call went through', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
