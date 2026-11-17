@@ -1782,8 +1782,9 @@ function LocalNewSession() {
               localContext
               onContextChange={setDraftContext}
               controls={controls}
-              // Claude Code's plan usage for the profile; another provider's, its premium requests.
-              info={runWith && !planUsage ? <ProviderUsage profileId={profileId} provider={runWith} form="footer" /> : <UsageBand profileId={profileId} footer />}
+              // Claude Code's plan usage for the profile; another provider's, its premium requests. Codex's windows go
+              // without their cost here: its extra chips need the room, and the session's footer shows it.
+              info={runWith && !planUsage ? <ProviderUsage profileId={profileId} provider={runWith} form="footer" /> : <UsageBand profileId={profileId} footer cost={!runWith} />}
               usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(profileId) } : null}
               above={
                 <div role="status" aria-live="polite" className="empty:hidden">

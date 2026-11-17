@@ -968,16 +968,28 @@ export function createEngine(options: EngineOptions): Engine {
    * has plan usage of its own (Codex's rate limits; `ProviderDriver.planUsage`), each followed by `usage.changed`. Null
    * for a provider without (Copilot's premium requests are `providers.quota`): never Claude Code's under its name.
    */
+  /** The last plan usage a provider's driver reported (Codex's windows), for the cost of its windows. */
+  const providerSnapshots = new Map<string, UsageSnapshot | null>();
   const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
     if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh);
     const driver = providerProfiles.adapter(profileId)?.driver;
     if (!driver?.planUsage) return null;
     if (providerUsageWatch.get(profileId)?.driver !== driver) {
       providerUsageWatch.get(profileId)?.off();
-      const off = driver.onPlanUsage?.((usage) => broadcast('usage.changed', { profileId, usage })) ?? (() => {});
+      const off =
+        driver.onPlanUsage?.((usage) => {
+          providerSnapshots.set(profileId, usage);
+          broadcast('usage.changed', { profileId, usage });
+        }) ?? (() => {});
       providerUsageWatch.set(profileId, { driver, off });
     }
-    return driver.planUsage(refresh).catch((error: Error) => ({ usage: null, error: error.message }));
+    return driver
+      .planUsage(refresh)
+      .then((result) => {
+        if (result.usage) providerSnapshots.set(profileId, result.usage);
+        return result;
+      })
+      .catch((error: Error) => ({ usage: null, error: error.message }));
   };
   /** Where each profile's tokens went (from its transcripts) and its plan % over time, for the Usage view. */
   const insights = new UsageInsights({
@@ -995,7 +1007,7 @@ export function createEngine(options: EngineOptions): Engine {
       projectOf: (cwd) => resolver.resolve(cwd).root,
       projectName: (root) => projects.addedEntries().find((p) => p.root === root)?.name ?? basename(root),
     },
-    snapshot: (profileId) => usageMonitors.get(profileId)?.current() ?? null,
+    snapshot: (profileId) => usageMonitors.get(profileId)?.current() ?? providerSnapshots.get(profileId) ?? null,
     onTokens: (profileIds, scan) => broadcast('usage.tokens', { profileIds, scan }),
     log,
   });
