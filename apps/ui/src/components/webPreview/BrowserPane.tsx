@@ -494,7 +494,7 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
                 onMouseDown={middleDown}
                 onAuxClick={(e) => middleClose(e, t.id)}
                 onContextMenu={(e) => openMenu(e, t)}
-                className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-6 pl-2 text-left text-ui"
+                className={`flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 text-left text-ui ${hasSound(t) ? 'pr-11' : 'pr-6'}`}
                 data-browser-tab={t.id}
                 data-browser-pinned={t.pinned ? '' : undefined}
                 data-browser-confirm-close={asking ? '' : undefined}
@@ -502,9 +502,9 @@ function TabStrip({ tabs, activeId, onNewTab }: { tabs: readonly BrowserTab[]; a
                 <TabIcon tab={t} />
                 <TabTitle tab={t} confirming={asking} />
                 <ProfileMark tab={t} />
-                <SoundMark tab={t} />
                 {t.pinned && !asking && <Pin size={10} aria-hidden className="shrink-0 text-faint" />}
               </button>
+              <SoundButton tab={t} className="right-6" />
               <button
                 type="button"
                 aria-label={asking ? `Close ${tabName(t)} (pinned)` : `Close ${tabName(t)}`}
@@ -571,11 +571,31 @@ function SuggestionIcon({ suggestion }: { suggestion: AddressSuggestion }) {
   return <Icon size={12} aria-hidden className="shrink-0 text-faint" />;
 }
 
-/** A speaker on a tab whose page plays sound, crossed out while it is muted. */
-export function SoundMark({ tab, size = 11 }: { tab: Pick<BrowserTab, 'audible' | 'muted'>; size?: number }) {
-  if (tab.muted) return <VolumeX size={size} aria-label="Muted" role="img" className="shrink-0 text-faint" data-browser-tab-muted="" />;
-  if (tab.audible) return <Volume2 size={size} aria-label="Playing sound" role="img" className="shrink-0 text-muted" data-browser-tab-audible="" />;
-  return null;
+/**
+ * A speaker on a tab whose page plays sound, crossed out while it is muted. A click mutes or unmutes the tab. It sits
+ * beside the tab's own button (a button can't hold another), so `className` places it.
+ */
+export function SoundButton({ tab, className }: { tab: BrowserTab; className: string }) {
+  if (!tab.muted && !tab.audible) return null;
+  return (
+    <button
+      type="button"
+      aria-label={tab.muted ? `Unmute ${tabName(tab)}` : `Mute ${tabName(tab)}`}
+      data-tooltip={tab.muted ? 'Unmute tab' : 'Mute tab'}
+      onClick={() => toggleMute(tab)}
+      className={`absolute flex size-5 items-center justify-center rounded hover:bg-border/60 hover:text-text ${tab.muted ? 'text-faint' : 'text-muted'} ${className}`}
+      data-browser-tab-sound={tab.id}
+      data-browser-tab-muted={tab.muted ? '' : undefined}
+      data-browser-tab-audible={tab.audible && !tab.muted ? '' : undefined}
+    >
+      {tab.muted ? <VolumeX size={11} aria-hidden /> : <Volume2 size={11} aria-hidden />}
+    </button>
+  );
+}
+
+/** Whether a tab shows its speaker, so its button leaves room for it. */
+export function hasSound(tab: Pick<BrowserTab, 'audible' | 'muted'>): boolean {
+  return tab.audible || tab.muted;
 }
 
 /** A tab's name for screen readers: its title, pinned, or the question a first ask to close a pinned tab raises. */

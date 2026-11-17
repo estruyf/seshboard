@@ -4,7 +4,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, sess
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
 import { isBrowserPartition, localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
-import { acceptsLocalCertificate, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
 /**
  * Pages whose keys go to their window (`keysToWindow`): the window's document took the focus from them, which Chromium
@@ -394,8 +394,10 @@ function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardD
     popup.webContents.on('context-menu', (_event, params) => showPageMenu(host, popup.webContents, params, deps, popup));
   });
   guest.on('context-menu', (_event, params) => showPageMenu(host, guest, params, deps));
-  // Which tab plays sound, for its speaker mark (and Mute).
-  guest.on('audio-state-changed', (event) => send(host, { kind: 'audio', contentsId: guest.id, audible: event.audible }));
+  // Which tab plays sound, for its speaker mark (and Mute); held through music's quiet moments so it doesn't blink.
+  const sound = audibleHold((audible) => send(host, { kind: 'audio', contentsId: guest.id, audible }));
+  guest.on('audio-state-changed', (event) => sound.set(event.audible));
+  guest.once('destroyed', () => sound.dispose());
   guest.on('dom-ready', () => {
     void guest.executeJavaScriptInIsolatedWorld(SESHBOARD_WORLD, [{ code: MOUSE_NAVIGATION }]).catch(() => {});
   });

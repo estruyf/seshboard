@@ -10,7 +10,7 @@ import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { Menu } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { Button } from '../ui/Button.tsx';
-import { middleClose, middleDown, SoundMark, TabIcon, tabLabel, TabTitle } from '../webPreview/BrowserPane.tsx';
+import { hasSound, middleClose, middleDown, SoundButton, TabIcon, tabLabel, TabTitle } from '../webPreview/BrowserPane.tsx';
 import { BROWSER_OWNER, listedTabs, sameGroup, tabName, type BrowserTab } from '../webPreview/browserTabs.ts';
 import { FavoriteBar } from '../webPreview/FavoriteTiles.tsx';
 import { tabMenu } from '../webPreview/tabMenu.tsx';
@@ -83,7 +83,7 @@ export function BrowserTabList() {
                   onDoubleClick={() => askRename(tab)}
                   onKeyDown={(e) => onKey(e, tab)}
                   data-tooltip={tab.url ? `${tabName(tab)}\n${shortUrl(tab.url)}` : tabName(tab)}
-                  className={`flex h-8 w-full min-w-0 items-center gap-2 rounded-lg pr-8 pl-2.5 text-left text-ui ${selected ? 'bg-selected font-medium text-text' : 'text-text/90 hover:bg-border/45'}`}
+                  className={`flex h-8 w-full min-w-0 items-center gap-2 rounded-lg pl-2.5 text-left text-ui ${hasSound(tab) ? 'pr-14' : 'pr-8'} ${selected ? 'bg-selected font-medium text-text' : 'text-text/90 hover:bg-border/45'}`}
                   data-browser-tab={tab.id}
                   data-browser-pinned={tab.pinned ? '' : undefined}
                   data-browser-confirm-close={confirming === tab.id ? '' : undefined}
@@ -91,8 +91,8 @@ export function BrowserTabList() {
                   <TabIcon tab={tab} size={14} />
                   <TabTitle tab={tab} confirming={confirming === tab.id} />
                   <ProfileMark tab={tab} />
-                  <SoundMark tab={tab} />
                 </button>
+                <SoundButton tab={tab} className="top-1.5 right-8" />
                 <Button
                   variant="quiet"
                   size="sm"

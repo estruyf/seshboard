@@ -679,9 +679,16 @@ export async function runBrowserPaletteStep(win: BrowserWindow, deps: BrowserSmo
   if (!(await paletteCommand(win, 'Page at actual size'))) return 'no Page at actual size in the palette';
   if (!(await until(() => page.getZoomLevel() === 0, 3_000))) return 'Page at actual size did not reset the zoom';
 
-  // Mute and unmute from the palette.
+  // Mute from the palette, then unmute with the muted tab's speaker in the list.
   if (!(await paletteCommand(win, 'Mute tab'))) return 'no Mute tab in the palette';
   if (!(await until(() => page.isAudioMuted(), 3_000))) return 'Mute tab did not mute the page';
+  const speaker = q('[data-browser-tab-list] [data-browser-tab-sound][data-browser-tab-muted]');
+  if (!(await waitInPage(win, speaker, 3_000))) return 'a muted tab shows no crossed-out speaker in the list';
+  await js(`${speaker}.click()`);
+  if (!(await until(() => !page.isAudioMuted(), 3_000))) return "the muted tab's speaker did not unmute the page";
+  if (!(await waitInPage(win, `!${q('[data-browser-tab-list] [data-browser-tab-sound]')}`, 3_000))) return 'a quiet tab still shows a speaker after Unmute';
+  if (!(await paletteCommand(win, 'Mute tab'))) return 'no Mute tab in the palette';
+  if (!(await until(() => page.isAudioMuted(), 3_000))) return 'Mute tab did not mute the page a second time';
   if (!(await paletteCommand(win, 'Unmute tab'))) return 'no Unmute tab in the palette';
   if (!(await until(() => !page.isAudioMuted(), 3_000))) return 'Unmute tab did not unmute the page';
 
@@ -742,7 +749,7 @@ export async function runBrowserPaletteStep(win: BrowserWindow, deps: BrowserSmo
   await deps.shot('browser-clear-data');
   escape(win);
   if (!(await waitInPage(win, `!${q('[data-clear-browsing-data-dialog]')}`, 3_000))) return 'Escape did not close Clear all browsing data';
-  return 'ok: zoom in (110% in the toolbar) and actual size, mute and unmute, a sign-in window with its opener, a stopped page loaded again, developer tools, Rename tab… and Go to tab… from the palette; Clear data for this site asked and removed the cookie; Clear all asked';
+  return 'ok: zoom in (110% in the toolbar) and actual size, mute and unmute (from the palette and the tab\'s speaker), a sign-in window with its opener, a stopped page loaded again, developer tools, Rename tab… and Go to tab… from the palette; Clear data for this site asked and removed the cookie; Clear all asked';
 }
 
 /**

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, cookieOfSite, downloadFileName, partitionClearing, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, partitionClearing, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
 
 const key = (k: string, mods: Partial<PreviewKeyInput> = {}): PreviewKeyInput => ({ type: 'keyDown', key: k, meta: false, control: false, alt: false, shift: false, ...mods });
 
@@ -286,5 +286,44 @@ describe('downloadFileName', () => {
   it('gives a name to a download without one', () => {
     expect(downloadFileName('', none)).toBe('download');
     expect(downloadFileName('..', none)).toBe('download');
+  });
+});
+
+describe('audibleHold', () => {
+  it('keeps the speaker through a short pause and drops it after a long one', () => {
+    vi.useFakeTimers();
+    try {
+      const reports: boolean[] = [];
+      const hold = audibleHold((audible) => reports.push(audible), 2000);
+      hold.set(true);
+      hold.set(false);
+      vi.advanceTimersByTime(1500);
+      hold.set(true);
+      vi.advanceTimersByTime(5000);
+      expect(reports).toEqual([true]);
+      hold.set(false);
+      vi.advanceTimersByTime(2000);
+      expect(reports).toEqual([true, false]);
+      hold.set(false);
+      vi.advanceTimersByTime(5000);
+      expect(reports).toEqual([true, false]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports nothing after it is disposed', () => {
+    vi.useFakeTimers();
+    try {
+      const reports: boolean[] = [];
+      const hold = audibleHold((audible) => reports.push(audible), 2000);
+      hold.set(true);
+      hold.set(false);
+      hold.dispose();
+      vi.advanceTimersByTime(5000);
+      expect(reports).toEqual([true]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

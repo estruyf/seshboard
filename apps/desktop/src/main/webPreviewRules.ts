@@ -281,3 +281,34 @@ export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean
   return groups.flatMap((group, i) => (i ? ['separator' as const, ...group] : group));
 }
 
+
+/** How long a tab's speaker stays after its page goes quiet, as in Chrome: music's quiet passages don't make it blink. */
+export const AUDIBLE_HOLD_MS = 2000;
+
+/**
+ * Passes a page's sound on and off to `report`, but holds "off" for `holdMs`: Chromium reports a pause of a moment
+ * as silence, so the tab's speaker would come and go with the music. Only a change is reported.
+ */
+export function audibleHold(report: (audible: boolean) => void, holdMs = AUDIBLE_HOLD_MS): { set(audible: boolean): void; dispose(): void } {
+  let shown = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const clear = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+  return {
+    set(audible) {
+      clear();
+      if (audible) {
+        if (!shown) report((shown = true));
+        return;
+      }
+      if (!shown) return;
+      timer = setTimeout(() => {
+        timer = null;
+        report((shown = false));
+      }, holdMs);
+    },
+    dispose: clear,
+  };
+}

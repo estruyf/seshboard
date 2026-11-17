@@ -63,6 +63,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **Mute a browser tab from its speaker.** The speaker on a tab that plays sound is now a button: click it to mute the tab, and click the crossed-out speaker to turn the sound back on.
 - Web addresses without `https://` (`github.com/org/repo/pull/12`) are links in your prompts and Claude's replies.
 - **A shorter top of the sidebar.** Home, Upcoming, Activity and Browser sit in one tray. The sort order (**Recent** or **Quickest to unblock**) is a menu beside the project filter, on the same row. **Add a project folder…** is in the project filter's menu. Activity no longer shows a count on its icon.
 - **One header for every view.** Home, Upcoming, Activity, Usage, Browser, New session and Projects have the same header as a session: the sidebar toggle in the same place, then the view's name. Upcoming's filters sit under it, as Usage's tabs do.
@@ -75,6 +76,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **The speaker on a browser tab no longer blinks.** A tab playing music showed and hid its speaker at every quiet moment in the music. The speaker now stays until the page has been quiet for two seconds, as in Chrome.
 - **Enter in the browser's address bar reloads the page** when you haven't changed the address, instead of asking you to type one. A loading page now shows a short line that runs along the toolbar, as in VS Code, instead of a full-width pulse.
 - **Copying from the browser's address bar gives a link.** The bar shows an address without `https://`, but a copy of it now takes the full address, so it pastes as a link in other apps.
 - **API cost estimates use Anthropic's November prices.** Claude Mythos 5.2 is priced like Fable 5.2, a model newer than Seshboard knows is priced like the newest of its family, and a Claude Haiku 5.5 request with a prompt over 100,000 tokens counts at its higher price. If you used Haiku 5.5, Seshboard reads your transcripts once more to correct its past costs.
