@@ -9404,6 +9404,16 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
   const row = `[data-saved-prompt-row="${id}"]`;
   const box = '[data-new-session-view] [data-composer]';
 
+  /** Closes the step's toasts (not the update toasts, which stay until they're dealt with): they would cover what is clicked next. */
+  const clearToasts = async () => {
+    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
+    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
+    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
+      await js(closeToasts);
+      await settle(win);
+    }
+  };
+
   /** Closes what a failure left open, and removes the sandbox. */
   const cleanUp = async () => {
     if (await js("!!document.querySelector('[role=dialog], [role=menu]')")) pressKey(win, 'Escape');
@@ -9429,22 +9439,35 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, one('[data-settings-section="prompts"]'), 3_000))) return 'Settings has no Prompts page';
     await click('[data-settings-section="prompts"]');
     if (!(await waitInPage(win, one('[data-saved-prompts-new]'), 3_000))) return 'Settings › Prompts has no New prompt';
-    // Starter prompts are only offered: adding one saves it for every project, and then it is no longer offered. Deleted again, so the rest of the step starts clean.
+    // Starter prompts are only offered: adding one saves it for every project, and then it is no longer offered. Deleted
+    // again, so the rest of the step starts clean. Skipped when one is already saved somewhere (a real home with a
+    // prompt of the same text, shared with a project), since that one is hidden and isn't ours to remove.
     const starter = '[data-saved-prompt-starter="throwaway-build"]';
     const starterRow = '[data-saved-prompt-row="throwaway-build"]';
-    if (!(await waitInPage(win, `${one(starter)} && ${one('[data-saved-prompt-starter="best-judgment"]')} && !${one(starterRow)}`, 3_000))) return 'Settings › Prompts did not offer the two starter prompts';
-    await click('[data-saved-prompt-starter-add="throwaway-build"]');
-    if (!(await waitInPage(win, `${one(starterRow)}?.dataset.savedPromptScope === 'global' && !${one(starter)} && ${one('[data-saved-prompt-starter="best-judgment"]')} && ${one(starterRow)}.innerText.includes('1 blank · text')`, 3_000))) return 'Add did not save the throwaway build for every project, with its blank, and stop offering it';
-    await click('[data-saved-prompt-starter-add="best-judgment"]');
-    if (!(await waitInPage(win, `${one('[data-saved-prompt-row="use-your-best-judgment"]')} && !${one('[data-saved-prompts-starters]')}`, 3_000))) return 'adding the second starter did not hide the suggestions';
-    await shot(win, 'saved-prompt-starters-added.png');
-    for (const rowId of ['throwaway-build', 'use-your-best-judgment']) {
-      await click(`[data-saved-prompt-row="${rowId}"] [data-saved-prompt-menu]`);
-      if (!(await waitInPage(win, one('[role=menu] [data-prompt-delete]'), 2_000))) return 'a starter prompt had no Delete in its menu';
-      await click('[role=menu] [data-prompt-delete]');
-      if (!(await waitInPage(win, `!${one(`[data-saved-prompt-row="${rowId}"]`)}`, 3_000))) return 'Delete did not remove a starter prompt';
+    const bestStarter = '[data-saved-prompt-starter="best-judgment"]';
+    const bestRow = '[data-saved-prompt-row="use-your-best-judgment"]';
+    let starters = 'the suggested prompts were skipped (one is already saved here)';
+    await waitInPage(win, one('[data-saved-prompts-starters]'), 3_000);
+    if (await js(`!!${one(starter)} && !!${one(bestStarter)} && !${one(starterRow)} && !${one(bestRow)}`)) {
+      // Clicked twice in a row: the second one is ignored, so only one copy is saved (the row count below).
+      await click('[data-saved-prompt-starter-add="throwaway-build"]');
+      await click('[data-saved-prompt-starter-add="throwaway-build"]');
+      if (!(await waitInPage(win, `${one(starterRow)}?.dataset.savedPromptScope === 'global' && !${one(starter)} && ${one(bestStarter)} && ${one(starterRow)}.innerText.includes('1 blank · text')`, 3_000))) return 'Add did not save the throwaway build for every project, with its blank, and stop offering it';
+      await click('[data-saved-prompt-starter-add="best-judgment"]');
+      if (!(await waitInPage(win, `${one(bestRow)} && !${one('[data-saved-prompts-starters]')}`, 3_000))) return 'adding the second starter did not hide the suggestions';
+      if ((await js(`document.querySelectorAll('[data-saved-prompt-row]').length`)) !== 2) return 'adding the two starters did not leave exactly two prompts';
+      await shot(win, 'saved-prompt-starters-added.png');
+      for (const rowId of ['throwaway-build', 'use-your-best-judgment']) {
+        await click(`[data-saved-prompt-row="${rowId}"] [data-saved-prompt-menu]`);
+        if (!(await waitInPage(win, one('[role=menu] [data-prompt-delete]'), 2_000))) return 'a starter prompt had no Delete in its menu';
+        await click('[role=menu] [data-prompt-delete]');
+        if (!(await waitInPage(win, `!${one(`[data-saved-prompt-row="${rowId}"]`)}`, 3_000))) return 'Delete did not remove a starter prompt';
+      }
+      if (!(await waitInPage(win, one(starter), 3_000))) return 'a deleted starter prompt was not offered again';
+      // Their toasts go too, so the Delete check further down can only be met by its own.
+      await clearToasts();
+      starters = 'the two suggested prompts were added with one click (each hidden once saved) and deleted';
     }
-    if (!(await waitInPage(win, one(starter), 3_000))) return 'a deleted starter prompt was not offered again';
     await click('[data-saved-prompts-new]');
     if (!(await waitInPage(win, `${one('[data-prompt-editor-dialog]')} && ${one('[data-prompt-use-in="personal"]')}?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'New prompt did not open with "just for you" picked';
     await setFieldValue(win, '[data-prompt-editor-name]', 'Smoke: fix a pull request');
@@ -9558,14 +9581,8 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!${one(row)} && !!document.querySelector('[data-prompt-deleted-toast]')`, 3_000))) return 'Delete did not take it out, with Undo';
     await click('[data-close-settings]');
     // Its toasts (saved, queued, moved, shared, deleted) would cover what later steps click.
-    // Not the update toasts, which stay until they're dealt with.
-    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
-    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
-    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
-      await js(closeToasts);
-      await settle(win);
-    }
-    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .seshboard.json, with Show the change) and back (out of it), deleted';
+    await clearToasts();
+    return `ok: ${starters}; made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .seshboard.json, with Show the change) and back (out of it), deleted`;
   } finally {
     await cleanUp();
   }

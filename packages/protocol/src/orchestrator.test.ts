@@ -65,6 +65,9 @@ describe('what the agent reads', () => {
     const custom = instructionsBlock('Branch from dev.');
     expect(custom).toContain('Branch from dev.');
     expect(custom.indexOf(WORKER_JUDGMENT)).toBeLessThan(custom.indexOf('Branch from dev.'));
+    // The project's text wins where it differs, and the block only says so when there is some.
+    expect(custom).toContain("The project's instructions below take precedence where they differ.");
+    expect(instructionsBlock(null)).not.toContain('take precedence');
     // The orchestrator keeps its role: it gets the idea of the line, not "just build".
     expect(orchestratorSystemText(null)).not.toContain('Just build');
   });

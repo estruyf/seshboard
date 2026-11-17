@@ -201,7 +201,9 @@ function projectInstructions(instructions: string | null | undefined): string | 
 
 /** What every session an orchestrator starts reads after its agent's system prompt: the built-in judgment line, then the project's instructions. */
 export function instructionsBlock(instructions: string | null | undefined): string {
-  return [`Default from Seshboard, for sessions an orchestrator starts: ${WORKER_JUDGMENT}`, projectInstructions(instructions)].filter(Boolean).join('\n\n');
+  const project = projectInstructions(instructions);
+  const precedence = project ? " The project's instructions below take precedence where they differ." : '';
+  return [`Default from Seshboard, for sessions an orchestrator starts: ${WORKER_JUDGMENT}${precedence}`, project].filter(Boolean).join('\n\n');
 }
 
 /** The orchestrator's own text after the system prompt: its role, then the project's instructions. */

@@ -1,4 +1,4 @@
-import { useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { Folder, Globe, Loader2, MoreHorizontal, Plus, Sparkles, User, Users, type LucideIcon } from 'lucide-react';
 import type { PromptScope, SavedPrompt } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
@@ -70,22 +70,22 @@ export function SavedPromptsSettings() {
 function StarterPrompts() {
   const lists = useSavedPromptsStore((s) => s.lists);
   const [adding, setAdding] = useState<string | null>(null);
-  // Without the global list read, every starter would show for a moment and then disappear.
-  if (!lists['']) return null;
+  const loaded = !!lists[''];
   const pending = pendingStarters(Object.values(lists).flatMap((list) => list.prompts));
-  if (pending.length === 0) return null;
+  // The button stays disabled until the saved prompt shows up and the suggestion is gone, so a quick second click can't save it twice.
+  useEffect(() => {
+    if (adding && loaded && !pending.some((s) => s.id === adding)) setAdding(null);
+  });
+  // Without the global list read, every starter would show for a moment and then disappear.
+  if (!loaded || pending.length === 0) return null;
   const add = async (starter: StarterPrompt) => {
+    if (adding) return;
     setAdding(starter.id);
-    await addStarterPrompt(starter);
-    setAdding(null);
+    if (!(await addStarterPrompt(starter))) setAdding(null);
   };
   return (
     <section className="flex flex-col gap-1.5" data-saved-prompts-starters>
-      <h3 className="flex min-w-0 items-center gap-1.5 px-1 text-meta">
-        <Sparkles size={12} aria-hidden className="shrink-0 text-muted" />
-        <span className="truncate font-semibold tracking-wide text-muted uppercase">Suggestions</span>
-        <span className="shrink-0 text-faint">· for every project</span>
-      </h3>
+      <GroupHeading Icon={Sparkles} tone="text-muted" name="Suggestions" place="for every project" />
       <ul className="border-t border-border">
         {pending.map((starter) => (
           <li key={starter.id} className="flex items-center gap-3 border-b border-border px-1 py-2" data-saved-prompt-starter={starter.id}>
