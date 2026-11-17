@@ -6,6 +6,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **A line while Claude Code retries.** When the API is overloaded, rate limited or fails, Claude Code tries again after a wait. The working line now says so ("API overloaded, retrying (3 of 10) in 8s") instead of looking stuck, on Home's Working cards and on your phone too. It goes away when a reply arrives.
+- **A line when a refusal moves the turn.** When Claude refuses and Claude Code moves the turn to another model, the conversation says so ("Claude moved this turn to Sonnet after a refusal"), and when there was no fallback model ("Claude refused and no fallback model was available").
 - **Codex window costs, and Copilot's AI credits.** Codex's 5-hour and weekly windows show their estimated cost under a session's message box and in the Usage view, like Claude Code's. A Copilot account billed per token in AI credits now shows the credits its sessions on this computer used in the last 30 days, in place of premium requests.
 - **Copilot and Codex tokens in Usage.** A Copilot or Codex profile in the Usage view now has the **Tokens** tab: its tokens by session, project, model and day, with the estimated cost. Copilot's cost is what it charged in AI credits. Codex's is at OpenAI's API prices. The cost also shows under a Copilot or Codex session's message box. Copilot writes its tokens when a session ends, so a running session counts once it stops.
 - **Compacted while idle.** A conversation Claude Code compacted by itself while it sat idle in a terminal session shows *Compacted while idle* instead of *Conversation compacted*.

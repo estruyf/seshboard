@@ -1,6 +1,6 @@
 import { CircleCheck } from 'lucide-react';
 import type { MouseEvent, ReactNode } from 'react';
-import type { CatchUp, ProjectInfo } from '@seshboard/protocol/client';
+import { apiRetryLine, type CatchUp, type ProjectInfo } from '@seshboard/protocol/client';
 import { shortAge } from '../../lib/format.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -103,7 +103,7 @@ export function WorkingLane({ rows, ctx }: { rows: readonly SessionRowData[]; ct
     <Lane id="working" title="Working" tone="working" count={rows.length} empty="Claude isn't working on anything.">
       {rows.map((row) => {
         const host = hosts.get(row.id);
-        const said = workingLabel({ waiting: false, compacting: host?.compacting === true, block: streaming.get(row.id) });
+        const said = workingLabel({ waiting: false, compacting: host?.compacting === true, block: streaming.get(row.id), retry: host?.apiRetry ? apiRetryLine(host.apiRetry, null) : null });
         // Without a turn streaming here (Claude Code elsewhere), what runs in the background, or who works on it.
         const label = said !== 'Working' ? said : (row.live?.background?.[0] ?? `${agentNameOf(row.summary ?? { provider: host?.provider ?? null })} is working`);
         return (

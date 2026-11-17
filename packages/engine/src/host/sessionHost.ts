@@ -19,6 +19,7 @@ import type {
 } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
+import { apiRetryOf, refusalNotice } from './apiRetry.ts';
 import { commandEcho } from './commandEcho.ts';
 import { FAST_CREDITS_NOTIFICATION, FAST_CREDITS_OUT, fastModeReport } from './fastMode.ts';
 import { isReadOnlyTool, READ_ONLY_STEP_REASON } from './sideQuestions.ts';
@@ -675,6 +676,11 @@ export class SessionHost {
   }
 
   /** A compact is over (its boundary, the turn's result or the session going idle). */
+  /** A reply (or the end of the turn) came: Claude Code isn't retrying any more. */
+  private clearApiRetry(): void {
+    if (this.info.apiRetry) this.update({ apiRetry: undefined });
+  }
+
   private endCompacting(): void {
     if (this.info.compacting) this.update({ compacting: false });
   }
@@ -692,7 +698,7 @@ export class SessionHost {
     const ended = patch.state === 'closed' || patch.state === 'error';
     if (ended && this.closedAt === undefined) this.closedAt = Date.now();
     // Background tasks die with the process.
-    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false } : {}) };
+    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false, apiRetry: undefined } : {}) };
     try {
       this.events.info(this.info);
     } catch (error) {
@@ -741,7 +747,11 @@ export class SessionHost {
       case 'system':
         return this.handleSystem(message);
       case 'stream_event':
-        if (message.parent_tool_use_id === null) this.handleStreamEvent(message.event as { type: string; [key: string]: unknown });
+        if (message.parent_tool_use_id === null) {
+          // Tokens are coming: whatever was retried got through.
+          this.clearApiRetry();
+          this.handleStreamEvent(message.event as { type: string; [key: string]: unknown });
+        }
         return;
       // Subagent messages live in their own transcript file (shown inside the Task card),
       // so only the main conversation is pushed live.
@@ -749,6 +759,7 @@ export class SessionHost {
         if (message.parent_tool_use_id !== null) return;
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
+        this.clearApiRetry();
         if (message.error) {
           this.assistantError = textOf(message) ?? this.assistantError;
           this.assistantErrorCode = message.error;
@@ -765,6 +776,7 @@ export class SessionHost {
         return;
       case 'result': {
         const outcome = resultOutcome(message);
+        this.clearApiRetry();
         const stop = outcome.ok
           ? null
           : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
@@ -861,6 +873,18 @@ export class SessionHost {
       this.endCompacting();
       return;
     }
+    if (message.subtype === 'api_retry') {
+      // Claude Code waits and tries again: the line under the reply says so until a reply (or the end of the turn) comes.
+      const retry = apiRetryOf(message as { attempt?: unknown }, Date.now());
+      if (retry && !this.closing) this.update({ apiRetry: retry });
+      return;
+    }
+    if (message.subtype === 'model_refusal_fallback' || message.subtype === 'model_refusal_no_fallback') {
+      // A line in the conversation where it happened, like the notice for a compact.
+      const notice = refusalNotice(message as { subtype?: unknown }, Date.now());
+      if (notice) this.events.messages(this.sessionId, [notice]);
+      return;
+    }
     if (message.subtype === 'notification') {
       if ((message as { key?: unknown }).key === FAST_CREDITS_NOTIFICATION) this.update({ fastModeBlocked: FAST_CREDITS_OUT });
       return;
@@ -891,6 +915,7 @@ export class SessionHost {
       this.update({ state, ...(state === 'idle' && this.info.compacting ? { compacting: false } : {}) });
       if (state === 'running' && this.nowPhase === 'sent') this.nowStarted();
       if (state === 'idle') {
+        this.clearApiRetry();
         this.pushStream('clear', '');
         if (this.pluginsReloadOwed) void this.reloadPlugins();
         this.drain();

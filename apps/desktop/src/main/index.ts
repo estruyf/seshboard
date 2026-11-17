@@ -10200,6 +10200,39 @@ async function runCompactingStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/** A session whose API calls are retried says so under the reply, with the wait counting down, and stops when the retry is over (a stand-in the host list reports as retrying). */
+async function runApiRetryStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-retry-')));
+  const standIn = `smoke-retry-${randomUUID()}`;
+  const host = (apiRetry?: { attempt: number; maxRetries: number; delayMs: number; status: number | null; at: number } | null) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state: 'running', ...(apiRetry !== undefined ? { apiRetry } : {}) });
+  const line = `document.querySelector('[data-current-session="${standIn}"] [data-streaming][data-api-retry]')?.innerText ?? ''`;
+  try {
+    host();
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${standIn}"] [data-streaming]')`, 5_000))) return 'the session did not show its working line';
+    if (await js(`!!document.querySelector('[data-streaming][data-api-retry]')`)) return 'the working line said retrying before any retry';
+    host({ attempt: 3, maxRetries: 10, delayMs: 60_000, status: 529, at: Date.now() });
+    if (!(await waitInPage(win, `${line}.includes('API overloaded, retrying (3 of 10) in ')`, 5_000))) return `the session did not say it is retrying: "${await js(line)}"`;
+    await shot(win, 'api-retry.png');
+    host({ attempt: 4, maxRetries: 10, delayMs: 8_000, status: 429, at: Date.now() });
+    if (!(await waitInPage(win, `${line}.includes('API rate limited, retrying (4 of 10)')`, 5_000))) return `the next retry did not replace the line: "${await js(line)}"`;
+    host(null);
+    if (!(await waitInPage(win, `!document.querySelector('[data-streaming][data-api-retry]')`, 3_000))) return 'it kept saying it is retrying after the retry ended';
+    return 'ok: a session that retries an API call said "API overloaded, retrying (3 of 10) in ...", moved on to the next retry, and went back to working when it ended';
+  } finally {
+    engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state: 'closed' });
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
 /**
  * The working mark under a reply (WorkingPanel), on a stand-in session: the patch panel on the working line with its
  * light moving, all its jacks pulsing while compacting, and lit in the needs-you colour while a permission prompt waits.
@@ -14475,6 +14508,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
+  await step('api retry: the working line says Claude Code is retrying', () => runApiRetryStep(win));
   await step('fast mode: a toggle with a tooltip on models that have it, /fast, why it is blocked, and from New session', () => runFastModeStep(win));
   await step('working panel: the patch panel on the working line, pulsing while compacting, waiting on a permission', () => runWorkingPanelStep(win));
   await step('menu bar: the icon says needs you, the panel lists what needs you, works and finished', () => runMenuBarPanelStep(win));

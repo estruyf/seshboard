@@ -6,7 +6,7 @@ import { ActivityDay, RemoteActivityEntry } from './activity.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
 import { ClonePlan, CloneProgress } from './clone.ts';
-import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta, WorktreeBaseSchema } from './host.ts';
+import { ApiRetry, AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta, WorktreeBaseSchema } from './host.ts';
 import { Pipeline, PipelineRun, PipelineRunStep, PushPreview } from './pipelineSchema.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
@@ -86,6 +86,8 @@ export const RemoteSession = z.object({
    * can be stopped with `session.stopTask`. Left out by a Seshboard from before phones knew them.
    */
   background: z.array(BackgroundTask).optional(),
+  /** Claude Code is retrying a failed API call; the line under the conversation says so. Left out when it isn't, and by a Seshboard from before phones knew it. */
+  apiRetry: ApiRetry.optional(),
   /**
    * The session or run row it sits under: a pipeline step's sub-session under the session the run started from, or
    * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Seshboard from before phones knew runs.

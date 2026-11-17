@@ -1,4 +1,5 @@
 import type { Options, PermissionResult, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1717,6 +1718,51 @@ describe('HostManager', () => {
     await until(() => t.infos.at(-1)?.compacting === true);
     out.push({ type: 'system', subtype: 'session_state_changed', state: 'idle', session_id: id });
     await until(() => t.infos.at(-1)?.compacting === false);
+    t.manager.closeAll();
+  });
+
+  it('shows an API retry on the host until a reply, the end of the turn or going idle clears it', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    const retry = (attempt: number, status: number | null = 529) => out.push({ type: 'system', subtype: 'api_retry', attempt, max_retries: 10, retry_delay_ms: 8000, error_status: status, error: 'server_error', uuid: randomUUID(), session_id: id });
+    expect(t.infos.at(-1)!.apiRetry).toBeUndefined();
+
+    retry(3);
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 3);
+    expect(t.infos.at(-1)!.apiRetry).toMatchObject({ attempt: 3, maxRetries: 10, delayMs: 8000, status: 529 });
+    // The next try replaces it.
+    retry(4, null);
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 4);
+    expect(t.infos.at(-1)!.apiRetry!.status).toBeNull();
+
+    // A reply, a result and going idle each clear it.
+    out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'Hi' }] }, session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry === undefined);
+    retry(1);
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 1);
+    out.push({ type: 'result', subtype: 'success', is_error: false, result: '', total_cost_usd: 0, session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry === undefined);
+    retry(2);
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 2);
+    out.push({ type: 'system', subtype: 'session_state_changed', state: 'idle', session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry === undefined);
+    t.manager.closeAll();
+  });
+
+  it('puts a line in the conversation when Claude Code moves a turn to another model after a refusal', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    const lines = () => t.messages.flatMap((m) => m.messages).filter((m) => m.type === 'system').map((m) => (m.message as { content?: string }).content);
+    out.push({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', original_model: 'claude-opus-5-5', fallback_model: 'claude-sonnet-5-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
+    await until(() => lines().length === 1);
+    expect(lines()[0]).toBe('Claude moved this turn to Sonnet after a refusal');
+    out.push({ type: 'system', subtype: 'model_refusal_no_fallback', original_model: 'claude-opus-5-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
+    await until(() => lines().length === 2);
+    expect(lines()[1]).toBe('Claude refused and no fallback model was available');
     t.manager.closeAll();
   });
 

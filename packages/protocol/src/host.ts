@@ -81,6 +81,16 @@ export type QueuedMessage = z.infer<typeof QueuedMessage>;
 export const SendMode = z.enum(['queue', 'steer', 'now']);
 export type SendMode = z.infer<typeof SendMode>;
 
+/** One retry Claude Code is waiting on: which try of how many, the HTTP status that failed it (null: no response, a dropped connection), how long it waits, and when this was reported. */
+export const ApiRetry = z.object({
+  attempt: z.number().int(),
+  maxRetries: z.number().int(),
+  delayMs: z.number(),
+  status: z.number().int().nullable(),
+  at: z.number(),
+});
+export type ApiRetry = z.infer<typeof ApiRetry>;
+
 export const SessionHostInfo = z.object({
   sessionId: z.string(),
   /** The session's working directory (the worktree path for worktree sessions, once known). */
@@ -136,6 +146,11 @@ export const SessionHostInfo = z.object({
   backgroundTasks: z.array(BackgroundTask),
   /** Claude Code is compacting the conversation (a `/compact` or an automatic one). Missing: it isn't. */
   compacting: z.boolean().optional(),
+  /**
+   * Claude Code is retrying a failed API call (overloaded, rate limited, a dropped connection), until the reply
+   * comes. Missing: it isn't.
+   */
+  apiRetry: ApiRetry.optional(),
   /** Auto picked the model this session started on (null or missing: it didn't). */
   autoPick: AutoPick.nullable().optional(),
   /** Auto is still picking the model this session starts on; your first message waits for it. */

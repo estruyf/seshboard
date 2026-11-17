@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createEngine, demoCodex, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
-import { RemoteAppUpdate, type BrowserToolRequest, type BrowserToolResult } from '@seshboard/protocol';
+import { ApiRetry, RemoteAppUpdate, type BrowserToolRequest, type BrowserToolResult } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -158,9 +158,9 @@ process.parentPort.on('message', (event) => {
   }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
-    const { sessionId, cwd, state, outcome, compacting, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; fast?: { blocked: string | null; on?: boolean } };
+    const { sessionId, cwd, state, outcome, compacting, apiRetry, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; apiRetry?: unknown; fast?: { blocked: string | null; on?: boolean } };
     if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'needs-you' || state === 'idle' || state === 'closed')) {
-      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(fast ? { fast } : {}) });
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(apiRetry === null ? { apiRetry: null } : ApiRetry.safeParse(apiRetry).success ? { apiRetry: apiRetry as ApiRetry } : {}), ...(fast ? { fast } : {}) });
     }
     return;
   }

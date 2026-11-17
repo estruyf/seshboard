@@ -22,6 +22,7 @@ export { SHARE_WEIGHTS, sharesOf, weightOf } from './usageWeights.ts';
 export * from './costEstimate.ts';
 export * from './locale.ts';
 export * from './contextCache.ts';
+export { apiRetryCause, apiRetryLine } from './apiRetry.ts';
 export { accountKey } from './accountKey.ts';
 export type * from './profiles.ts';
 export type * from './providers.ts';
