@@ -144,6 +144,35 @@ describe('UsageScanner', () => {
     }
   });
 
+  it("reads Copilot's and Codex's session files from their folders, each under its own scope", async () => {
+    const copilot = join(dir, 'copilot');
+    mkdirSync(join(copilot, 'session-state', 'c1'), { recursive: true });
+    const shutdown = (id: string, output: number, nano: number) =>
+      JSON.stringify({ type: 'session.shutdown', id, timestamp: '2026-10-12T10:30:00Z', data: { modelMetrics: { 'gpt-5.4': { requests: { count: 1 }, usage: { inputTokens: 100, outputTokens: output, cacheReadTokens: 0, cacheWriteTokens: 0 }, totalNanoAiu: nano } } } }) + '\n';
+    writeFileSync(join(copilot, 'session-state', 'c1', 'events.jsonl'), shutdown('x1', 10, 3e9));
+    const codex = join(dir, 'codex');
+    mkdirSync(join(codex, 'sessions', '2026', '10', '12'), { recursive: true });
+    const rollout = [
+      { timestamp: '2026-10-12T10:00:00Z', type: 'session_meta', payload: { id: 't1', cwd: '/work/app' } },
+      { timestamp: '2026-10-12T10:00:01Z', type: 'turn_context', payload: { turn_id: 'u1', model: 'gpt-6-luna' } },
+      { timestamp: '2026-10-12T10:00:02Z', type: 'token_usage_record', payload: { thread_id: 't1', turn_id: 'u1', response_id: 'r1', usage: { input_tokens: 200_000, cached_input_tokens: 0, output_tokens: 1_000_000 } } },
+    ];
+    writeFileSync(join(codex, 'sessions', '2026', '10', '12', 'rollout-2026-10-12T10-00-00-t1.jsonl'), rollout.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    const targets = [
+      { scope: scopeOf(copilot), configDir: copilot, provider: 'copilot' as const },
+      { scope: scopeOf(codex), configDir: codex, provider: 'codex' as const },
+    ];
+    await new UsageScanner(cache.db).scan(targets);
+    // Copilot's cost is its AI credits ($0.03); Codex's is OpenAI's price for gpt-6-luna ($0.10 in, $0.50 out).
+    expect(sessionCost(cache.db, scopeOf(copilot), 'c1')).toEqual({ usd: 0.03, partial: false });
+    expect(sessionCost(cache.db, scopeOf(codex), 't1')!.usd).toBeCloseTo(0.02 + 0.5, 9);
+    // Another run appends a shutdown with the new totals: only what it added counts, and the first run once.
+    appendFileSync(join(copilot, 'session-state', 'c1', 'events.jsonl'), shutdown('x2', 30, 5e9));
+    await new UsageScanner(cache.db).scan(targets);
+    expect(cache.db.prepare('SELECT output, turns, usd FROM session_usage WHERE scope = ?').get(scopeOf(copilot))).toEqual({ output: 30, turns: 2, usd: 0.05 });
+    expect(sessionCost(cache.db, scopeOf(copilot), 'c1')!.usd).toBeCloseTo(0.05, 9);
+  });
+
   it('counts subagents under the session they ran in', async () => {
     const config = configDir();
     const scope = scopeOf(config);

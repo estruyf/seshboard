@@ -83,20 +83,24 @@ export interface BreakdownQuery {
   measure?: { percent: number; samples: readonly PlanSample[] } | null;
 }
 
-/** The part of an hourly row's tokens from requests over the model's long-prompt size, which cost more (`ModelPrice.longPrompt`). */
-export interface LongColumns {
+/**
+ * What an hourly row needs for its price beyond its tokens: the part from requests over the model's long-prompt size,
+ * which cost more (`ModelPrice.longPrompt`), and the cost the provider gave (Copilot's AI credits), null when none.
+ */
+export interface PriceColumns {
   long_input: number;
   long_output: number;
   long_cache_read: number;
   long_cache_write: number;
   long_cache_write_1h: number;
+  usd: number | null;
 }
 
-export const LONG_COLUMNS = 'long_input, long_output, long_cache_read, long_cache_write, long_cache_write_1h';
+export const PRICE_COLUMNS = 'long_input, long_output, long_cache_read, long_cache_write, long_cache_write_1h, usd';
 
-/** What an hourly `session_usage` row's tokens cost: those of long-prompt requests at their price. */
-export const hourlyCostOf = (row: { model: string; input: number; output: number; cache_read: number; cache_write: number; cache_write_1h: number } & Partial<LongColumns>): number | null =>
-  costOf(
+/** What an hourly `session_usage` row's tokens cost: the provider's cost when it gave one, else long-prompt requests at their price. */
+export const hourlyCostOf = (row: { model: string; input: number; output: number; cache_read: number; cache_write: number; cache_write_1h: number } & Partial<PriceColumns>): number | null =>
+  row.usd ?? costOf(
     {
       input: row.input,
       output: row.output,
@@ -108,7 +112,7 @@ export const hourlyCostOf = (row: { model: string; input: number; output: number
     row.model,
   );
 
-interface Hourly extends LongColumns {
+interface Hourly extends PriceColumns {
   session_id: string;
   hour: number;
   model: string;
@@ -155,7 +159,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   const { scope, from, to, groupBy, model, bucket } = query;
   const rows = db
     .prepare(
-      `SELECT session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context, ${LONG_COLUMNS}
+      `SELECT session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context, ${PRICE_COLUMNS}
        FROM session_usage WHERE scope = ? AND hour >= ? AND hour <= ? ${model ? 'AND model = ?' : ''}`,
     )
     .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Hourly[];
@@ -381,17 +385,17 @@ export function windowCostsFrom(db: DatabaseSync, scope: string, windows: readon
 }
 
 /** A row to price: an hour of a session's transcript tokens (`call` 0) or one of Seshboard's helper calls (`call` 1). */
-type PricedRow = { model: string; input: number; output: number; cache_read: number; cache_write: number; cache_write_1h: number; call: number } & LongColumns;
+type PricedRow = { model: string; input: number; output: number; cache_read: number; cache_write: number; cache_write_1h: number; call: number } & PriceColumns;
 
 /**
  * The transcript's hourly rows and the helper calls (Auto model's picks, catch-up summaries, side questions) that match
  * `hourly` and `calls`, each a condition with the same `params`. Priced row by row, as a long prompt is a request's.
  */
 function pricedRows(db: DatabaseSync, hourly: string, calls: string, params: Array<string | number>): PricedRow[] {
-  const call = (table: string) => `UNION ALL SELECT model, input, output, cache_read, cache_write, 0, 0, 0, 0, 0, 0, 1 FROM ${table} WHERE ${calls}`;
+  const call = (table: string) => `UNION ALL SELECT model, input, output, cache_read, cache_write, 0, 0, 0, 0, 0, 0, NULL, 1 FROM ${table} WHERE ${calls}`;
   return db
     .prepare(
-      `SELECT model, input, output, cache_read, cache_write, cache_write_1h, ${LONG_COLUMNS}, 0 AS call FROM session_usage WHERE ${hourly}
+      `SELECT model, input, output, cache_read, cache_write, cache_write_1h, ${PRICE_COLUMNS}, 0 AS call FROM session_usage WHERE ${hourly}
        ${call('auto_routing')} ${call('side_question_usage')} ${call('catchup_usage')}`,
     )
     .all(...params, ...params, ...params, ...params) as unknown as PricedRow[];

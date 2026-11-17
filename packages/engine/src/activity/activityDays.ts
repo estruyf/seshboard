@@ -1,5 +1,5 @@
 import type { ActivityPr } from '@seshboard/protocol';
-import { hourlyCostOf, type LongColumns } from '../usage/usageQuery.ts';
+import { hourlyCostOf, type PriceColumns } from '../usage/usageQuery.ts';
 
 /** A pause longer than this isn't work: you were away, or Claude waited for you. */
 export const IDLE_MS = 5 * 60_000;
@@ -38,7 +38,7 @@ export interface MessageRow {
 export interface PromptRow extends MessageRow {
   text: string;
 }
-export interface UsageRow extends Partial<LongColumns> {
+export interface UsageRow extends Partial<PriceColumns> {
   session_id: string;
   hour: number;
   model: string;

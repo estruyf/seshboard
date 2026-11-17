@@ -982,7 +982,11 @@ export function createEngine(options: EngineOptions): Engine {
   /** Where each profile's tokens went (from its transcripts) and its plan % over time, for the Usage view. */
   const insights = new UsageInsights({
     db: cache.db,
-    profiles: () => profiles.runtimes().map((p) => ({ id: p.id, configDir: p.configDir })),
+    // Other providers' profiles too: their session files have tokens (Copilot and Codex count in the Usage view).
+    profiles: () => [
+      ...profiles.runtimes().map((p) => ({ id: p.id, configDir: p.configDir, provider: 'claude' as const })),
+      ...profiles.providerProfiles().map((p) => ({ id: p.id, configDir: p.home, provider: p.provider })),
+    ],
     lookup: {
       session: (id) => {
         const summary = sessions.get(id);

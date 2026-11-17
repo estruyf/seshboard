@@ -84,7 +84,7 @@ function Headline({ data, profileName, period, counted }: { data: MergedBreakdow
       {cost &&
         data.totals.cost !== undefined &&
         tile(
-          <span data-tooltip="What these tokens would cost at Anthropic's API prices, each model at its own price. Your plan is not billed per token.">Cost (est.)</span>,
+          <span data-tooltip="What these tokens would cost at API prices, each model at its maker's price (Copilot's: what it charged in AI credits). Your plan is not billed per token.">Cost (est.)</span>,
           cost(data.totals.cost),
           data.uncosted?.length ? `at API prices, without ${data.uncosted.map((c) => c.name).join(', ')}` : 'at API prices',
           'cost',
@@ -208,7 +208,7 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
   const format = useCostFormat();
   // What each row would cost at API prices, before its share; left out while Show estimated cost is off.
   const cost: Column[] = format
-    ? [{ head: <span data-tooltip="At Anthropic's API prices, each model at its own price. Your plan is not billed per token.">Cost (est.)</span>, width: '84px', align: 'right', cell: (r) => format(r.cost), total: (rest) => format(rest.cost) }]
+    ? [{ head: <span data-tooltip="At API prices, each model at its maker's price (Copilot's: what it charged in AI credits). Your plan is not billed per token.">Cost (est.)</span>, width: '84px', align: 'right', cell: (r) => format(r.cost), total: (rest) => format(rest.cost) }]
     : [];
   const share: Column = {
     head: (

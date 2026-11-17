@@ -50,6 +50,23 @@ describe('priceOf', () => {
     expect(cacheRewriteCost(200_000, 'claude-haiku-5-5', '5m')).toBeCloseTo(200_000 * 0.625e-6);
   });
 
+  it("prices OpenAI's models for Codex and Copilot, and reads Copilot's dotted versions", () => {
+    expect(priceOf('gpt-6-luna')).toMatchObject({ input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 });
+    expect(priceOf('gpt-6.1-sol')).toMatchObject({ input: 2, output: 10, cacheRead: 0.1 });
+    expect(priceOf('gpt-5.4-2026-03-05')!.input).toBe(2.5);
+    // A model whose name only starts like a known one isn't priced as it.
+    expect(priceOf('gpt-5.4-nano')).toBeNull();
+    expect(priceOf('gpt-7')).toBeNull();
+    // Without listed cache writes, a write costs the input price.
+    expect(priceOf('gpt-5.5')!.cacheWrite).toBe(5);
+    // Over 272k prompt tokens: twice the prompt's price, 1.5 times the output's. gpt-5.3-codex has no such price.
+    expect(priceOf('gpt-6.1-sol', 300_000)).toMatchObject({ input: 4, cacheRead: 0.2, cacheWrite: 5, output: 15 });
+    expect(priceOf('gpt-5.3-codex', 300_000)!.input).toBe(1.75);
+    expect(priceOf('claude-sonnet-4.6')!.input).toBe(3);
+    expect(priceOf('claude-fable-5.1')!.cacheRead).toBe(0.25);
+    expect(priceOf('mai-code-1.1-flash')!.output).toBe(1.2);
+  });
+
   it('prices a cache write at 1.25 times the input', () => {
     expect(priceOf('claude-opus-5-5')!.cacheWrite).toBe(5);
     expect(costOf({ input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 }, 'claude-sonnet-5-5')).toBeCloseTo(2 + 10 + 0.1 + 2.5);

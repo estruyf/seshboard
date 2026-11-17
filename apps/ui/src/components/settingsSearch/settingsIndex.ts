@@ -439,7 +439,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'show-cost',
       page: 'usage',
       label: 'Show estimated cost',
-      detail: "What your tokens would cost at Anthropic's API prices: after the usage bars, for each session, and in the Usage view.",
+      detail: "What your tokens would cost at API prices: after the usage bars, for each session, and in the Usage view.",
       keywords: 'cost price money dollars euro spend api estimate usage bar footer session project model tokens',
       target: '[data-show-cost]',
     },

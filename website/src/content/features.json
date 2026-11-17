@@ -1923,7 +1923,7 @@
     },
     {
       "id": "feature:codex-session-actions",
-      "name": "OpenAI Codex session actions: Fork from a reply and Edit and resend on its messages, Ask about this session, Rename (F2, the ⋯ menu and the sidebar's menu), Compact on the context meter and in ⋯, Tools with Codex's MCP servers, skills and hooks (Reconnect, no switches to turn a server on or off), and its 5-hour and weekly limits under the message box, on Home and in Usage (the windows only)",
+      "name": "OpenAI Codex session actions: Fork from a reply and Edit and resend on its messages, Ask about this session, Rename (F2, the ⋯ menu and the sidebar's menu), Compact on the context meter and in ⋯, Tools with Codex's MCP servers, skills and hooks (Reconnect, no switches to turn a server on or off), and its 5-hour and weekly limits under the message box, on Home and in Usage",
       "page": "settings"
     },
     {
@@ -1979,6 +1979,11 @@
     {
       "id": "feature:usage-other-computers",
       "name": "Usage: count the same account's tokens on other computers, with a Computer grouping",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-other-providers",
+      "name": "Usage: Copilot and Codex profiles have the Tokens tab, with their tokens and estimated cost (Copilot's at what it charged in AI credits, Codex's at OpenAI's prices), and the cost under their sessions' message box",
       "page": "usage"
     },
     {
