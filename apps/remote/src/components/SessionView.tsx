@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { agentName, apiRetryLine, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
+import { agentName, apiRetryLine, type ApiRetry, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
+import { useReceivedRetry } from '../lib/receivedRetry.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
@@ -218,6 +219,8 @@ export function SessionView({
   };
 
   const working = session?.status === 'working';
+  // Claude Code retries a failed API call: the line counts the wait down from when the phone heard of it, not from the computer's clock.
+  const retry = useReceivedRetry(working ? session?.apiRetry : null);
   /** Its turn ended but a task it started still runs: still at work, so no catch-up yet. */
   const background = inBackground(session);
   const tasks = session?.background ?? [];
@@ -417,7 +420,7 @@ export function SessionView({
             streaming={streaming}
             working={working}
             background={background && !working ? backgroundLine(session?.background) : null}
-            retry={working && session?.apiRetry ? apiRetryLine(session.apiRetry, null) : null}
+            retry={retry}
             hasMore={hasMore}
             onOlder={() => void loadOlder()}
             folded={Boolean(card) && !unfolded}
@@ -564,7 +567,7 @@ function Transcript({
   /** What still runs after the turn, for the line at the end (null: nothing). */
   background: string | null;
   /** Claude Code is retrying a failed API call: the line says so instead of what Claude is doing (null: it isn't). */
-  retry: string | null;
+  retry: ApiRetry | null;
   hasMore: boolean;
   onOlder: () => void;
   /** The catch-up, over the conversation. */
@@ -718,7 +721,7 @@ function Transcript({
  * Claude is working, at the end of the conversation, as on the computer: the patch panel, how long the turn has taken and
  * what Claude is doing (thinking, using a tool), so a quiet stretch doesn't look like a session that stopped.
  */
-function WorkingLine({ streaming, since, retry }: { streaming: Streaming; since: number | null; retry: string | null }) {
+function WorkingLine({ streaming, since, retry }: { streaming: Streaming; since: number | null; retry: ApiRetry | null }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -731,7 +734,7 @@ function WorkingLine({ streaming, since, retry }: { streaming: Streaming; since:
       </span>
       {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
       <span className="shrink-0" aria-live="polite">
-        {retry ?? workingLabel(streaming)}
+        {retry ? apiRetryLine(retry, now) : workingLabel(streaming)}
       </span>
       {streaming.kind === 'thinking' && streaming.text && <span className="min-w-0 truncate text-faint italic">{streaming.text.slice(-160)}</span>}
     </p>

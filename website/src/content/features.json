@@ -2793,7 +2793,7 @@
     },
     {
       "id": "feature:api-retry-line",
-      "name": "A line under the reply while Claude Code retries a failed API call (API overloaded, retrying 3 of 10 in 8s), on the phone too, and a line where Claude moved a turn to another model after a refusal",
+      "name": "A line under the reply while Claude Code retries a failed API call (API overloaded, retrying 3 of 10 in 8s), on the phone too, and a line where a refusal switched the session to another model",
       "page": "sessions/conversation"
     },
     {

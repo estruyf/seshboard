@@ -25,5 +25,6 @@ function wait(ms: number): string {
 export function apiRetryLine(retry: ApiRetry, now: number | null): string {
   const left = now === null ? 0 : retry.at + retry.delayMs - now;
   const tries = retry.maxRetries > 0 ? ` (${retry.attempt} of ${retry.maxRetries})` : '';
-  return `${apiRetryCause(retry.status)}, retrying${tries}${left > 0 ? ` in ${wait(left)}` : ''}`;
+  const cause = retry.noResponse ? 'No response from the API' : apiRetryCause(retry.status);
+  return `${cause}, retrying${tries}${left > 0 ? ` in ${wait(left)}` : ''}`;
 }

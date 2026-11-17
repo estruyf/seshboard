@@ -22,6 +22,10 @@ describe('apiRetryLine', () => {
     expect(apiRetryLine(retry, null)).toBe('API overloaded, retrying (3 of 10)');
   });
 
+  it('says when the API did not answer at all', () => {
+    expect(apiRetryLine({ ...retry, attempt: 1, maxRetries: 3, status: null, noResponse: true }, null)).toBe('No response from the API, retrying (1 of 3)');
+  });
+
   it('leaves the count out without a maximum', () => {
     expect(apiRetryLine({ ...retry, maxRetries: 0, status: null }, null)).toBe('API error, retrying');
   });

@@ -282,6 +282,8 @@ function setup(
   const infos: SessionHostInfo[] = [];
   const streams: StreamDelta[] = [];
   const messages: Array<{ id: string; messages: RawSessionMessage[] }> = [];
+  const notices: RawSessionMessage[] = [];
+  const retracted: string[] = [];
   const permissions: PermissionRequest[] = [];
   const resolved: string[] = [];
   const created: string[] = [];
@@ -333,6 +335,8 @@ function setup(
     onInfo: (i) => infos.push(i),
     onStream: (d) => streams.push(d),
     onMessages: (id, m) => messages.push({ id, messages: m }),
+    onNotice: (_id, m) => notices.push(m),
+    onRetract: (_id, uuids) => retracted.push(...uuids),
     onPermission: (r) => permissions.push(r),
     onPermissionResolved: (id) => resolved.push(id),
     onCreated: (id) => created.push(id),
@@ -355,7 +359,7 @@ function setup(
     ephemeral,
     log: () => {},
   });
-  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral, upNextEvents, turns };
+  return { manager, queries, infos, streams, messages, notices, retracted, permissions, resolved, created, models, warmups, ephemeral, upNextEvents, turns };
 }
 
 /** Up next kept in memory, as the engine keeps it in SQLite. */
@@ -1751,18 +1755,79 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
-  it('puts a line in the conversation when Claude Code moves a turn to another model after a refusal', async () => {
+  it('keeps a line in the conversation when a refusal moves the session to another model, and takes the refused messages back', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
     await until(() => lastState(t.infos, id) === 'idle');
     const out = t.queries[0]!.out;
-    const lines = () => t.messages.flatMap((m) => m.messages).filter((m) => m.type === 'system').map((m) => (m.message as { content?: string }).content);
-    out.push({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', original_model: 'claude-opus-5-5', fallback_model: 'claude-sonnet-5-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
+    const lines = () => t.notices.map((m) => (m.message as { content?: string }).content);
+    const before = t.infos.at(-1)!.model;
+    expect(before).not.toBe('claude-sonnet-5-5');
+    out.push({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', scope: 'session', original_model: 'claude-opus-5-5', fallback_model: 'claude-sonnet-5-5', request_id: null, retracted_message_uuids: ['r1', 'r2'], content: 'x', uuid: randomUUID(), session_id: id });
     await until(() => lines().length === 1);
-    expect(lines()[0]).toBe('Claude moved this turn to Sonnet after a refusal');
+    expect(lines()[0]).toBe('Claude switched this session to Sonnet after a refusal');
+    expect(t.retracted).toEqual(['r1', 'r2']);
+    // The model chip shows what runs now.
+    await until(() => t.infos.at(-1)?.model === 'claude-sonnet-5-5');
+    // A fallback only a subagent used leaves nothing.
+    out.push({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', scope: 'local', original_model: 'a', fallback_model: 'claude-haiku-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
     out.push({ type: 'system', subtype: 'model_refusal_no_fallback', original_model: 'claude-opus-5-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
     await until(() => lines().length === 2);
     expect(lines()[1]).toBe('Claude refused and no fallback model was available');
+    expect(t.infos.at(-1)!.model).toBe('claude-sonnet-5-5');
+    // The reply that replaces the refused leg retracts it too.
+    out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: null, supersedes: ['r3'], message: { role: 'assistant', content: [{ type: 'text', text: 'Hi' }] }, session_id: id });
+    await until(() => t.retracted.includes('r3'));
+    t.manager.closeAll();
+  });
+
+  it('clears an API retry when a subagent or a tool result shows the call went through', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    const retry = () => out.push({ type: 'system', subtype: 'api_retry', attempt: 1, max_retries: 10, retry_delay_ms: 8000, error_status: 529, error: 'server_error', uuid: randomUUID(), session_id: id });
+    const retrying = () => t.infos.at(-1)?.apiRetry !== undefined;
+    const settled = async () => { await until(() => !retrying()); };
+
+    retry();
+    await until(retrying);
+    out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: 'toolu_1', message: { role: 'assistant', content: [{ type: 'text', text: 'sub' }] }, session_id: id });
+    await settled();
+
+    retry();
+    await until(retrying);
+    out.push({ type: 'stream_event', parent_tool_use_id: 'toolu_1', event: { type: 'message_start' }, uuid: randomUUID(), session_id: id });
+    await settled();
+
+    retry();
+    await until(retrying);
+    out.push({ type: 'user', uuid: randomUUID(), parent_tool_use_id: 'toolu_1', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_2', content: 'ok' }] }, session_id: id });
+    await settled();
+
+    // A prompt of yours is not a sign the call went through.
+    retry();
+    await until(retrying);
+    out.push({ type: 'user', uuid: randomUUID(), parent_tool_use_id: null, message: { role: 'user', content: 'hi' }, session_id: id });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(retrying()).toBe(true);
+    t.manager.closeAll();
+  });
+
+  it('starts the next turn without the last turn\u2019s API retry', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    // A retry that nothing cleared (a turn Claude Code dropped without a result), while the session sits idle.
+    out.push({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 10, retry_delay_ms: 8000, error_status: 529, error: 'server_error', uuid: randomUUID(), session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 2);
+    out.push({ type: 'system', subtype: 'session_state_changed', state: 'running', session_id: id });
+    await until(() => lastState(t.infos, id) === 'running');
+    expect(t.infos.at(-1)!.apiRetry).toBeUndefined();
+    // A retry during the turn is still shown: only the start of a turn clears.
+    out.push({ type: 'system', subtype: 'api_retry', attempt: 3, max_retries: 10, retry_delay_ms: 8000, error_status: 529, error: 'server_error', uuid: randomUUID(), session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 3);
     t.manager.closeAll();
   });
 

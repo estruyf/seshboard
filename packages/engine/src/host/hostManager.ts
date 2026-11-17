@@ -69,6 +69,10 @@ export interface HostManagerDeps {
   onStream: (delta: StreamDelta) => void;
   /** `held`: a message Claude Code doesn't have yet (see `HostEvents.messages`). */
   onMessages: (sessionId: string, messages: RawSessionMessage[], held?: boolean) => void;
+  /** A line Claude Code didn't write to the transcript (see `HostEvents.notice`). */
+  onNotice?: (sessionId: string, message: RawSessionMessage) => void;
+  /** Messages Claude Code took back (see `HostEvents.retract`). */
+  onRetract?: (sessionId: string, uuids: string[]) => void;
   /** A session this app ran was stopped: a message it still held back will never be sent. */
   onClosed?: (sessionId: string) => void;
   onPermission: (request: PermissionRequest) => void;
@@ -1190,6 +1194,8 @@ export class HostManager {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
         messages: (id, messages, held) => this.deps.onMessages(id, messages, held),
+        notice: (id, message) => this.deps.onNotice?.(id, message),
+        retract: (id, uuids) => this.deps.onRetract?.(id, uuids),
         log: this.deps.log,
         usageHint: () => this.deps.onUsageHint?.(config.profileId),
         rateLimit: (sessionId, info) => this.deps.onRateLimit?.(config.profileId, sessionId, info),

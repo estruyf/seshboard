@@ -1123,7 +1123,7 @@ export function createEngine(options: EngineOptions): Engine {
    * What hosts report, the same for Claude Code's (`HostManager`) and other providers' (`ProviderHosts`): the windows,
    * the transcript, catch-up, pipelines, triggers and the queue treat both alike.
    */
-  const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
+  const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onNotice' | 'onRetract' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
     onInfo: (info) => {
       if (info.state === 'idle') transcripts.settled(info.sessionId);
       awake.update(info.sessionId, info);
@@ -1142,6 +1142,8 @@ export function createEngine(options: EngineOptions): Engine {
       transcripts.pushLive(id, messages, held);
       catchUp.messages(id, messages);
     },
+    onNotice: (id, message) => transcripts.notice(id, message),
+    onRetract: (id, uuids) => transcripts.retract(id, uuids),
     onClosed: (id) => transcripts.dropHeld(id),
     onPermission: (request) => {
       broadcast('session.permission', request);

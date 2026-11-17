@@ -19,7 +19,7 @@ import type {
 } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
-import { apiRetryOf, refusalNotice } from './apiRetry.ts';
+import { apiRetryOf, refusalOf, supersededBy } from './apiRetry.ts';
 import { commandEcho } from './commandEcho.ts';
 import { FAST_CREDITS_NOTIFICATION, FAST_CREDITS_OUT, fastModeReport } from './fastMode.ts';
 import { isReadOnlyTool, READ_ONLY_STEP_REASON } from './sideQuestions.ts';
@@ -43,6 +43,13 @@ export interface HostEvents {
    * have it yet (a new session's first message while Auto chooses), so the file won't either for a while.
    */
   messages(sessionId: string, messages: RawSessionMessage[], held?: boolean): void;
+  /**
+   * A line Claude Code didn't write to the transcript (a refusal moved the session to another model): it stays in the
+   * conversation as long as the engine runs, in place, however often the file reloads.
+   */
+  notice?(sessionId: string, message: RawSessionMessage): void;
+  /** Claude Code took these messages back (the refused leg of a turn): the live transcript drops them. */
+  retract?(sessionId: string, uuids: string[]): void;
   log(level: LogLevel, message: string): void;
   /** Plan usage probably changed (a turn finished, or Claude Code reported a rate-limit update). */
   usageHint?(): void;
@@ -241,6 +248,12 @@ function textOf(message: Extract<SDKMessage, { type: 'assistant' }>): string | n
   const content = message.message.content as Array<{ type: string; text?: string }>;
   const text = content.filter((block) => block.type === 'text' && block.text).map((block) => block.text).join('\n');
   return text || null;
+}
+
+/** A user message that carries a tool's result (not a prompt of yours). */
+function hasToolResult(message: { message?: unknown }): boolean {
+  const content = (message.message as { content?: unknown } | undefined)?.content;
+  return Array.isArray(content) && content.some((b) => (b as { type?: unknown } | null)?.type === 'tool_result');
 }
 
 function toRaw(message: Extract<SDKMessage, { type: 'assistant' | 'user' }>): RawSessionMessage {
@@ -675,12 +688,16 @@ export class SessionHost {
     }
   }
 
-  /** A compact is over (its boundary, the turn's result or the session going idle). */
-  /** A reply (or the end of the turn) came: Claude Code isn't retrying any more. */
+  private retract(uuids: string[]): void {
+    if (uuids.length > 0) this.events.retract?.(this.sessionId, uuids);
+  }
+
+  /** A reply, a tool result, the end of the turn or the start of the next came: Claude Code isn't retrying any more. */
   private clearApiRetry(): void {
     if (this.info.apiRetry) this.update({ apiRetry: undefined });
   }
 
+  /** A compact is over (its boundary, the turn's result or the session going idle). */
   private endCompacting(): void {
     if (this.info.compacting) this.update({ compacting: false });
   }
@@ -698,7 +715,9 @@ export class SessionHost {
     const ended = patch.state === 'closed' || patch.state === 'error';
     if (ended && this.closedAt === undefined) this.closedAt = Date.now();
     // Background tasks die with the process.
-    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false, apiRetry: undefined } : {}) };
+    // A retry belongs to the turn it happened in: the next turn starts without it.
+    const turnStarts = patch.state === 'running' && this.info.state !== 'running' && this.info.state !== 'needs-you';
+    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false } : {}), ...(ended || (turnStarts && !('apiRetry' in patch)) ? { apiRetry: undefined } : {}) };
     try {
       this.events.info(this.info);
     } catch (error) {
@@ -747,16 +766,17 @@ export class SessionHost {
       case 'system':
         return this.handleSystem(message);
       case 'stream_event':
-        if (message.parent_tool_use_id === null) {
-          // Tokens are coming: whatever was retried got through.
-          this.clearApiRetry();
-          this.handleStreamEvent(message.event as { type: string; [key: string]: unknown });
-        }
+        // Tokens are coming (from Claude or a subagent: `api_retry` doesn't say which one retried): it got through.
+        this.clearApiRetry();
+        if (message.parent_tool_use_id === null) this.handleStreamEvent(message.event as { type: string; [key: string]: unknown });
         return;
       // Subagent messages live in their own transcript file (shown inside the Task card),
       // so only the main conversation is pushed live.
       case 'assistant':
+        this.clearApiRetry();
         if (message.parent_tool_use_id !== null) return;
+        // A reply that replaces what a refusal took back.
+        this.retract(supersededBy(message));
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
         this.clearApiRetry();
@@ -771,6 +791,8 @@ export class SessionHost {
       // Synthetic messages are what Claude Code adds for the model only (a loaded skill's
       // instructions, compact summaries). The transcript readers leave them out, so live does too.
       case 'user':
+        // A tool result means the call that was retried went through, in a subagent too.
+        if (hasToolResult(message)) this.clearApiRetry();
         if (message.parent_tool_use_id !== null || ('isReplay' in message && message.isReplay) || message.isSynthetic) return;
         this.events.messages(this.sessionId, [toRaw(message)]);
         return;
@@ -880,9 +902,13 @@ export class SessionHost {
       return;
     }
     if (message.subtype === 'model_refusal_fallback' || message.subtype === 'model_refusal_no_fallback') {
-      // A line in the conversation where it happened, like the notice for a compact.
-      const notice = refusalNotice(message as { subtype?: unknown }, Date.now());
-      if (notice) this.events.messages(this.sessionId, [notice]);
+      // Claude Code writes no line for it: the engine keeps one in the conversation, and drops the refused messages.
+      const refusal = refusalOf(message as { subtype?: unknown }, Date.now());
+      if (!refusal) return;
+      this.retract(refusal.retracted);
+      this.events.notice?.(this.sessionId, refusal.notice);
+      // The fallback stays for the rest of the session: the model chip shows what runs now.
+      if (refusal.model && refusal.model !== this.info.model) this.update({ model: refusal.model });
       return;
     }
     if (message.subtype === 'notification') {

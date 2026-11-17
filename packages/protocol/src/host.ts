@@ -88,6 +88,8 @@ export const ApiRetry = z.object({
   delayMs: z.number(),
   status: z.number().int().nullable(),
   at: z.number(),
+  /** The API sent no response at all within the first-byte window (its own, smaller, retry count). Missing: it failed. */
+  noResponse: z.boolean().optional(),
 });
 export type ApiRetry = z.infer<typeof ApiRetry>;
 
