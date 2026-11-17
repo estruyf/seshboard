@@ -146,6 +146,11 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
     const suggestion = suggestions[highlighted];
     if (suggestion) return open(suggestion);
     closeList();
+    // Enter on the page's own address, untouched, loads it again, as a browser does.
+    if (draft === null && tab.url) {
+      setRefused(null);
+      return reload();
+    }
     const read = readAddress(draft ?? '', browser);
     if ('refused' in read) return setRefused(read.refused);
     setRefused(null);
@@ -348,8 +353,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
         )}
         {more && tab && <Menu x={more.x} y={more.y} entries={pageMenu(tab, bookmarked)} label="Page menu" onClose={() => setMore(null)} />}
         {trail}
-        {/* Loading: a thin line under the toolbar. */}
-        {page.loading && <div aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 animate-pulse bg-accent-ink" data-web-preview-progress="" />}
+        {/* Loading: a short segment that runs along the toolbar's bottom edge. */}
+        {page.loading && <div aria-hidden className="page-progress absolute inset-x-0 -bottom-px h-0.5" data-web-preview-progress="" />}
       </div>
       {/* From the first tab: each has its ×, and + opens another. */}
       {browser && tabs && tabs.length > 0 && <TabStrip tabs={tabs} activeId={tab?.id ?? null} onNewTab={onNewTab} />}

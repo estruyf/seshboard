@@ -66,6 +66,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Enter in the browser's address bar reloads the page** when you haven't changed the address, instead of asking you to type one. A loading page now shows a short line that runs along the toolbar, as in VS Code, instead of a full-width pulse.
 - **Copying from the browser's address bar gives a link.** The bar shows an address without `https://`, but a copy of it now takes the full address, so it pastes as a link in other apps.
 - **API cost estimates use Anthropic's November prices.** Claude Mythos 5.2 is priced like Fable 5.2, a model newer than Seshboard knows is priced like the newest of its family, and a Claude Haiku 5.5 request with a prompt over 100,000 tokens counts at its higher price. If you used Haiku 5.5, Seshboard reads your transcripts once more to correct its past costs.
 - **Worktrees in a repository with many of them no longer time out.** The Worktrees tab used to fail with "worktrees.list timed out" at around 35 worktrees. The rows now show at once and the changes, commits and pull requests fill in as they are read. Until a worktree's changes are in, it sits under **Reading** and can't be picked for clean-up.

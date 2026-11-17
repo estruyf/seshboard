@@ -67,6 +67,14 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     if (!url.includes(address)) return `the address bar says "${address}" for ${url}`;
     await deps.shot('web-preview.png');
 
+    // Enter on the page's own address, untouched, loads it again instead of asking for an address.
+    let reloaded = false;
+    page.once('did-start-loading', () => (reloaded = true));
+    await js(`${q('[data-web-preview-address]')}.form.requestSubmit()`);
+    if (!(await until(() => reloaded, 5_000))) return 'Enter on the untouched address did not reload the page';
+    if (await js(`!!${q('[data-web-preview-refused]')}`)) return 'Enter on the untouched address was refused';
+    if (!(await until(() => page.getTitle() === 'Smoke site', 10_000))) return `the page did not load again (title "${page.getTitle()}")`;
+
     // An outside link goes to the browser; the page stays.
     await page.executeJavaScript("document.getElementById('out').click()");
     if (!(await until(() => deps.outside.includes('https://example.com/'), 3_000))) return `the outside link was not sent to the browser (sent: ${JSON.stringify(deps.outside)})`;

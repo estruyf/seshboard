@@ -808,6 +808,38 @@ html[data-quick-start-window] body {
   }
 }
 
+/*
+ * A browser page loading: a short segment that runs from left to right under the toolbar, as VS Code's progress bar
+ * does. With Reduce motion it is a still, faint line.
+ */
+.page-progress {
+  overflow: hidden;
+}
+.page-progress::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 20%;
+  background: var(--sb-accent-ink);
+  animation: page-progress 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes page-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(500%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-progress::before {
+    width: 100%;
+    opacity: 0.4;
+    animation: none;
+  }
+}
+
 /* The prompt outline's marks draw their focus ring around the mark itself, not around the rail-wide hit area. */
 html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
   outline: none;
