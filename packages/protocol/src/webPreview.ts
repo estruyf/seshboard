@@ -121,6 +121,18 @@ export function shortUrl(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/^([^/?#]+)\/$/, '$1');
 }
 
+/**
+ * What a copy from the address bar puts on the clipboard, as a browser does: a selection from the start of the short
+ * address gets its scheme back (the whole of it, the full address), so other apps see a link. Null: copy the selection
+ * as it is (typed text, or a part from the middle).
+ */
+export function copiedAddress(url: string, shown: string, start: number, end: number): string | null {
+  if (start !== 0 || end <= start || shown !== shortUrl(url)) return null;
+  if (end >= shown.length) return url;
+  const scheme = /^https?:\/\//.exec(url)?.[0];
+  return scheme ? scheme + shown.slice(0, end) : null;
+}
+
 /** Chromium's error names for a failed load in plain words; anything else keeps Chromium's. */
 const LOAD_ERRORS: Record<string, string> = {
   ERR_NAME_NOT_RESOLVED: "The site's address can't be found.",

@@ -96,6 +96,15 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   // Copy address sits inside the bar, before the text (not clicked: the clipboard is the user's).
   const copy = q('[data-browser-view] [data-browser-copy-address]');
   if (!(await js(`!!${copy} && ${copy}.getBoundingClientRect().right <= ${q('[data-browser-view] [data-browser-address]')}.getBoundingClientRect().left + parseFloat(getComputedStyle(${q('[data-browser-view] [data-browser-address]')}).paddingLeft)`))) return 'no Copy address button in the address bar, or it covers the address';
+  // Copying the whole bar gives the address with its scheme (a copy event of its own, so the user's clipboard stays).
+  const copied = await js(`(() => {
+    const field = ${q('[data-browser-view] [data-browser-address]')};
+    field.setSelectionRange(0, field.value.length);
+    const data = new DataTransfer();
+    field.dispatchEvent(new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData: data }));
+    return { shown: field.value, copied: data.getData('text/plain') };
+  })()`) as { shown: string; copied: string };
+  if (!copied.copied.startsWith('http://') || !copied.copied.includes(copied.shown)) return `copying the address bar gave "${copied.copied}" for "${copied.shown}", not the full address`;
   if (!(await waitInPage(win, `${listed}?.querySelector('img[src]')?.complete && ${listed}.querySelector('img').naturalWidth > 0`, 5_000))) return `the page's favicon is not on its tab (${String(await js(`${listed}?.innerHTML`)).slice(0, 300)})`;
   // A large icon (this one is over 30KB) is kept shrunk to a small PNG.
   if (!(await js(`${listed}.querySelector('img').src.startsWith('data:image/png') && ${listed}.querySelector('img').naturalWidth <= 40`))) return 'the large favicon was not shrunk to a small PNG';

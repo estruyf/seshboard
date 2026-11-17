@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addressBarUrl, browserNavigation, browserProfilePartition, externalSchemeAllowed, isBrowserPartition, isProfilePartition, localPreviewUrl, shortUrl, webPageUrl, WEB_PREVIEW_PARTITION } from './webPreview.ts';
+import { addressBarUrl, browserNavigation, browserProfilePartition, copiedAddress, externalSchemeAllowed, isBrowserPartition, isProfilePartition, localPreviewUrl, shortUrl, webPageUrl, WEB_PREVIEW_PARTITION } from './webPreview.ts';
 
 describe('localPreviewUrl', () => {
   it('allows this computer over http and https', () => {
@@ -111,6 +111,25 @@ describe('shortUrl', () => {
   it('drops the scheme and a root slash', () => {
     expect(shortUrl('http://localhost:5173/')).toBe('localhost:5173');
     expect(shortUrl('https://localhost:5173/docs/')).toBe('localhost:5173/docs/');
+  });
+});
+
+describe('copiedAddress', () => {
+  const url = 'https://github.com/org/repo/pull/2479';
+  const shown = shortUrl(url);
+  it('copies the full address when all of it is selected', () => {
+    expect(copiedAddress(url, shown, 0, shown.length)).toBe(url);
+    expect(copiedAddress('http://localhost:5173/', 'localhost:5173', 0, 14)).toBe('http://localhost:5173/');
+  });
+
+  it('puts the scheme back on a selection from the start', () => {
+    expect(copiedAddress(url, shown, 0, 'github.com'.length)).toBe('https://github.com');
+  });
+
+  it('leaves a selection from the middle, an empty one and typed text as they are', () => {
+    expect(copiedAddress(url, shown, 11, shown.length)).toBeNull();
+    expect(copiedAddress(url, shown, 0, 0)).toBeNull();
+    expect(copiedAddress(url, 'github.com/other', 0, 16)).toBeNull();
   });
 });
 
