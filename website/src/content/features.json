@@ -2597,6 +2597,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:idle-compaction",
+      "name": "A compaction Claude Code made by itself while a terminal session sat idle shows as Compacted while idle",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:quit-large-context",
       "name": "Quitting with a large session open warns once, or every time with Warn when quitting",
       "page": "settings"

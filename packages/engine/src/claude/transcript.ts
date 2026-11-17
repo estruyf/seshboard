@@ -158,8 +158,9 @@ export function normaliseMessage(raw: RawSessionMessage, sink?: ImageSink): Tran
   const model = (raw.message as { model?: unknown } | null)?.model;
   let blocks = contentBlocks(raw.message, raw.uuid, sink);
   if (raw.type === 'system' && blocks.length === 0) {
-    const subtype = (raw.message as { subtype?: unknown } | null)?.subtype;
-    blocks = [{ type: 'unknown', kind: typeof subtype === 'string' ? subtype : 'system' }];
+    const { subtype, idle } = (raw.message as { subtype?: unknown; idle?: unknown } | null) ?? {};
+    // Claude Code compacted it by itself while the session sat idle (`compactedHistory.ts`): its own label.
+    blocks = [{ type: 'unknown', kind: subtype === 'compact_boundary' && idle === true ? 'compact_boundary_idle' : typeof subtype === 'string' ? subtype : 'system' }];
   }
   const counts = raw.type === 'assistant' ? usageCounts(raw.message as Parameters<typeof usageCounts>[0]) : null;
   const responseId = (raw.message as { id?: unknown } | null)?.id;

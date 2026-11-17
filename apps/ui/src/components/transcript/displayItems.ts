@@ -61,6 +61,7 @@ const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</$
 
 const NOTICE_LABELS: Record<string, string> = {
   compact_boundary: 'Conversation compacted',
+  compact_boundary_idle: 'Compacted while idle',
   informational: 'Information',
 };
 

@@ -51,6 +51,11 @@ describe('buildDisplayItems', () => {
     ]);
     expect(items).toMatchObject([{ kind: 'text', subagent: true }, { kind: 'notice', text: 'Conversation compacted' }]);
   });
+
+  it('labels a compaction Claude Code made while the session was idle', () => {
+    const items = buildDisplayItems([m('s1', 'system', [{ type: 'unknown', kind: 'compact_boundary_idle' }])]);
+    expect(items).toMatchObject([{ kind: 'notice', text: 'Compacted while idle' }]);
+  });
 });
 
 describe('toolSummary', () => {
