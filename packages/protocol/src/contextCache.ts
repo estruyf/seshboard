@@ -25,7 +25,8 @@ export const cacheExpiresAt = (at: number, ttl: CacheTtl): number => at + CACHE_
 
 /** What writing `tokens` of context to the cache again costs at the model's list price, in US dollars; null for an unknown model. */
 export function cacheRewriteCost(tokens: number, model: string, ttl: CacheTtl): number | null {
-  const p = priceOf(model);
+  // The context is the next request's prompt, so its size picks the price.
+  const p = priceOf(model, tokens);
   return p ? (tokens * (ttl === '1h' ? p.cacheWrite1h : p.cacheWrite)) / 1_000_000 : null;
 }
 

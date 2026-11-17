@@ -1,4 +1,5 @@
-import { costOf, type ActivityPr } from '@seshboard/protocol';
+import type { ActivityPr } from '@seshboard/protocol';
+import { hourlyCostOf, type LongColumns } from '../usage/usageQuery.ts';
 
 /** A pause longer than this isn't work: you were away, or Claude waited for you. */
 export const IDLE_MS = 5 * 60_000;
@@ -37,7 +38,7 @@ export interface MessageRow {
 export interface PromptRow extends MessageRow {
   text: string;
 }
-export interface UsageRow {
+export interface UsageRow extends Partial<LongColumns> {
   session_id: string;
   hour: number;
   model: string;
@@ -108,7 +109,7 @@ export function sessionDays(rows: { messages: readonly MessageRow[]; prompts: re
   for (const row of rows.usage) {
     const entry = days.get(`${clock.dayOf(row.hour)}\0${row.session_id}`) ?? days.get(`${clock.dayOf(row.hour + 3_599_999)}\0${row.session_id}`);
     if (!entry) continue;
-    const cost = costOf({ input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write, cacheWrite1h: row.cache_write_1h }, row.model);
+    const cost = hourlyCostOf(row);
     if (cost !== null) entry.costUsd = (entry.costUsd ?? 0) + cost;
   }
   return [...days.values()];

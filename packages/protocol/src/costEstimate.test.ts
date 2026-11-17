@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { convertUsd, costOf, CURRENCIES, formatCost, isCurrencyCode, priceOf } from './costEstimate.ts';
+import { cacheRewriteCost } from './contextCache.ts';
+import { convertUsd, costOf, CURRENCIES, formatCost, isCurrencyCode, longPromptOver, priceOf, requestCostOf } from './costEstimate.ts';
 
 describe('priceOf', () => {
   it('matches the model ids Claude Code writes, newest versions first', () => {
@@ -8,6 +9,7 @@ describe('priceOf', () => {
       return p && [p.input, p.output, p.cacheRead];
     };
     expect(io('claude-fable-5-2')).toEqual([8, 40, 0.2]);
+    expect(io('claude-mythos-5-2')).toEqual([8, 40, 0.2]);
     expect(io('claude-fable-5-1')).toEqual([10, 50, 0.25]);
     expect(io('claude-fable-5')).toEqual([10, 50, 1]);
     expect(io('claude-opus-5-5')).toEqual([4, 20, 0.2]);
@@ -25,7 +27,27 @@ describe('priceOf', () => {
     expect(io('claude-3-5-haiku-20241022')).toEqual([0.8, 4, 0.08]);
     // A newer version than the table knows is priced like its family's latest.
     expect(io('claude-sonnet-6')).toEqual([2, 10, 0.1]);
+    expect(io('claude-fable-6')).toEqual([8, 40, 0.2]);
+    // Also a point release: not the `.0` version's price.
+    expect(io('claude-opus-5-6')).toEqual([4, 20, 0.2]);
+    expect(io('claude-sonnet-5-6')).toEqual([2, 10, 0.1]);
+    expect(io('claude-fable-5-3')).toEqual([8, 40, 0.2]);
     expect(priceOf('<synthetic>')).toBeNull();
+  });
+
+  it("prices Haiku 5.5's requests over 100k prompt tokens at five times the price", () => {
+    expect(longPromptOver('claude-haiku-5-5')).toBe(100_000);
+    expect(longPromptOver('claude-sonnet-5-5')).toBeNull();
+    expect(priceOf('claude-haiku-5-5', 100_000)!.input).toBe(0.1);
+    expect(priceOf('claude-haiku-5-5', 100_001)).toMatchObject({ input: 0.5, output: 2.5, cacheRead: 0.05, cacheWrite: 0.625, cacheWrite1h: 1 });
+    expect(priceOf('claude-sonnet-5-5', 900_000)!.input).toBe(2);
+    // `long` is the part from requests over the size; the rest keeps the lower price.
+    const tokens = { input: 0, output: 2_000_000, cacheRead: 0, cacheWrite: 0 };
+    expect(costOf({ ...tokens, long: { ...tokens, output: 1_000_000 } }, 'claude-haiku-5-5')).toBeCloseTo(0.5 + 2.5);
+    expect(costOf({ ...tokens, long: { ...tokens, output: 1_000_000 } }, 'claude-sonnet-5-5')).toBeCloseTo(20);
+    expect(requestCostOf({ input: 0, output: 1_000_000, cacheRead: 100_001, cacheWrite: 0 }, 'claude-haiku-5-5')).toBeCloseTo(2.5 + 100_001 * 0.05e-6);
+    expect(requestCostOf({ input: 0, output: 1_000_000, cacheRead: 100_000, cacheWrite: 0 }, 'claude-haiku-5-5')).toBeCloseTo(0.5 + 100_000 * 0.01e-6);
+    expect(cacheRewriteCost(200_000, 'claude-haiku-5-5', '5m')).toBeCloseTo(200_000 * 0.625e-6);
   });
 
   it('prices a cache write at 1.25 times the input', () => {

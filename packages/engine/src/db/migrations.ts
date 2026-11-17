@@ -1032,4 +1032,17 @@ export const migrations: readonly string[] = [
   ALTER TABLE browser_history_by_profile RENAME TO browser_history;
   CREATE INDEX browser_history_last_visit ON browser_history (last_visit);
   `,
+
+  // v64: A Haiku 5.5 request whose prompt is over 100k tokens costs five times as much, so the cost estimate needs the
+  // tokens of those requests apart (`long_*`, a part of the totals). Responses counted before have no such part yet
+  // (`long` 0): if Haiku 5.5 was used, every transcript is read once more to add it, without counting anything twice.
+  `
+  ALTER TABLE session_usage ADD COLUMN long_input INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session_usage ADD COLUMN long_output INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session_usage ADD COLUMN long_cache_read INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session_usage ADD COLUMN long_cache_write INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session_usage ADD COLUMN long_cache_write_1h INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE usage_messages ADD COLUMN long INTEGER NOT NULL DEFAULT 0;
+  UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL WHERE EXISTS (SELECT 1 FROM session_usage WHERE model LIKE '%haiku-5%');
+  `,
 ];

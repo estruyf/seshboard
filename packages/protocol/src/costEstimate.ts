@@ -5,8 +5,7 @@ import type { TokenCounts } from './usage.ts';
  * What tokens would cost at Anthropic's API list prices, for the estimate next to the plan's usage bars. A plan is
  * not billed per token, so this is never a charge: it says what the same work would have cost on the API. Prices are
  * per million tokens, in US dollars; a cache write is 1.25 times the input price for the 5-minute cache and twice it for
- * the hour-long one (Claude Code uses either; the transcript says which). Fast mode's premium and long-context pricing
- * are left out.
+ * the hour-long one (Claude Code uses either; the transcript says which). Fast mode's premium is left out.
  */
 export interface ModelPrice {
   input: number;
@@ -16,51 +15,92 @@ export interface ModelPrice {
   cacheWrite: number;
   /** A write to the hour-long cache. */
   cacheWrite1h: number;
+  /**
+   * A request whose prompt (input, cache reads and cache writes together) is over `over` tokens pays `price` for all
+   * of its tokens, output included (Haiku 5.5). Each request on its own: the ones under it keep the lower price.
+   */
+  longPrompt?: { over: number; price: ModelPrice };
 }
 
 const price = (input: number, output: number, cacheRead = input / 10): ModelPrice => ({ input, output, cacheRead, cacheWrite: input * 1.25, cacheWrite1h: input * 2 });
 
+const FABLE_5_2 = price(8, 40, 0.2);
+const OPUS_5_5 = price(4, 20, 0.2);
+const SONNET_5_5 = price(2, 10, 0.1);
+const HAIKU_5_5: ModelPrice = { ...price(0.1, 0.5), longPrompt: { over: 100_000, price: price(0.5, 2.5) } };
+
 /**
  * List prices by model id, first match wins: newer versions before the family's older ones. Model ids come from the
  * transcripts as the API wrote them (`claude-opus-4-1-20250805`, `claude-sonnet-5-5`), so a pattern matches a prefix
- * of the version. Checked against Anthropic's pricing in November 2026 (Fable 5.2 and Sonnet 5.5's cache reads are new).
+ * of the version, and a `.0` version (`opus-5`) is kept from matching a later point release (`opus-5-6`), which the
+ * family's line at the end prices. Checked against Anthropic's pricing on 2026-11-17.
  */
 const PRICES: ReadonlyArray<readonly [RegExp, ModelPrice]> = [
-  [/fable-5-2/, price(8, 40, 0.2)],
+  [/(fable|mythos)-5-2/, FABLE_5_2],
   [/(fable|mythos)-5-1/, price(10, 50, 0.25)],
-  [/fable|mythos/, price(10, 50)],
-  [/opus-5-5/, price(4, 20, 0.2)],
-  [/opus-(5|4-[5-9])/, price(5, 25)],
+  [/(fable|mythos)-5(?!-\d)/, price(10, 50)],
+  [/opus-5-5/, OPUS_5_5],
+  [/opus-(5(?!-\d)|4-[5-9])/, price(5, 25)],
   [/opus-4|3-opus/, price(15, 75)],
-  [/sonnet-5-5/, price(2, 10, 0.1)],
-  [/sonnet-5/, price(2, 10, 0.2)],
+  [/sonnet-5-5/, SONNET_5_5],
+  [/sonnet-5(?!-\d)/, price(2, 10, 0.2)],
   [/sonnet-4|3-[57]-sonnet/, price(3, 15)],
-  [/haiku-5/, price(0.1, 0.5)],
+  [/haiku-5-5/, HAIKU_5_5],
   [/haiku-4/, price(1, 5)],
   [/3-5-haiku/, price(0.8, 4)],
   [/3-haiku/, price(0.25, 1.25)],
   // A family's newer model than this table knows: priced like its latest.
-  [/opus/, price(4, 20, 0.2)],
-  [/sonnet/, price(2, 10, 0.1)],
-  [/haiku/, price(0.1, 0.5)],
+  [/fable|mythos/, FABLE_5_2],
+  [/opus/, OPUS_5_5],
+  [/sonnet/, SONNET_5_5],
+  [/haiku/, HAIKU_5_5],
 ];
 
-/** A model's list price, or null for one this table doesn't know (`<synthetic>`, another provider's). */
-export function priceOf(model: string): ModelPrice | null {
+/**
+ * A model's list price, or null for one this table doesn't know (`<synthetic>`, another provider's). `prompt`: the
+ * request's prompt tokens, for a model that costs more over some prompt size (`longPrompt`); left out, the lower price.
+ */
+export function priceOf(model: string, prompt = 0): ModelPrice | null {
   const id = model.toLowerCase();
-  return PRICES.find(([pattern]) => pattern.test(id))?.[1] ?? null;
+  const p = PRICES.find(([pattern]) => pattern.test(id))?.[1] ?? null;
+  return p?.longPrompt && prompt > p.longPrompt.over ? p.longPrompt.price : p;
 }
 
-/**
- * What tokens of one model cost at its list price, in US dollars; null when the model has no known price.
- * `cacheWrite1h`: the part of `cacheWrite` that went to the hour-long cache (the rest is priced as 5-minute writes).
- */
-export function costOf(tokens: TokenCounts & { cacheWrite1h?: number }, model: string): number | null {
-  const p = priceOf(model);
-  if (!p) return null;
+/** Over how many prompt tokens a request of this model costs more (`ModelPrice.longPrompt`), or null when size doesn't matter. */
+export const longPromptOver = (model: string): number | null => priceOf(model)?.longPrompt?.over ?? null;
+
+/** Tokens to price: `cacheWrite1h` is the part of `cacheWrite` that went to the hour-long cache (the rest is priced as 5-minute writes). */
+export type PricedTokens = TokenCounts & { cacheWrite1h?: number };
+
+const at = (tokens: PricedTokens, p: ModelPrice): number => {
   const hour = Math.min(tokens.cacheWrite, tokens.cacheWrite1h ?? 0);
   return (tokens.input * p.input + tokens.output * p.output + tokens.cacheRead * p.cacheRead + (tokens.cacheWrite - hour) * p.cacheWrite + hour * p.cacheWrite1h) / 1_000_000;
+};
+
+/**
+ * What tokens of one model cost at its list price, in US dollars; null when the model has no known price. `long`: the
+ * part of the tokens that came from requests over the model's `longPrompt` size, priced at its higher price.
+ */
+export function costOf(tokens: PricedTokens & { long?: PricedTokens }, model: string): number | null {
+  const p = priceOf(model);
+  if (!p) return null;
+  const long = p.longPrompt ? tokens.long : undefined;
+  if (!long) return at(tokens, p);
+  const part = (key: keyof PricedTokens) => Math.min(tokens[key] ?? 0, long[key] ?? 0);
+  const longPart: Required<PricedTokens> = { input: part('input'), output: part('output'), cacheRead: part('cacheRead'), cacheWrite: part('cacheWrite'), cacheWrite1h: part('cacheWrite1h') };
+  const rest: PricedTokens = {
+    input: tokens.input - longPart.input,
+    output: tokens.output - longPart.output,
+    cacheRead: tokens.cacheRead - longPart.cacheRead,
+    cacheWrite: tokens.cacheWrite - longPart.cacheWrite,
+    cacheWrite1h: (tokens.cacheWrite1h ?? 0) - longPart.cacheWrite1h,
+  };
+  return at(rest, p) + at(longPart, p.longPrompt!.price);
 }
+
+/** `costOf` for the tokens of one request, whose prompt size says which price it pays. */
+export const requestCostOf = (tokens: PricedTokens, model: string): number | null =>
+  costOf({ ...tokens, long: tokens.input + tokens.cacheRead + tokens.cacheWrite > (longPromptOver(model) ?? Infinity) ? tokens : undefined }, model);
 
 /**
  * The currencies the estimate can be shown in, with how many of each one US dollar buys. From the ECB's euro

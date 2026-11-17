@@ -112,6 +112,38 @@ describe('UsageScanner', () => {
     expect(cache.db.prepare('SELECT cache_write_1h FROM session_usage WHERE scope = ?').get(scope)).toEqual({ cache_write_1h: 150 });
   });
 
+  it("keeps apart the tokens of responses over their model's long-prompt size", async () => {
+    const config = configDir();
+    const scope = scopeOf(config);
+    // Haiku 5.5's prompts over 100k cost more; the same size on Sonnet 5.5 doesn't matter.
+    const long = { session: 's1', at: '2026-10-12T10:00:00Z', input: 5, output: 40, read: 100_000, write: 300, write1h: 100 };
+    writeFileSync(
+      join(config, 'projects', '-work-app', 's1.jsonl'),
+      line({ id: 'm1', model: 'claude-haiku-5-5', ...long }) + line({ id: 'm2', model: 'claude-haiku-5-5', session: 's1', at: '2026-10-12T10:01:00Z' }) + line({ id: 'm3', ...long }),
+    );
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    const parts = cache.db.prepare('SELECT model, long_input, long_output, long_cache_read, long_cache_write, long_cache_write_1h FROM session_usage WHERE scope = ? ORDER BY model').all(scope);
+    expect(parts).toEqual([
+      { model: 'claude-haiku-5-5', long_input: 5, long_output: 40, long_cache_read: 100_000, long_cache_write: 300, long_cache_write_1h: 100 },
+      { model: 'claude-sonnet-5-5', long_input: 0, long_output: 0, long_cache_read: 0, long_cache_write: 0, long_cache_write_1h: 0 },
+    ]);
+  });
+
+  it('adds the long-prompt part to responses counted before it was kept, once, without counting them again', async () => {
+    const config = configDir();
+    const scope = scopeOf(config);
+    const repeated = line({ id: 'm1', model: 'claude-haiku-5-5', session: 's1', at: '2026-10-12T10:00:00Z', read: 150_000 });
+    writeFileSync(join(config, 'projects', '-work-app', 's1.jsonl'), repeated + repeated);
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    // As an older build left them, and as schema v64 asks for when Haiku 5.5 was used.
+    cache.db.exec('UPDATE session_usage SET long_input = 0, long_output = 0, long_cache_read = 0, long_cache_write = 0; UPDATE usage_messages SET long = 0; UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;');
+    for (let i = 0; i < 2; i++) {
+      await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+      expect(cache.db.prepare('SELECT cache_read, long_cache_read, long_output, turns FROM session_usage WHERE scope = ?').get(scope)).toEqual({ cache_read: 150_000, long_cache_read: 150_000, long_output: 100, turns: 1 });
+      cache.db.exec('UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;');
+    }
+  });
+
   it('counts subagents under the session they ran in', async () => {
     const config = configDir();
     const scope = scopeOf(config);
@@ -369,7 +401,7 @@ describe('windowCosts', () => {
       [limit('session', Date.UTC(2026, 9, 12, 12, 30)), limit('weekly_all', Date.UTC(2026, 9, 15)), limit('weekly_scoped', Date.UTC(2026, 9, 15), 'Opus'), limit('weekly_old', now - 1), limit('weekly_unknown', null)],
       now,
     );
-    // Sonnet 5.5 ($2 in, $10 out, $0.20 cache read, $2.50 cache write) for k1 and o1, Haiku 5.5 for the summary.
+    // Sonnet 5.5 ($2 in, $10 out, $0.10 cache read, $2.50 cache write) for k1 and o1, Haiku 5.5 for the summary.
     const sonnet = (20 * 2 + 1010 * 10 + 2000 * 0.1 + 400 * 2.5) / 1e6;
     const haiku = (900 * 0.1 + 120 * 0.5) / 1e6;
     const opus = (10 * 4 + 500 * 20 + 1000 * 0.2 + 200 * 5) / 1e6;
@@ -388,7 +420,7 @@ describe('windowCosts', () => {
 });
 
 describe('costs in the breakdown and per session', () => {
-  // At list prices: Sonnet 5.5 $2 in, $10 out, $0.20 cache read, $2.50 cache write; Opus 5.5 $4, $20, $0.20, $5.
+  // At list prices: Sonnet 5.5 $2 in, $10 out, $0.10 cache read, $2.50 cache write; Opus 5.5 $4, $20, $0.20, $5.
   const sonnet = (output: number) => (10 * 2 + output * 10 + 1000 * 0.1 + 200 * 2.5) / 1e6;
   const opus = (output: number) => (10 * 4 + output * 20 + 1000 * 0.2 + 200 * 5) / 1e6;
 
@@ -439,5 +471,25 @@ describe('costs in the breakdown and per session', () => {
     const now = Date.UTC(2026, 9, 12, 10);
     const range = periodRange('week', now, 'UTC');
     expect(breakdown(cache.db, { scope, period: 'week', ...range, model: null, timeZone: 'UTC', groupBy: 'session' }, lookup).totals.cost).toBeCloseTo(hourLong, 9);
+  });
+
+  it("prices Haiku 5.5's requests over 100k prompt tokens at the higher price, each request on its own", async () => {
+    const config = configDir();
+    const scope = scopeOf(config);
+    writeFileSync(
+      join(config, 'projects', '-work-app', 'known.jsonl'),
+      line({ id: 'l1', model: 'claude-haiku-5-5', session: 'known', at: '2026-10-12T08:10:00Z', read: 120_000 }) + line({ id: 's1', model: 'claude-haiku-5-5', session: 'known', at: '2026-10-12T08:20:00Z', read: 90_000 }),
+    );
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    // Up to 100k: $0.10 in, $0.50 out, $0.01 cache read, $0.125 cache write. Over it, five times that.
+    const short = (10 * 0.1 + 100 * 0.5 + 90_000 * 0.01 + 200 * 0.125) / 1e6;
+    const long = (10 * 0.5 + 100 * 2.5 + 120_000 * 0.05 + 200 * 0.625) / 1e6;
+    expect(sessionCost(cache.db, scope, 'known')!.usd).toBeCloseTo(short + long, 12);
+    const now = Date.UTC(2026, 9, 12, 10);
+    const range = periodRange('week', now, 'UTC');
+    expect(breakdown(cache.db, { scope, period: 'week', ...range, model: null, timeZone: 'UTC', groupBy: 'session' }, lookup).totals.cost).toBeCloseTo(short + long, 12);
+    // A helper call is one request: its own prompt size picks its price.
+    new CatchUpUsageStore(cache.db).record({ id: 'c1', scope, at: Date.UTC(2026, 9, 12, 9), model: 'claude-haiku-5-5', sessionId: 'known', tokens: { input: 101_000, output: 100, cacheRead: 0, cacheWrite: 0 } });
+    expect(sessionCost(cache.db, scope, 'known')!.usd).toBeCloseTo(short + long + (101_000 * 0.5 + 100 * 2.5) / 1e6, 12);
   });
 });

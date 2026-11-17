@@ -61,6 +61,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **API cost estimates use Anthropic's November prices.** Claude Mythos 5.2 is priced like Fable 5.2, a model newer than Seshboard knows is priced like the newest of its family, and a Claude Haiku 5.5 request with a prompt over 100,000 tokens counts at its higher price. If you used Haiku 5.5, Seshboard reads your transcripts once more to correct its past costs.
 - A second click on a session's **⋯** button, a project page's **⋯** or the worktree menu closes the menu. It used to close it and open it again.
 - The **⋯** menu of a Copilot or Codex session now has **Open in**, as a Claude Code session does: your editors, terminals and Finder, with its CLI next to them.
 - **A prompt queued at the focus limit starts when a slot frees.** It used to wait for its project to be free too, so it didn't start while another session worked in that project. **Wait for › A free slot** is the new choice, and the one Start picks at the focus limit. Scheduled runs and triggered sessions held at a limit wait for a slot the same way.

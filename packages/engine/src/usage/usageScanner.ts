@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { open, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
+import { longPromptOver } from '@seshboard/protocol';
 import { hourOf, parsePromptLine, parseUsageLine, PROMPT_MARKER, PROMPT_NOT, USAGE_MARKER, type PromptLine, type UsageLine } from './transcriptUsage.ts';
 
 /** A config folder to read: its `projects/` transcripts count for `scope`. */
@@ -26,6 +27,9 @@ const TAIL = 1024;
 const MARKER = Buffer.from(USAGE_MARKER);
 const USER_MARKER = Buffer.from(PROMPT_MARKER);
 const NOT_USER_MARKER = Buffer.from(PROMPT_NOT);
+
+/** Whether a response's prompt was over its model's long-prompt size, where all of its tokens cost more (`costEstimate.ts`). */
+const isLong = (line: UsageLine) => line.input + line.cacheRead + line.cacheWrite > (longPromptOver(line.model) ?? Infinity);
 
 const hashOf = (bytes: Buffer) => createHash('sha1').update(bytes).digest('hex');
 
@@ -59,7 +63,7 @@ export interface ScanProgress {
  * files repeat it. Reading yields between files, so the engine keeps answering during a long first scan.
  */
 export class UsageScanner {
-  private readonly statements: Record<'file' | 'saveFile' | 'seen' | 'add' | 'split' | 'addHour' | 'cwd' | 'prompt', StatementSync>;
+  private readonly statements: Record<'file' | 'saveFile' | 'seen' | 'add' | 'split' | 'addHour' | 'long' | 'addLong' | 'cwd' | 'prompt', StatementSync>;
   private running: Promise<boolean> | null = null;
   /** Scopes read completely at least once. */
   private readonly scanned = new Set<string>();
@@ -70,19 +74,30 @@ export class UsageScanner {
       saveFile: db.prepare(
         'INSERT INTO usage_files (path, scope, size, mtime, offset, tail_hash) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET scope = excluded.scope, size = excluded.size, mtime = excluded.mtime, offset = excluded.offset, tail_hash = excluded.tail_hash',
       ),
-      seen: db.prepare('INSERT OR IGNORE INTO usage_messages (key, scope, session_id, at, split) VALUES (?, ?, ?, ?, 1)'),
+      seen: db.prepare('INSERT OR IGNORE INTO usage_messages (key, scope, session_id, at, split, long) VALUES (?, ?, ?, ?, 1, 1)'),
       add: db.prepare(
-        `INSERT INTO session_usage (scope, session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        `INSERT INTO session_usage (scope, session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context,
+           long_input, long_output, long_cache_read, long_cache_write, long_cache_write_1h)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (scope, session_id, hour, model) DO UPDATE SET
            input = input + excluded.input, output = output + excluded.output, cache_read = cache_read + excluded.cache_read,
            cache_write = cache_write + excluded.cache_write, cache_write_1h = cache_write_1h + excluded.cache_write_1h,
-           turns = turns + 1, fast_turns = fast_turns + excluded.fast_turns, max_context = MAX(max_context, excluded.max_context)`,
+           turns = turns + 1, fast_turns = fast_turns + excluded.fast_turns, max_context = MAX(max_context, excluded.max_context),
+           long_input = long_input + excluded.long_input, long_output = long_output + excluded.long_output,
+           long_cache_read = long_cache_read + excluded.long_cache_read, long_cache_write = long_cache_write + excluded.long_cache_write,
+           long_cache_write_1h = long_cache_write_1h + excluded.long_cache_write_1h`,
       ),
       // A response counted before the cache writes were split (schema v30): its hour-long part is added once.
       split: db.prepare('UPDATE usage_messages SET split = 1 WHERE key = ? AND split = 0'),
       addHour: db.prepare(
         'UPDATE session_usage SET cache_write_1h = MIN(cache_write, cache_write_1h + ?) WHERE scope = ? AND session_id = ? AND hour = ? AND model = ?',
+      ),
+      // A response over its model's long-prompt size counted before those were kept apart (schema v64): added once.
+      long: db.prepare('UPDATE usage_messages SET long = 1 WHERE key = ? AND long = 0'),
+      addLong: db.prepare(
+        `UPDATE session_usage SET long_input = MIN(input, long_input + ?), long_output = MIN(output, long_output + ?), long_cache_read = MIN(cache_read, long_cache_read + ?),
+           long_cache_write = MIN(cache_write, long_cache_write + ?), long_cache_write_1h = MIN(cache_write, long_cache_write_1h + ?)
+         WHERE scope = ? AND session_id = ? AND hour = ? AND model = ?`,
       ),
       prompt: db.prepare('INSERT OR IGNORE INTO usage_prompts (key, scope, session_id, at, text) VALUES (?, ?, ?, ?, ?)'),
       cwd: db.prepare('INSERT INTO usage_sessions (scope, session_id, cwd) VALUES (?, ?, ?) ON CONFLICT (scope, session_id) DO UPDATE SET cwd = COALESCE(cwd, excluded.cwd)'),
@@ -206,9 +221,14 @@ export class UsageScanner {
     this.db.exec('BEGIN');
     try {
       for (const line of lines) {
+        const long = isLong(line);
         if (this.statements.seen.run(line.key, scope, line.sessionId, line.at).changes === 0) {
           if (line.cacheWrite1h > 0 && this.statements.split.run(line.key).changes > 0) {
             this.statements.addHour.run(line.cacheWrite1h, scope, line.sessionId, hourOf(line.at), line.model);
+            added = true;
+          }
+          if (long && this.statements.long.run(line.key).changes > 0) {
+            this.statements.addLong.run(line.input, line.output, line.cacheRead, line.cacheWrite, line.cacheWrite1h, scope, line.sessionId, hourOf(line.at), line.model);
             added = true;
           }
           continue;
@@ -226,6 +246,7 @@ export class UsageScanner {
           line.cacheWrite1h,
           line.fast ? 1 : 0,
           line.input + line.cacheRead + line.cacheWrite,
+          ...(long ? [line.input, line.output, line.cacheRead, line.cacheWrite, line.cacheWrite1h] : [0, 0, 0, 0, 0]),
         );
         if (line.cwd) this.statements.cwd.run(scope, line.sessionId, line.cwd);
       }
