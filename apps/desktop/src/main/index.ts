@@ -9767,8 +9767,20 @@ async function runOrchestratorStep(win: BrowserWindow): Promise<string> {
     return 'ok: the project kept its instructions and gave them to each session; Run as › Orchestrator started the orchestrator; its three sessions showed as Working in the overview and under its row; one moved to Waiting on you, one to Idle with the orchestrator told; Open and the way back work';
   } finally {
     engine.send({ type: 'smokeStubCreate', on: false });
-    for (const id of [...started, orchestratorId].filter(Boolean)) host(id, 'closed');
+    const ids = [...started, orchestratorId].filter(Boolean);
+    for (const id of ids) host(id, 'closed');
+    // Closed without a transcript, each session counts as failed to start, and its prompt comes back as its unsent
+    // message when its row goes. Left, the + opens this folder for every later step: gone, as a draft emptied elsewhere is.
+    for (const id of ids) await waitInPage(win, `!document.querySelector('[data-session-list] [data-session-id="${id}"]')`, 5_000);
+    win.webContents.send(IpcChannel.draftsRelayed, Object.fromEntries([...ids, `new:${folder}`].map((key) => [key, null])));
+    // Starting it added the folder to your projects. Through Projects, so the UI's list knows too: later steps expect none.
+    if (orchestratorId) await removeProjectInProjects(win, folder);
     engine.send({ type: 'smokeProject', path: folder, add: false });
+    // Back to the session the next steps work in, out of Projects.
+    if (smokeSessionId) {
+      await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+      await waitInPage(win, `!!document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    }
     try {
       rmSync(folder, { recursive: true, force: true });
     } catch {
