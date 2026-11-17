@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createEngine, demoCodex, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
-import { RemoteAppUpdate, type BrowserToolRequest, type BrowserToolResult } from '@seshboard/protocol';
+import { ApiRetry, RemoteAppUpdate, type BrowserToolRequest, type BrowserToolResult } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -158,9 +158,9 @@ process.parentPort.on('message', (event) => {
   }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
-    const { sessionId, cwd, state, outcome, compacting, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; fast?: { blocked: string | null; on?: boolean } };
+    const { sessionId, cwd, state, outcome, compacting, apiRetry, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; apiRetry?: unknown; fast?: { blocked: string | null; on?: boolean } };
     if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'needs-you' || state === 'idle' || state === 'closed')) {
-      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(fast ? { fast } : {}) });
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(apiRetry === null ? { apiRetry: null } : ApiRetry.safeParse(apiRetry).success ? { apiRetry: apiRetry as ApiRetry } : {}), ...(fast ? { fast } : {}) });
     }
     return;
   }
@@ -264,6 +264,12 @@ process.parentPort.on('message', (event) => {
       model: typeof model === 'string' && model ? model : null,
       effort: effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max' ? effort : null,
     });
+    return;
+  }
+  // Settings › General › Global fallback model: Claude Code sessions use it where their project and profile set none.
+  if (data?.type === 'fallbackModel') {
+    const model = (data as { model?: unknown }).model;
+    engine.setGlobalFallbackModel(typeof model === 'string' && model ? model : null);
     return;
   }
   // Settings › General › Global permission mode, for sessions started from a phone.

@@ -331,6 +331,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'permissionMode', mode: prefs.newSessionMode === 'remember' ? 'default' : prefs.newSessionMode });
   // Settings › General › Global model and Global effort: the same, for the model and effort (empty: Claude Code's own).
   engine?.sendStanding({ type: 'globalModel', model: prefs.newSessionModel, effort: prefs.newSessionEffort });
+  // Settings › General › Global fallback model: Claude Code sessions switch to it when their own model is overloaded (empty: off).
+  engine?.sendStanding({ type: 'fallbackModel', model: prefs.newSessionFallbackModel });
   // Settings › Mods › Show mods: sessions attach or detach their mods without a restart.
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
@@ -3956,6 +3958,18 @@ async function runGlobalModelStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-settings-section=\"general\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-new-session-effort]') && document.querySelector('[data-new-session-model]')", 2_000))) return 'Settings › General has no Global model and Global effort';
     if (model && !(await chooseOption(win, '[data-new-session-model]', ''))) return "the Global model menu has no Claude Code's default";
+    if (model) {
+      // The Global fallback model is off until one is picked, and Off puts it back.
+      const fallback = '[data-new-session-fallback-model]';
+      if (!(await waitInPage(win, `document.querySelector('${fallback}')?.dataset.value === ''`, 2_000))) return 'Settings › General has no Global fallback model, or it is not off';
+      await js(`document.querySelector('${fallback}').click()`);
+      if (!(await waitInPage(win, "document.querySelectorAll('[data-select-list] [data-option-value]').length > 1", 3_000))) return 'the Global fallback model menu lists no models';
+      const picked = (await js("document.querySelectorAll('[data-select-list] [data-option-value]')[1].dataset.optionValue")) as string;
+      await js("document.querySelectorAll('[data-select-list] [data-option-value]')[1].click()");
+      if (!(await until(() => preferences.get().newSessionFallbackModel === picked))) return `the Global fallback model was not saved as ${picked}`;
+      if (!(await chooseOption(win, fallback, ''))) return 'could not turn the Global fallback model off again';
+      if (!(await until(() => preferences.get().newSessionFallbackModel === ''))) return 'the Global fallback model did not go back to off';
+    }
     if (!(await chooseOption(win, '[data-new-session-effort]', effort))) return `could not pick ${effort || 'the default'} as the Global effort`;
     if (effort) await shot(win, 'settings-global-model.png');
     await js("document.querySelector('[data-close-settings]').click()");
@@ -4232,6 +4246,10 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, 'global'))) return 'could not pick Global default for the model';
   if (!(await waitInPage(win, `${page('[data-default-model]')}?.dataset.value === 'global'`, 2_000))) return 'the model did not stay on Global default';
   if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, ''))) return 'could not put the model back on Profile default';
+  // The fallback model is off until one is set, and can skip its profile's for the global one as well.
+  if (!(await waitInPage(win, `${page('[data-default-fallback-model]')}?.dataset.value === ''`, 2_000))) return 'the fallback model did not start on Profile default';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-fallback-model]`, 'global'))) return 'could not pick Global default for the fallback model';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-fallback-model]`, ''))) return 'could not put the fallback model back on Profile default';
 
   // The page's other tabs, read-only: Overview, Sessions, and the worktrees of a real repository.
   const pageResult = await smokeRun.step('project page and worktrees', () => runProjectPageStep(win, root), { cleanup: false });
@@ -9404,6 +9422,16 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
   const row = `[data-saved-prompt-row="${id}"]`;
   const box = '[data-new-session-view] [data-composer]';
 
+  /** Closes the step's toasts (not the update toasts, which stay until they're dealt with): they would cover what is clicked next. */
+  const clearToasts = async () => {
+    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
+    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
+    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
+      await js(closeToasts);
+      await settle(win);
+    }
+  };
+
   /** Closes what a failure left open, and removes the sandbox. */
   const cleanUp = async () => {
     if (await js("!!document.querySelector('[role=dialog], [role=menu]')")) pressKey(win, 'Escape');
@@ -9429,6 +9457,35 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, one('[data-settings-section="prompts"]'), 3_000))) return 'Settings has no Prompts page';
     await click('[data-settings-section="prompts"]');
     if (!(await waitInPage(win, one('[data-saved-prompts-new]'), 3_000))) return 'Settings › Prompts has no New prompt';
+    // Starter prompts are only offered: adding one saves it for every project, and then it is no longer offered. Deleted
+    // again, so the rest of the step starts clean. Skipped when one is already saved somewhere (a real home with a
+    // prompt of the same text, shared with a project), since that one is hidden and isn't ours to remove.
+    const starter = '[data-saved-prompt-starter="throwaway-build"]';
+    const starterRow = '[data-saved-prompt-row="throwaway-build"]';
+    const bestStarter = '[data-saved-prompt-starter="best-judgment"]';
+    const bestRow = '[data-saved-prompt-row="use-your-best-judgment"]';
+    let starters = 'the suggested prompts were skipped (one is already saved here)';
+    await waitInPage(win, one('[data-saved-prompts-starters]'), 3_000);
+    if (await js(`!!${one(starter)} && !!${one(bestStarter)} && !${one(starterRow)} && !${one(bestRow)}`)) {
+      // Clicked twice in a row: the second one is ignored, so only one copy is saved (the row count below).
+      await click('[data-saved-prompt-starter-add="throwaway-build"]');
+      await click('[data-saved-prompt-starter-add="throwaway-build"]');
+      if (!(await waitInPage(win, `${one(starterRow)}?.dataset.savedPromptScope === 'global' && !${one(starter)} && ${one(bestStarter)} && ${one(starterRow)}.innerText.includes('1 blank · text')`, 3_000))) return 'Add did not save the throwaway build for every project, with its blank, and stop offering it';
+      await click('[data-saved-prompt-starter-add="best-judgment"]');
+      if (!(await waitInPage(win, `${one(bestRow)} && !${one('[data-saved-prompts-starters]')}`, 3_000))) return 'adding the second starter did not hide the suggestions';
+      if ((await js(`document.querySelectorAll('[data-saved-prompt-row]').length`)) !== 2) return 'adding the two starters did not leave exactly two prompts';
+      await shot(win, 'saved-prompt-starters-added.png');
+      for (const rowId of ['throwaway-build', 'use-your-best-judgment']) {
+        await click(`[data-saved-prompt-row="${rowId}"] [data-saved-prompt-menu]`);
+        if (!(await waitInPage(win, one('[role=menu] [data-prompt-delete]'), 2_000))) return 'a starter prompt had no Delete in its menu';
+        await click('[role=menu] [data-prompt-delete]');
+        if (!(await waitInPage(win, `!${one(`[data-saved-prompt-row="${rowId}"]`)}`, 3_000))) return 'Delete did not remove a starter prompt';
+      }
+      if (!(await waitInPage(win, one(starter), 3_000))) return 'a deleted starter prompt was not offered again';
+      // Their toasts go too, so the Delete check further down can only be met by its own.
+      await clearToasts();
+      starters = 'the two suggested prompts were added with one click (each hidden once saved) and deleted';
+    }
     await click('[data-saved-prompts-new]');
     if (!(await waitInPage(win, `${one('[data-prompt-editor-dialog]')} && ${one('[data-prompt-use-in="personal"]')}?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'New prompt did not open with "just for you" picked';
     await setFieldValue(win, '[data-prompt-editor-name]', 'Smoke: fix a pull request');
@@ -9542,14 +9599,8 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!${one(row)} && !!document.querySelector('[data-prompt-deleted-toast]')`, 3_000))) return 'Delete did not take it out, with Undo';
     await click('[data-close-settings]');
     // Its toasts (saved, queued, moved, shared, deleted) would cover what later steps click.
-    // Not the update toasts, which stay until they're dealt with.
-    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
-    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
-    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
-      await js(closeToasts);
-      await settle(win);
-    }
-    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .seshboard.json, with Show the change) and back (out of it), deleted';
+    await clearToasts();
+    return `ok: ${starters}; made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .seshboard.json, with Show the change) and back (out of it), deleted`;
   } finally {
     await cleanUp();
   }
@@ -9871,6 +9922,12 @@ async function runOrchestratorStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${page('[data-orchestrator-instructions]')}?.innerText.includes('Saved') && ${page('[data-orchestrator-instructions-save]')}.disabled`, 5_000))) return 'the instructions did not save';
     await js(`${page('[data-orchestrator-instructions]')}.scrollIntoView({ block: 'center' })`);
     await shot(win, 'orchestrator-instructions.png');
+    // Plan mode's instructions sit next to them, save on their own, and leave the orchestrator's alone.
+    if (!(await waitInPage(win, `!!${page('[data-plan-mode-instructions-input]')}`, 3_000))) return 'the Settings tab has no Plan mode instructions';
+    await setFieldValue(win, `${pageSelector} [data-plan-mode-instructions-input]`, 'List the files you will change before you ask for approval.');
+    await js(`${page('[data-plan-mode-instructions-save]')}.click()`);
+    if (!(await waitInPage(win, `${page('[data-plan-mode-instructions]')}?.innerText.includes('Saved') && ${page('[data-plan-mode-instructions-save]')}.disabled`, 5_000))) return 'the plan mode instructions did not save';
+    if ((await js(`${page('[data-orchestrator-instructions-input]')}.value`)) !== instructions) return 'saving the plan mode instructions changed the orchestrator’s';
     // Back to the orchestrator.
     await js(`document.querySelector('[data-session-list] [data-session-id="${orchestratorId}"]').click()`);
     if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${orchestratorId}"] [data-orchestrator-overview]')`, 5_000))) return 'the orchestrator did not open again from the sidebar';
@@ -10190,6 +10247,39 @@ async function runCompactingStep(win: BrowserWindow): Promise<string> {
     return 'ok: a compacting session said Compacting the conversation, still did after switching to another session and back, and stopped when the compact ended';
   } finally {
     host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/** A session whose API calls are retried says so under the reply, with the wait counting down, and stops when the retry is over (a stand-in the host list reports as retrying). */
+async function runApiRetryStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-retry-')));
+  const standIn = `smoke-retry-${randomUUID()}`;
+  const host = (apiRetry?: { attempt: number; maxRetries: number; delayMs: number; status: number | null; at: number } | null) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state: 'running', ...(apiRetry !== undefined ? { apiRetry } : {}) });
+  const line = `document.querySelector('[data-current-session="${standIn}"] [data-streaming][data-api-retry]')?.innerText ?? ''`;
+  try {
+    host();
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${standIn}"] [data-streaming]')`, 5_000))) return 'the session did not show its working line';
+    if (await js(`!!document.querySelector('[data-streaming][data-api-retry]')`)) return 'the working line said retrying before any retry';
+    host({ attempt: 3, maxRetries: 10, delayMs: 60_000, status: 529, at: Date.now() });
+    if (!(await waitInPage(win, `${line}.includes('API overloaded, retrying (3 of 10) in ')`, 5_000))) return `the session did not say it is retrying: "${await js(line)}"`;
+    await shot(win, 'api-retry.png');
+    host({ attempt: 4, maxRetries: 10, delayMs: 8_000, status: 429, at: Date.now() });
+    if (!(await waitInPage(win, `${line}.includes('API rate limited, retrying (4 of 10)')`, 5_000))) return `the next retry did not replace the line: "${await js(line)}"`;
+    host(null);
+    if (!(await waitInPage(win, `!document.querySelector('[data-streaming][data-api-retry]')`, 3_000))) return 'it kept saying it is retrying after the retry ended';
+    return 'ok: a session that retries an API call said "API overloaded, retrying (3 of 10) in ...", moved on to the next retry, and went back to working when it ended';
+  } finally {
+    engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state: 'closed' });
     await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
     await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
     try {
@@ -14475,6 +14565,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
+  await step('api retry: the working line says Claude Code is retrying', () => runApiRetryStep(win));
   await step('fast mode: a toggle with a tooltip on models that have it, /fast, why it is blocked, and from New session', () => runFastModeStep(win));
   await step('working panel: the patch panel on the working line, pulsing while compacting, waiting on a permission', () => runWorkingPanelStep(win));
   await step('menu bar: the icon says needs you, the panel lists what needs you, works and finished', () => runMenuBarPanelStep(win));

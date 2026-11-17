@@ -47,6 +47,8 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
   const autoModel = autoChipModel(host.autoPick);
   // Still choosing: the chip reads Auto, without a model yet.
   const choosing = host.autoChoosing === true;
+  // The last turn ran on the fallback model: the chip reads "Opus → Sonnet".
+  const fallbackRan = host.fallbackRan ? (findModelOption(models, host.fallbackRan)?.displayName ?? host.fallbackRan) : null;
   const row = useRef<HTMLDivElement>(null);
   const openPopover = useAutoPick((s) => s.openPopover);
   const ultrathink = useUltrathinkOption(host.sessionId, supportsEffort, host.effort ?? '');
@@ -63,6 +65,7 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
           choices: [...(modelOption ? [] : [{ value: '', label: host.model ?? 'Default model' }]), ...models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }))],
           onChange: (model) => void client?.call('session.setModel', { sessionId: host.sessionId, model: model || null }),
           auto: autoModel,
+          fallback: choosing || autoModel !== null ? null : fallbackRan,
           actions:
             autoModel !== null
               ? [

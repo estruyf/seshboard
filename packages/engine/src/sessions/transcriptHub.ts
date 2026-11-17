@@ -32,6 +32,29 @@ export function diffTranscript(
 }
 
 /**
+ * Puts notices into a transcript read from the file and leaves out the retracted messages. A notice goes before the
+ * first message written after it (by time), or at the end. Pure, with tests.
+ */
+export function withNotices(
+  messages: readonly TranscriptMessage[],
+  notices: readonly TranscriptMessage[],
+  retracted: ReadonlySet<string> = new Set(),
+): TranscriptMessage[] {
+  const kept = retracted.size ? messages.filter((m) => !retracted.has(m.uuid)) : [...messages];
+  const have = new Set(kept.map((m) => m.uuid));
+  for (const notice of notices) {
+    if (have.has(notice.uuid)) continue;
+    const at = notice.timestamp;
+    const later = at === null ? -1 : kept.findIndex((m) => m.timestamp !== null && m.timestamp > at);
+    kept.splice(later === -1 ? kept.length : later, 0, notice);
+  }
+  return kept;
+}
+
+/** How many live messages a session keeps for a retraction to rebuild the list from. */
+const LIVE_TAIL = 200;
+
+/**
  * Live transcripts for open windows. Each watcher gets the full transcript
  * once, then only appended messages (or a replace after a rewind/compaction).
  */
@@ -49,6 +72,18 @@ export class TranscriptHub {
    * kept with the held ones, so switching away and back still shows them, until the file has them or the turn ends.
    */
   private readonly sent = new Map<string, Set<string>>();
+  /**
+   * Lines Claude Code never writes to the file (a refusal moved the session to another model), by session. Every read
+   * merges them back in by time, so a reload, a reopened session and a phone's `transcript.get` all keep them. They
+   * live as long as the engine runs, not across an app restart.
+   */
+  private readonly notices = new Map<string, TranscriptMessage[]>();
+  /** Messages Claude Code took back (a refused leg), by session: every read leaves them out, whatever the file says. */
+  private readonly retracted = new Map<string, Set<string>>();
+  /** The last live messages the file may not have yet, so a retraction can rebuild the list without losing them. */
+  private readonly liveTail = new Map<string, Map<string, TranscriptMessage>>();
+  /** Sessions whose next reload sends the whole list again (after a retraction). */
+  private readonly rebuilds = new Set<string>();
   readonly images = new ImageStore();
 
   constructor(
@@ -58,7 +93,10 @@ export class TranscriptHub {
 
   async read(sessionId: string): Promise<TranscriptMessage[]> {
     const sink = this.images.sink(sessionId);
-    return (await this.source.messages(sessionId)).map((m) => normaliseMessage(m, sink));
+    const file = (await this.source.messages(sessionId)).map((m) => normaliseMessage(m, sink));
+    const notices = this.notices.get(sessionId);
+    const retracted = this.retracted.get(sessionId);
+    return notices?.length || retracted?.size ? withNotices(file, notices ?? [], retracted) : file;
   }
 
   /**
@@ -123,6 +161,7 @@ export class TranscriptHub {
       });
     }
     if (!set) return;
+    this.remember(sessionId, messages);
     for (const watcher of set) {
       if (watcher.uuids === null) {
         watcher.dirty = true;
@@ -139,14 +178,56 @@ export class TranscriptHub {
     }
   }
 
+  private remember(sessionId: string, messages: readonly TranscriptMessage[]): void {
+    let tail = this.liveTail.get(sessionId);
+    if (!tail) this.liveTail.set(sessionId, (tail = new Map()));
+    for (const m of messages) tail.set(m.uuid, m);
+    for (const uuid of tail.keys()) {
+      if (tail.size <= LIVE_TAIL) break;
+      tail.delete(uuid);
+    }
+  }
+
+  /**
+   * A line that stays in the conversation (see `notices`): shown now, and merged into every later read.
+   * Kept even with no window watching, for the next one that opens.
+   */
+  notice(sessionId: string, raw: RawSessionMessage): void {
+    const message = normaliseMessage(raw);
+    const list = this.notices.get(sessionId) ?? [];
+    if (!list.some((m) => m.uuid === message.uuid)) list.push(message);
+    this.notices.set(sessionId, list.slice(-20));
+    this.pushLive(sessionId, [raw]);
+  }
+
+  /**
+   * Claude Code took these messages back (a refusal's refused leg): they leave the list now and in every later read.
+   * The watchers get the list again, without them.
+   */
+  retract(sessionId: string, uuids: readonly string[]): void {
+    if (uuids.length === 0) return;
+    const gone = this.retracted.get(sessionId) ?? new Set<string>();
+    for (const uuid of uuids) gone.add(uuid);
+    this.retracted.set(sessionId, gone);
+    for (const uuid of uuids) this.liveTail.get(sessionId)?.delete(uuid);
+    // Through the session's reload, so several retractions in a row (a refusal sends two or three) are one rebuild, and
+    // an older read can't finish after a newer one.
+    if (!this.watchers.get(sessionId)?.size) return;
+    this.rebuilds.add(sessionId);
+    this.reload(sessionId).trigger();
+  }
+
   /** The session stopped: what it held back will never reach the file. */
   dropHeld(sessionId: string): void {
     this.held.delete(sessionId);
     this.sent.delete(sessionId);
+    this.liveTail.delete(sessionId);
   }
 
   /** The session's turn ended, so what you sent is in the file; only what Claude Code doesn't have yet stays held. */
   settled(sessionId: string): void {
+    // The turn is over and the file has what it will have: nothing live is left for a rebuild to bring back.
+    this.liveTail.delete(sessionId);
     const sent = this.sent.get(sessionId);
     if (!sent) return;
     this.sent.delete(sessionId);
@@ -158,15 +239,25 @@ export class TranscriptHub {
   /** Called when a transcript file changed on disk. Reloads are coalesced per session. */
   changed(sessionId: string): void {
     if (!this.watchers.has(sessionId)) return;
-    let reload = this.reloads.get(sessionId);
-    if (!reload) {
-      reload = coalesce(() => this.push(sessionId, [...(this.watchers.get(sessionId) ?? [])], false), 100);
-      this.reloads.set(sessionId, reload);
-    }
-    reload.trigger();
+    this.reload(sessionId).trigger();
   }
 
-  private async push(sessionId: string, targets: Watcher[], initial: boolean): Promise<void> {
+  private isNotice(sessionId: string, uuid: string): boolean {
+    return this.notices.get(sessionId)?.some((m) => m.uuid === uuid) ?? false;
+  }
+
+  /** The session's one coalesced reload: never two reads at once, and the last one wins. */
+  private reload(sessionId: string): ReturnType<typeof coalesce> {
+    let reload = this.reloads.get(sessionId);
+    if (!reload) {
+      reload = coalesce(() => this.push(sessionId, [...(this.watchers.get(sessionId) ?? [])], false, this.rebuilds.delete(sessionId)), 100);
+      this.reloads.set(sessionId, reload);
+    }
+    return reload;
+  }
+
+  /** `rebuild`: send the whole list again even where the file is merely behind (after a retraction). */
+  private async push(sessionId: string, targets: Watcher[], initial: boolean, rebuild = false): Promise<void> {
     if (targets.length === 0) return;
     let file: TranscriptMessage[];
     try {
@@ -190,19 +281,29 @@ export class TranscriptHub {
     if (kept?.size === 0) this.held.delete(sessionId);
     const held = kept ? [...kept.values()] : [];
     const messages = held.length ? [...file, ...held] : file;
+    // What was sent live and the file doesn't have yet; a rebuild keeps it.
+    const tail = this.liveTail.get(sessionId);
+    for (const m of file) tail?.delete(m.uuid);
+    const inList = new Set(messages.map((m) => m.uuid));
+    // Only what is newer than the file's last message: an older one the file never wrote under its uuid would come back
+    // after newer messages.
+    const fileEnd = file.reduce<number | null>((end, m) => (m.timestamp !== null && !this.isNotice(sessionId, m.uuid) && (end === null || m.timestamp > end) ? m.timestamp : end), null);
+    const pending = rebuild && tail ? [...tail.values()].filter((m) => !inList.has(m.uuid) && (fileEnd === null || m.timestamp === null || m.timestamp > fileEnd)) : [];
+    const whole = pending.length ? [...messages, ...pending] : messages;
     for (const watcher of targets) {
       if (!initial && watcher.uuids === null) {
         // Its initial load is still in flight; let that finish first, then catch up.
         watcher.dirty = true;
         continue;
       }
-      const diff = initial ? { mode: 'replace' as const, messages } : diffTranscript(watcher.uuids!, messages, watcher.live);
+      const diff = initial ? { mode: 'replace' as const, messages } : rebuild ? { mode: 'replace' as const, messages: whole } : diffTranscript(watcher.uuids!, messages, watcher.live);
       for (const m of file) watcher.live.delete(m.uuid);
       if (diff) {
-        watcher.uuids = messages.map((m) => m.uuid);
+        watcher.uuids = (rebuild ? whole : messages).map((m) => m.uuid);
         if (diff.mode === 'replace') watcher.live.clear();
       }
       for (const m of held) watcher.live.add(m.uuid);
+      for (const m of pending) watcher.live.add(m.uuid);
       if (!diff) continue;
       watcher.emit({ sessionId, ...diff });
       if (initial && watcher.dirty) {
@@ -217,5 +318,6 @@ export class TranscriptHub {
     this.reloads.clear();
     this.watchers.clear();
     this.held.clear();
+    this.liveTail.clear();
   }
 }

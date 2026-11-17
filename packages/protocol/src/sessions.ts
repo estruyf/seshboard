@@ -4,6 +4,7 @@ import { AbsolutePath } from './absolutePath.ts';
 import { Effort, PermissionMode, WorktreeBaseSchema } from './host.ts';
 import { SESSION_PROVIDERS } from './providerConstants.ts';
 import { MAX_ORCHESTRATOR_INSTRUCTIONS } from './orchestrator.ts';
+import { MAX_PLAN_MODE_INSTRUCTIONS } from './projectConstants.ts';
 
 /** Where a session was started, derived from Claude Code's `entrypoint`. */
 export const SessionOrigin = z.enum(['cli', 'desktop', 'ide', 'sdk', 'app', 'unknown']);
@@ -95,6 +96,10 @@ export const ProjectDefaults = z.object({
   effort: Effort.nullable().default(null),
   /** With no `effort`: skip the profile's effort and start with the global one (see `inheritedDefault`). */
   globalEffort: z.boolean().optional(),
+  /** The model Claude Code switches to when `model` is overloaded or unavailable (Claude Code sessions only); null follows the profile's, then the global one. */
+  fallbackModel: z.string().max(200).nullable().optional(),
+  /** With no `fallbackModel`: skip the profile's and follow the global one (see `inheritedDefault`). */
+  globalFallbackModel: z.boolean().optional(),
   permissionMode: PermissionMode.nullable().default(null),
   /** With no `permissionMode`: skip the profile's mode and start in the global one (see `inheritedPermissionMode`). */
   globalPermissionMode: z.boolean().optional(),
@@ -116,6 +121,11 @@ export const ProjectDefaults = z.object({
    */
   orchestratorInstructions: z.string().max(MAX_ORCHESTRATOR_INSTRUCTIONS).optional(),
   /**
+   * Replaces the workflow text Claude Code shows in plan mode (the SDK's `planModeInstructions`); its read-only rules
+   * stay. Claude Code sessions only, read when a session starts. Empty is not saved.
+   */
+  planModeInstructions: z.string().max(MAX_PLAN_MODE_INSTRUCTIONS).optional(),
+  /**
    * Sites where the browser tools' scripts (evaluate, network) may run without asking in this project, as origins
    * (docs/browser.md, the script guard); this computer always may. Apart from `browserSites`: a script reaches more.
    */
@@ -127,7 +137,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, globalFallbackModel: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true, planModeInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({

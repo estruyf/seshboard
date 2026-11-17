@@ -19,6 +19,7 @@ import type {
 } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
+import { apiRetryOf, refusalOf, supersededBy } from './apiRetry.ts';
 import { commandEcho } from './commandEcho.ts';
 import { FAST_CREDITS_NOTIFICATION, FAST_CREDITS_OUT, fastModeReport } from './fastMode.ts';
 import { isReadOnlyTool, READ_ONLY_STEP_REASON } from './sideQuestions.ts';
@@ -42,6 +43,13 @@ export interface HostEvents {
    * have it yet (a new session's first message while Auto chooses), so the file won't either for a while.
    */
   messages(sessionId: string, messages: RawSessionMessage[], held?: boolean): void;
+  /**
+   * A line Claude Code didn't write to the transcript (a refusal moved the session to another model): it stays in the
+   * conversation as long as the engine runs, in place, however often the file reloads.
+   */
+  notice?(sessionId: string, message: RawSessionMessage): void;
+  /** Claude Code took these messages back (the refused leg of a turn): the live transcript drops them. */
+  retract?(sessionId: string, uuids: string[]): void;
   log(level: LogLevel, message: string): void;
   /** Plan usage probably changed (a turn finished, or Claude Code reported a rate-limit update). */
   usageHint?(): void;
@@ -90,6 +98,8 @@ export interface HostConfig {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Effort | null;
+  /** The model Claude Code switches to when `model` is overloaded or unavailable (a name or alias; null: none). */
+  fallbackModel?: string | null;
   worktree: ClaudeWorktreeRequest | null;
   env: Record<string, string>;
   claudePath: string | undefined;
@@ -112,6 +122,8 @@ export interface HostConfig {
   orchestrator?: McpStdioServer | null;
   /** More text for after Claude Code's prompt: an orchestrator's role, a project's instructions for its sessions. */
   appendSystem?: string | null;
+  /** The project's own workflow text for plan mode (the SDK's `planModeInstructions`); Claude Code keeps its read-only rules. Absent or empty: its default. */
+  planModeInstructions?: string | null;
 }
 
 /**
@@ -187,6 +199,9 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   };
   if (config.model) options.model = config.model;
   if (config.effort) options.effort = config.effort;
+  const fallback = usableFallback(config.fallbackModel, config.model);
+  if (fallback) options.fallbackModel = fallback;
+  if (config.planModeInstructions?.trim()) options.planModeInstructions = config.planModeInstructions.trim();
   if (config.readOnly) {
     // Every tool call goes through it, whatever the mode or the settings allow.
     const guard: HookCallback = async (hook) => {
@@ -235,11 +250,45 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   return options;
 }
 
+/** A model name or alias without its context-size note, lower-cased, to compare ("Opus[1m]" and "opus"). */
+const modelKey = (model: string) => model.replace(/\[.*?\]/g, '').trim().toLowerCase();
+
+/**
+ * The fallback models (a comma-separated list, as the SDK takes it) to pass: none when unset, and none that are the
+ * session's own model, which Claude Code refuses to fall back to. Null when nothing is left.
+ */
+export function usableFallback(fallback: string | null | undefined, model: string | null | undefined): string | null {
+  const own = model ? modelKey(model) : null;
+  const kept = (fallback ?? '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter((m) => m && modelKey(m) !== own);
+  return kept.length ? kept.join(',') : null;
+}
+
+/**
+ * Whether `ran` (the full model id of a reply) is one of `fallback`'s models: an alias ("sonnet") is in the id
+ * ("claude-sonnet-5-5-2026…"), so a name matches when the id holds it.
+ */
+export function isFallbackModel(ran: string, fallback: string | null | undefined): boolean {
+  const id = ran.toLowerCase();
+  return (fallback ?? '')
+    .split(',')
+    .map(modelKey)
+    .some((m) => m !== '' && m !== 'default' && id.includes(m));
+}
+
 /** The text of an assistant message (Claude Code's error messages are one text block). */
 function textOf(message: Extract<SDKMessage, { type: 'assistant' }>): string | null {
   const content = message.message.content as Array<{ type: string; text?: string }>;
   const text = content.filter((block) => block.type === 'text' && block.text).map((block) => block.text).join('\n');
   return text || null;
+}
+
+/** A user message that carries a tool's result (not a prompt of yours). */
+function hasToolResult(message: { message?: unknown }): boolean {
+  const content = (message.message as { content?: unknown } | undefined)?.content;
+  return Array.isArray(content) && content.some((b) => (b as { type?: unknown } | null)?.type === 'tool_result');
 }
 
 function toRaw(message: Extract<SDKMessage, { type: 'assistant' | 'user' }>): RawSessionMessage {
@@ -300,6 +349,8 @@ export class SessionHost {
   readonly openToolCalls = new Set<string>();
   /** The prompt cache of this turn's last response: reported with the turn's end, so the window hears it once a turn. */
   private cacheSeen: { at: number; ttl: CacheTtl | null } | null = null;
+  /** The model Claude Code said the session runs on (its init), to tell a reply from the fallback model apart. */
+  private mainModel: string | null = null;
   /** When the process ended (closed or crashed), for telling our own exiting process apart from another window. */
   closedAt: number | undefined;
   info: SessionHostInfo;
@@ -635,7 +686,9 @@ export class SessionHost {
 
   async setModel(model: string | null): Promise<void> {
     await (await this.query)?.setModel(model ?? undefined);
-    this.update({ model });
+    // Until the next init says what it resolves to, a reply's model has nothing to be compared with.
+    this.mainModel = null;
+    this.update({ model, fallbackRan: null });
   }
 
   close(): void {
@@ -674,6 +727,15 @@ export class SessionHost {
     }
   }
 
+  private retract(uuids: string[]): void {
+    if (uuids.length > 0) this.events.retract?.(this.sessionId, uuids);
+  }
+
+  /** A reply, a tool result, the end of the turn or the start of the next came: Claude Code isn't retrying any more. */
+  private clearApiRetry(): void {
+    if (this.info.apiRetry) this.update({ apiRetry: undefined });
+  }
+
   /** A compact is over (its boundary, the turn's result or the session going idle). */
   private endCompacting(): void {
     if (this.info.compacting) this.update({ compacting: false });
@@ -692,7 +754,9 @@ export class SessionHost {
     const ended = patch.state === 'closed' || patch.state === 'error';
     if (ended && this.closedAt === undefined) this.closedAt = Date.now();
     // Background tasks die with the process.
-    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false } : {}) };
+    // A retry belongs to the turn it happened in: the next turn starts without it.
+    const turnStarts = patch.state === 'running' && this.info.state !== 'running' && this.info.state !== 'needs-you';
+    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false } : {}), ...(ended || (turnStarts && !('apiRetry' in patch)) ? { apiRetry: undefined } : {}) };
     try {
       this.events.info(this.info);
     } catch (error) {
@@ -741,12 +805,17 @@ export class SessionHost {
       case 'system':
         return this.handleSystem(message);
       case 'stream_event':
+        // Tokens are coming (from Claude or a subagent: `api_retry` doesn't say which one retried): it got through.
+        this.clearApiRetry();
         if (message.parent_tool_use_id === null) this.handleStreamEvent(message.event as { type: string; [key: string]: unknown });
         return;
       // Subagent messages live in their own transcript file (shown inside the Task card),
       // so only the main conversation is pushed live.
       case 'assistant':
+        this.clearApiRetry();
         if (message.parent_tool_use_id !== null) return;
+        // A reply that replaces what a refusal took back.
+        this.retract(supersededBy(message));
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
         if (message.error) {
@@ -754,17 +823,21 @@ export class SessionHost {
           this.assistantErrorCode = message.error;
         }
         this.noteCache(message.message as unknown as { usage?: Record<string, unknown> | null } | undefined);
+        this.noteFallback((message.message as { model?: unknown } | undefined)?.model);
         this.events.messages(this.sessionId, [toRaw(message)]);
         this.pushStream('clear', '');
         return;
       // Synthetic messages are what Claude Code adds for the model only (a loaded skill's
       // instructions, compact summaries). The transcript readers leave them out, so live does too.
       case 'user':
+        // A tool result means the call that was retried went through, in a subagent too.
+        if (hasToolResult(message)) this.clearApiRetry();
         if (message.parent_tool_use_id !== null || ('isReplay' in message && message.isReplay) || message.isSynthetic) return;
         this.events.messages(this.sessionId, [toRaw(message)]);
         return;
       case 'result': {
         const outcome = resultOutcome(message);
+        this.clearApiRetry();
         const stop = outcome.ok
           ? null
           : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
@@ -821,6 +894,8 @@ export class SessionHost {
         return;
       }
       const first = this.info.state === 'starting';
+      // Every turn's init comes before any API call and names the main model (Claude Code tries it again each turn), so it is always taken as the main one: a /model change or a swap that stuck is not shown as the fallback.
+      if (typeof init.model === 'string' && init.model) this.mainModel = init.model;
       this.update({
         sessionId: init.session_id,
         cwd: typeof init.cwd === 'string' && init.cwd ? sessionFolder(this.info.cwd, init.cwd) : this.info.cwd,
@@ -861,6 +936,27 @@ export class SessionHost {
       this.endCompacting();
       return;
     }
+    if (message.subtype === 'api_retry') {
+      // Claude Code waits and tries again: the line under the reply says so until a reply (or the end of the turn) comes.
+      const retry = apiRetryOf(message as { attempt?: unknown }, Date.now());
+      if (retry && !this.closing) this.update({ apiRetry: retry });
+      return;
+    }
+    if (message.subtype === 'model_refusal_fallback' || message.subtype === 'model_refusal_no_fallback') {
+      // Claude Code writes no line for it: the engine keeps one in the conversation, and drops the refused messages.
+      const refusal = refusalOf(message as { subtype?: unknown }, Date.now());
+      if (!refusal) return;
+      this.retract(refusal.retracted);
+      this.events.notice?.(this.sessionId, refusal.notice);
+      // The fallback stays for the rest of the session: the model chip shows what runs now.
+      if (refusal.model && refusal.model !== this.info.model) this.update({ model: refusal.model });
+      // That model is the session's own now, so replies from it are not the overload fallback (`fallbackRan`).
+      if (refusal.model) {
+        this.mainModel = refusal.model;
+        if (this.info.fallbackRan) this.update({ fallbackRan: null });
+      }
+      return;
+    }
     if (message.subtype === 'notification') {
       if ((message as { key?: unknown }).key === FAST_CREDITS_NOTIFICATION) this.update({ fastModeBlocked: FAST_CREDITS_OUT });
       return;
@@ -891,6 +987,7 @@ export class SessionHost {
       this.update({ state, ...(state === 'idle' && this.info.compacting ? { compacting: false } : {}) });
       if (state === 'running' && this.nowPhase === 'sent') this.nowStarted();
       if (state === 'idle') {
+        this.clearApiRetry();
         this.pushStream('clear', '');
         if (this.pluginsReloadOwed) void this.reloadPlugins();
         this.drain();
@@ -1015,6 +1112,21 @@ export class SessionHost {
     const touched = [usage.cache_read_input_tokens, usage.cache_creation_input_tokens].some((n) => typeof n === 'number' && n > 0);
     if (!touched) return;
     this.cacheSeen = { at: Date.now(), ttl: cacheTtlOf(usage) ?? this.cacheSeen?.ttl ?? this.info.cacheTtl ?? null };
+  }
+
+  /**
+   * Claude Code reports no event when it swaps to the fallback model, so a reply is told by its model: the full id in
+   * `message.model` is one of the fallback models and not the one the session runs on. Replies from the main model
+   * clear it again (Claude Code tries the main model at the start of each turn).
+   */
+  private noteFallback(ran: unknown): void {
+    const fallback = usableFallback(this.config.fallbackModel, this.config.model);
+    // Synthetic messages (Claude Code's own errors) name no model.
+    if (!fallback || !this.mainModel || typeof ran !== 'string' || !ran || ran.startsWith('<')) return;
+    const own = modelKey(this.mainModel);
+    const same = modelKey(ran) === own || modelKey(ran).includes(own) || own.includes(modelKey(ran));
+    const next = !same && isFallbackModel(ran, fallback) ? ran : null;
+    if ((this.info.fallbackRan ?? null) !== next) this.update({ fallbackRan: next });
   }
 
   private takeCache(): Pick<SessionHostInfo, 'cacheAt' | 'cacheTtl'> {

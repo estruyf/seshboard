@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupWorkers, instructionsBlock, isSessionUpdate, parseSessionUpdate, orchestratorSystemText, ORCHESTRATOR_PROMPT, ORCHESTRATOR_TOOL_SPECS, ORCHESTRATOR_TOOLS, readStartArgs, workersLine, workerState, writeSessionUpdate, writeWorkerList } from './orchestrator.ts';
+import { groupWorkers, instructionsBlock, isSessionUpdate, parseSessionUpdate, orchestratorSystemText, ORCHESTRATOR_PROMPT, ORCHESTRATOR_TOOL_SPECS, ORCHESTRATOR_TOOLS, readStartArgs, workersLine, workerState, WORKER_JUDGMENT, writeSessionUpdate, writeWorkerList } from './orchestrator.ts';
 
 describe('workerState', () => {
   it('puts a queued start, a session that needs you and a failed one where they belong', () => {
@@ -57,7 +57,19 @@ describe('what the agent reads', () => {
   it('adds the project instructions after the role, only when there are some', () => {
     expect(orchestratorSystemText('  ')).toBe(ORCHESTRATOR_PROMPT);
     expect(orchestratorSystemText('Branch from dev.')).toContain('Branch from dev.');
-    expect(instructionsBlock(null)).toBeNull();
+  });
+
+  it('tells every session it starts to use its judgment, before the project instructions and without replacing them', () => {
+    expect(instructionsBlock(null)).toContain(WORKER_JUDGMENT);
+    expect(instructionsBlock('  ')).toBe(instructionsBlock(null));
+    const custom = instructionsBlock('Branch from dev.');
+    expect(custom).toContain('Branch from dev.');
+    expect(custom.indexOf(WORKER_JUDGMENT)).toBeLessThan(custom.indexOf('Branch from dev.'));
+    // The project's text wins where it differs, and the block only says so when there is some.
+    expect(custom).toContain("The project's instructions below take precedence where they differ.");
+    expect(instructionsBlock(null)).not.toContain('take precedence');
+    // The orchestrator keeps its role: it gets the idea of the line, not "just build".
+    expect(orchestratorSystemText(null)).not.toContain('Just build');
   });
 
   it('marks an update as a report, not an instruction', () => {

@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
-import { agentName, triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
+import { agentName, apiRetryLine, triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { ariaKeysFor, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
@@ -34,6 +34,8 @@ import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { ClampedPrompt } from '../transcript/ClampedPrompt.tsx';
 import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { BackgroundTaskList } from '../transcript/BackgroundTaskList.tsx';
+import { useReceivedRetry } from '../../lib/receivedRetry.ts';
+import { useSecondClock } from '../../lib/secondClock.ts';
 import { backgroundSummary } from '../transcript/backgroundTasks.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
 import { PromptFiller } from '../savedPrompts/PromptFiller.tsx';
@@ -134,6 +136,9 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   const background = inBackground(session);
   const tasks = session.background ?? [];
   const now = useNow(computer.state === 'offline');
+  // Claude Code retries a failed API call there: say so, counting down from when this window heard of it.
+  const retry = useReceivedRetry(working ? session.apiRetry : null);
+  const retryNow = useSecondClock(retry !== null && connected);
   const away = awayBanner(computer, now);
   const line = statusLine(status) ?? { text: 'Idle', tone: 'faint' as const };
   const rowId = remoteRowId({ computerId: id, sessionId: session.id });
@@ -545,7 +550,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
                 <span className="flex w-4 shrink-0 justify-center">
                   <WorkingPanel state={prompts.length ? 'waiting' : 'working'} />
                 </span>
-                <span className="min-w-0 truncate">{prompts.length ? 'Waiting for you' : streaming.kind === 'tool' ? `Using ${streaming.text}…` : streaming.kind === 'thinking' ? 'Thinking…' : 'Working…'}</span>
+                <span className="min-w-0 truncate">{prompts.length ? 'Waiting for you' : retry ? apiRetryLine(retry, retryNow) : streaming.kind === 'tool' ? `Using ${streaming.text}…` : streaming.kind === 'thinking' ? 'Thinking…' : 'Working…'}</span>
                 <LiveTurnParts live={live} startedAt={null} />
               </p>
             )}

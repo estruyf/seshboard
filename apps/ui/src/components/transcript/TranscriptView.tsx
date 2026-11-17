@@ -2,7 +2,7 @@ import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
-import { isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
+import { apiRetryLine, isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { fastCommand, fastModeFace } from '../../lib/fastMode.ts';
@@ -231,7 +231,9 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
   // Claude Code is compacting: the host says so, so it shows after switching sessions and in pop-outs too.
   const compacting = useHosts((s) => s.hosts.get(sessionId)?.compacting === true);
-  const now = useTicker(choosing && showIndicator);
+  // Claude Code is retrying a failed API call: say so, with the wait counting down, instead of looking stuck.
+  const apiRetry = useHosts((s) => s.hosts.get(sessionId)?.apiRetry);
+  const now = useTicker((choosing || !!apiRetry) && showIndicator);
   if (choosing) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>
@@ -256,10 +258,10 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
     );
   }
   if (!running || !showIndicator) return null;
-  const label = workingLabel({ waiting: live.waitingSince !== null, compacting, block });
+  const label = workingLabel({ waiting: live.waitingSince !== null, compacting, block, retry: apiRetry ? apiRetryLine(apiRetry, now) : null });
   const panel: WorkingState = live.waitingSince !== null ? 'waiting' : compacting ? 'compacting' : 'working';
   return (
-    <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-compacting={compacting && live.waitingSince === null ? '' : undefined}>
+    <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-compacting={compacting && live.waitingSince === null ? '' : undefined} data-api-retry={apiRetry && live.waitingSince === null && !compacting ? '' : undefined}>
       <SpinnerSlot sessionId={sessionId} message={label}>
       <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
         <span className="flex w-4 shrink-0 justify-center">
