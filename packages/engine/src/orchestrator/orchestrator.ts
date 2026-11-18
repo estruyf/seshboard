@@ -1,4 +1,6 @@
 import {
+  inheritedDefault,
+  inheritedPermissionMode,
   instructionsBlock,
   ORCHESTRATOR_MAX_WORKING,
   orchestratorSystemText,
@@ -12,6 +14,7 @@ import {
   type OrchestratorTool,
   type OrchestratorToolResult,
   type OrchestratorWorker,
+  type ProfileDefaults,
   type ProjectDefaults,
   type SessionSummary,
   type WorkerEnd,
@@ -37,6 +40,10 @@ export interface OrchestratorDeps {
   store: OrchestratorStore;
   session(id: string): Pick<SessionSummary, 'projectRoot' | 'profileId'> | null;
   defaults(projectRoot: string): ProjectDefaults;
+  /** A profile's defaults, which a started session takes where its project sets none. */
+  profileDefaults(profileId: string): ProfileDefaults;
+  /** The global model and effort (Settings › General), for a session whose project and profile set none. */
+  globals(): { model: string | null; effort: ProjectDefaults['effort'] };
   inRepo(folder: string): boolean;
   /** The profiles a session can start with, the project's own first. */
   agents(projectRoot: string): OrchestratorAgent[];
@@ -171,18 +178,21 @@ export class Orchestrator {
       if (!agent) return fail(`No agent called "${args.agent}". Pick one of: ${agents.map((a) => a.name).join(', ')}, or leave it out.`);
     }
     const defaults = this.deps.defaults(projectRoot);
+    // As in New session: the project's, else the started session's profile's (unless the project skips it), else the global model and effort.
+    const profile = agent ? this.deps.profileDefaults(agent.profileId) : null;
+    const globals = this.deps.globals();
     // Sessions side by side each get their own worktree, so they never share files; outside git there is one folder.
     const canWorktree = this.deps.inRepo(projectRoot) && (agent?.worktree ?? true);
     const workspace = canWorktree ? (args.workspace ?? 'worktree') : 'current';
     const draft: LaterDraft = {
       cwd: projectRoot,
       prompt: args.prompt,
-      model: args.model ?? defaults.model ?? null,
-      effort: defaults.effort ?? null,
-      // The project's own mode. Without one, edits go through without asking, so a session doesn't stall on each file.
-      permissionMode: defaults.permissionMode ?? 'acceptEdits',
+      model: args.model ?? inheritedDefault('model', defaults, profile) ?? globals.model,
+      effort: inheritedDefault('effort', defaults, profile) ?? globals.effort,
+      // Without a mode of the project or the profile, edits go through without asking, so a session doesn't stall on each file.
+      permissionMode: inheritedPermissionMode(defaults, profile) ?? 'acceptEdits',
       workspace,
-      baseRef: defaults.baseRef ?? 'fresh',
+      baseRef: defaults.baseRef ?? profile?.baseRef ?? 'fresh',
       profileId: agent?.profileId ?? null,
     };
     const hold = this.deps.hold(draft);
