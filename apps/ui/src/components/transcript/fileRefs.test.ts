@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { describe, expect, it } from 'vitest';
-import { createPathResolver, fileRefFromHref, fileUrl, fileUrlTransform, parseFileRef } from './fileRefs.ts';
+import { createPathResolver, fileRefFromHref, fileUrl, fileUrlTransform, isLocalImage, parseFileRef } from './fileRefs.ts';
 
 describe('parseFileRef', () => {
   it('reads paths with and without a line', () => {
@@ -86,20 +86,49 @@ describe('fileUrlTransform', () => {
     expect(render('[a.ts](E:/repos/a.ts)', fileUrlTransform)).toContain('href="E:/repos/a.ts"');
   });
 
-  it('keeps neither file pictures nor links to a share', () => {
-    expect(render('![a](file:///C:/a.png)', fileUrlTransform)).not.toContain('file:');
-    expect(render('![a](file://server/share/a.png)', fileUrlTransform)).not.toContain('file:');
+  it('keeps no link to a share, and an image only from a path of this computer', () => {
+    expect(render('![a](file://server/share/a.png)', fileUrlTransform)).not.toMatch(/src="[^"]/);
     expect(render('[a](file://server/share/a.ts)', fileUrlTransform)).toContain('href=""');
     expect(render('[a](file:////server/share/a.ts)', fileUrlTransform)).toContain('href=""');
   });
 
-  it('keeps an image only as an absolute http(s) address', () => {
-    for (const src of ['//evil.example/x.png', '\\\\evil\\x.png', 'file://evil.example/x.png', '/a/b.png', 'a/b.png', 'data:image/png;base64,AAAA', 'ftp://evil.example/x.png', 'C:/a.png']) {
-      expect(fileUrlTransform(src, 'src'), src).toBe('');
+  it('keeps an image only as an absolute http(s) address or a path of this computer', () => {
+    for (const src of ['https://example.com/a.png', 'HTTP://example.com/a.png', '/Users/me/a.png', 'C:/a.png', 'C:\\a.png', 'D:/my dir/a.png', 'file:///Users/me/a.png', 'file:///C:/a.png']) {
+      expect(fileUrlTransform(src, 'src'), src).toBe(src);
     }
-    expect(fileUrlTransform('https://example.com/a.png', 'src')).toBe('https://example.com/a.png');
-    expect(fileUrlTransform('HTTP://example.com/a.png', 'src')).toBe('HTTP://example.com/a.png');
-    expect(render('![a](//evil.example/x.png)', fileUrlTransform)).not.toMatch(/src="[^"]/);
+    expect(isLocalImage('/Users/me/a.png')).toBe(true);
+    expect(isLocalImage('file:///C:/a.png')).toBe(true);
+  });
+
+  it('blocks an image on a share or another site, however it is written', () => {
+    for (const src of [
+      '//evil.example/x.png',
+      '\\\\evil\\x.png',
+      '/\\evil/x.png',
+      'file://evil.example/x.png',
+      'file:////evil/x.png',
+      'file://///evil/x.png',
+      'file:///\\evil/x.png',
+      'C://evil/x.png',
+      'C:\\\\evil\\x.png',
+      'a://evil/x.png',
+      '/%5C%5Cevil/x.png',
+      '%5C%5Cevil%5Cx.png',
+      '/%2F%2Fevil/x.png',
+      '/%2f/evil/x.png',
+      'file:///%5C%5Cevil/x.png',
+      '/\t/evil/x.png',
+      '/\n/evil/x.png',
+      '/\r/evil/x.png',
+      'a/b.png',
+      './b.png',
+      'data:image/png;base64,AAAA',
+      'ftp://evil.example/x.png',
+      '/100%/x.png',
+      '',
+    ]) {
+      expect(fileUrlTransform(src, 'src'), JSON.stringify(src)).toBe('');
+    }
   });
 
   it('treats everything else as the default does', () => {

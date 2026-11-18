@@ -51,16 +51,40 @@ export function fileUrl(path: string): string {
 /** A `file:` URL on this computer: `file:///…` or `file://localhost/…`, never a share (`file://server/…`, `file:////server/…`). */
 const LOCAL_FILE = /^file:\/\/(localhost)?\/(?![\\/])/i;
 
+/** A tab or a line break is dropped from an address by a browser, so `/<tab>/host/x.png` would be `//host/x.png`. */
+const CONTROL = /[\u0000-\u001f\u007f]/;
+
+/**
+ * Whether an image's address is a file of this computer: `/Users/me/a.png` (one slash, not two), `C:/a.png`, `C:\a.png` or
+ * `file:///a.png`, never `//host/…`, `\\host\…` or `file://host/…`. The address is also checked decoded, so `%5C%5Chost` or
+ * `%2F%2Fhost` don't make a share of it, and a drive's colon is followed by one separator, not two.
+ */
+export function isLocalImage(url: string): boolean {
+  if (CONTROL.test(url)) return false;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(url);
+  } catch {
+    return false;
+  }
+  if (CONTROL.test(decoded)) return false;
+  return [url, decoded].every((value) => {
+    // After `file://` the path starts with its own slash: `/a.png`, or `/C:/a.png` for a drive.
+    const path = /^file:\/\/\//i.test(value) ? value.slice('file://'.length) : value;
+    return /^\/(?![\\/])/.test(path) || /^\/?[A-Za-z]:[\\/](?![\\/])/.test(path);
+  });
+}
+
 /**
  * The `urlTransform` of the Markdown in replies and previewed files. react-markdown's default empties every link whose
  * protocol it doesn't know: `file:///…`, and on Windows a drive path too (`C:/a.ts` reads as the protocol `C:`). Such a
  * link points nowhere and a click does nothing, so a link (`href`) to a file on this computer is kept, to become a file
- * link; everything else gets the default. An image (`src`) is kept only as an absolute `http(s)://` address: a `file:` picture would load without a click, and on
- * Windows one on a share connects to that server, as does a protocol-relative (`//host/x.png`) or backslash (`\\host\x.png`) one. A kept link is never followed as it is: a file link opens through the
+ * link; everything else gets the default. An image (`src`) is kept only as an absolute `http(s)://` address or a path on this computer (`isLocalImage`): on
+ * Windows a picture on a share connects to that server, whether written `file://host/x.png`, protocol-relative (`//host/x.png`) or with backslashes (`\\host\x.png`). A kept link is never followed as it is: a file link opens through the
  * engine, on a click, and the main process refuses to open any window that isn't http(s).
  */
 export function fileUrlTransform(url: string, key?: string): string {
-  if (key === 'src') return /^https?:\/\//i.test(url) ? defaultUrlTransform(url) : '';
+  if (key === 'src') return /^https?:\/\//i.test(url) ? defaultUrlTransform(url) : isLocalImage(url) ? url : '';
   return key === 'href' && (LOCAL_FILE.test(url) || DRIVE.test(url)) ? url : defaultUrlTransform(url);
 }
 

@@ -5,10 +5,17 @@ import { chatSchema } from './chatSchema.ts';
 /** What is not HTML in a block: comments, fenced code and inline code. */
 const NOT_HTML = /<!--[\s\S]*?-->|(```|~~~)[\s\S]*?(?:\1|$)|`[^`]*`/g;
 
-/** How many `<details>` a piece of Markdown opens, minus how many it closes: a closing tag at the end of a paragraph counts too. */
-function detailsDelta(raw: string): number {
-  const html = raw.replace(NOT_HTML, '');
-  return (html.match(/<details[\s>]/gi)?.length ?? 0) - (html.match(/<\/details\s*>/gi)?.length ?? 0);
+/**
+ * How many `<details>` a piece of Markdown opens, minus how many it closes. In a block of HTML both count. In text a `<details>`
+ * only opens something with its `</details>` in the same text, so a pair nets nothing and an open one (`wrap it in a <details>
+ * element`) counts for nothing, as `remarkUnknownHtml` shows it as text; a closing tag with no opening one ends an open block's
+ * (`Body </details>` at the end of a paragraph). Only lower case is a tag.
+ */
+function detailsDelta(raw: string, html: boolean): number {
+  const text = raw.replace(NOT_HTML, '');
+  const opens = text.match(/<details[\s>]/g)?.length ?? 0;
+  const closes = text.match(/<\/details\s*>/g)?.length ?? 0;
+  return html ? opens - closes : -Math.max(0, closes - opens);
 }
 
 /**
@@ -31,7 +38,7 @@ export function splitBlocks(text: string): string[] {
     // Spacing and link definitions belong with what came before (a definition alone renders nothing).
     if ((token.type === 'space' || token.type === 'def' || open > 0) && blocks.length) blocks[blocks.length - 1] += token.raw;
     else blocks.push(token.raw);
-    if (token.type !== 'code') open = Math.max(0, open + detailsDelta(token.raw));
+    if (token.type !== 'code') open = Math.max(0, open + detailsDelta(token.raw, token.type === 'html'));
   }
   return blocks.length ? blocks : [text];
 }

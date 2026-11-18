@@ -5,6 +5,7 @@ import { CheckMark } from '../ui/Checkbox.tsx';
 import { REHYPE_PLUGINS, REMARK_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
+import { ReplyImage } from './ReplyImage.tsx';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
 import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
 
@@ -33,6 +34,7 @@ export const markdownComponents: Components = {
   // Fenced blocks render through CodeBlock (highlighted when idle); `pre` is just a pass-through.
   pre: ({ children }) => <>{children}</>,
   code: (props) => renderCode(props, true),
+  img: ReplyImage,
   // A task list's box (`- [x]`): the app's check box look, read-only, instead of a native one.
   input: TaskBox,
   table: ({ children }) => (

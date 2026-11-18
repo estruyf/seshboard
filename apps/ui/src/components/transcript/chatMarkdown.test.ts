@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { previewSchema } from '../filePreview/sanitizeSchema.ts';
 import { REHYPE_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
 import { fileUrlTransform } from './fileRefs.ts';
+import { ReplyImage } from './ReplyImage.tsx';
 import { replySentences } from './skimFade.ts';
 import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
 
@@ -106,14 +107,24 @@ describe('what a reply may load', () => {
     expect(previewSchema.attributes?.source ?? []).toEqual([]);
   });
 
-  it('loads an image only from an absolute http(s) address', () => {
-    for (const src of ['//evil.example/x.png', '\\\\evil\\x.png', 'file://evil.example/x.png', 'file:///a/b.png', '/a/b.png', 'a/b.png', 'data:image/png;base64,AAAA', 'ftp://evil.example/x.png']) {
-      expect(render(`<img src="${src}">`), src).not.toMatch(/src="[^"]/);
-      if (!/[\\\s)]/.test(src)) expect(render(`![x](${src})`), src).not.toMatch(/src="[^"]/);
+  it('loads an image only from http(s) or a path of this computer', () => {
+    const loads = (html: string) => /<img[^>]* src="[^"]/.test(html);
+    for (const src of ['//evil.example/x.png', '\\\\evil\\x.png', '/\\evil/x.png', 'file://evil.example/x.png', 'file:////evil/x.png', 'C://evil/x.png', '/%5C%5Cevil/x.png', '/&#9;/evil/x.png', 'a/b.png', 'data:image/png;base64,AAAA', 'ftp://evil.example/x.png']) {
+      expect(loads(render(`<img src="${src}">`)), src).toBe(false);
+      if (!/[\\\s)&]/.test(src)) expect(loads(render(`![x](${src})`)), src).toBe(false);
     }
-    expect(render('![x](\\\\evil\\x.png)')).not.toMatch(/src="[^"]/);
-    expect(render('![x](https://example.com/a.png)')).toContain('src="https://example.com/a.png"');
+    expect(loads(render('![x](\\\\evil\\x.png)'))).toBe(false);
+    for (const src of ['https://example.com/a.png', '/Users/me/a.png', 'C:/a.png', 'file:///Users/me/a.png', 'file:///C:/a.png']) {
+      expect(render(`![diagram](${src})`), src).toContain(`src="${src}"`);
+      expect(render(`<img src="${src}" alt="d">`), src).toContain(`src="${src}"`);
+    }
     expect(render('<img src="HTTPS://example.com/a.png">')).toContain('src="https://example.com/a.png"');
+  });
+
+  it('shows the alt text of an image that is blocked', () => {
+    expect(renderToStaticMarkup(createElement(ReplyImage, { src: '', alt: 'diagram' }))).toBe('<span class="text-muted">[diagram]</span>');
+    expect(renderToStaticMarkup(createElement(ReplyImage, { src: '', alt: '' }))).toBe('');
+    expect(renderToStaticMarkup(createElement(ReplyImage, { src: '/a/b.png', alt: 'd' }))).toContain('<img src="/a/b.png" alt="d"/>');
   });
 
   it('takes no keyboard, form or id attributes', () => {
@@ -151,6 +162,39 @@ describe('text that only looks like a tag', () => {
     expect(render('a <style>p { color: red }</style> b')).not.toMatch(/color|style/);
     expect(render('<title>t</title><textarea>secret</textarea>after')).not.toMatch(/secret|>t</);
     expect(render('<script>alert(1)</script>')).not.toMatch(/script|alert/);
+  });
+
+  it('does not let a known tag in a sentence take the rest of the reply', () => {
+    const rest = '\n\nSecond paragraph.\n\n- list item';
+    for (const [text, shown] of [
+      ['Wrap it in a <details> element.', '&lt;details&gt;'],
+      ['Use a <pre> block.', '&lt;pre&gt;'],
+      ['Put <b> around it.', '&lt;b&gt;'],
+      ['The <summary> tag.', '&lt;summary&gt;'],
+      ['Close it with </details> after.', '&lt;/details&gt;'],
+      ['Close it with </b> after.', '&lt;/b&gt;'],
+      ['An <em>unclosed one and a <kbd>pair</kbd>.', '&lt;em&gt;'],
+    ] as const) {
+      const html = render(text + rest);
+      expect(html, text).toContain(shown);
+      expect(html, text).toMatch(/<p>Second paragraph\.<\/p>\s*<ul>/);
+      expect(html, text).not.toMatch(/<(?:details|pre|summary)/);
+    }
+  });
+
+  it('renders a tag in a sentence that has its other half, and void tags', () => {
+    expect(render('Press <kbd>Ctrl</kbd> and <b>bold <i>it</i></b> and <details><summary>s</summary>x</details> end')).toMatch(/<kbd>Ctrl<\/kbd>[\s\S]*<b>bold <i>it<\/i><\/b>[\s\S]*<details><summary>s<\/summary>x<\/details>/);
+    expect(render('line<br>two and <br/> three <img src="https://example.com/a.png" alt="x"> end')).toMatch(/line<br\/>two[\s\S]*<br\/>[\s\S]*<img/);
+    expect(render('| a |\n|---|\n| one<br>two |')).toContain('one<br/>two');
+    expect(render('**bold <b>nested</b>** and *a <i>b*')).toMatch(/<strong>bold <b>nested<\/b><\/strong>/);
+    expect(render('*a <i>b*')).toContain('&lt;i&gt;');
+  });
+
+  it('shows a type with an upper-case name as text', () => {
+    expect(render('Use Component<P> and useState<S> here, then Foo<I> more text')).toContain('Use Component&lt;P&gt; and useState&lt;S&gt; here, then Foo&lt;I&gt; more text');
+    expect(render('Dispatch<SetStateAction<S>> is it')).toContain('Dispatch&lt;SetStateAction&lt;S&gt;&gt; is it');
+    expect(render('Map<K, V> and <DETAILS>x</DETAILS> and <Br> done')).toContain('&lt;Br&gt; done');
+    expect(render('<SCRIPT>alert(1)</SCRIPT>')).not.toMatch(/<script/i);
   });
 
   it('numbers Skim sentences as it renders them', () => {
@@ -204,6 +248,14 @@ describe('a reply still being written', () => {
     expect(blocks.map((b) => b.trim())).toEqual(['Intro', '<details>\n<summary>More</summary>\n\nHidden **text**\n\n- a\n- b\n\n</details>', 'After']);
     // Still open: everything after it stays in it.
     expect(splitBlocks('<details>\n<summary>More</summary>\n\nHidden').length).toBe(1);
+  });
+
+  it('does not stay in a details block that is only mentioned in a sentence', () => {
+    expect(splitBlocks('Wrap it in a <details> element.\n\nSecond.\n\n- list')).toHaveLength(3);
+    expect(splitBlocks('Close it with </details> after.\n\nSecond.\n\nThird')).toHaveLength(3);
+    expect(splitBlocks('Use <details>x</details> here.\n\nSecond.\n\nThird')).toHaveLength(3);
+    // A block of HTML still holds the rest.
+    expect(splitBlocks('<details>\n<summary>s</summary>\n\nBody\n\nMore')).toHaveLength(1);
   });
 
   it('does not stay in a details block that a comment, code or the end of a paragraph says otherwise about', () => {

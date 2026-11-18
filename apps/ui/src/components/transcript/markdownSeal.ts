@@ -1,6 +1,8 @@
 import type { Element, Root as HastRoot } from 'hast';
 import type { Root as MdastRoot, RootContent } from 'mdast';
 
+const random = () => (globalThis.crypto?.randomUUID?.() ?? `${Math.random()}${Date.now()}`).replace(/[^a-z0-9]/gi, '');
+
 /**
  * How the app's own marks on a reply's elements (the alerts' `data-alert`, Skim's faded sentences) get past the sanitiser
  * without raw HTML being able to forge them. The marks are made before it (`remarkAlerts`, `remarkSkimFade`), and it strips
@@ -8,10 +10,10 @@ import type { Root as MdastRoot, RootContent } from 'mdast';
  * app starts that no reply can know. `rehypeUnseal`, after the sanitiser, turns each into the real marks. A `class="text-faint"`,
  * `data-alert` or `data-skim-faded` written in the reply's own HTML is not in the schema, so it is dropped.
  *
- * Footnote ids work the same way: remark-rehype is told to prefix them with `FOOTNOTE_PREFIX`, which contains the seal, and the
+ * Footnote ids work the same way: remark-rehype is told to prefix them with `FOOTNOTE_PREFIX`, which holds a random string of its own (the seal itself never reaches the page), and the
  * schema keeps only ids that start with it.
  */
-export const SEAL = (globalThis.crypto?.randomUUID?.() ?? `${Math.random()}${Date.now()}`).replace(/[^a-z0-9]/gi, '');
+export const SEAL = random();
 
 /**
  * The footnotes' heading has an `id` the notes' links name (`aria-describedby`); remark-rehype sets it after these properties, so
@@ -19,8 +21,8 @@ export const SEAL = (globalThis.crypto?.randomUUID?.() ?? `${Math.random()}${Dat
  */
 export const FOOTNOTE_LABEL_PROPERTIES = { className: ['sr-only'], dataSeal: `${SEAL}:footnote-label` };
 
-/** What remark-rehype puts before a footnote's ids and links (`clobberPrefix`). */
-export const FOOTNOTE_PREFIX = `user-content-${SEAL}-`;
+/** What remark-rehype puts before a footnote's ids and links (`clobberPrefix`): a random string of its own, since it stays in the page. */
+export const FOOTNOTE_PREFIX = `user-content-${random()}-`;
 
 /** The sealed marks, as the attribute `data-seal` holds them. */
 const MARKS = {
