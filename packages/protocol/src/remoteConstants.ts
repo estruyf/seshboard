@@ -94,6 +94,9 @@ export const REMOTE_FEATURE_ARCHIVED = 'sessions.archived';
  */
 export const REMOTE_FEATURE_FILES = 'files.read';
 
+/** In `hello`'s `features`: `session.commands` answers, so the / menu of another computer's session lists its skills and commands. */
+export const REMOTE_FEATURE_COMMANDS = 'session.commands';
+
 /**
  * The most text of a file `files.read` sends (1 MB) and the largest image `files.image` sends (2.5 MB, 3.4 MB as
  * base64), so an answer stays under the channel's 4 MB line. A bigger text file comes with its size and no content.

@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
-import { agentName, apiRetryLine, triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
+import { agentName, apiRetryLine, triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { ariaKeysFor, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
@@ -15,7 +15,7 @@ import { turnKey, useCatchUp } from '../../state/catchUpStore.ts';
 import { RemoteChangesPanel, type RemoteChanges } from './RemoteChangesPanel.tsx';
 import { RemoteRunCard } from './RemoteRunCard.tsx';
 import { useComputers } from '../../state/computersStore.ts';
-import { pipelineMeta, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, runIsActive, runOfParent, runOfStep, type RemotePipeline, type RemoteRunState } from '@seshboard/protocol/client';
+import { pipelineMeta, REMOTE_FEATURE_COMMANDS, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, runIsActive, runOfParent, runOfStep, type RemotePipeline, type RemoteRunState } from '@seshboard/protocol/client';
 import { useRemoteCatchUpActions } from './useRemoteCatchUpActions.tsx';
 import type { CatchUp } from '@seshboard/protocol/client';
 import { useReadMode } from '../../state/readModeStore.ts';
@@ -752,7 +752,22 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   const cardRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const connected = computer.state === 'connected';
-  const savedPrompts = useRemoteSavedPrompts({ key: draftKey, draft, setDraft, areaRef, initialFill: saved.fill, disabled: !connected });
+  // The session's skills and commands there, for the / menu. Asked again when a turn ends: a skill may have come or gone.
+  const [commands, setCommands] = useState<SlashCommand[]>([]);
+  const listsCommands = connected && computer.features.includes(REMOTE_FEATURE_COMMANDS);
+  useEffect(() => {
+    if (!listsCommands || working) return;
+    // A slower, older answer must not replace the list of the session on screen; a failure keeps the last list.
+    let cancelled = false;
+    callComputer(client, computer.id, 'session.commands', { sessionId: session.id }).then(
+      (r) => !cancelled && setCommands(r.commands),
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, computer.id, session.id, listsCommands, working]);
+  const savedPrompts = useRemoteSavedPrompts({ key: draftKey, draft, setDraft, areaRef, initialFill: saved.fill, disabled: !connected, commands });
   const { fill: fillState, setFill, fillerRef, menu, setMenu, updateMenu, choose, clearFill } = savedPrompts;
   useEffect(() => saveRemoteDraft(draftKey, { text: draft, ...(fillState ? { fill: fillState } : {}) }), [draftKey, draft, fillState]);
   const name = computer.name;

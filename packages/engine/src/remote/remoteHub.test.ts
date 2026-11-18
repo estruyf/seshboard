@@ -207,6 +207,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     upNext: (sessionId) => (sessionId === SESSION ? [{ id: 'q1', text: 'Then the tests', attachments: [], createdAt: 1 }] : []),
     interrupt: async () => {},
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
+    commands: async (sessionId) => [{ name: 'review', description: `Review ${sessionId}`, argumentHint: '[pr]' }],
     respond: (requestId) => void answered.push(requestId),
     create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
     // The Copilot profile is GitHub Copilot's, with its own modes.
@@ -690,6 +691,14 @@ describe('Remote hub', () => {
     expect(calls).toEqual([`stop ${SESSION} b1`]);
     await expect(remote.call('session.stopTask', { sessionId: SESSION, taskId: 'gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(remote.call('session.stopTask', { sessionId: HIDDEN, taskId: 'b1' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('lists a session’s skills and commands, only for a session it shows', async () => {
+    const { hub, port, on } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    expect(await remote.call('session.commands', { sessionId: SESSION })).toEqual({ commands: [{ name: 'review', description: `Review ${SESSION}`, argumentHint: '[pr]' }] });
+    await expect(remote.call('session.commands', { sessionId: HIDDEN })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('gives the catch-up without paths outside the project', async () => {

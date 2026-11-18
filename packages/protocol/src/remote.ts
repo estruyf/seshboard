@@ -6,7 +6,7 @@ import { ActivityDay, RemoteActivityEntry } from './activity.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
 import { ClonePlan, CloneProgress } from './clone.ts';
-import { ApiRetry, AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta, WorktreeBaseSchema } from './host.ts';
+import { ApiRetry, AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, SlashCommand, StreamDelta, WorktreeBaseSchema } from './host.ts';
 import { Pipeline, PipelineRun, PipelineRunStep, PushPreview } from './pipelineSchema.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
@@ -489,6 +489,8 @@ export const remoteContract = {
         .refine((p) => p.text || p.images.length || p.files.length, { message: 'Type a message or attach something', path: ['text'] }),
       result: z.object({ queued: z.boolean() }),
     },
+    /** The skills, custom commands and plugin commands a session can run, for the / menu. With `REMOTE_FEATURE_COMMANDS`. */
+    'session.commands': { params: z.object({ sessionId: SessionId }), result: z.object({ commands: z.array(SlashCommand) }) },
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
     /** Sends one message from Up next now, stopping Claude's turn first; the rest keep waiting. With `REMOTE_FEATURE_QUEUE_SEND_NOW`. */
     'session.queue.sendNow': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },

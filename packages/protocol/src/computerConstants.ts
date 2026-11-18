@@ -75,6 +75,7 @@ export const COMPUTER_METHODS = [
   'changes.diff',
   'changes.commit',
   'files.read',
+  'session.commands',
   'files.image',
   'projects.clonePlan',
   'projects.clone',

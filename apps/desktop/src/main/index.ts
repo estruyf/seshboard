@@ -5288,6 +5288,14 @@ async function remoteComposerEdits(win: BrowserWindow): Promise<string | null> {
     if (!(await waitInPage(win, `document.querySelector('${box}').value === '- one\\n- '`, 3_000))) return `⇧↵ after "- one" in the remote message box left ${JSON.stringify(await js(`document.querySelector('${box}').value`))}`;
     await setFieldValue(win, box, '');
     if (!(await js("document.querySelector('[data-computer-send]')?.disabled"))) return 'Send is ready with an empty remote message box';
+    // / lists the session's skills and commands there (`session.commands`), and a pick puts the command in the box.
+    await js(`document.querySelector('${box}').focus()`);
+    await win.webContents.insertText('/rev');
+    const option = `${view} [data-remote-composer] [data-command-option="review"]`;
+    if (!(await waitInPage(win, `document.querySelector('${option}')`, 5_000))) return 'typing /rev in the remote message box did not list the other computer’s /review';
+    await js(`document.querySelector('${option}').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+    if (!(await waitInPage(win, `document.querySelector('${box}').value === '/review '`, 3_000))) return `picking /review left ${JSON.stringify(await js(`document.querySelector('${box}').value`))} in the remote message box`;
+    await setFieldValue(win, box, '');
     // A 1×1 PNG pasted the way a screenshot is.
     await js(`(() => {
       const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));

@@ -700,6 +700,12 @@ const hub: RemoteHub = new RemoteHub({
     background = background.filter((task) => task.taskId !== taskId);
     hub.sessionsChanged();
   },
+  // A few of what a session lists on a real computer, so the / menu has skills and commands.
+  commands: async () => [
+    { name: 'review', description: 'Review a pull request', argumentHint: '[pr]' },
+    { name: 'release-notes', description: 'Write the release notes for the next version', argumentHint: '' },
+    { name: 'compact', description: 'Clear the conversation but keep a summary in context', argumentHint: '<optional instructions>' },
+  ],
   respond: (requestId) => {
     permissions = permissions.filter((p) => p.requestId !== requestId);
     hub.sessionsChanged();

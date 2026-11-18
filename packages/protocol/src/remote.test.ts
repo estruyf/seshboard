@@ -46,6 +46,7 @@ describe('the remote contracts', () => {
       'runs.write',
       'session.ask',
       'session.askThreads',
+      'session.commands',
       'session.create',
       'session.interrupt',
       'session.markRead',

@@ -46,6 +46,7 @@ import {
   type RemotePushSubscription,
   type RemoteImage,
   type ModelOption,
+  type SlashCommand,
   type PermissionMode,
   type UsageBreakdown,
   type WindowCost,
@@ -221,6 +222,8 @@ export interface RemoteHubOptions {
   /** Stops one of a running session's background tasks. */
   stopTask(sessionId: string, taskId: string): Promise<void>;
   respond(requestId: string, decision: PermissionDecision): void;
+  /** The slash commands (skills, custom and plugin commands) a session can run, as its / menu on the computer lists them. */
+  commands?(sessionId: string): Promise<SlashCommand[]>;
   /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
   create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
   /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
@@ -1027,6 +1030,11 @@ export class RemoteHub {
         if (!sent.queued) label(sessionId, sent.messageUuid);
         this.options.onFromDevice?.({ sessionId, messageUuid: sent.queued ? null : sent.messageUuid, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return { queued: sent.queued };
+      },
+      'session.commands': async ({ sessionId }) => {
+        this.checkSession(sessionId);
+        if (!this.options.commands) throw new RpcError('UNSUPPORTED', 'This computer has no list of commands');
+        return { commands: await this.options.commands(sessionId) };
       },
       'session.queue.remove': ({ sessionId, id }, phone) => {
         this.checkSession(sessionId);

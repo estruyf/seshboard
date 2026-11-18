@@ -2880,6 +2880,8 @@ export function createEngine(options: EngineOptions): Engine {
         return hosts.interrupt(sessionId, 'continue');
       },
       stopTask: (sessionId, taskId) => hosts.stopTask(sessionId, taskId),
+      // As the session's / menu here asks: its folder and profile, so project skills and commands are in it.
+      commands: (sessionId) => hosts.commands(sessionId, sessions.get(sessionId)?.cwd ?? undefined, sessionProfile(sessionId)),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
       providerOfProfile: (profileId) => {
         const adapter = providerProfiles.adapter(profileId);
