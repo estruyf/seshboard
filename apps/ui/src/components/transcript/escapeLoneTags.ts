@@ -92,9 +92,13 @@ export function tagEvents(value: string): TagEvent[] {
   return events;
 }
 
-/** The positions in `events` of the tags that open an element nothing closes, or close one nothing opened. */
-function unpairedAmong(events: ReadonlyArray<{ name: string; closing: boolean }>): Set<number> {
+/**
+ * The positions in `events` of the tags that open an element nothing closes, or close one nothing opened. `unclosed`: the openers
+ * among them that text after `events` could still close (the ones left open at the end).
+ */
+function unpairedAmong(events: ReadonlyArray<{ name: string; closing: boolean }>): { lone: Set<number>; unclosed: Set<number> } {
   const lone = new Set<number>();
+  const unclosed = new Set<number>();
   const open: Array<{ name: string; k: number }> = [];
   events.forEach((event, k) => {
     if (!event.closing) return void open.push({ name: event.name, k });
@@ -103,8 +107,11 @@ function unpairedAmong(events: ReadonlyArray<{ name: string; closing: boolean }>
     // What was opened inside it and never closed is lone.
     for (const entry of open.splice(at)) if (entry.name !== event.name) lone.add(entry.k);
   });
-  for (const entry of open) lone.add(entry.k);
-  return lone;
+  for (const entry of open) {
+    lone.add(entry.k);
+    unclosed.add(entry.k);
+  }
+  return { lone, unclosed };
 }
 
 /**
@@ -133,9 +140,13 @@ function sourceOffset(markdown: string, node: Html, index: number): number | nul
   return null;
 }
 
-/** The offsets in `markdown` of the `<` of every tag that is text and not HTML. */
-function loneTags(markdown: string): number[] {
+/**
+ * The offsets in `markdown` of the `<` of every tag that is text and not HTML. `open`: text after `markdown` could change what
+ * is found in it, because a block of HTML is left open (an opener without its end tag, or a block that runs to the end of the text).
+ */
+function loneTags(markdown: string): { offsets: number[]; open: boolean } {
   const offsets: number[] = [];
+  let open = false;
   const add = (node: Html, index: number) => {
     const at = sourceOffset(markdown, node, index);
     if (at !== null && markdown[at] === '<') offsets.push(at);
@@ -151,7 +162,9 @@ function loneTags(markdown: string): number[] {
     }
     for (const event of events) if (event.prose) add(event.node, event.at);
     const pairable = events.filter((event) => !event.prose);
-    for (const k of unpairedAmong(pairable)) add(pairable[k]!.node, pairable[k]!.at);
+    const { lone, unclosed } = unpairedAmong(pairable);
+    if (unclosed.size > 0) open = true;
+    for (const k of lone) add(pairable[k]!.node, pairable[k]!.at);
   };
 
   /** A tag in a line of text: text when its other half isn't among its siblings, or when it is a block tag. */
@@ -169,7 +182,8 @@ function loneTags(markdown: string): number[] {
       if (!INLINE.has(name)) add(node, node.value.indexOf('<'));
       else tags.push({ name, closing: match[1] === '/', node });
     }
-    for (const k of unpairedAmong(tags)) add(tags[k]!.node, tags[k]!.node.value.indexOf('<'));
+    // A line of text ends with its block: an opener left open here is lone for good.
+    for (const k of unpairedAmong(tags).lone) add(tags[k]!.node, tags[k]!.node.value.indexOf('<'));
   };
 
   const walk = (parent: Parent) => {
@@ -177,8 +191,13 @@ function loneTags(markdown: string): number[] {
     else inline(parent);
     for (const child of parent.children) if ('children' in child) walk(child as Parent);
   };
-  walk(processor.parse(markdown));
-  return offsets;
+  const tree = processor.parse(markdown);
+  walk(tree);
+  // A block of HTML that runs to the end (an unclosed `<pre>` or `<script>` takes all after it) goes on into what is added.
+  const end = markdown.trimEnd().length;
+  const reachesEnd = (node: Parent): boolean => node.children.some((child) => (child.type === 'html' ? (child.position?.end.offset ?? 0) >= end : 'children' in child && reachesEnd(child as Parent)));
+  if (!open && reachesEnd(tree)) open = true;
+  return { offsets, open };
 }
 
 /**
@@ -196,11 +215,23 @@ function loneTags(markdown: string): number[] {
  * only while a round escapes a tag: a block that swallowed text (`<script>` runs to the end of the document) can hide more.
  */
 export function escapeLoneTags(markdown: string): string {
-  if (!/<\/?[A-Za-z]/.test(markdown)) return markdown;
+  return escapeLoneTagsOpen(markdown).text;
+}
+
+/**
+ * `escapeLoneTags`, and whether text added after `markdown` could change the result for it (`open`): it ends in a block of HTML, or
+ * leaves an opener unclosed. When it can't, `escapeLoneTags(a + b)` is `escapeLoneTags(a) + escapeLoneTags(b)` for a `b` that starts a
+ * block, which lets a reply being written be escaped only after its last finished block.
+ */
+export function escapeLoneTagsOpen(markdown: string): { text: string; open: boolean } {
+  if (!/<\/?[A-Za-z]/.test(markdown)) return { text: markdown, open: false };
   let text = markdown;
+  let open = false;
   for (;;) {
-    const offsets = [...new Set(loneTags(text))].sort((a, b) => b - a);
-    if (offsets.length === 0) return text;
+    const found = loneTags(text);
+    open ||= found.open;
+    const offsets = [...new Set(found.offsets)].sort((a, b) => b - a);
+    if (offsets.length === 0) return { text, open };
     for (const at of offsets) text = `${text.slice(0, at)}&lt;${text.slice(at + 1)}`;
   }
 }

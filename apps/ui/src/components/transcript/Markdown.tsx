@@ -1,4 +1,4 @@
-import { memo, useMemo, type ReactNode } from 'react';
+import { memo, useMemo, useRef, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { withoutSkimMarks } from '@seshboard/protocol/client';
 import { CheckMark } from '../ui/Checkbox.tsx';
@@ -8,7 +8,7 @@ import { escapeLoneTags } from './escapeLoneTags.ts';
 import { FileLink } from './FileLink.tsx';
 import { ReplyImage } from './ReplyImage.tsx';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
-import { streamingBlocks } from './streamingMarkdown.ts';
+import { newStreamingCache, streamingBlocks } from './streamingMarkdown.ts';
 
 /** Fenced-block languages that get a Preview | Source switch. */
 const MARKDOWN = new Set(['markdown', 'md']);
@@ -161,7 +161,9 @@ export const Markdown = memo(function Markdown({ text, variant = 'chat', keep = 
  */
 export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant = 'chat' }: { text: string; variant?: MarkdownVariant }) {
   // Skim's keep line, while it is written, never shows.
-  const blocks = useMemo(() => streamingBlocks(withoutSkimMarks(text)), [text]);
+  // What is final of the text so far is escaped once and kept: only the last block changes as the text grows.
+  const cache = useRef(newStreamingCache());
+  const blocks = useMemo(() => streamingBlocks(withoutSkimMarks(text), cache.current), [text]);
   return (
     <div className={proseOf(variant)}>
       {blocks.map((block, i) => (

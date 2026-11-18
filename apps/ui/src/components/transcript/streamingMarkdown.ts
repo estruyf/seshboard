@@ -1,7 +1,7 @@
 import { Lexer } from 'marked';
 import remend from 'remend';
 import { chatSchema } from './chatSchema.ts';
-import { escapeLoneTags } from './escapeLoneTags.ts';
+import { escapeLoneTags, escapeLoneTagsOpen } from './escapeLoneTags.ts';
 
 /** What is not HTML in a block: comments, fenced code and inline code. */
 const NOT_HTML = /<!--[\s\S]*?-->|(```|~~~)[\s\S]*?(?:\1|$)|`[^`]*`/g;
@@ -72,14 +72,60 @@ export function healMarkdown(text: string): string {
 }
 
 /**
- * The blocks of a reply that is still being written: the last one healed, then the lone tags in the whole text made text
+ * The blocks of a reply that is still being written, from scratch: the last one healed, then the lone tags in the whole text made text
  * (`escapeLoneTags`, which must see the text before it is split: a tag and its end tag can be in different blocks), and the
  * text split.
  */
-export function streamingBlocks(text: string): string[] {
+export function streamingBlocksFresh(text: string): string[] {
+  return splitBlocks(streamingText(text));
+}
+
+function streamingText(text: string): string {
   const blocks = splitBlocks(text);
   const last = blocks.length - 1;
-  return splitBlocks(escapeLoneTags(blocks.slice(0, last).join('') + healMarkdown(blocks[last]!)));
+  return escapeLoneTags(blocks.slice(0, last).join('') + healMarkdown(blocks[last]!));
+}
+
+/** `prefix` followed by the blocks of `text`, as splitting both together would give: a start of nothing but space belongs to the block before it. */
+function withTail(prefix: readonly string[], text: string): string[] {
+  if (text === '') return prefix.length ? [...prefix] : [''];
+  const tail = splitBlocks(text);
+  if (prefix.length && tail[0]!.trim() === '') return [...prefix.slice(0, -1), prefix[prefix.length - 1]! + tail[0], ...tail.slice(1)];
+  return [...prefix, ...tail];
+}
+
+/** What `streamingBlocks` has done for a reply: the start of its text that is final, and that start's blocks, escaped. */
+export interface StreamingCache {
+  raw: string;
+  blocks: string[];
+}
+
+export const newStreamingCache = (): StreamingCache => ({ raw: '', blocks: [] });
+
+/**
+ * `streamingBlocksFresh`, without reading the whole reply again on every delta. Only the last block of a reply changes as it is
+ * written, so the blocks before it are escaped once, as a start that is kept in `cache` (the result is what `streamingBlocksFresh`
+ * gives for the whole text). That is only so while nothing there can still change: a `<div>` or `<pre>` still waiting for its
+ * end tag, or a block of HTML that runs to the end, keeps the whole of the text since it in play, as it did.
+ */
+export function streamingBlocks(text: string, cache: StreamingCache = newStreamingCache()): string[] {
+  if (!text.startsWith(cache.raw)) {
+    cache.raw = '';
+    cache.blocks = [];
+  }
+  const tail = text.slice(cache.raw.length);
+  const blocks = splitBlocks(tail);
+  const last = blocks.length - 1;
+  if (last > 0) {
+    const stable = blocks.slice(0, last).join('');
+    const { text: escaped, open } = escapeLoneTagsOpen(stable);
+    if (!open) {
+      cache.raw += stable;
+      cache.blocks = [...cache.blocks, ...splitBlocks(escaped)];
+      return withTail(cache.blocks, escapeLoneTags(healMarkdown(blocks[last]!)));
+    }
+  }
+  return withTail(cache.blocks, streamingText(tail));
 }
 
 /** The text without a tag cut off at its end. Inside a fence or inline code it is text, so it stays. */
