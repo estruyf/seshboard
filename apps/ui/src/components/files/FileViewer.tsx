@@ -45,6 +45,11 @@ interface FileViewerProps {
   lead?: ReactNode;
   /** Right-click or Shift+F10 on the file or a tab: Add to message, Find, Copy path. */
   onContextMenu: OpenFilesMenu;
+  /**
+   * Nothing of the panel beside it (Side, without the tree): a strip of the panel's surface on its left, so the file
+   * doesn't run into the conversation, which has the same colour.
+   */
+  inset?: boolean;
 }
 
 const FIND_OWNER = (sessionId: string) => `files-find:${sessionId}`;
@@ -85,7 +90,7 @@ function rangeInLine(row: Element, start: number, length: number): Range | null 
  * open files, Markdown rendered or as source with an outline, find in the file (⌘F), go to line (⌘⌥L), the lines
  * Claude changed marked in the gutter, and a selection of lines that goes into the message.
  */
-export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDiff, reloadKey, outline, onFolder, search, lead, onContextMenu }: FileViewerProps) {
+export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDiff, reloadKey, outline, onFolder, search, lead, onContextMenu, inset = false }: FileViewerProps) {
   const target = useMemo(() => ({ path: tab.path, sessionId, seq: tab.seq, ...(tab.line ? { line: tab.line } : {}), ...(tab.endLine ? { endLine: tab.endLine } : {}) }), [tab, sessionId]);
   const { name, kind, switcher, tools, body, text, showsSource } = useFilePreviewContent(target, { marks, reloadKey, renderedLabel: 'Rendered' });
   const relative = insideFolder(tab.path, cwd);
@@ -277,7 +282,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
   return (
     <section
       aria-label={name}
-      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      className={`flex min-h-0 min-w-0 flex-1 flex-col ${inset ? 'pl-2' : ''}`}
       onKeyDown={onKeyDown}
       onMouseUp={readSelection}
       onKeyUp={(e) => e.shiftKey && readSelection()}

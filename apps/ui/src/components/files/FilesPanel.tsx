@@ -186,6 +186,7 @@ export function FilesPanel({ sessionId, cwd, width, onWidth, changes, changesBas
       search={extra.search}
       lead={extra.lead}
       onContextMenu={filesMenu.open}
+      inset={narrow}
     />
   );
 

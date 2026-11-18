@@ -28,7 +28,7 @@ async function pictures(win: BrowserWindow, pics: FilesPictures | undefined, nam
   const was = pics.scheme();
   win.setSize(1600, 960);
   await js(win, `${PANEL}?.querySelector('[data-web-preview-size="${size}"]')?.click()`);
-  await waitInPage(win, size === 'full' ? `!!${PANEL}?.dataset.filesFull` : `${PANEL}?.getBoundingClientRect().width > 560`, 3_000);
+  await waitInPage(win, size === 'full' ? `!!${PANEL}?.dataset.filesFull` : size === 'half' ? `${PANEL}?.getBoundingClientRect().width > 560` : `!${PANEL}?.dataset.filesFull`, 3_000);
   await prepare?.();
   try {
     for (const scheme of ['dark', 'light'] as const) {
@@ -129,6 +129,8 @@ export async function runFilesQuickOpenStep(win: BrowserWindow, pics?: FilesPict
   if (!(await waitInPage(win, `(${viewer(path)})?.querySelector('[data-line="3"][data-line-marked]')`, 5_000))) return `${name}:3 did not open at line 3`;
   const inView = (await js(win, `(() => { const v = ${viewer(path)}; const box = v.querySelector('[data-file-preview-source]').getBoundingClientRect(); const row = v.querySelector('[data-line="3"]').getBoundingClientRect(); return row.top >= box.top && row.bottom <= box.bottom; })()`)) as boolean;
   if (!inView) return 'line 3 is not in view';
+  // At Side the viewer stands alone: a strip of the panel keeps it apart from the conversation.
+  await pictures(win, pics, 'files-side', 'side');
   return `ok: "${name.slice(0, 5)}" found ${name}, ↩ opened it in Files, and ${name}:3 opened it at line 3, in view`;
 }
 
@@ -164,11 +166,15 @@ export async function runFilesToMessageStep(win: BrowserWindow, pics?: FilesPict
   await js(win, `window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(path)}, sessionId: document.querySelector('${S}').dataset.currentSession } }))`);
   if (!(await waitInPage(win, `(${viewer(path)})?.querySelector('[data-line="3"]')`, 5_000))) return `${name} did not open in the viewer`;
   // Lines 2 to 3, selected as a drag would, then the mouse let go.
-  const selectLines = () =>
-    js(
-      win,
-      `(() => { const v = ${viewer(path)}; const a = v.querySelector('[data-line="2"]').lastElementChild; const b = v.querySelector('[data-line="3"]').lastElementChild; const range = document.createRange(); range.setStart(a, 0); range.setEnd(b, b.childNodes.length); const s = window.getSelection(); s.removeAllRanges(); s.addRange(range); v.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); })()`,
-    );
+  // The viewer can draw itself again while the file's colours arrive: a selection made just before is lost then, so
+  // it is made again until the toolbar shows.
+  const selectOnce = `(() => { const v = ${viewer(path)}; const a = v?.querySelector('[data-line="2"]')?.lastElementChild; const b = v?.querySelector('[data-line="3"]')?.lastElementChild; if (!a || !b) return false; const range = document.createRange(); range.setStart(a, 0); range.setEnd(b, b.childNodes.length); const s = window.getSelection(); s.removeAllRanges(); s.addRange(range); v.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); return true; })()`;
+  const selectLines = async () => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if ((await js(win, selectOnce)) && (await waitInPage(win, `${PANEL}?.querySelector('[data-files-selection-bar]')`, 1_000))) return true;
+    }
+    return false;
+  };
   await selectLines();
   if (!(await waitInPage(win, `${PANEL}.querySelector('[data-files-selection-bar]')`, 3_000))) return 'selecting lines did not show the toolbar';
   const label = (await js(win, `${PANEL}.querySelector('[data-files-ask-lines]').innerText`)) as string;
