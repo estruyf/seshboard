@@ -1,8 +1,9 @@
 import { memo, useContext, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { remarkAlerts } from '../filePreview/remarkAlerts.ts';
 import { CodeBlock } from '../transcript/CodeBlock.tsx';
-import { fencedBlock, PROSE, READING_PROSE, type MarkdownVariant } from '../transcript/Markdown.tsx';
+import { fencedBlock, PROSE, READING_PROSE, TaskBox, type MarkdownVariant } from '../transcript/Markdown.tsx';
 import { fileUrl } from '../transcript/fileRefs.ts';
 import { RemoteFileContext } from '../filePreview/remotePreview.ts';
 import { useFilePreview } from '../../state/filePreviewStore.ts';
@@ -12,7 +13,8 @@ import { remarkSessionFiles, SESSION_FILE_ATTRIBUTE } from './remarkSessionFiles
  * Text from another computer's conversation, formatted as Markdown. Unlike this computer's transcript, nothing in it
  * acts here: a path is not a link to the editor or the file manager, a code block has no Run (its `CodeBlock` has no session's actions
  * around it, so it only copies), and an image shows only its alt text (no request leaves for an address in someone
- * else's transcript). Only http(s) links are links. React escapes the rest, and raw HTML is never rendered.
+ * else's transcript). Only http(s) links are links. React escapes the rest, and raw HTML is never rendered, not even sanitised as in
+ * `Markdown`: `<br>` and the like show as the text they are. Quotes, alerts and task lists render as they do here.
  *
  * An absolute path to a file that previews (`remarkSessionFiles`) opens in the preview, read by that computer, inside a
  * `RemoteFileContext` (the computer reads its session's files). That computer gives only files the session made.
@@ -31,6 +33,7 @@ function componentsFor(variant: MarkdownVariant, previews: boolean): Components 
       ) : (
         <span>{children}</span>
       ),
+    input: TaskBox,
     img: ({ alt }) => (alt ? <span className="text-muted">[{alt}]</span> : null),
     span: ({ children, ...props }) => {
       const path = (props as Record<string, unknown>)[SESSION_FILE_ATTRIBUTE];
@@ -73,7 +76,7 @@ function SessionFileLink({ path, children }: { path: string; children: ReactNode
   );
 }
 
-const PLUGINS = [remarkGfm, remarkSessionFiles];
+const PLUGINS = [remarkGfm, remarkAlerts, remarkSessionFiles];
 
 const COMPONENTS: Record<MarkdownVariant, Components> = { chat: componentsFor('chat', true), reading: componentsFor('reading', true) };
 const PREVIEW_COMPONENTS: Record<MarkdownVariant, Components> = { chat: componentsFor('chat', false), reading: componentsFor('reading', false) };

@@ -2,8 +2,13 @@ import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import type { PluggableList } from 'unified';
 import { withoutSkimMarks } from '@seshboard/protocol/client';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
+import { CheckMark } from '../ui/Checkbox.tsx';
+import { remarkAlerts } from '../filePreview/remarkAlerts.ts';
 import { remarkBareLinks } from './bareLinks.ts';
+import { chatSchema } from './chatSchema.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
@@ -35,6 +40,8 @@ export const markdownComponents: Components = {
   // Fenced blocks render through CodeBlock (highlighted when idle); `pre` is just a pass-through.
   pre: ({ children }) => <>{children}</>,
   code: (props) => renderCode(props, true),
+  // A task list's box (`- [x]`): the app's check box look, read-only, instead of a native one.
+  input: TaskBox,
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
       <table className="border-collapse text-ui [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left">
@@ -43,6 +50,16 @@ export const markdownComponents: Components = {
     </div>
   ),
 };
+
+/** The box in front of a task list item (`- [ ]`, `- [x]`). Another `input` is not allowed through the sanitiser, so only checkboxes get here. */
+export function TaskBox({ type, checked }: { type?: string; checked?: boolean }) {
+  if (type !== 'checkbox') return null;
+  return (
+    <span role="checkbox" aria-checked={Boolean(checked)} aria-readonly="true" data-task-box={checked ? 'checked' : 'open'} className="mr-1.5 inline-flex align-[-2px]">
+      <CheckMark checked={Boolean(checked)} />
+    </span>
+  );
+}
 
 /** What a `code` element holds if it is a fenced block, null for inline code; `markdown`: its language gets a Preview | Source switch. */
 export function fencedBlock(className: string | undefined, children: ReactNode): { code: string; language: string | undefined; markdown: boolean } | null {
@@ -70,16 +87,34 @@ function renderCode({ className, children }: { className?: string; children?: Re
   );
 }
 
-/** The prose styles of an answer, also for another computer's (`components/computers/RemoteText.tsx`). */
+/** GitHub's alerts: a coloured bar and a title line, in the theme's tones. */
+const ALERTS =
+  '[&_blockquote[data-alert]]:rounded-r-md [&_blockquote[data-alert]]:border-l-4 [&_blockquote[data-alert]]:py-1 [&_blockquote[data-alert]]:pr-3 [&_blockquote[data-alert]]:text-text ' +
+  '[&_[data-alert-title]]:font-semibold ' +
+  '[&_blockquote[data-alert=note]]:border-link [&_blockquote[data-alert=note]]:bg-link/8 [&_blockquote[data-alert=note]_[data-alert-title]]:text-link ' +
+  '[&_blockquote[data-alert=tip]]:border-ok [&_blockquote[data-alert=tip]]:bg-ok/8 [&_blockquote[data-alert=tip]_[data-alert-title]]:text-ok ' +
+  '[&_blockquote[data-alert=important]]:border-caution [&_blockquote[data-alert=important]]:bg-caution/8 [&_blockquote[data-alert=important]_[data-alert-title]]:text-caution ' +
+  '[&_blockquote[data-alert=warning]]:border-warn [&_blockquote[data-alert=warning]]:bg-warn/8 [&_blockquote[data-alert=warning]_[data-alert-title]]:text-warn ' +
+  '[&_blockquote[data-alert=caution]]:border-error [&_blockquote[data-alert=caution]]:bg-error/8 [&_blockquote[data-alert=caution]_[data-alert-title]]:text-error';
+
+/** What is the same in both sizes: task lists have no bullet (their box is the marker), and the raw HTML a reply may hold (`details`, `kbd`). */
+const RICH =
+  '[&_ul.contains-task-list]:list-none [&_ul.contains-task-list]:pl-0 [&_ol.contains-task-list]:list-none [&_ol.contains-task-list]:pl-0 [&_li.task-list-item]:list-none ' +
+  '[&_summary]:cursor-pointer [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-edge [&_kbd]:bg-text/6 [&_kbd]:px-1 [&_kbd]:py-px [&_kbd]:font-mono [&_kbd]:text-[0.85em] ' +
+  `[&_hr]:border-edge ${ALERTS}`;
+
+/** The prose styles of an answer, also for another computer's (`components/computers/RemoteText.tsx`) and a previewed file's (`filePreview/FileMarkdown.tsx`). */
 export const PROSE =
-  'markdown text-body leading-relaxed select-text [&_h1]:mt-3 [&_h1]:mb-1 [&_h1]:text-title [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-[14px] [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted';
+  'markdown text-body leading-relaxed select-text [&_h1]:mt-3 [&_h1]:mb-1 [&_h1]:text-title [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-[14px] [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_:is(h4,h5,h6)]:mt-2 [&_:is(h4,h5,h6)]:font-semibold [&_h4]:text-[14px] [&_li]:my-0.5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_blockquote]:my-2 [&_blockquote]:border-l-4 [&_blockquote]:border-faint/60 [&_blockquote]:pl-3 [&_details]:my-1.5 [&_hr]:my-4 ' +
+  RICH;
 
 /**
  * The same renderer in reading mode (`components/readMode/`): sizes follow the reader's choice (the text size is set on
  * the column and everything here is relative to it), with room between paragraphs and headings in the app's font.
  */
 export const READING_PROSE =
-  'markdown leading-[1.75] select-text [&_:is(h1,h2,h3)]:scroll-mt-6 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:leading-snug [&_:is(h1,h2,h3)]:font-semibold [&_h1]:mt-10 [&_h1]:mb-4 [&_h1]:text-[1.6em] [&_h2]:mt-9 [&_h2]:mb-3 [&_h2]:text-[1.3em] [&_h3]:mt-7 [&_h3]:mb-2 [&_h3]:text-[1.1em] [&_:is(h1,h2,h3):first-child]:mt-0 [&_li]:my-1.5 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-4 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6 [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:opacity-80 [&_p_code]:text-[0.88em] [&_li_code]:text-[0.88em]';
+  'markdown leading-[1.75] select-text [&_:is(h1,h2,h3)]:scroll-mt-6 [&_:is(h1,h2,h3,h4,h5,h6)]:font-sans [&_:is(h1,h2,h3,h4,h5,h6)]:leading-snug [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&_h1]:mt-10 [&_h1]:mb-4 [&_h1]:text-[1.6em] [&_h2]:mt-9 [&_h2]:mb-3 [&_h2]:text-[1.3em] [&_h3]:mt-7 [&_h3]:mb-2 [&_h3]:text-[1.1em] [&_h4]:text-[1.05em] [&_:is(h4,h5,h6)]:mt-6 [&_:is(h4,h5,h6)]:mb-2 [&_:is(h1,h2,h3,h4,h5,h6):first-child]:mt-0 [&_li]:my-1.5 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-4 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6 [&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-faint/60 [&_blockquote]:pl-4 [&_details]:my-4 [&_hr]:my-8 [&_p_code]:text-[0.88em] [&_li_code]:text-[0.88em] ' +
+  RICH;
 
 /** `reading`: the roomier version for reading mode. */
 export type MarkdownVariant = 'chat' | 'reading';
@@ -92,12 +127,18 @@ const proseOf = (variant: MarkdownVariant) => (variant === 'reading' ? READING_P
  */
 const previewComponents: Components = { ...markdownComponents, code: (props) => renderCode(props, false) };
 
-/** GFM links `https://` and `www.` addresses; `remarkBareLinks` the ones written without either (`github.com/…`). */
-const PLUGINS = [remarkGfm, remarkBareLinks];
+/** GFM links `https://` and `www.` addresses; `remarkBareLinks` the ones written without either (`github.com/…`); `remarkAlerts` marks GitHub's alerts. */
+const PLUGINS = [remarkGfm, remarkBareLinks, remarkAlerts];
+
+/**
+ * Raw HTML in a reply (`<br>` in a table cell, `details`, `kbd`) is parsed and then sanitised (`chatSchema`) before anything
+ * renders. Anything that must not go through the sanitiser (maths) is added after it.
+ */
+export const REHYPE_PLUGINS: PluggableList = [rehypeRaw, [rehypeSanitize, chatSchema]];
 
 const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={PLUGINS} urlTransform={fileUrlTransform} components={previewComponents}>
+    <ReactMarkdown remarkPlugins={PLUGINS} rehypePlugins={REHYPE_PLUGINS} urlTransform={fileUrlTransform} components={previewComponents}>
       {text}
     </ReactMarkdown>
   );
@@ -107,7 +148,7 @@ const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
 const Block = memo(function Block({ text, keep = null }: { text: string; keep?: readonly number[] | null }) {
   const plugins = useMemo(() => (keep ? [...PLUGINS, [remarkSkimFade, { keep }] as const] : PLUGINS), [keep]);
   return (
-    <ReactMarkdown remarkPlugins={plugins as PluggableList} urlTransform={fileUrlTransform} components={markdownComponents}>
+    <ReactMarkdown remarkPlugins={plugins as PluggableList} rehypePlugins={REHYPE_PLUGINS} urlTransform={fileUrlTransform} components={markdownComponents}>
       {text}
     </ReactMarkdown>
   );

@@ -7661,6 +7661,63 @@ async function runSkimMarksStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+async function runMarkdownRepliesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const open = (id: string) => js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+  const back = (await js(`document.querySelector('${view}')?.dataset.currentSession ?? null`)) as string | null;
+  const id = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!id) return 'ok: not the demo home, so no reply with a quote';
+  // What the reply must show, read from the page: the quote is not the muted colour of the old one, has a bar, and keeps its list and code.
+  const check = (root: string) => `(() => {
+    const md = document.querySelector('${root} .markdown:has(blockquote:not([data-alert]))');
+    if (!md) return 'no reply with a quote';
+    const quote = md.querySelector('blockquote:not([data-alert])');
+    const text = getComputedStyle(md.querySelector('p')).color;
+    const bar = getComputedStyle(quote);
+    if (parseFloat(bar.borderLeftWidth) < 3 || bar.borderLeftStyle === 'none') return 'the quote has no bar';
+    if (bar.borderLeftColor === bar.backgroundColor || bar.borderLeftColor === 'rgba(0, 0, 0, 0)') return 'the quote bar is invisible';
+    if (getComputedStyle(quote.querySelector('p')).color !== text) return 'the quote is not in the text colour';
+    if (!quote.querySelector('strong') || !quote.querySelector('ol li') || !quote.querySelector('code')) return 'the quote lost its bold text, list or code';
+    if (!md.querySelector('td br')) return 'the break in the table cell is not a break';
+    if (md.innerText.includes('<br>')) return 'the break shows as source';
+    const alert = md.querySelector('blockquote[data-alert=note]');
+    if (!alert || !alert.querySelector('[data-alert-title]') || alert.innerText.includes('[!NOTE]')) return 'the alert is a plain quote';
+    if (parseFloat(getComputedStyle(alert).borderLeftWidth) < 3) return 'the alert has no bar';
+    const boxes = [...md.querySelectorAll('li.task-list-item [data-task-box]')];
+    if (boxes.length !== 2 || boxes.filter((box) => box.dataset.taskBox === 'checked').length !== 1) return 'the task list has ' + boxes.length + ' boxes';
+    if (md.querySelector('input[type=checkbox]')) return 'a native checkbox shows in the task list';
+    if (getComputedStyle(md.querySelector('li.task-list-item')).listStyleType !== 'none') return 'the task list has a bullet';
+    return 'ok';
+  })()`;
+  const scheme = preferences.get().colorScheme;
+  try {
+    await open(id);
+    if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) return 'failed: the session did not open';
+    // The reply is last; the list is virtualised, so go to its end.
+    await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); if (el) el.scrollTop = el.scrollHeight; })()`);
+    if (!(await waitInPage(win, `document.querySelector('${view} blockquote[data-alert=note]')`, 5_000))) return 'failed: the reply with the alert is not in the conversation';
+    for (const mode of ['dark', 'light'] as const) {
+      if (!(await setColorScheme(win, mode))) return `failed: ${mode} did not apply`;
+      const result = (await js(check(view))) as string;
+      if (result !== 'ok') return `failed: in ${mode}, ${result}`;
+      await js(`document.querySelector('${view} blockquote:not([data-alert])')?.scrollIntoView({ block: 'start' })`);
+      await shot(win, `markdown-replies-${mode}.png`);
+    }
+    // The same reply in reading mode.
+    if (!(await js(`(() => { const b = [...document.querySelectorAll('${view} [data-read-button]')].at(-1); if (!b) return false; b.click(); return true; })()`))) return 'failed: no Read button on the reply';
+    if (!(await waitInPage(win, "document.querySelector('[data-read-mode] blockquote[data-alert]')", 4_000))) return 'failed: reading mode does not show the alert';
+    const reading = (await js(check('[data-read-mode]'))) as string;
+    if (reading !== 'ok') return `failed: in reading mode, ${reading}`;
+    pressKey(win, 'Escape');
+    await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000);
+    return 'ok: the quote has a bar in the text colour with its list and code, the table cell breaks, the alert and the task list show, in dark, light and reading mode';
+  } finally {
+    updatePreferences({ colorScheme: scheme });
+    if (back && back !== id) await open(back);
+  }
+}
+
 async function runConversationViewStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const view = '[data-current-session]';
@@ -14545,6 +14602,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('conversation view: Skim folds, shows the stats and fades by the keep line, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
   await step('skim marks: a reply\'s keep line fades the rest and never shows', () => runSkimMarksStep(win));
+  await step('markdown in replies: a quote, a break in a table cell, an alert and a task list', () => runMarkdownRepliesStep(win), { timeoutMs: 60_000 });
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
   await step('image viewer: arrows go through a reply, right-click copies the image', () => runImageViewerStep(win));
