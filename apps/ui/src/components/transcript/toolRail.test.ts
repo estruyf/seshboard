@@ -1,37 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { moveRailButton, railEntries, railLabel, railStep, railToolState, sameRailGroup, stepRailButton, toggleRailApp, toggleRailTool, type RailAvailable, type RailEntry } from './toolRail.ts';
 
-const ALL: RailAvailable = { changes: true, terminal: true, web: true, preview: true, ask: true, agents: true, commands: true, note: false, mods: ['notes'], apps: [] };
+const ALL: RailAvailable = { changes: true, terminal: true, web: true, files: true, ask: true, agents: true, commands: true, note: false, mods: ['notes'], apps: [] };
 const short = (entries: RailEntry[]) => entries.map((e) => (e.kind === 'divider' ? '|' : e.id)).join(' ');
 
 describe('railEntries', () => {
   it('lists every tool in its group, with a divider between groups', () => {
-    expect(short(railEntries(ALL))).toBe('changes terminal web preview | ask agents commands | mod:notes');
+    expect(short(railEntries(ALL))).toBe('files changes terminal web | ask agents commands | mod:notes');
   });
 
-  it('leaves out what does not apply: no repository, no browser, no preview, no mods', () => {
-    expect(short(railEntries({ ...ALL, changes: false, web: false, preview: false, mods: [] }))).toBe('terminal | ask agents commands');
+  it('leaves out what does not apply: no folder, no repository, no browser, no mods', () => {
+    expect(short(railEntries({ ...ALL, changes: false, web: false, files: false, mods: [] }))).toBe('terminal | ask agents commands');
   });
 
   it('leaves out the tools the menu hid, and the mods all together', () => {
-    expect(short(railEntries(ALL, ['ask', 'terminal', 'mods']))).toBe('changes web preview | agents commands');
+    expect(short(railEntries(ALL, ['ask', 'terminal', 'mods']))).toBe('files changes web | agents commands');
   });
 
   it('drops a divider with nothing on one side', () => {
-    expect(short(railEntries({ ...ALL, ask: false, agents: false, commands: false }))).toBe('changes terminal web preview | mod:notes');
-    expect(short(railEntries({ ...ALL, mods: [] }))).toBe('changes terminal web preview | ask agents commands');
-    expect(short(railEntries({ ...ALL, changes: false, terminal: false, web: false, preview: false, mods: [] }))).toBe('ask agents commands');
-    expect(railEntries({ changes: false, terminal: false, web: false, preview: false, ask: false, agents: false, commands: false, note: false, mods: [], apps: [] })).toEqual([]);
+    expect(short(railEntries({ ...ALL, ask: false, agents: false, commands: false }))).toBe('files changes terminal web | mod:notes');
+    expect(short(railEntries({ ...ALL, mods: [] }))).toBe('files changes terminal web | ask agents commands');
+    expect(short(railEntries({ ...ALL, changes: false, terminal: false, web: false, files: false, mods: [] }))).toBe('ask agents commands');
+    expect(railEntries({ changes: false, terminal: false, web: false, files: false, ask: false, agents: false, commands: false, note: false, mods: [], apps: [] })).toEqual([]);
   });
 
   it('puts the Note after Commands, while the session has a note', () => {
-    expect(short(railEntries({ ...ALL, note: true, mods: [] }))).toBe('changes terminal web preview | ask agents commands note');
-    expect(short(railEntries({ ...ALL, ask: false, agents: false, commands: false, note: true, mods: [] }))).toBe('changes terminal web preview | note');
+    expect(short(railEntries({ ...ALL, note: true, mods: [] }))).toBe('files changes terminal web | ask agents commands note');
+    expect(short(railEntries({ ...ALL, ask: false, agents: false, commands: false, note: true, mods: [] }))).toBe('files changes terminal web | note');
   });
 
   it('puts the pinned apps last, in their own group, also when the mods are hidden', () => {
-    expect(short(railEntries({ ...ALL, apps: ['vscode', 'finder'] }))).toBe('changes terminal web preview | ask agents commands | mod:notes | app:vscode app:finder');
-    expect(short(railEntries({ ...ALL, apps: ['finder'] }, ['mods']))).toBe('changes terminal web preview | ask agents commands | app:finder');
+    expect(short(railEntries({ ...ALL, apps: ['vscode', 'finder'] }))).toBe('files changes terminal web | ask agents commands | mod:notes | app:vscode app:finder');
+    expect(short(railEntries({ ...ALL, apps: ['finder'] }, ['mods']))).toBe('files changes terminal web | ask agents commands | app:finder');
   });
 });
 
@@ -69,12 +69,12 @@ describe('toggleRailTool', () => {
 });
 
 describe('moving a button on the rail', () => {
-  const ORDER = { railOrder: ['changes', 'terminal', 'web', 'preview', 'ask', 'agents', 'commands'] as const, railApps: ['finder', 'vscode'] };
+  const ORDER = { railOrder: ['files', 'changes', 'terminal', 'web', 'ask', 'agents', 'commands'] as const, railApps: ['finder', 'vscode'] };
   const current = { railOrder: [...ORDER.railOrder], railApps: [...ORDER.railApps] };
 
   it("follows the dragged order inside each group", () => {
-    const order = ['terminal', 'changes', 'preview', 'web', 'commands', 'ask', 'agents'] as const;
-    expect(short(railEntries({ ...ALL, mods: [] }, [], order))).toBe('terminal changes preview web | commands ask agents');
+    const order = ['terminal', 'changes', 'files', 'web', 'commands', 'ask', 'agents'] as const;
+    expect(short(railEntries({ ...ALL, mods: [] }, [], order))).toBe('terminal changes files web | commands ask agents');
   });
 
   it('moves a button only among its own group, never a mod pane', () => {
@@ -95,9 +95,9 @@ describe('moving a button on the rail', () => {
 
   it('keeps the tools that are not on the rail where they were', () => {
     // Web and Preview don't apply now: Terminal moves before Changes, and they stay after both.
-    expect(moveRailButton(['changes', 'terminal', 'ask'], 'terminal', 0, current).railOrder).toEqual(['terminal', 'changes', 'web', 'preview', 'ask', 'agents', 'commands']);
+    expect(moveRailButton(['changes', 'terminal', 'ask'], 'terminal', 0, current).railOrder).toEqual(['files', 'terminal', 'changes', 'web', 'ask', 'agents', 'commands']);
     // The last of the group: after the one before it.
-    expect(moveRailButton(['changes', 'terminal', 'ask', 'agents'], 'ask', 3, current).railOrder).toEqual(['changes', 'terminal', 'web', 'preview', 'agents', 'ask', 'commands']);
+    expect(moveRailButton(['changes', 'terminal', 'ask', 'agents'], 'ask', 3, current).railOrder).toEqual(['files', 'changes', 'terminal', 'web', 'agents', 'ask', 'commands']);
   });
 
   it('moves a pinned app among the others', () => {

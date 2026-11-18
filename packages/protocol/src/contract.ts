@@ -829,14 +829,48 @@ export const contract = {
       result: z.object({ paths: z.array(z.string().nullable()) }),
     },
     /**
-     * Reads a Markdown, HTML or code file (see `previewKind`) to preview it. `content` is null when the file is over
-     * `MAX_PREVIEW_BYTES` (`size` still says how big it is). HTML comes with a Content-Security-Policy meta added and its
-     * local images inlined as data URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a
-     * folder or any other extension: only previewable files are read.
+     * Reads a Markdown, HTML or code file (see `previewKind`), or any other text file (`kind: 'text'`, a file with no
+     * NUL byte in its first 8 KB), to show it. `content` is null when the file is over `MAX_PREVIEW_BYTES` (`size` still
+     * says how big it is). HTML comes with a Content-Security-Policy meta added and its local images inlined as data
+     * URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a folder or a binary file.
      */
     'files.read': {
       params: z.object({ path: AbsolutePath }),
-      result: z.object({ kind: z.enum(['markdown', 'html', 'code']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+      result: z.object({ kind: z.enum(['markdown', 'html', 'code', 'text']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+    },
+    /**
+     * Every file of a folder Seshboard knows (a session's folder or a project's root), relative to `cwd` with `/`,
+     * sorted: git's tracked and untracked-but-not-ignored files, or a walk outside git. At most 50,000 (`truncated`).
+     * NOT_FOUND for a folder Seshboard doesn't know.
+     */
+    'files.list': {
+      params: z.object({ cwd: AbsolutePath }),
+      result: z.object({ files: z.array(z.string()), truncated: z.boolean() }),
+    },
+    /**
+     * Searches inside the files of a folder Seshboard knows: `git grep` in a git checkout (respecting .gitignore,
+     * skipping binary files), a scan of the folder's files elsewhere. `include` and `exclude` are comma-separated globs.
+     * A new search with the same `searchId` cancels the one before (that one fails with CANCELLED). After 10 seconds
+     * it returns what it found, `truncated`. `column` is 1-based in the line; `text` is the line cut to 400 characters
+     * around the match, starting at `textStart`. INVALID_QUERY for a regular expression that doesn't compile.
+     */
+    'files.grep': {
+      params: z.object({
+        cwd: AbsolutePath,
+        query: z.string().max(1000),
+        regex: z.boolean().default(false),
+        caseSensitive: z.boolean().default(false),
+        wholeWord: z.boolean().default(false),
+        include: z.string().max(2000).default(''),
+        exclude: z.string().max(2000).default(''),
+        limit: z.number().int().min(1).max(10_000).default(2000),
+        searchId: z.string().max(100).optional(),
+      }),
+      result: z.object({
+        matches: z.array(z.object({ path: z.string(), line: z.number(), column: z.number(), length: z.number(), text: z.string(), textStart: z.number() })),
+        files: z.number(),
+        truncated: z.boolean(),
+      }),
     },
     /**
      * Reads an image a previewed file shows, as base64 (the shape of `transcript.image`). Only png, jpeg, gif, webp and

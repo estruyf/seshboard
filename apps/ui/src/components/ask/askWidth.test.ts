@@ -21,7 +21,7 @@ describe('Ask panel width', () => {
 });
 
 describe('the right panel', () => {
-  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false, preview = false, web = false, note = false) => ({ changes, ask, agents, commands, note, preview, web, terminal });
+  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false, files = false, web = false, note = false) => ({ files, changes, ask, agents, commands, note, web, terminal });
 
   it('shows tabs only when more than one panel is open, on the tab picked last', () => {
     expect(rightPanel(open(true, true), 'ask')).toEqual({ tab: 'ask', tabs: true, open: ['changes', 'ask'] });
@@ -47,23 +47,24 @@ describe('the right panel', () => {
     expect(rightPanel(open(false, false, false, false, true), 'changes')).toEqual({ tab: 'commands', tabs: false, open: ['commands'] });
   });
 
-  it('puts the Note after Commands and before a file preview', () => {
-    expect(rightPanel(open(false, false, false, false, true, true, false, true), 'note')).toEqual({ tab: 'note', tabs: true, open: ['commands', 'note', 'preview'] });
+  it('puts Files first and the Note after Commands', () => {
+    expect(rightPanel(open(false, false, false, false, true, true, false, true), 'note')).toEqual({ tab: 'note', tabs: true, open: ['files', 'commands', 'note'] });
     expect(rightPanel(open(false, false, false, false, false, false, false, true), 'changes')).toEqual({ tab: 'note', tabs: false, open: ['note'] });
   });
 
-  it('puts a file preview after Commands and before the terminal', () => {
-    expect(rightPanel(open(true, false, false, true, true, true), 'preview')).toEqual({ tab: 'preview', tabs: true, open: ['changes', 'commands', 'preview', 'terminal'] });
-    expect(rightPanel(open(false, false, false, false, false, true), 'changes')).toEqual({ tab: 'preview', tabs: false, open: ['preview'] });
+  it('puts Files before Changes, and the terminal last', () => {
+    expect(rightPanel(open(true, false, false, true, true, true), 'files')).toEqual({ tab: 'files', tabs: true, open: ['files', 'changes', 'commands', 'terminal'] });
+    expect(rightPanel(open(false, false, false, false, false, true), 'changes')).toEqual({ tab: 'files', tabs: false, open: ['files'] });
   });
 
-  it('puts the web preview after a file preview and before the terminal', () => {
-    expect(rightPanel(open(true, false, false, true, false, true, true), 'web')).toEqual({ tab: 'web', tabs: true, open: ['changes', 'preview', 'web', 'terminal'] });
+  it('puts the web preview before the terminal', () => {
+    expect(rightPanel(open(true, false, false, true, false, true, true), 'web')).toEqual({ tab: 'web', tabs: true, open: ['files', 'changes', 'web', 'terminal'] });
     expect(rightPanel(open(false, false, false, false, false, false, true), 'changes')).toEqual({ tab: 'web', tabs: false, open: ['web'] });
   });
 
   it('reads a stored tab', () => {
-    expect(readTab('preview')).toBe('preview');
+    expect(readTab('files')).toBe('files');
+    expect(readTab('preview')).toBe('changes');
     expect(readTab('web')).toBe('web');
     expect(readTab('ask')).toBe('ask');
     expect(readTab('agents')).toBe('agents');

@@ -311,6 +311,12 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧↓ | Next prompt (After the last prompt, it goes to the end of the conversation) |
 | ⌥-click | Run a code block and give Claude its output (on a code block's Run button; It runs in a tab of its own; when it ends, Claude gets the exit code and the end of what it printed) |
 | ⇧-click | Open a file link the other way (on a file in the conversation; A click does what Settings › Conversation sets; this does the other) |
+| ⌘⌥E | Show or hide Files (The project's files: browse, read and search them beside the conversation) |
+| ⌘⌥P | Quick open a file (Type part of a name; name:42 opens it at line 42. Outside a session, in the selected project) |
+| ⌘⌥F | Search in files (with text selected in the viewer, it searches for that) |
+| ⌘⌥M | Add the selected lines to the message (in the Files viewer) |
+| ⌘⌥L | Go to line (in the Files viewer) |
+| ⌘F | Find in the file (in the Files viewer) |
 | ⌘⇧D | Show or hide Changes |
 | ⌘⇧M | Comment on the selected lines (in a diff in Changes; Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box) |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |

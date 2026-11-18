@@ -1,3 +1,4 @@
+import { QuickOpenHost } from './components/files/QuickOpen.tsx';
 import { useEffect } from 'react';
 import { NewSessionView } from './components/newSession/NewSessionView.tsx';
 import { HomeView } from './components/home/HomeView.tsx';
@@ -336,6 +337,7 @@ export function App() {
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
       <PaletteDialogs />
+      <QuickOpenHost />
       <RunTreeDialogs />
       <FilePreviewDialog />
       <TriggerEditorHost />

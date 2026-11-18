@@ -6,6 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Files.** Browse a session's project, read any file, and search in all of them without leaving Seshboard: a Files tool on the rail with a tree and a viewer, Quick open (⌘⌥P), Search in files (⌘⌥F), and lines you select go straight into your message. File links in replies open there too.
 - **Notes in the session header.** A session's note now shows in its header, after the branch. Click it to open the **Note** panel on the right, which shows the whole note and lets you change or clear it. The panel also has a button on the rail while the session has a note. A sidebar row whose note has no line of its own (compact rows, or while the session needs you) shows a note icon, with the note in its tooltip.
 - **Downloads in the browser.** A file a page downloads now goes to your Downloads folder, instead of "Downloads aren't supported here yet". A toast shows while it downloads, and **Show in Finder** (File Explorer on Windows) once it is done. A file with the same name is never replaced: the new one gets a number, such as `report (1).pdf`.
 - **Show all on a long toast.** When a toast's text is cut, the ⌄ button after it shows the whole text.

@@ -23,6 +23,7 @@ import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, pa
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
+import { runFilesFromLinkStep, runFilesQuickOpenStep, runFilesSearchStep, runFilesToMessageStep, runFilesTreeStep } from './filesSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
 import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
@@ -6912,28 +6913,30 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!${wrapped}.startsWith('pre-wrap') && document.querySelector('[data-file-preview-wrap]').getAttribute('aria-pressed') === 'false'`, 3_000))) return 'the wrap toggle did not turn wrapping off';
     await js("document.querySelector('[data-file-preview-wrap]').click()");
 
-    // From a session, a file opens in its side panel, at the lines the link named (20 to 24), marked and scrolled to.
-    let panel = 'no session open, so the side panel was not tried';
+    // From a session, a file opens in its Files panel, at the lines the link named (20 to 24), marked and scrolled to.
+    let panel = 'no session open, so the Files panel was not tried';
     if (session) {
       pressKey(win, 'Escape');
       if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
-      const PANEL = `document.querySelector('[data-current-session="${session}"] [data-file-preview-place="panel"]')`;
+      const PANEL = `document.querySelector('[data-current-session="${session}"] [data-files-panel]')`;
+      // Found by its data rather than a selector: a Windows path's backslashes would need escaping in one.
+      const VIEWER = `[...(${PANEL}?.querySelectorAll('[data-files-viewer]') ?? [])].find((v) => v.dataset.filesViewer === ${JSON.stringify(code)})`;
       await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(code)}, sessionId: ${JSON.stringify(session)}, line: 20, endLine: 24 } }))`);
       // Detached in an earlier run of this window, it would open in the dialog: dock it first.
       if (await waitInPage(win, `${DIALOG}?.querySelector('[data-file-preview-dock]')`, 1_000)) await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
-      if (!(await waitInPage(win, `${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 5_000))) return 'the file did not open in the side panel with lines 20 to 24 marked';
+      if (!(await waitInPage(win, `${VIEWER}?.querySelectorAll('[data-line-marked]').length === 5`, 5_000))) return 'the file did not open in the Files panel with lines 20 to 24 marked';
       const shown = (await js(
-        `(() => { const box = ${PANEL}.querySelector('[data-file-preview-source]').getBoundingClientRect(); const row = ${PANEL}.querySelector('[data-line="20"]').getBoundingClientRect(); return row.top >= box.top && row.bottom <= box.bottom; })()`,
+        `(() => { const viewer = ${VIEWER}; const box = viewer.querySelector('[data-file-preview-source]').getBoundingClientRect(); const row = viewer.querySelector('[data-line="20"]').getBoundingClientRect(); return row.top >= box.top && row.bottom <= box.bottom; })()`,
       )) as boolean;
-      if (!shown) return 'line 20 is not scrolled into view in the side panel';
+      if (!shown) return 'line 20 is not scrolled into view in the Files panel';
       await shot(win, 'file-preview-panel.png');
-      await js(`${PANEL}.querySelector('[data-file-preview-detach]').click()`);
-      if (!(await waitInPage(win, `${DIALOG}?.querySelectorAll('[data-line-marked]').length === 5 && !${PANEL}`, 3_000))) return 'Open in a dialog did not move the preview to the dialog';
+      await js(`${VIEWER}.querySelector('[data-file-preview-detach]').click()`);
+      if (!(await waitInPage(win, `${DIALOG}?.querySelectorAll('[data-line-marked]').length === 5 && !${VIEWER}`, 3_000))) return 'Open in a dialog did not move the file to the dialog';
       await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
-      if (!(await waitInPage(win, `!${DIALOG} && ${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 3_000))) return 'Dock to the side did not move the preview back to the panel';
-      await js(`${PANEL}.querySelector('[data-file-preview-close]').click()`);
-      if (!(await waitInPage(win, `!${PANEL}`, 3_000))) return 'the side panel did not close';
-      panel = 'from a session it opens in the side panel at the lines a link names, marked and in view, moves to a dialog and back';
+      if (!(await waitInPage(win, `!${DIALOG} && ${VIEWER}?.querySelectorAll('[data-line-marked]').length === 5`, 3_000))) return 'Dock to the side did not move the file back to the Files panel';
+      await js(`${PANEL}.querySelector('[data-files-close]').click()`);
+      if (!(await waitInPage(win, `!${PANEL}`, 3_000))) return 'the Files panel did not close';
+      panel = 'from a session it opens in the Files panel at the lines a link names, marked and in view, moves to a dialog and back';
     }
 
     await open(big);
@@ -6945,7 +6948,7 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     return `ok: Markdown renders its heading, alert, details and picture without its script, Source shows the text, Reload picks up a change, HTML opens on its source and renders in an empty sandbox with the CSP and its picture inlined, a code file shows its numbered source with wrapping you can toggle, ${panel}, a 3 MB file says it is over the limit, and Escape closes it`;
   } finally {
     if (await js(`!!${DIALOG}`)) pressKey(win, 'Escape');
-    await js("document.querySelector('[data-file-preview-close]')?.click()");
+    await js("document.querySelector('[data-file-preview-close]')?.click(); document.querySelector('[data-files-close]')?.click()");
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -14516,6 +14519,16 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('file preview', () => runFilePreviewStep(win));
+  // Pictures of the Files panel in dark and light, in the demo home (CI uploads them with the results).
+  const filesPictures = process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_SMOKE_FILES_PICTURES
+    ? { shot: (name: string) => shot(win, name), setScheme: (scheme: 'light' | 'dark') => setColorScheme(win, scheme), scheme: () => preferences.get().colorScheme, restoreScheme: (colorScheme: string) => updatePreferences({ colorScheme: colorScheme as 'light' | 'dark' | 'system' }) }
+    : undefined;
+  await step('files tree', () => runFilesTreeStep(win, filesPictures));
+  // Quick open, search and lines to the message open the Files panel themselves.
+  await step('files quick open', () => runFilesQuickOpenStep(win, filesPictures));
+  await step('files search', () => runFilesSearchStep(win, filesPictures));
+  await step('files to message', () => runFilesToMessageStep(win, filesPictures));
+  await step('files from a link', () => runFilesFromLinkStep(win));
   await step('long prompts', () => runLongPromptStep(win));
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));

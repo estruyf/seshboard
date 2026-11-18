@@ -40,7 +40,17 @@ interface Loaded {
   image?: string;
 }
 
-type Read = { path: string; state: 'loading' } | { path: string; state: 'error'; message: string } | { path: string; state: 'ready'; file: Loaded };
+type Read = { path: string; state: 'loading' } | { path: string; state: 'error'; message: string; code: string | null } | { path: string; state: 'ready'; file: Loaded };
+
+/** What the Files panel adds to a file's preview. */
+export interface FilePreviewOptions {
+  /** Lines Claude changed, marked in the source's gutter. */
+  marks?: ReadonlyMap<number, string | null>;
+  /** Changes when the file may have changed on disk (Claude wrote it): it is read again. */
+  reloadKey?: number;
+  /** "Rendered" rather than "Preview" on the switcher, as the Files panel says it. */
+  renderedLabel?: string;
+}
 
 /** A file's preview, in pieces for the dialog and the side panel to place. */
 export interface FilePreviewContent {
@@ -52,6 +62,12 @@ export interface FilePreviewContent {
   tools: ReactNode;
   /** The file, on the code background from edge to edge; it fills the room it gets and scrolls itself. */
   body: ReactNode;
+  /** The text read, while it is shown (null while loading, for an image, or a file too large). */
+  text: string | null;
+  /** Whether the source shows (rather than the rendered page). */
+  showsSource: boolean;
+  /** Opens the file in the editor at the line it was opened at. */
+  openEditor(): void;
 }
 
 /**
@@ -62,7 +78,8 @@ export interface FilePreviewContent {
  * A file of a session on another computer (`target.computerId`) is read by that computer, which only gives files the
  * session made, and can be an image. Open in editor and Show in the file manager are left out: they act on this computer.
  */
-export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent {
+export function useFilePreviewContent(target: PreviewTarget, options: FilePreviewOptions = {}): FilePreviewContent {
+  const { marks, reloadKey, renderedLabel = 'Preview' } = options;
   const { path } = target;
   const views = useFilePreview((s) => s.views);
   const setView = useFilePreview((s) => s.setView);
@@ -98,12 +115,14 @@ export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent
         !cancelled &&
         // A file that did not change keeps its state, so a refocus does not redraw the page.
         setRead((prev) => (prev.state === 'ready' && prev.file.modified === file.modified && prev.file.size === file.size && prev.file.content === file.content && prev.file.image === file.image ? prev : { path, state: 'ready', file })),
-      (error: unknown) => !cancelled && setRead({ path, state: 'error', message: error instanceof Error ? error.message : String(error) }),
+      (error: unknown) => !cancelled && setRead({ path, state: 'error', message: error instanceof Error ? error.message : String(error), code: (error as { code?: unknown })?.code === undefined ? null : String((error as { code?: unknown }).code) }),
     );
     return () => {
       cancelled = true;
     };
-  }, [client, path, remote]);
+    // `reloadKey` reads the file again when Claude wrote it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, path, remote, reloadKey]);
 
   useEffect(() => load(), [load]);
   // Claude may have changed the file while you looked at another window.
@@ -114,8 +133,8 @@ export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent
   }, [load]);
 
   const kind: SessionFileKind = read.state === 'ready' ? read.file.kind : ((remote ? sessionFileKind(path) : previewKind(path)) ?? 'code');
-  // Code has no rendered form: it is always its source. An image has no source.
-  const view: PreviewView = kind === 'image' ? 'preview' : kind === 'code' || atLine ? 'source' : views[kind];
+  // Code and plain text have no rendered form: they are always their source. An image has no source.
+  const view: PreviewView = kind === 'image' ? 'preview' : kind === 'code' || kind === 'text' || atLine ? 'source' : views[kind];
   const showsSource = view === 'source';
   const name = basename(path);
   const fileManager = editors.find((e) => e.kind === 'finder');
@@ -127,7 +146,7 @@ export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent
   const file = read.state === 'ready' ? read.file : null;
   const tooLarge = file !== null && file.content === null && !file.image;
 
-  const switcher = file && !tooLarge && kind !== 'code' && kind !== 'image' && (
+  const switcher = file && !tooLarge && kind !== 'code' && kind !== 'text' && kind !== 'image' && (
     <SegmentedControl
       mode="radio"
       label="View"
@@ -138,7 +157,7 @@ export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent
         setView(kind, next);
       }}
       segments={[
-        { value: 'preview', label: 'Preview', data: { 'data-file-preview-view': 'preview' } },
+        { value: 'preview', label: renderedLabel, data: { 'data-file-preview-view': 'preview' } },
         { value: 'source', label: 'Source', data: { 'data-file-preview-view': 'source' } },
       ]}
     />
@@ -177,9 +196,27 @@ export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent
   else if (read.state === 'error')
     content = (
       <div className="p-5">
-        <Notice tone="error" data-file-preview-error="">
-          {read.message}
-        </Notice>
+        {read.code === 'NOT_FOUND' ? (
+          <Notice tone="neutral" data-file-preview-error="gone">
+            This file is gone.
+          </Notice>
+        ) : read.code === 'UNSUPPORTED' && !remote ? (
+          <Notice
+            tone="neutral"
+            data-file-preview-error="unsupported"
+            actions={
+              <Button size="sm" icon={<Code size={13} aria-hidden />} onClick={() => void openEditor()}>
+                Open in editor
+              </Button>
+            }
+          >
+            Seshboard can't show this file. Open it in your editor.
+          </Notice>
+        ) : (
+          <Notice tone="error" data-file-preview-error="">
+            {read.message}
+          </Notice>
+        )}
       </div>
     );
   else if (file && tooLarge)
@@ -216,10 +253,11 @@ export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent
       <SourceView
         code={file.content}
         wrap={wrap}
-        language={file.content.length > HIGHLIGHT_LIMIT ? undefined : file.kind === 'code' || file.kind === 'image' ? extensionOf(path) : file.kind}
+        language={file.content.length > HIGHLIGHT_LIMIT || file.kind === 'text' ? undefined : file.kind === 'code' || file.kind === 'image' ? extensionOf(path) : file.kind}
         line={target.line}
         endLine={target.endLine}
         seq={target.seq}
+        marks={marks}
       />
     );
   else if (file && file.content !== null && file.kind === 'markdown')
@@ -245,6 +283,9 @@ export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent
     kind,
     switcher,
     tools,
+    text: file && !tooLarge ? file.content : null,
+    showsSource,
+    openEditor: () => void openEditor(),
     body: (
       <div className="flex min-h-0 flex-1 flex-col bg-code" data-file-preview-body="">
         {content}

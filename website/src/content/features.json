@@ -172,6 +172,71 @@
       "page": "sessions/file-preview"
     },
     {
+      "id": "feature:files-panel",
+      "name": "Files panel: the project's tree and a viewer for any text file",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "feature:files-quick-open",
+      "name": "Quick open a file by name",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "feature:files-search",
+      "name": "Search in files",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "feature:files-lines-to-message",
+      "name": "Selected lines of a file into the message",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "palette:toggle-files",
+      "name": "Toggle Files",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "palette:go-to-file",
+      "name": "Go to file…",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "palette:search-in-files",
+      "name": "Search in files",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "shortcut:files.toggle",
+      "name": "Show or hide Files",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "shortcut:files.quick-open",
+      "name": "Quick open a file",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "shortcut:files.search",
+      "name": "Search in files",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "shortcut:files.add-lines",
+      "name": "Add the selected lines to the message",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "shortcut:files.go-to-line",
+      "name": "Go to line",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "shortcut:files.find",
+      "name": "Find in the file",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "palette:copy-session-id",
       "name": "Copy session id",
       "page": "sessions/conversation"

@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises';
+import { open, readFile, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isLocalAbsolutePath, MAX_PREVIEW_BYTES, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PAGE_IMAGES_BYTES, previewKind, RpcError, type PreviewKind } from '@seshboard/protocol';
@@ -91,15 +91,35 @@ async function statFile(path: string) {
   return info;
 }
 
+/** How much of a file is looked at to tell text from binary. */
+const TEXT_SNIFF_BYTES = 8 * 1024;
+
+/** Whether the start of the file at `path` has no NUL byte, which is how git tells text from binary too. */
+async function looksLikeText(path: string): Promise<boolean> {
+  let handle;
+  try {
+    handle = await open(path, 'r');
+    const buffer = Buffer.alloc(TEXT_SNIFF_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, TEXT_SNIFF_BYTES, 0);
+    return !buffer.subarray(0, bytesRead).includes(0);
+  } catch (error) {
+    throw fsError(error, path);
+  } finally {
+    await handle?.close();
+  }
+}
+
 /**
- * Reads a Markdown, HTML or code file for the preview. Only previewable extensions are read (this request must not become
- * a way to read any file). A file over `maxBytes` (`MAX_PREVIEW_BYTES`) comes back without content, so the UI can say
- * why. `inlineImages: false` leaves an HTML page's images out: for another device, a page could name any image on the disk.
+ * Reads a file to show it: Markdown, HTML and code by extension, and any other file as `text` when its start has no
+ * NUL byte. A binary file is UNSUPPORTED. A file over `maxBytes` (`MAX_PREVIEW_BYTES`) comes back without content, so
+ * the UI can say why. `inlineImages: false` leaves an HTML page's images out: for another device, a page could name
+ * any image on the disk.
  */
 export async function readPreview(path: string, options: { maxBytes?: number; inlineImages?: boolean } = {}): Promise<FilePreview> {
   const info = await statFile(path);
-  const kind = previewKind(path);
-  if (!kind) throw new RpcError('UNSUPPORTED', `Only Markdown, HTML and code files can be previewed: ${path}`);
+  // Images are `files.image`'s, whatever their bytes say.
+  const kind = previewKind(path) ?? (!/\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic)$/i.test(path) && (await looksLikeText(path)) ? 'text' : null);
+  if (!kind) throw new RpcError('UNSUPPORTED', `Seshboard can't show this file: ${path}`);
   const base = { kind, size: info.size, modified: Math.floor(info.mtimeMs) };
   if (info.size > (options.maxBytes ?? MAX_PREVIEW_BYTES)) return { ...base, content: null };
   let text: string;

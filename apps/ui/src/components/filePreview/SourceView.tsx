@@ -27,6 +27,8 @@ interface SourceViewProps {
   endLine?: number | undefined;
   /** Changes on every open, so opening the same lines again scrolls back to them. */
   seq: number;
+  /** Lines Claude changed: a bar in the gutter, and what the line was before (null for a new line) as its tooltip. */
+  marks?: ReadonlyMap<number, string | null> | undefined;
 }
 
 /**
@@ -34,7 +36,7 @@ interface SourceViewProps {
  * at once and syntax-coloured once the browser is idle. The lines a link pointed at are marked and scrolled to the middle.
  * It scrolls itself; the numbers stay put when a long line scrolls sideways.
  */
-export const SourceView = memo(function SourceView({ code, language, wrap, line, endLine, seq }: SourceViewProps) {
+export const SourceView = memo(function SourceView({ code, language, wrap, line, endLine, seq, marks }: SourceViewProps) {
   const syntaxKey = useThemes((s) => s.syntaxKey);
   const [highlighted, setHighlighted] = useState<{ code: string; language: string | undefined; syntaxKey: string; lines: string[] | null } | null>(null);
   useEffect(() => {
@@ -70,25 +72,34 @@ export const SourceView = memo(function SourceView({ code, language, wrap, line,
     <div ref={boxRef} tabIndex={0} aria-label="Source" className="min-h-0 flex-1 overflow-auto bg-code py-2 select-text outline-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset" data-file-preview-source="" data-wrap={wrap ? 'on' : 'off'}>
       <div className={`shiki font-mono text-ui leading-relaxed ${wrap ? 'w-full' : 'w-max min-w-full'}`}>
         {blocks.map((block) => (
-          <SourceBlock key={block.first} first={block.first} lines={block.lines} html={html !== null} wrap={wrap} range={range} gutter={gutter} skip={count >= SKIP_FROM} />
+          <SourceBlock key={block.first} first={block.first} lines={block.lines} html={html !== null} wrap={wrap} range={range} gutter={gutter} skip={count >= SKIP_FROM} marks={marks} />
         ))}
       </div>
     </div>
   );
 });
 
-/** Rows of one block. Marked rows get the accent tint and a rail in the gutter. */
-function SourceBlock({ first, lines, html, wrap, range, gutter, skip }: { first: number; lines: readonly string[]; html: boolean; wrap: boolean; range: LineRange | null; gutter: string; skip: boolean }) {
+/** Rows of one block. Marked rows get the accent tint and a rail in the gutter; lines Claude changed, a bar there. */
+function SourceBlock({ first, lines, html, wrap, range, gutter, skip, marks }: { first: number; lines: readonly string[]; html: boolean; wrap: boolean; range: LineRange | null; gutter: string; skip: boolean; marks: ReadonlyMap<number, string | null> | undefined }) {
   return (
     <div style={skip ? { contentVisibility: 'auto', containIntrinsicBlockSize: `auto ${Math.ceil(lines.length * LINE_PX)}px` } : undefined}>
       {lines.map((text, i) => {
         const n = first + i;
         const marked = range !== null && n >= range.start && n <= range.end;
+        const changed = marks?.has(n) ?? false;
+        const before = marks?.get(n);
         return (
-          <div key={n} className={`flex ${marked ? 'bg-accent/15' : ''}`} data-line={n} data-line-marked={marked ? '' : undefined}>
+          <div
+            key={n}
+            className={`flex ${marked ? 'bg-accent/15' : ''}`}
+            data-line={n}
+            data-line-marked={marked ? '' : undefined}
+            data-line-changed={changed ? '' : undefined}
+            data-tooltip={changed ? (before === null || before === undefined ? 'A new line from Claude' : `Before Claude changed it:\n${before.length > 300 ? `${before.slice(0, 300)}…` : before}`) : undefined}
+          >
             {/* A div, not a span: Shiki's colours go on every span inside `.shiki`. */}
             <div
-              className={`sticky left-0 shrink-0 pr-4 pl-3 text-right tabular-nums select-none ${marked ? 'bg-[color-mix(in_oklab,var(--color-accent)_15%,var(--color-code))] text-text shadow-[inset_2px_0_0_var(--color-accent-ink)]' : 'bg-code text-faint'}`}
+              className={`sticky left-0 shrink-0 pr-4 pl-3 text-right tabular-nums select-none ${marked ? 'bg-[color-mix(in_oklab,var(--color-accent)_15%,var(--color-code))] text-text shadow-[inset_2px_0_0_var(--color-accent-ink)]' : changed ? 'bg-code text-faint shadow-[inset_3px_0_0_var(--color-accent-ink)]' : 'bg-code text-faint'}`}
               style={{ minWidth: gutter }}
               aria-hidden
             >

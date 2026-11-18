@@ -272,7 +272,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail" | "files";
 
 export interface ShortcutDef {
   id: string;
@@ -987,6 +987,55 @@ export const SHORTCUTS = [
     context: "On a file in the conversation",
     note: "A click does what Settings › Conversation sets; this does the other",
     when: inSession,
+  },
+  {
+    id: "files.toggle",
+    keys: ["mod+alt+e"],
+    action: "Show or hide Files",
+    section: "session",
+    when: inSession,
+    note: "The project's files: browse, read and search them beside the conversation",
+  },
+  {
+    id: "files.quick-open",
+    keys: ["mod+alt+p"],
+    action: "Quick open a file",
+    section: "session",
+    note: "Type part of a name; name:42 opens it at line 42. Outside a session, in the selected project",
+  },
+  {
+    id: "files.search",
+    keys: ["mod+alt+f"],
+    action: "Search in files",
+    section: "session",
+    when: inSession,
+    note: "With text selected in the viewer, it searches for that",
+  },
+  {
+    id: "files.add-lines",
+    keys: ["mod+alt+m"],
+    action: "Add the selected lines to the message",
+    section: "session",
+    context: "In the Files viewer",
+    when: inSession,
+    where: "files",
+  },
+  {
+    id: "files.go-to-line",
+    keys: ["mod+alt+l"],
+    action: "Go to line",
+    section: "session",
+    context: "In the Files viewer",
+    when: inSession,
+  },
+  {
+    id: "files.find",
+    keys: ["mod+f"],
+    action: "Find in the file",
+    section: "session",
+    context: "In the Files viewer",
+    when: inSession,
+    where: "files",
   },
   {
     id: "changes.toggle",

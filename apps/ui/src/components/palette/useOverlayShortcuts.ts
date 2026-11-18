@@ -2,9 +2,10 @@ import { useEffect } from 'react';
 import { matches } from '../../lib/shortcuts.ts';
 import { otherModalOpen } from '../../lib/modalGuards.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
+import { useQuickOpen } from '../../state/quickOpenStore.ts';
 
 /**
- * The keys that open the command palette and the shortcuts sheet, and the menu bar's Help › Keyboard Shortcuts. The
+ * The keys that open the command palette, Quick open and the shortcuts sheet, and the menu bar's Help › Keyboard Shortcuts. The
  * main window and a pop-out both use it, so they open in the window the key was pressed in, with the same guards.
  */
 export function useOverlayShortcuts(): void {
@@ -22,6 +23,12 @@ export function useOverlayShortcuts(): void {
         if (otherModalOpen()) return;
         event.preventDefault();
         useOverlay.getState().togglePalette('commands');
+      } else if (matches(event, 'files.quick-open')) {
+        // The same key again closes it; it takes the palette's place. Another dialog keeps the window.
+        if (event.defaultPrevented || otherModalOpen()) return;
+        event.preventDefault();
+        if (useOverlay.getState().open) useOverlay.getState().close();
+        useQuickOpen.getState().toggle();
       }
     };
     window.addEventListener('keydown', onKey);

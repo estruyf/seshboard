@@ -120,13 +120,23 @@ describe('readPreview', () => {
     expect((await readPreview(join(dir, 'edge.md'))).content).toHaveLength(MAX_PREVIEW_BYTES);
   });
 
-  it('refuses a missing file, a folder and other extensions', async () => {
+  it('refuses a missing file, a folder, an image and a binary file', async () => {
     const dir = temp();
     mkdirSync(join(dir, 'folder.md'));
     writeFileSync(join(dir, 'a.png'), 'x');
+    writeFileSync(join(dir, 'app.bin'), Buffer.from([0x41, 0, 0x42]));
     expect(await code(readPreview(join(dir, 'missing.md')))).toBe('NOT_FOUND');
     expect(await code(readPreview(join(dir, 'folder.md')))).toBe('UNSUPPORTED');
     expect(await code(readPreview(join(dir, 'a.png')))).toBe('UNSUPPORTED');
+    expect(await code(readPreview(join(dir, 'app.bin')))).toBe('UNSUPPORTED');
+  });
+
+  it('reads any other file that is text as `text`', async () => {
+    const dir = temp();
+    writeFileSync(join(dir, 'Dockerfile'), 'FROM node:24\n');
+    writeFileSync(join(dir, '.env.example'), 'PORT=4321\n');
+    expect(await readPreview(join(dir, 'Dockerfile'))).toMatchObject({ kind: 'text', content: 'FROM node:24\n' });
+    expect((await readPreview(join(dir, '.env.example'))).kind).toBe('text');
   });
 });
 

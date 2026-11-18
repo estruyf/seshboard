@@ -1314,7 +1314,10 @@ export class RemoteHub {
         this.checkSession(sessionId);
         // Only a file the session made: the path comes from the device, so it may not name anything else.
         const file = await this.sharedFile(sessionId, path);
-        return readPreview(file, { maxBytes: REMOTE_FILE_TEXT_BYTES, inlineImages: false });
+        const preview = await readPreview(file, { maxBytes: REMOTE_FILE_TEXT_BYTES, inlineImages: false });
+        // The phone shows Markdown, HTML and code; other text files are for the desktop's Files panel for now.
+        if (preview.kind === 'text') throw new RpcError('UNSUPPORTED', `Seshboard can't show this file: ${path}`);
+        return { ...preview, kind: preview.kind };
       },
       'files.image': async ({ sessionId, path }) => {
         this.checkSession(sessionId);

@@ -220,6 +220,11 @@ describe('the shortcut registry', () => {
       'find.next': [SESSION, HOME],
       'find.previous': [SESSION, HOME],
       'changes.toggle': [SESSION, at({ view: 'session' })],
+      'files.toggle': [SESSION, at({ view: 'session' })],
+      'files.search': [SESSION, at({ view: 'session' })],
+      'files.add-lines': [SESSION, at({ view: 'session' })],
+      'files.go-to-line': [SESSION, at({ view: 'session' })],
+      'files.find': [SESSION, at({ view: 'session' })],
       'changes.comment': [SESSION, at({ view: 'session' })],
       'agents.toggle': [SESSION, at({ view: 'session' })],
       'commands.toggle': [SESSION, at({ view: 'session' })],
@@ -322,7 +327,7 @@ describe('the shortcut registry', () => {
 
 /** Keys that are meant to do different things at the same time and place, and how they're told apart. */
 const INTENDED_OVERLAPS: Record<string, string> = {
-  'cmd+f': 'In a session ⌘F finds in the conversation; while a browser page or its find bar has focus it finds in the page.',
+  'cmd+f': 'In a session ⌘F finds in the conversation; while a browser page or its find bar has focus it finds in the page, and while the Files viewer has focus it finds in the file.',
   escape: 'Esc closes or cancels what is nearest: a menu or dialog first, then a waiting card, then the message box stops Claude.',
   'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',
