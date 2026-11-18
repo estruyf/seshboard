@@ -1,5 +1,6 @@
 import { Lexer } from 'marked';
 import remend from 'remend';
+import { isProse } from './maths.ts';
 
 /**
  * Splits Markdown into top-level blocks (paragraphs, lists, fences, tables…),
@@ -14,12 +15,56 @@ export function splitBlocks(text: string): string[] {
     return [text];
   }
   const blocks: string[] = [];
+  const scan: MathScan = { fence: null, math: false };
   for (const token of tokens) {
-    // Spacing and link definitions belong with what came before (a definition alone renders nothing).
-    if ((token.type === 'space' || token.type === 'def') && blocks.length) blocks[blocks.length - 1] += token.raw;
+    // Spacing and link definitions belong with what came before (a definition alone renders nothing), and so does
+    // everything after a `$$` line nothing has closed yet: a formula can have a blank line in it.
+    if (blocks.length && (token.type === 'space' || token.type === 'def' || scan.math)) blocks[blocks.length - 1] += token.raw;
     else blocks.push(token.raw);
+    scanMath(token.raw, scan);
   }
   return blocks.length ? blocks : [text];
+}
+
+/** Where a reader of the text is: in a code fence (its mark and length) or in a `$$` block that nothing has closed yet. */
+interface MathScan {
+  fence: { mark: string; length: number } | null;
+  math: boolean;
+}
+
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/;
+/** What may come before a `$$` on its line: up to 3 spaces, and the markers of a quote or a list item (nested too). */
+const LINE_START = '^ {0,3}(?:(?:>[ \\t]*|(?:[-*+]|\\d{1,9}[.)])[ \\t]+))*';
+/** A `$$` line: it opens a block (its meta can't hold a `$`, or be a sentence) and, with nothing after it, closes one. `pid $$ is…`, `$$ is the shell pid` and `$$x$$` don't. */
+const MATH_LINE = new RegExp(`${LINE_START}\\$\\$([^$]*)$`);
+const MATH_CLOSE = new RegExp(`${LINE_START}\\$\\$\\s*$`);
+
+/** Reads lines (whole ones) and updates where the reader is: once for each, so a long reply isn't read again for every token. */
+function scanMath(text: string, state: MathScan): void {
+  for (const line of text.split('\n')) {
+    if (state.math) {
+      // Inside a `$$` block a fence is text; only a bare `$$` ends it.
+      if (MATH_CLOSE.test(line)) state.math = false;
+      continue;
+    }
+    const fence = FENCE_LINE.exec(line)?.[1];
+    if (state.fence) {
+      // Only a fence of the same mark, at least as long, ends it: a short one inside a longer one is text.
+      if (fence && fence[0] === state.fence.mark && fence.length >= state.fence.length && /^[`~]+\s*$/.test(line.trim())) state.fence = null;
+    } else if (fence) {
+      state.fence = { mark: fence[0]!, length: fence.length };
+    } else {
+      const meta = MATH_LINE.exec(line)?.[1];
+      if (meta !== undefined && !isProse(meta)) state.math = true;
+    }
+  }
+}
+
+/** Whether the text ends inside a `$$` block nothing closes: `$$` at the start of a line, outside code fences. */
+export function opensMath(text: string): boolean {
+  const state: MathScan = { fence: null, math: false };
+  scanMath(text, state);
+  return state.math;
 }
 
 /**

@@ -6,7 +6,11 @@ import remarkGfm from 'remark-gfm';
 import { remarkBareLinks } from './bareLinks.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
+import { MermaidBlock } from './MermaidBlock.tsx';
+import { isMermaidFence } from './mermaidRender.ts';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
+import { MathCode, streamingBlocks } from './Maths.tsx';
+import { mathKind, remarkMaths } from './maths.ts';
 import { remarkSkimFade } from './skimFade.ts';
 import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
 
@@ -54,7 +58,12 @@ export function fencedBlock(className: string | undefined, children: ReactNode):
 
 /** Inline code, or a fenced block; `previews`: a Markdown block opens rendered (not inside another one's preview). */
 function renderCode({ className, children }: { className?: string; children?: ReactNode }, previews: boolean) {
+  // Maths (`$x$`, `$$…$$`, a math block) is drawn by KaTeX, loaded the first time one shows.
+  const math = mathKind(className);
+  if (math) return <MathCode kind={math} source={String(children ?? '').replace(/\n$/, '')} />;
   const fence = fencedBlock(className, children);
+  // A diagram is drawn, also in a Markdown block's preview (it holds no Markdown, so there is nothing to nest).
+  if (fence && isMermaidFence(fence.language)) return <MermaidBlock code={fence.code} />;
   // Markdown Claude writes out (a README, a PR description) opens rendered, with its source a click away.
   if (fence) return <CodeBlock code={fence.code} language={fence.language} preview={previews && fence.markdown ? <PreviewBlock text={fence.code} /> : undefined} />;
   // Long inline code (URLs, paths) wraps instead of pushing the pane wider.
@@ -92,8 +101,8 @@ const proseOf = (variant: MarkdownVariant) => (variant === 'reading' ? READING_P
  */
 const previewComponents: Components = { ...markdownComponents, code: (props) => renderCode(props, false) };
 
-/** GFM links `https://` and `www.` addresses; `remarkBareLinks` the ones written without either (`github.com/…`). */
-const PLUGINS = [remarkGfm, remarkBareLinks];
+/** GFM links `https://` and `www.` addresses; `remarkBareLinks` the ones written without either (`github.com/…`); `remarkMaths` the formulas. */
+const PLUGINS = [remarkGfm, remarkBareLinks, remarkMaths];
 
 const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
   return (
@@ -132,9 +141,9 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant
   const blocks = useMemo(() => splitBlocks(withoutSkimMarks(text)), [text]);
   return (
     <div className={proseOf(variant)}>
-      {blocks.map((block, i) => (
-        // Blocks only ever grow at the end, so the index is a stable key.
-        <Block key={i} text={i === blocks.length - 1 ? healMarkdown(block) : block} />
+      {/* Blocks only ever grow at the end, so the index is a stable key. */}
+      {streamingBlocks(blocks, (block, last) => (
+        <Block text={last ? healMarkdown(block) : block} />
       ))}
     </div>
   );
