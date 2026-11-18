@@ -7225,7 +7225,7 @@ async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
       // and what a person could not select (the speaker's name, a line of numbers) in the middle of it.
       const block = add(document.createElement('div'));
       block.className = 'markdown text-body select-text';
-      block.innerHTML = '<h2 class="sr-only">Speaker</h2><ol><li>one</li><li>two</li><li>three</li><li>four</li></ol><table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table><p>Some <strong>bold run</strong> here</p><p class="whitespace-pre-wrap" data-lines></p><p class="select-none">turn line</p>';
+      block.innerHTML = '<h2 class="sr-only">Speaker</h2><ol><li>one</li><li>two</li><li>three</li><li>four</li></ol><table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table><p>Some <strong>bold run</strong> here</p><p class="whitespace-pre-wrap" data-lines></p><p class="select-none">turn line</p><p data-mid>Run <code>npm test</code> and <strong>then</strong> check it</p><ul data-three><li>alpha</li><li>beta</li><li>gamma</li></ul><p data-math>Let <span data-math-source="x^2"><span class="select-none">garbled</span></span> be</p><details><summary>Summary</summary><p>Hidden body</p></details>';
       block.querySelector('[data-lines]').append('first line' + String.fromCharCode(10) + 'second line');
       const li = [...block.querySelectorAll('li')];
       const items = copy(rangeOf(li[2].firstChild, 0, li[3].firstChild, 4), li[2]);
@@ -7241,12 +7241,30 @@ async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
       const lines = block.querySelector('[data-lines]');
       const broken = copy(rangeOf(lines.firstChild, 0, lines.firstChild, lines.firstChild.length), lines);
       if (!parse(broken.html).querySelector('br')) problems.push('a prompt lost its line break: ' + broken.html.slice(0, 80));
+      // Starting in the middle of a paragraph, after an inline mark: only what the range holds.
+      const mid = block.querySelector('[data-mid]');
+      const midText = mid.childNodes[2];
+      const midEnd = mid.childNodes[4];
+      const middle = copy(rangeOf(midText, 1, midEnd, 6), mid);
+      const middleBody = parse(middle.html);
+      if (middleBody.querySelector('code') || !middleBody.querySelector('strong') || middleBody.textContent.trim() !== 'and then check') problems.push('a selection that starts after an inline mark copies ' + JSON.stringify(middleBody.textContent));
+      // A triple-click on an item ends at the start of the next one: it is not copied.
+      const three = [...block.querySelectorAll('[data-three] li')];
+      const triple = copy(rangeOf(three[1], 0, three[2], 0), three[1]);
+      const tripleBody = parse(triple.html);
+      if (tripleBody.textContent.trim() !== 'beta' || tripleBody.querySelectorAll('li').length !== 1) problems.push('a triple-click on a list item copies ' + JSON.stringify(tripleBody.textContent));
+      if (triple.text.includes('gamma')) problems.push('the text of a triple-click has the next item');
+      // A formula is its source, in the HTML and the text.
+      const math = block.querySelector('[data-math]');
+      const formula = copy(rangeOf(math.firstChild, 0, math.lastChild, 3), math);
+      if (!formula.html.includes('$x^2$') || formula.html.includes('garbled') || !formula.text.includes('$x^2$')) problems.push('a formula copies ' + JSON.stringify(formula.text));
       const all = document.createRange();
       all.selectNodeContents(block);
       const unseen = copy(all, block);
       const unseenBody = parse(unseen.html);
       if (unseenBody.querySelector('h2') || unseenBody.textContent.includes('turn line') || unseenBody.textContent.includes('Speaker')) problems.push('text nobody could select is in the HTML: ' + unseen.html.slice(0, 120));
       if (unseen.text.includes('turn line')) problems.push('the plain text has unselectable text');
+      if (unseenBody.textContent.includes('Hidden body') || !unseenBody.textContent.includes('Summary')) problems.push('a closed details copies its body');
 
       // 3. Across two messages: no speaker heading and none of the turn line's numbers.
       const messages = [...area.querySelectorAll('[data-transcript-item]')].filter((m) => !added.includes(m)).slice(0, 2);
@@ -7286,7 +7304,7 @@ async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
   })()`)) as { none?: boolean; problems: string[]; real: boolean; across: number; messages: number };
   if (report.none) return 'ok: no transcript on screen';
   if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
-  return `ok: a ${report.real ? "reply's" : 'made-up'} list, table rows, list items, a bold run and line breaks copy as clean HTML; ${report.across} unselectable lines stay out across ${report.messages} messages; fields keep their own copy`;
+  return `ok: a ${report.real ? "reply's" : 'made-up'} list, table rows, list items, a bold run, a mid-paragraph start, a triple-click, a formula and line breaks copy as clean HTML; ${report.across} unselectable lines stay out across ${report.messages} messages; fields keep their own copy`;
 }
 
 /**
@@ -7385,7 +7403,7 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   const selected = (await js(select)) as string;
   if (!selected) return 'ok: no paragraph of Claude on screen to select';
   const done = async (result: string) => {
-    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } true");
+    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } if (window.__smokeWrite) { navigator.clipboard.write = window.__smokeWrite; delete window.__smokeWrite; } true");
     return result;
   };
   if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar over the selection');
@@ -7402,7 +7420,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
 
   // Keyboard: Tab from the transcript into the toolbar, → to Copy, then Copy.
-  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeCopied = null; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; true");
+  // Copy in the conversation writes the clean HTML and the text together (`copySelection`), elsewhere the text alone.
+  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeWrite = navigator.clipboard.write.bind(navigator.clipboard); window.__smokeCopied = null; window.__smokeCopiedHtml = false; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; navigator.clipboard.write = async (items) => { window.__smokeCopiedHtml = items[0].types.includes('text/html'); window.__smokeCopied = await (await items[0].getType('text/plain')).text(); }; true");
   key('Tab');
   if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-quote-selection')", 2_000))) return done('Tab did not move into the toolbar');
   key('Right');
@@ -7410,7 +7429,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   await js('document.activeElement.click()');
   if (!(await waitInPage(win, "document.querySelector('[data-copy-selection][data-copied]')?.textContent.includes('Copied')", 2_000))) return done('Copy did not say Copied');
   const copied = (await js('window.__smokeCopied')) as string | null;
-  if (copied !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (copied?.trim() !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (!(await js('window.__smokeCopiedHtml'))) return done('Copy in the conversation wrote no clean HTML');
   if (!(await js(`!!${toolbar}`))) return done('the toolbar closed after Copy');
 
   // Esc closes it and keeps the selection.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanSelectionHtml, type ClipNode } from './clipboardHtml.ts';
+import { cleanSelectionHtml, plainText, type ClipNode } from './clipboardHtml.ts';
 import { replyHtml } from './richText.tsx';
 
 /** A node as the cleaner reads it, written the way the transcript's DOM looks: with the classes and styles Chromium would copy. */
@@ -131,13 +131,30 @@ describe('cleanSelectionHtml', () => {
       expect(cleanSelectionHtml(fragment([flagged(el('pre', el('code', 'a\nb')), { preformatted: true })]))).toMatch(/>a\nb</);
     });
 
-    it('keeps a monospace row (a diff line) monospace, once', () => {
-      const html = cleanSelectionHtml(fragment([flagged(el('div', '+ added'), { preformatted: true, monospace: true }), flagged(el('div', '- removed'), { preformatted: true, monospace: true })]));
-      expect(html).toMatch(/^<div><code style="font-family:[^"]*monospace">\+ added<\/code><\/div><div><code [^>]*>- removed<\/code><\/div>$/);
-      expect(cleanSelectionHtml(fragment(['+ added'], { monospace: true }), [shell('div')])).toMatch(/^<code style="font-family:[^"]*monospace">\+ added<\/code>$/);
-      // Already inside code: not wrapped twice.
+    it('keeps a block of monospace rows (a diff) as one code block, with its indent', () => {
+      const row = (line: string) => flagged(el('div', line), { preformatted: true, monospace: true });
+      const html = cleanSelectionHtml(fragment([el('div', row('    return x;'), row('+ added'), row('- removed'))]));
+      expect(html).toMatch(/^<div><pre style="[^"]*monospace[^"]*">    return x;\n\+ added\n- removed<\/pre><\/div>$/);
+      expect(html).not.toContain('<code');
+    });
+
+    it('is a code block for a selection inside one such row, and not twice inside code', () => {
+      expect(cleanSelectionHtml(fragment(['  + added'], { preformatted: true, monospace: true }), [shell('div')])).toMatch(/^<pre style="[^"]*monospace[^"]*">  \+ added<\/pre>$/);
       expect(cleanSelectionHtml(fragment(['x'], { monospace: true }), [shell('code')]).match(/<code/g)).toHaveLength(1);
     });
+
+    it('keeps leading and repeated spaces of text that is not monospace', () => {
+      expect(cleanSelectionHtml(fragment([flagged(el('p', '  indented\nsome   gap'), { preformatted: true })]))).toBe('<p>&nbsp;&nbsp;indented<br>some&nbsp;&nbsp; gap</p>');
+    });
+
+    it('puts a monospace font on a block that is not preformatted as a style, not as code around blocks', () => {
+      expect(cleanSelectionHtml(fragment([flagged(el('p', 'cmd'), { monospace: true })]))).toMatch(/^<p style="font-family:[^"]*monospace">cmd<\/p>$/);
+    });
+  });
+
+  it('writes the text of a cleaned selection with blocks on their own lines', () => {
+    const tree = fragment([el('p', 'a ', el('strong', 'b')), el('ul', el('li', 'one'), el('li', 'two')), el('table', el('tr', el('td', 'x'), el('td', 'y'))), el('button', 'Copy'), el('p', 'l1', el('br'), 'l2')]);
+    expect(plainText(tree)).toBe('a b\none\ntwo\nx\ty\nl1\nl2');
   });
 
   it('gives the same code and table markup as Copy as rich text', () => {
