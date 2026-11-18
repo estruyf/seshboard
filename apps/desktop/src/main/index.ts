@@ -7159,6 +7159,50 @@ async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * A selection in the transcript copies as clean HTML (`useCleanCopy`): the structure of a reply (a list, inline code)
+ * with no classes, theme colours, data attributes or buttons, and the selection's text as plain text. Read-only: it
+ * dispatches a copy event with a DataTransfer of its own, so the clipboard is untouched. A reply with a list and inline code
+ * on screen is used; the demo's open session may have none, then a block of that shape is added to the transcript for the step.
+ */
+async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await transcriptAtRest(win);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const result = (await js(`(() => {
+    const area = document.querySelector('${view} [data-transcript]');
+    if (!area) return { error: 'no transcript' };
+    let block = [...area.querySelectorAll('[data-remember-from="claude"] .markdown')].find((m) => m.querySelector('li') && m.querySelector(':not(pre) > code'));
+    const added = !block;
+    if (added) {
+      block = document.createElement('div');
+      block.className = 'markdown text-body select-text';
+      block.innerHTML = '<p class="text-text">Steps:</p><ul class="list-disc"><li class="my-0.5" style="color: red">Run <code class="rounded bg-border/60 font-mono">npm test</code></li><li><strong>Bold</strong> and <a href="https://example.com" class="text-link">a link</a></li></ul><button type="button">Copy code</button>';
+      area.appendChild(block);
+    }
+    document.activeElement?.blur();
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const data = new DataTransfer();
+    const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+    block.dispatchEvent(event);
+    const out = { added, prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain'), selected: selection.toString() };
+    selection.removeAllRanges();
+    if (added) block.remove();
+    return out;
+  })()`)) as { error?: string; added: boolean; prevented: boolean; html: string; text: string; selected: string };
+  if (result.error) return 'ok: no transcript on screen';
+  if (!result.prevented) return 'the copy was left to the browser, with its theme colours';
+  if (!result.html) return 'the copy has no text/html';
+  if (!result.html.includes('<li>') || !result.html.includes('<code')) return `the HTML has no <li> and <code>: ${result.html.slice(0, 120)}`;
+  if (/\sclass=|data-|<button|color:|background/.test(result.html)) return `the HTML keeps classes, colours or buttons: ${result.html.slice(0, 160)}`;
+  if (result.text !== result.selected) return `the plain text is ${JSON.stringify(result.text.slice(0, 40))}, not the selection`;
+  return `ok: a ${result.added ? 'list' : "reply's list"} copies as clean HTML and the selection as text`;
+}
+
+/**
  * The actions of Claude's replies sit in a row of their own under the text, so they never cover it;
  * the row is hidden until you hover or tab to it, and showing it doesn't change the reply's height.
  * Your prompt cards keep the toolbar floating over their top edge. Read-only: it focuses a button but
@@ -14541,6 +14585,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
+  await step('copy a selection: clean HTML', () => runCopySelectionStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('conversation view: Skim folds, shows the stats and fades by the keep line, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
