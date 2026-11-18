@@ -29,7 +29,7 @@ const FileItem = z.object({
 });
 const TextItem = z.object({
   kind: z.literal('text'),
-  source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste', 'checks', 'review', 'element']),
+  source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste', 'checks', 'review', 'element', 'file', 'search']),
   /** What the chip says, such as "Problems in auth.ts". */
   label: z.string().trim().min(1).max(200),
   text: z.string().max(MAX_PROMPT_LENGTH),

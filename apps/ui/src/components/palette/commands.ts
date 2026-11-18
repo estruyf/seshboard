@@ -33,6 +33,8 @@ import {
   Download,
   Eye,
   FileDiff,
+  FileSearch,
+  FileText,
   FoldVertical,
   Folder,
   FolderCog,
@@ -231,6 +233,12 @@ export interface PaletteApi {
   toggleTerminal(): void;
   newTerminalTab(): void;
   toggleChanges(): void;
+  /** Files on the rail: to the front, or closed when it is in front. */
+  toggleFiles(): void;
+  /** Quick open: a file of the session's folder (or the selected project) by name. */
+  quickOpen(): void;
+  /** Files in its Search mode, with the field focused. */
+  searchInFiles(): void;
   toggleAgents(): void;
   toggleCommands(): void;
   /** Opens the session's web preview in front, on the newest server running in it when none is open yet. */
@@ -956,6 +964,9 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'browser-clear-all', title: 'Clear all browsing data…', group: 'general', icon: Trash2, keywords: 'browser sign out log out logout cookies cache storage everything', when: (ctx) => !!ctx.browser, run: (api) => api.browserAction('clear-all') },
   { id: 'browser-view', title: 'Go to Browser', group: 'general', shortcut: keysFor('browser.view'), icon: Globe, keywords: 'web page tabs pinned github', when: (ctx) => !!ctx.browser && ctx.view !== 'browser', run: (api) => api.openBrowserView() },
   { id: 'toggle-commands', title: 'Toggle commands', group: 'session', shortcut: keysFor('commands.toggle'), icon: ScrollText, keywords: 'background shell output monitor panel', when: hasSession, run: (api) => api.toggleCommands() },
+  { id: 'toggle-files', title: 'Toggle Files', group: 'session', shortcut: keysFor('files.toggle'), icon: Folder, keywords: 'files tree browse read explorer project viewer', when: withCwd, run: (api) => api.toggleFiles() },
+  { id: 'go-to-file', title: 'Go to file…', group: 'general', shortcut: keysFor('files.quick-open'), icon: FileText, keywords: 'quick open file name find path', when: always, run: (api) => api.quickOpen() },
+  { id: 'search-in-files', title: 'Search in files', group: 'session', shortcut: keysFor('files.search'), icon: FileSearch, keywords: 'grep find text regex usages project', when: withCwd, run: (api) => api.searchInFiles() },
   { id: 'toggle-changes', title: 'Toggle changes', group: 'session', shortcut: keysFor('changes.toggle'), icon: FileDiff, keywords: 'diff git panel', when: inGit, run: (api) => api.toggleChanges() },
   { id: 'tools', title: 'Tools: MCP servers, skills, agents, plugins', group: 'session', icon: Blocks, keywords: 'mcp extensions capabilities', when: withCwd, run: (api) => api.showTools() },
   { id: 'open-in-new-window', title: 'Open in new window', group: 'session', shortcut: keysFor('session.new-window'), icon: AppWindow, keywords: 'pop out popout detach separate window monitor screen tile', when: hasSession, run: (api) => api.openInNewWindow() },

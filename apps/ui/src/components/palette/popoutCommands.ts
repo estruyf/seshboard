@@ -191,6 +191,9 @@ const PLANS: Record<string, Plan> = {
   // Lists every window's tabs, the Browser view's too: the main window's.
   'browser-go-to-tab': 'hide',
   'toggle-changes': 'here',
+  'toggle-files': 'here',
+  'go-to-file': 'here',
+  'search-in-files': 'here',
   tools: 'here',
   'open-in-editor': 'here',
   'reveal-in-finder': 'here',

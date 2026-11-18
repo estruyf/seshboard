@@ -1,4 +1,4 @@
-import { CircleX, ClipboardPaste, FileText, Folder, Link2, MessageSquareText, Pencil, ScrollText, SquareDashedMousePointer, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
+import { CircleX, ClipboardPaste, FileCode, FileText, Folder, Link2, MessageSquareText, Pencil, ScrollText, Search, SquareDashedMousePointer, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ContextItem, WorktreePullRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -18,6 +18,8 @@ const TEXT_ICON: Record<Extract<ContextItem, { kind: 'text' }>['source'], Lucide
   paste: ClipboardPaste,
   checks: CircleX,
   review: MessageSquareText,
+  file: FileCode,
+  search: Search,
   element: SquareDashedMousePointer,
 };
 

@@ -213,6 +213,7 @@ import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { readPreview, readPreviewImage } from './system/filePreview.ts';
+import { grep } from './system/grep.ts';
 import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
@@ -926,6 +927,20 @@ export function createEngine(options: EngineOptions): Engine {
   providerUpdates = providerChecks;
   providerChecks.sync();
   const files = new FileIndex();
+  /** The search running for each `searchId` (one per window), so a newer one can cancel it. */
+  const grepSearches = new Map<string, AbortController>();
+  /**
+   * Throws NOT_FOUND unless `cwd` is a folder Seshboard knows: a session's folder (indexed, live or started here) or a
+   * project's root. The Files panel lists and searches only those, never any folder a caller names.
+   */
+  function assertKnownFolder(cwd: string): void {
+    const known =
+      sessions.snapshot().sessions.some((s) => s.cwd === cwd || s.projectRoot === cwd) ||
+      liveList().some((l) => l.cwd === cwd) ||
+      hosts.list().hosts.some((h) => h.cwd === cwd) ||
+      listProjects().some((p) => p.root === cwd);
+    if (!known) throw new RpcError('NOT_FOUND', `Not a session's folder or a project: ${cwd}`);
+  }
 
   const sdk = options.sdk ?? (() => import('@anthropic-ai/claude-agent-sdk'));
   /** The login shell's environment, pointed at a profile's config folder. */
@@ -3887,6 +3902,24 @@ export function createEngine(options: EngineOptions): Engine {
     'files.search': async ({ cwd, query, limit }) => ({ files: await files.search(cwd, query, limit) }),
     'files.resolve': async ({ cwd, paths }) => ({ paths: await files.resolve(cwd, paths) }),
     'files.read': ({ path }) => readPreview(path),
+    'files.list': ({ cwd }) => {
+      assertKnownFolder(cwd);
+      return files.listAll(cwd);
+    },
+    'files.grep': async ({ cwd, searchId, ...query }) => {
+      assertKnownFolder(cwd);
+      // A newer search from the same window replaces this one: stop it rather than let two `git grep`s run.
+      const controller = new AbortController();
+      if (searchId) {
+        grepSearches.get(searchId)?.abort();
+        grepSearches.set(searchId, controller);
+      }
+      try {
+        return await grep({ cwd, ...query, git: resolver.resolve(cwd).gitDir !== null, files: () => files.list(cwd), signal: controller.signal });
+      } finally {
+        if (searchId && grepSearches.get(searchId) === controller) grepSearches.delete(searchId);
+      }
+    },
     'files.image': ({ path }) => readPreviewImage(path),
     'editors.list': async () => {
       const editors = detectEditors(await editorEnv());

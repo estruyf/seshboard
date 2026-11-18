@@ -1,8 +1,8 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, NotebookPen, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, FileDiff, Folder, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, NotebookPen, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
-import { apiRetryLine, isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
+import { apiRetryLine, isAbsolutePath, joinPath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { fastCommand, fastModeFace } from '../../lib/fastMode.ts';
@@ -117,12 +117,14 @@ import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { AgentsPanel } from '../agents/AgentsPanel.tsx';
-import { FilePreviewPanel } from '../filePreview/FilePreviewPanel.tsx';
+import { FilesPanel } from '../files/FilesPanel.tsx';
+import { touchedFiles } from '../files/touchedFiles.ts';
+import { useFilesPanel, useSessionFiles } from '../../state/filesPanelStore.ts';
 import { WebPreviewPanel } from '../webPreview/WebPreviewPanel.tsx';
 import { sessionServerOffers } from '../webPreview/serverOffers.ts';
 import { previewAllowed, toggleWebPanel, usePreviewAllowed, useSessionWeb, useTabCount, useWebPreview } from '../../state/webPreviewStore.ts';
 import { PreviewOpenerContext, type OpenPreview } from '../filePreview/previewOpener.ts';
-import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.ts';
+import { useFilePreview } from '../../state/filePreviewStore.ts';
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
 import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { NotePanel } from '../notes/NotePanel.tsx';
@@ -180,10 +182,10 @@ const STATUS_TONE = { running: 'text-accent-ink', 'needs-you': 'text-warn', idle
 
 /** The rail's icons for Seshboard's own tools. */
 const RAIL_ICONS = {
+  files: <Folder size={17} aria-hidden />,
   changes: <FileDiff size={17} aria-hidden />,
   terminal: <SquareTerminal size={17} aria-hidden />,
   web: <Globe size={17} aria-hidden />,
-  preview: <Eye size={17} aria-hidden />,
   ask: <MessageCircleQuestion size={17} aria-hidden />,
   agents: <Bot size={17} aria-hidden />,
   commands: <ScrollText size={17} aria-hidden />,
@@ -592,9 +594,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // And your note on the session, in full: the header and the sidebar row cut it short.
   const note = summary?.note ?? null;
   const showNote = useNotePanel((s) => s.open.has(sessionId));
-  // And a file opened from a link in this session, unless the preview was detached to a dialog.
-  const previewTarget = useSessionPreview(sessionId);
-  const showPreview = previewTarget !== null;
+  // And Files: the project's tree, a viewer for its files (where a file link in the session opens) and Search in files.
+  const filesState = useSessionFiles(sessionId);
+  const showFiles = filesState.open && cwd !== null;
   // And the web preview: the session's dev server beside the conversation, while its tab is open.
   const web = useSessionWeb(sessionId);
   const showWeb = web !== null;
@@ -628,27 +630,26 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     () => (sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
     [sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
   );
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, note: showNote, preview: showPreview, web: showWeb, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, note: showNote, files: showFiles, web: showWeb, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   const panesOpen = modPanes.length > 0;
   // A session view can be narrower than a panel and a usable conversation together: then the panel opens over the
   // conversation as a sheet, and the rail (or the panel's ×) brings the conversation back.
   const narrowPanel = (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_PANEL;
-  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showNote || showPreview || showWeb || terminalOnRight || panesOpen);
-  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showNote || showPreview || showWeb || terminalOnRight || panesOpen);
-  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showNote || showPreview || showWeb || terminalOnRight || panesOpen);
-  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showNote || showPreview || showWeb || terminalOnRight || panesOpen);
-  const toggleNoteHere = () => toggleNotePanel(sessionId, showChanges || ask.open || showAgents || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
+  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
+  const toggleNoteHere = () => toggleNotePanel(sessionId, showChanges || ask.open || showAgents || showCommands || showFiles || showWeb || terminalOnRight || panesOpen);
   // The Web button, ⌘⇧B and the palette: opened, it starts on the newest server running in the session.
   const toggleWebHere = () => toggleWebPanel(sessionId, right.open.some((tab) => tab !== 'web'), serverOffers[0]?.url ?? null);
   const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
   const webAllowed = usePreviewAllowed();
-  // The header's Preview button, there only while a file is open: to the front, or closed.
-  const togglePreviewHere = () => {
-    const step = agentsToggleStep(showPreview, right.tab === 'preview', right.open.length > 1);
-    if (step === 'close') useFilePreview.getState().closePanel(sessionId);
-    else useRightPanel.getState().setTab(sessionId, 'preview');
+  // The rail's Files and ⌘⌥E: opened (or behind another tab) it comes to the front; in front, it closes.
+  const toggleFilesHere = () => {
+    const step = agentsToggleStep(showFiles, right.tab === 'files', right.open.length > 1);
+    useFilesPanel.getState().setOpen(sessionId, step !== 'close');
   };
   // Picking a mod's tab tells Claude Code which pane is shown.
   const pickRightTab = (tab: RightTab) => {
@@ -703,12 +704,34 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         event.preventDefault();
         toggleCommandsHere();
       }
+      if (active && cwd && isShortcut(event, 'files.toggle')) {
+        event.preventDefault();
+        toggleFilesHere();
+      }
+      // ⌘⌥F: Search in files, with the text selected in the viewer as the query.
+      if (active && cwd && isShortcut(event, 'files.search')) {
+        event.preventDefault();
+        const picked = window.getSelection();
+        const text = picked && !picked.isCollapsed && (picked.anchorNode?.parentElement?.closest('[data-files-viewer]') ?? null) ? picked.toString().trim() : '';
+        const files = useFilesPanel.getState();
+        if (text && !text.includes('\n')) files.setSearch(sessionId, { query: text });
+        files.setOpen(sessionId, true);
+        files.setMode(sessionId, 'search');
+        files.command(sessionId, 'search');
+      }
+      if (active && cwd && isShortcut(event, 'files.go-to-line') && showFiles && filesState.front) {
+        event.preventDefault();
+        const files = useFilesPanel.getState();
+        files.setOpen(sessionId, true);
+        files.setMode(sessionId, 'files');
+        files.command(sessionId, 'goto');
+      }
       if (active && isShortcut(event, 'web.toggle') && previewAllowed()) {
         event.preventDefault();
         toggleWebHere();
       }
       // ⌘F finds in this conversation (the terminal keeps its own keys).
-      if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm, [data-web-preview-page], [data-browser-address], [data-browser-find]')) {
+      if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm, [data-web-preview-page], [data-browser-address], [data-browser-find], [data-files-viewer], [data-files-search]')) {
         event.preventDefault();
         setFindQuery((q) => q ?? '');
         setFindFocus((n) => n + 1);
@@ -1331,6 +1354,23 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The palette's Preview last written file: the previewable file Claude wrote last in this session.
   useEffect(() => useLastWritten.getState().set(sessionId, lastPreviewableWrite(items, cwd, home)), [items, sessionId, cwd, home]);
   useEffect(() => () => useLastWritten.getState().set(sessionId, null), [sessionId]);
+  // Files: what Claude changed and read here (the tree's dots, Quick open's "In this session"), and how often it wrote
+  // each file, so an open file is read again after each write.
+  const touched = useMemo(() => (cwd ? touchedFiles(items, cwd, isRepo ? changes : null, home) : null), [items, cwd, isRepo, changes, home]);
+  useEffect(() => {
+    if (touched) useFilesPanel.getState().setTouched(sessionId, touched);
+  }, [touched, sessionId]);
+  const fileWrites = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      if (item.kind !== 'tool' || !['Write', 'Edit', 'MultiEdit'].includes(item.name) || !item.input || typeof item.input !== 'object') continue;
+      const raw = (item.input as { file_path?: unknown }).file_path;
+      if (typeof raw !== 'string') continue;
+      const path = isAbsolutePath(raw) ? raw : cwd ? joinPath(cwd, raw) : null;
+      if (path) counts.set(path, (counts.get(path) ?? 0) + 1);
+    }
+    return counts;
+  }, [items, cwd]);
   // Ask about this session: its threads are read once per session, so the panel opens on them at once.
   useEffect(() => {
     if (client) void loadAskThreads(client, sessionId).catch(() => {});
@@ -1530,8 +1570,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const railState = (id: RailToolId) => (id === 'terminal' && !terminalOnRight ? (panelOpen ? 'front' : 'closed') : railToolState(id, right.open, right.tab));
   const modTitles = new Map(modPanes.map((p) => [modPaneTab(p.id), p.title]));
   const railTool = (id: RailToolId): RailItem => {
-    const name = id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : id === 'preview' && previewTarget ? `Preview · ${basename(previewTarget.path)}` : modTitles.get(id as `mod:${string}`);
-    const shortcut = id === 'changes' ? 'changes.toggle' : id === 'terminal' ? 'terminal.toggle' : id === 'web' ? 'web.toggle' : id === 'agents' ? 'agents.toggle' : id === 'commands' ? 'commands.toggle' : null;
+    const name = id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : modTitles.get(id as `mod:${string}`);
+    const shortcut = id === 'files' ? 'files.toggle' : id === 'changes' ? 'changes.toggle' : id === 'terminal' ? 'terminal.toggle' : id === 'web' ? 'web.toggle' : id === 'agents' ? 'agents.toggle' : id === 'commands' ? 'commands.toggle' : null;
     const state = railState(id);
     const ready = id === 'ask' && ask.ready && !ask.open;
     const pane = paneOfTab(id);
@@ -1560,7 +1600,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         else if (id === 'agents') toggleAgentsHere();
         else if (id === 'commands') toggleCommandsHere();
         else if (id === 'note') toggleNoteHere();
-        else if (id === 'preview') togglePreviewHere();
+        else if (id === 'files') toggleFilesHere();
         else if (id === 'web') toggleWebHere();
         else toggleTerminalPanel(sessionId);
       },
@@ -1594,11 +1634,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   };
   const railItems: RailItem[] = railEntries(
     {
+      // Files reads the session's folder on this computer.
+      files: Boolean(cwd),
       changes: Boolean(cwd && isRepo),
       terminal: true,
       // Only while a dev server runs in the session, or the tab is open; with the browser on, always: it opens any page.
       web: showWeb || browserAway || ((serverOffers.length > 0 || browserPreview) && webAllowed),
-      preview: previewTarget !== null,
       // Ask forks the session in its own tool: another provider's only when it can.
       ask: canAsk || ask.open,
       agents: agents.length > 0 || agentsState.open,
@@ -1618,7 +1659,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (showAgents) closeAgents(sessionId);
     if (showCommands) closeCommands(sessionId);
     if (showNote) closeNote(sessionId);
-    if (showPreview) useFilePreview.getState().closePanel(sessionId);
+    if (showFiles) useFilesPanel.getState().setOpen(sessionId, false);
     if (showWeb) useWebPreview.getState().hide(sessionId);
     if (terminalOnRight) useTerminals.getState().togglePanel(sessionId, false);
     for (const pane of modPanes) closeModPane(pane.id);
@@ -1848,7 +1889,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
         {/* An expanded Changes panel takes the whole view; the conversation stays mounted (scroll position, drafts) but hidden. */}
         {/* So does the browser in Full: its page is drawn over the panel's slot, which then takes the conversation's room. */}
-        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (right.tab === 'web' && !whyRequest && browserPreview && web?.full && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
+        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (right.tab === 'web' && !whyRequest && browserPreview && web?.full && !terminalMaximized) || (right.tab === 'files' && !whyRequest && showFiles && filesState.full && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
           {findQuery !== null && !terminalMaximized && (
             <FindBar
               query={findQuery}
@@ -2406,9 +2447,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           />
         )}
         {!whyRequest && right.tab === 'note' && !terminalMaximized && <NotePanel sessionId={sessionId} note={note} width={panelWidth} onWidth={setRightWidth} onClose={() => closeNote(sessionId)} />}
-        {!whyRequest && right.tab === 'preview' && previewTarget && !terminalMaximized && (
+        {!whyRequest && right.tab === 'files' && cwd && !terminalMaximized && (
           <PreviewOpenerContext.Provider value={openPreviewHere}>
-            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={panelWidth} onWidth={setRightWidth} />
+            <FilesPanel sessionId={sessionId} cwd={cwd} width={panelWidth} onWidth={setRightWidth} changes={isRepo ? changes : null} changesBase={changesBase} writes={fileWrites} />
           </PreviewOpenerContext.Provider>
         )}
         {/* Its page lives outside this view (webPreviewPages.ts), so it keeps running while another tab is in front. */}

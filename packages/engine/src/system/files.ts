@@ -5,7 +5,8 @@ import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { isLocalAbsolutePath } from '@seshboard/protocol';
 import { GIT_SETTINGS, gitProgram } from '../git/gitChanges.ts';
 
-const MAX_FILES = 50_000;
+/** The most files a folder's listing holds. */
+export const MAX_FILES = 50_000;
 const CACHE_MS = 30_000;
 /** How long a folder outside git may be walked for one listing. */
 const WALK_BUDGET_MS = 1_500;
@@ -92,7 +93,17 @@ export function fuzzyScore(path: string, query: string): number | null {
 export class FileIndex {
   private readonly cache = new Map<string, { at: number; files: Promise<string[]> }>();
 
-  private list(cwd: string): Promise<string[]> {
+  /**
+   * Every file of the folder, relative to `cwd`, sorted, for the Files panel's tree. `truncated` when the listing
+   * stopped at `MAX_FILES`.
+   */
+  async listAll(cwd: string): Promise<{ files: string[]; truncated: boolean }> {
+    const files = await this.list(cwd);
+    return { files: [...files].sort(), truncated: files.length >= MAX_FILES };
+  }
+
+  /** The folder's files, relative to `cwd`, cached for a while. */
+  list(cwd: string): Promise<string[]> {
     const hit = this.cache.get(cwd);
     if (hit && Date.now() - hit.at < CACHE_MS) return hit.files;
     const files = gitFiles(cwd).then((git) => git ?? walk(cwd));

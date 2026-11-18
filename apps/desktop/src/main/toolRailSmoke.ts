@@ -109,7 +109,7 @@ export async function runToolRailAppsStep(win: BrowserWindow, shot: (name: strin
 
 /**
  * Tool rail order: ⌥↑ on Terminal moves it above Changes, keeps the focus on it and the order after a render; ⌥↓ puts
- * it back. ⌥↑ on the first button of a group leaves it where it is (a button moves only inside its group).
+ * it back. ⌥↑ on the first button of a group (Files) leaves it where it is (a button moves only inside its group).
  */
 export async function runToolRailOrderStep(win: BrowserWindow, sessionId: string | null): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -120,11 +120,11 @@ export async function runToolRailOrderStep(win: BrowserWindow, sessionId: string
   const press = (tool: string, key: 'ArrowUp' | 'ArrowDown') =>
     js(`(() => { const b = ${q(`[data-tool-rail] [data-rail-tool="${tool}"]`)}; b.focus(); b.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, code: ${JSON.stringify(key)}, altKey: true, bubbles: true })); })()`);
   const before = (await js(order)) as string;
-  if (!before.startsWith('changes terminal')) return `the rail does not start with Changes and Terminal (${before})`;
-  await press('changes', 'ArrowUp');
+  if (!before.startsWith('files changes terminal')) return `the rail does not start with Files, Changes and Terminal (${before})`;
+  await press('files', 'ArrowUp');
   if ((await js(order)) !== before) return `⌥↑ on the group's first button moved it (${await js(order)})`;
   await press('terminal', 'ArrowUp');
-  const moved = await waitInPage(win, `(${order}).startsWith('terminal changes')`, 3_000);
+  const moved = await waitInPage(win, `(${order}).startsWith('files terminal changes')`, 3_000);
   const focused = (await js(`document.activeElement?.dataset.railTool ?? null`)) as string | null;
   await press('terminal', 'ArrowDown');
   const back = await waitInPage(win, `(${order}) === ${JSON.stringify(before)}`, 3_000);

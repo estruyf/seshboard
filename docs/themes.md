@@ -91,7 +91,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
     "canvas": "#ffffff",
     "accent": "#ffd43b",
     "colors": {
-      "bg": "#ffffff", "sidebar": "#f4f6fa", "card": "#ffffff", "popover": "#ffffff", "code-bg": "#f4f6fa",
+      "bg": "#ffffff", "sidebar": "#f4f6fa", "card": "#ffffff", "popover": "#ffffff", "code-bg": "#f4f6fa", "code-pane": "#ffffff",
       "border": "#e1e4e8", "overlay-border": "#d1d5da", "overlay-shadow": "#15181f33",
       "text": "#202736", "muted": "#505869", "faint": "#687082", "link": "#005cc5",
       "selected": "#2027361a", "focus-ring": "#916c008c", "scrim": "#15181f59",
@@ -110,7 +110,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
     "canvas": "#15181f",
     "accent": "#ffd43b",
     "colors": {
-      "bg": "#15181f", "sidebar": "#202736", "card": "#202736", "popover": "#2a3244", "code-bg": "#202736",
+      "bg": "#15181f", "sidebar": "#202736", "card": "#202736", "popover": "#2a3244", "code-bg": "#202736", "code-pane": "#15181f",
       "border": "#2d3142", "overlay-border": "#414861", "overlay-shadow": "#000000b3",
       "text": "#d9dbe1", "muted": "#9ba4b7", "faint": "#8b94a6", "link": "#74c0fc",
       "selected": "#d9dbe11c", "focus-ring": "#ffd43b8c", "scrim": "#00000099",
@@ -156,7 +156,7 @@ For each mode, Seshboard first generates every token from `canvas` and `accent`,
 
 | Tokens | Generated as |
 |---|---|
-| `bg` | the canvas |
+| `bg`, `code-pane` | the canvas |
 | `sidebar`, `card`, `popover`, `code-bg` | steps from the canvas: lighter in dark mode, darker in light mode, with a hint of the accent's hue when the canvas has none of its own |
 | `border`, `overlay-border` | further steps from the canvas |
 | `text`, `muted` | at least 4.5:1 (WCAG AA) on the canvas, the sidebar and cards |
@@ -191,6 +191,7 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `card` | cards: your prompt, plans, permission and question cards, the message box, theme cards | `#ffffff` | `#202736` |
 | `popover` | menus, popovers, dialogs, toasts | `#ffffff` | `#2a3244` |
 | `code-bg` | code blocks, tool output, inline diffs | `#f4f6fa` | `#202736` |
+| `code-pane` | a file or diff inside a side panel (the Files viewer, Changes), set apart from `sidebar` | `#ffffff` | `#15181f` |
 | `border` | card edges, the hairline under a header while content scrolls under it | `#e1e4e8` | `#2d3142` |
 | `overlay-border` | edges of menus and dialogs, and of fields, chips and secondary buttons inside them | `#d1d5da` | `#414861` |
 | `overlay-shadow` | the shadow under menus and dialogs (one colour; the app builds the layers) | `#15181f33` | `#000000b3` |

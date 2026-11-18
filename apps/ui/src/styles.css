@@ -85,6 +85,7 @@
   --sb-terminal-shadow: rgb(21 24 31 / 0.16);
   /* Code blocks and diffs: their own surface, and the backgrounds of added and removed lines. */
   --sb-code-bg: #f4f6fa;
+  --sb-code-pane: #ffffff;
   --sb-diff-added: #00806f1f;
   --sb-diff-removed: #d73a491f;
   /* The outline around the focused control while moving with Tab. */
@@ -151,6 +152,7 @@
     --sb-terminal-bg: #0d1016;
     --sb-terminal-shadow: rgb(0 0 0 / 0.55);
     --sb-code-bg: #202736;
+    --sb-code-pane: #15181f;
     --sb-diff-added: #51cf661f;
     --sb-diff-removed: #ff6b6b1f;
     --sb-focus-ring: #ffd43b8c;
@@ -220,6 +222,7 @@
   --sb-scrim: rgb(0 0 0 / 0.6);
   --sb-terminal-bg: #0d1016;
   --sb-code-bg: #202736;
+  --sb-code-pane: #15181f;
   --sb-diff-added: #51cf661f;
   --sb-diff-removed: #ff6b6b1f;
   --sb-focus-ring: #ffd43b8c;
@@ -849,6 +852,14 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
 .setting-flash {
   animation: search-highlight 2.5s ease-out;
   border-radius: 0.5rem;
+}
+
+/*
+ * A side panel's code (the Files viewer, the diffs in Changes): code-pane rather than code-bg, which is the panel's
+ * own surface in most themes, so the file stands apart from the panel around it.
+ */
+.code-pane {
+  --sb-code-bg: var(--sb-code-pane);
 }
 
 /* Find in session (⌘F): every match, and the one you're on. */

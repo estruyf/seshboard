@@ -11,12 +11,13 @@ export const RAIL_GITHUB = 'github';
 export type RailAppId = `app:${string}`;
 export type RailEntry = { kind: 'tool'; id: RailToolId } | { kind: 'app'; id: RailAppId } | { kind: 'divider' };
 
-/** Which tools apply to the session now (a git repository, the browser allowed, a file to preview, a mod's panes). */
+/** Which tools apply to the session now (a folder, a git repository, the browser allowed, a mod's panes). */
 export interface RailAvailable {
+  /** The session has a folder on this computer. */
+  files: boolean;
   changes: boolean;
   terminal: boolean;
   web: boolean;
-  preview: boolean;
   ask: boolean;
   agents: boolean;
   commands: boolean;
@@ -30,7 +31,7 @@ export interface RailAvailable {
 
 /** The rail's groups, top to bottom: what the session made, then questions about it, then the mods' panes, then the apps. */
 const GROUPS: readonly (readonly Exclude<RailTool, 'mods'>[])[] = [
-  ['changes', 'terminal', 'web', 'preview'],
+  ['files', 'changes', 'terminal', 'web'],
   ['ask', 'agents', 'commands', 'note'],
 ];
 
@@ -70,7 +71,7 @@ export interface RailCounts {
   commands?: number;
 }
 
-const NAMES: Record<Exclude<RailTool, 'mods'>, string> = { changes: 'Changes', terminal: 'Terminal', web: 'Browser', preview: 'Preview', ask: 'Ask', agents: 'Agents', commands: 'Commands', note: 'Note' };
+const NAMES: Record<Exclude<RailTool, 'mods'>, string> = { files: 'Files', changes: 'Changes', terminal: 'Terminal', web: 'Browser', ask: 'Ask', agents: 'Agents', commands: 'Commands', note: 'Note' };
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** What the badge says in words: "3 files", "2 tabs", "1 running". Null with nothing to count. */

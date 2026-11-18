@@ -22,7 +22,9 @@ import { bookmarkPage } from '../../state/browserBookmarksStore.ts';
 import { openWebLink, runBrowserAction } from '../../state/browserActions.ts';
 import { sessionServerOffers } from '../webPreview/serverOffers.ts';
 import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
-import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
+import { useFilesPanel } from '../../state/filesPanelStore.ts';
+import { quickOpenTarget, useQuickOpen } from '../../state/quickOpenStore.ts';
+import { frontTab, toggleTerminalPanel } from '../../state/rightPanelStore.ts';
 import { readOnlyFork } from '../../state/githubOriginStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -222,6 +224,22 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     toggleChanges: () => {
       const id = useSessions.getState().selectedId;
       if (id) toggleChangesPanel(id, isAskOpen(id) || isAgentsOpen(id) || isCommandsOpen(id));
+    },
+    toggleFiles: () => {
+      const id = useSessions.getState().selectedId;
+      if (!id) return;
+      const files = useFilesPanel.getState();
+      files.setOpen(id, !(files.get(id).open && frontTab(id) === 'files'));
+    },
+    // After the palette's own close, so Quick open takes focus.
+    quickOpen: () => setTimeout(() => useQuickOpen.getState().toggle(quickOpenTarget())),
+    searchInFiles: () => {
+      const id = useSessions.getState().selectedId;
+      if (!id) return;
+      const files = useFilesPanel.getState();
+      files.setOpen(id, true);
+      files.setMode(id, 'search');
+      setTimeout(() => files.command(id, 'search'));
     },
     toggleAgents: () => {
       const id = useSessions.getState().selectedId;

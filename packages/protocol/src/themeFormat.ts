@@ -14,6 +14,7 @@ export const THEME_TOKENS = [
   'card',
   'popover',
   'code-bg',
+  'code-pane',
   'border',
   'overlay-border',
   'overlay-shadow',

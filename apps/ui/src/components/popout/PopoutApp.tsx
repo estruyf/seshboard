@@ -1,3 +1,4 @@
+import { QuickOpenHost } from '../files/QuickOpen.tsx';
 import { useEffect } from 'react';
 import { SelectionMenu } from '../SelectionMenu.tsx';
 import { useReadyReport } from '../../engine/useReadyReport.ts';
@@ -114,6 +115,7 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
       <PaletteDialogs />
+      <QuickOpenHost />
       <RunTreeDialogs />
       <FilePreviewDialog />
       <AddContextDialogHost />
