@@ -8,7 +8,7 @@ const OWN_COPY = 'input, textarea, select, [contenteditable]:not([contenteditabl
  * Copies a selection in `container` (the conversation, reading mode, a previewed file) as clean HTML, plus its text.
  * Chromium would put the computed styles (the theme's colours, a background behind code) into the HTML, which reads badly
  * pasted into an email or a document. It leaves a selection that is not wholly inside `container` (Select all, which
- * covers all of it, is), or inside a field or the terminal, to the browser. The menus' and the toolbar's Copy do the same
+ * covers more), or inside a field or the terminal, to the browser. The menus' and the toolbar's Copy do the same
  * through `copySelection`.
  */
 export function useCleanCopy(container: RefObject<HTMLElement | null>): void {

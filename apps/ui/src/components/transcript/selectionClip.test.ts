@@ -33,8 +33,13 @@ function el(name: string, attrs: Record<string, string> = {}, style: Partial<Liv
   }
   return node;
 }
-/** Like the page: `user-select` is `text` on the prose root and `auto` on everything below, so `none` is what an element sets and its children inherit. */
-const styleOf = (node: LiveNode): LiveStyle => ({ userSelect: 'auto', display: 'block', visibility: 'visible', whiteSpace: 'normal', fontFamily: 'Inter, sans-serif', ...(node as Fake).style });
+/** Like the page: `user-select` is `text` on the prose root, and `user-select`, `white-space`, the font and `visibility` pass down to the elements below as they do in Chromium, so `none` is what an element sets and its children inherit. */
+const DEFAULTS: LiveStyle = { userSelect: 'auto', display: 'block', visibility: 'visible', whiteSpace: 'normal', fontFamily: 'Inter, sans-serif' };
+function styleOf(node: LiveNode): LiveStyle {
+  const fake = node as Fake;
+  const parent = fake.parentElement ? styleOf(fake.parentElement) : DEFAULTS;
+  return { ...DEFAULTS, userSelect: parent.userSelect, visibility: parent.visibility, whiteSpace: parent.whiteSpace, fontFamily: parent.fontFamily, ...fake.style };
+}
 
 /** A point as the path of child indexes down to its node, then the offset: points compare as paths do, a prefix first. */
 function pointPath(node: Fake, offset: number): number[] {
@@ -134,18 +139,42 @@ describe('clipFromRange', () => {
     expect(clip(page, rangeOf(text(third), 0, text(fourth), 4))?.html).toBe('<ol start="7"><li>three</li><li>four</li></ol>');
   });
 
-  it('copies a formula as its source, once, and takes the text from the clip', () => {
-    const before = txt('Let ');
-    const inline = el('span', { 'data-math-source': 'x^2' }, {}, el('span', { class: 'katex-html' }, { userSelect: 'none' }, 'x2'), el('span', { class: 'katex-mathml' }, {}, el('math', {}, {}, el('annotation', {}, {}, 'x^2'))), el('span', { 'data-math-copy': '', class: 'sr-only' }, {}, '$x^2$'));
-    const after = txt(' be it.');
-    const block = el('div', { 'data-math-source': 'a+b', 'data-math-display': '' }, {}, el('span', {}, { userSelect: 'none' }, 'a+b'));
-    const p = el('p', {}, {}, before, inline, after);
-    const page = root(p, block);
-    const result = clip(page, rangeOf(before, 0, block, 1));
-    expect(result?.html).toBe('<p>Let $x^2$ be it.</p><div>$$a+b$$</div>');
-    expect(result?.text).toBe('Let $x^2$ be it.\n$$a+b$$');
-    // A selection without a formula keeps the browser's text.
-    expect(clip(root(el('p', {}, {}, 'plain')), rangeOf(text(page), 0, text(page), 0))).toBeNull();
+  describe('a formula', () => {
+    const formula = (tex: string, display = false) =>
+      el(
+        'span',
+        { 'data-math-source': tex, ...(display ? { 'data-math-display': '' } : {}) },
+        {},
+        el('span', { class: 'katex-html' }, { userSelect: 'none' }, 'x2'),
+        el('span', { class: 'katex-mathml' }, {}, el('math', {}, {}, el('annotation', {}, {}, tex))),
+        el('span', { 'data-math-copy': '', class: 'sr-only' }, {}, `$${tex}$`),
+      );
+
+    it('is its source, once, in the HTML, and the text is what the browser copies when it has the TeX', () => {
+      const before = txt('Let ');
+      const inline = formula('x^2');
+      const after = txt(' be it.');
+      const block = formula('a+b', true);
+      const page = root(el('p', {}, {}, before, inline, after), block);
+      const result = clip(page, rangeOf(before, 0, block, 3), 'Let $x^2$ be it.\n$$a+b$$');
+      expect(result?.html).toBe('<p>Let $x^2$ be it.</p><div>$$a+b$$</div>');
+      expect(result?.text).toBe('Let $x^2$ be it.\n$$a+b$$');
+    });
+
+    it('makes the text from the clip when the browser text has no TeX', () => {
+      const before = txt('Let ');
+      const page = root(el('p', {}, {}, before, formula('x^2'), ' be it.'));
+      expect(clip(page, rangeOf(before, 0, page.childNodes[0]!, 3), 'Let x2 be it.')?.text).toBe('Let $x^2$ be it.');
+    });
+
+    it('is the whole formula when the selection is inside it', () => {
+      const inline = formula('x^2');
+      const page = root(el('p', {}, {}, 'Let ', inline, ' be'));
+      const inside = inline.childNodes[1]!.childNodes[0]!;
+      const result = clip(page, rangeOf(inside, 0, inside, 1), '$x^2$');
+      expect(result?.html).toBe('$x^2$');
+      expect(result?.text).toBe('$x^2$');
+    });
   });
 
   it('copies only the summary of a closed details, and all of an open one', () => {
@@ -155,21 +184,22 @@ describe('clipFromRange', () => {
     expect(clip(root(open), rangeOf(open, 0, open, 2))?.html).toBe('Title<p>Shown body</p>');
   });
 
-  it('copies the root when the range covers all of it (Select all) and nothing for a range partly outside', () => {
+  it('leaves a selection that is not wholly inside the root to the browser, Select all included', () => {
     const p = el('p', {}, {}, 'Reply');
     const prose = root(el('h1', {}, {}, 'Title'), p);
     const body = el('body', {}, {}, el('nav', {}, {}, 'Sidebar'), prose);
-    expect(clipFromRange(prose, rangeOf(body, 0, body, 2), styleOf, () => 'x')?.html).toBe('<h1>Title</h1><p>Reply</p>');
-    const nav = body.childNodes[0]!;
-    expect(clipFromRange(prose, rangeOf(text(nav), 0, text(p), 3), styleOf, () => 'x')).toBeNull();
+    expect(clipFromRange(prose, rangeOf(body, 0, body, 2), styleOf, () => 'x')).toBeNull();
+    expect(clipFromRange(prose, rangeOf(text(body.childNodes[0]!), 0, text(p), 3), styleOf, () => 'x')).toBeNull();
   });
 
-  it('keeps the indent of lines in a monospace block that keeps its breaks, as one code block', () => {
-    const mono: Partial<LiveStyle> = { whiteSpace: 'pre', fontFamily: 'ui-monospace, monospace' };
-    const first = el('div', {}, mono, '    return x;');
-    const second = el('div', {}, mono, '+ added');
-    const page = root(el('div', {}, {}, el('div', {}, mono, 'before'), first, second, el('div', {}, mono, 'after')));
-    const html = clip(page, rangeOf(text(first), 0, text(second), 7))?.html;
-    expect(html).toMatch(/^<pre style="[^"]*monospace[^"]*">    return x;\n\+ added<\/pre>$/);
+  it('keeps the indent of lines in a monospace block that keeps its breaks, as one code block, when the rows inherit the font from the container', () => {
+    const rows: Partial<LiveStyle> = { whiteSpace: 'pre' };
+    const first = el('div', {}, rows, '    return x;');
+    const second = el('div', {}, rows, '+ added');
+    const container = el('div', {}, { fontFamily: 'ui-monospace, monospace' }, el('div', {}, rows, 'before'), first, second, el('div', {}, rows, 'after'));
+    const page = root(container);
+    expect(clip(page, rangeOf(text(first), 0, text(second), 7))?.html).toMatch(/^<pre style="[^"]*monospace[^"]*">    return x;\n\+ added<\/pre>$/);
+    // All of it: the container's font stays on it, and its rows are one block.
+    expect(clip(page, rangeOf(container, 0, container, 4))?.html).toMatch(/^<pre style="[^"]*">before\n    return x;\n\+ added\nafter<\/pre>$/);
   });
 });
