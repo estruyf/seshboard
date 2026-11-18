@@ -6,10 +6,11 @@ import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { FILE_REHYPE_PLUGINS, FILE_REMARK_PLUGINS } from '../filePreview/markdownPlugins.ts';
-import { drawMath, katexNow, loadKatex } from './katex.ts';
-import { MathCode, MathDrawnContext } from './Maths.tsx';
+import { drawMath, katexNow, loadKatex, MAX_FORMULA } from './katex.ts';
+import { MathCode, MathDrawnContext, streamingBlocks } from './Maths.tsx';
 import { mathKind, mathSourceText, remarkMaths } from './maths.ts';
-import { fadeCountOf, replySentences } from './skimFade.ts';
+import { fadeCountOf, keepFromMarks, replySentences } from './skimFade.ts';
+import { splitBlocks } from './streamingMarkdown.ts';
 
 // The real CodeBlock needs the window (themes, highlighting); a stand-in with its parts is enough to see what a math block holds.
 vi.mock('./CodeBlock.tsx', () => ({
@@ -33,6 +34,9 @@ const components: Components = {
 /** An answer's Markdown, as the chat renders it (its plugins). */
 const chat = (text: string, drawn = true) =>
   renderToStaticMarkup(createElement(MathDrawnContext, { value: drawn }, createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMaths], components }, text)));
+
+/** The text of rendered HTML: tags dropped, entities decoded. */
+const textOf = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
 
 /** A previewed file's: its plugins, with raw HTML sanitised. */
 const file = (text: string) =>
@@ -135,12 +139,26 @@ describe('dollar amounts', () => {
     'US$5 or $10.50',
     'set $HOME and $PATH first',
     'that is $1,000 up from $900.',
+    // Shell variables and paths.
+    '$HOME/$USER',
+    'export PATH=$HOME/bin:$PATH',
+    '${HOME}/${USER}',
+    '$FOO=$BAR',
+    'files in $HOME/.claude/$PROJECT',
+    '($FOO) and ($BAR)',
+    'echo "$FOO" "$BAR"',
+    'bash: "$@" and "$*"',
+    'grep "^x$" file and "^y$"',
+    "R's df$col and df$other",
+    'a$b and c$d',
+    '10$-20$',
+    'github.com/a$b$c',
   ];
   it.each(stays)('keeps "%s" as text', (text) => {
     expect(mathNodes(text)).toEqual([]);
     const html = chat(text);
     expect(html).not.toContain('katex');
-    expect(html).toContain(text.replace(/&/g, '&amp;'));
+    expect(textOf(html)).toBe(text);
   });
 
   it('still draws a formula next to a price', () => {
@@ -150,7 +168,9 @@ describe('dollar amounts', () => {
 
   it('draws the usual formulas', () => {
     expect(mathNodes('$x^2$')).toEqual(['inlineMath:x^2']);
-    expect(mathNodes('Both $a$ and $b$ are real, so the $n$th term')).toEqual(['inlineMath:a', 'inlineMath:b', 'inlineMath:n']);
+    expect(mathNodes('Both $a$ and $b$ are real, so $n$.')).toEqual(['inlineMath:a', 'inlineMath:b', 'inlineMath:n']);
+    expect(mathNodes('The $x$-axis, $y$, and ($z$); is $w$?')).toEqual(['inlineMath:x', 'inlineMath:y', 'inlineMath:z', 'inlineMath:w']);
+    expect(mathNodes('Cost is $5 and $O(n)$ here, $$n^2$$ too')).toEqual(['inlineMath:O(n)', 'inlineMath:n^2']);
     expect(mathNodes('Is $O(n \\log n)$ enough? $2^{10}$ is 1024.')).toEqual(['inlineMath:O(n \\log n)', 'inlineMath:2^{10}']);
     expect(mathNodes('($x$)')).toEqual(['inlineMath:x']);
   });
@@ -162,6 +182,50 @@ describe('dollar amounts', () => {
   it('does not touch a dollar in code', () => {
     const html = chat('Run `echo $5 and $x$` and\n\n```sh\necho $x$\n```');
     expect(html).not.toContain('katex');
+  });
+});
+
+describe('maths inside other Markdown', () => {
+  it('is drawn in a list, a table, a quote and an alert', () => {
+    expect(chat('- item $a_1$\n- item $b_1$')).toMatch(/<li>[^]*class="katex"[^]*<\/li>/);
+    expect(chat('| a | b |\n|---|---|\n| $x^2$ | $y$ |')).toMatch(/<td>[^]*class="katex"/);
+    expect(chat('> a quote with $x$')).toMatch(/<blockquote>[^]*class="katex"/);
+    const alert = file('> [!NOTE]\n> Remember $E = mc^2$.');
+    expect(alert).toContain('data-alert="note"');
+    expect(alert).toContain('class="katex"');
+    expect(chat('1. step\n\n   $$\n   a+b\n   $$')).toContain('katex-display');
+  });
+
+  it('keeps a blank line inside a $$ block, both parsed and while streaming', () => {
+    expect(mathNodes('$$\na\n\nb\n$$')).toEqual(['math:a\n\nb']);
+    const blocks = splitBlocks('Before.\n\n$$\na\n\nb');
+    expect(blocks).toHaveLength(2);
+    expect(blocks[1]).toBe('$$\na\n\nb');
+    // Once it is closed, what follows is a block of its own again.
+    expect(splitBlocks('$$\na\n\nb\n$$\n\nAfter.')).toEqual(['$$\na\n\nb\n$$\n\n', 'After.']);
+    // A `$$` in a code fence or in code is text.
+    expect(splitBlocks('```\n$$\n```\n\nNext')).toHaveLength(2);
+    expect(splitBlocks('`$$` x\n\nNext')).toHaveLength(2);
+  });
+
+  it('keeps the TeX for a copy, and the glyphs out of the selection', () => {
+    const inline = chat('A $x^2$ b');
+    expect(inline).toContain('data-math-source="x^2"');
+    expect(inline).not.toContain('data-math-display');
+    expect(inline).toContain('class="select-none"');
+    expect(chat('$$\ny\n$$')).toMatch(/data-math="block" data-math-source="y" data-math-display=""/);
+  });
+});
+
+describe('streaming', () => {
+  it('turns drawing off only for the last block', () => {
+    const blocks = ['First $a$ done.\n\n', 'Second $b$ done.\n\n', 'Third $c$ in progress'];
+    const html = renderToStaticMarkup(
+      createElement('div', null, streamingBlocks(blocks, (text) => createElement(ReactMarkdown, { remarkPlugins: [remarkMaths], components }, text))),
+    );
+    expect(html.match(/data-math="inline"/g)).toHaveLength(2);
+    expect(html).toContain('$c$');
+    expect(html).not.toContain('$a$');
   });
 });
 
@@ -182,6 +246,11 @@ describe('mathKind', () => {
 });
 
 describe('Skim', () => {
+  it('matches a keep quote that has a formula in it', () => {
+    const sentences = replySentences('The bound $O(n)$ holds. Nothing else.');
+    expect(keepFromMarks(sentences, ['The bound $O(n)$ holds'])).toEqual([1]);
+    expect(keepFromMarks(sentences, ['The bound O(n) holds'])).toEqual([1]);
+  });
   it('treats an inline formula as one piece of a sentence', () => {
     // The formula's own full stop and space don't end a sentence (a formula's text is its source, without the dollars).
     const sentences = replySentences('Take $a. b$ and add it. Then stop.');
@@ -190,6 +259,21 @@ describe('Skim', () => {
   it('counts the same sentences with and without a formula in them', () => {
     const count = fadeCountOf('We use $x^2$ here. The result holds. Nothing else.', []);
     expect(count.total).toBe(3);
+  });
+});
+
+describe('KaTeX limits', () => {
+  it('limits a box or a rule to 10em, so a formula cannot draw over the page', () => {
+    const html = drawMath(katexOf(), '\\rule{1em}{2000em}', false)!;
+    // The TeX stays in the annotation; what is drawn (the styles) is clamped.
+    expect(html).not.toMatch(/style="[^"]*2000em/);
+    expect(html).toContain('border-top-width:10em');
+    expect(drawMath(katexOf(), '\\raisebox{40em}{x}', false)!).not.toMatch(/style="[^"]*40em/);
+  });
+  it('shows the source of a formula that expands without end, or is very long', () => {
+    expect(drawMath(katexOf(), '\\def\\a{\\a\\a}\\a', false)).toBeNull();
+    expect(drawMath(katexOf(), 'x+'.repeat(MAX_FORMULA), false)).toBeNull();
+    expect(drawMath(katexOf(), 'x+'.repeat(100), false)).toContain('katex');
   });
 });
 

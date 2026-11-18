@@ -9,8 +9,11 @@ import type { Processor } from 'unified';
  * Maths in Markdown: `$x^2$`, `$$ … $$` and a ```` ```math ```` block. It is `remark-math`'s syntax (its micromark and mdast
  * pieces), with one change: a single dollar opens a formula only the way Pandoc's does, so `it costs $5 and $10` stays text.
  *
- * - The opening `$` is followed by something that is not a space: `$x$`, not `$ x$`.
- * - The closing `$` follows something that is not a space and is not followed by a digit: `$5 and $10` and `$5-$10` don't close.
+ * - The opening `$` is followed by something that is not a space: `$x$`, not `$ x$`. It doesn't come right after a letter or
+ *   a digit either: `df$col`, `10$-20$` and `a$b` are not formulas.
+ * - The closing `$` follows something that is not a space and is followed by a space, the end or punctuation (`$x$.`,
+ *   `$x$)`, `$x$-axis`), never a letter, a digit or a bracket: `$5 and $10`, `$5-$10`, `$HOME/$USER`, `${A}/${B}` and
+ *   `"$@" and "$*"` don't close. This costs `$n$th`; shell variables and prices are more common.
  * - A `$` that could only open another formula (after a space, before something that is not a space) means the first one
  *   was a price, so `costs $5 and $x$` still draws `$x$`.
  *
@@ -25,7 +28,11 @@ const SPACE = 32;
 
 /** A space, a tab, a line ending or the end: where a formula can't start or stop. */
 const blank = (code: Code): boolean => code === null || code < 0 || code === SPACE;
-const digit = (code: Code): boolean => code !== null && code >= 48 && code <= 57;
+/** A letter or a digit, in any script. */
+const wordy = (code: Code): boolean => code !== null && code > 0 && /[\p{L}\p{N}]/u.test(String.fromCodePoint(code));
+/** What may follow a closing `$`: the end of a sentence, a closing bracket or quote, a dash. */
+const AFTER_CLOSE = '.,;:!?)]}"\'’”-–—…';
+const endsFormula = (code: Code): boolean => blank(code) || (code !== null && AFTER_CLOSE.includes(String.fromCodePoint(code)));
 
 /** The `$…$` construct of micromark-extension-math, with Pandoc's rules for a single dollar. */
 function mathText(): Construct {
@@ -37,6 +44,8 @@ function mathText(): Construct {
     let token: ReturnType<typeof effects.enter>;
     // The last thing read was a space or a line ending.
     let afterBlank = false;
+    // The character before the opening `$`.
+    const before = this.previous;
     return start;
 
     function start(code: Code) {
@@ -53,7 +62,7 @@ function mathText(): Construct {
       }
       effects.exit('mathTextSequence');
       // `$ ` and a `$` at the end of a line are a dollar sign.
-      if (sizeOpen === 1 && blank(code)) return nok(code);
+      if (sizeOpen === 1 && (blank(code) || wordy(before))) return nok(code);
       return between(code);
     }
 
@@ -99,8 +108,8 @@ function mathText(): Construct {
         return sequenceClose;
       }
       if (size === sizeOpen) {
-        // A single dollar after a space, or before a digit, is not the end: this was a price.
-        if (sizeOpen === 1 && (afterBlank || digit(code))) return nok(code);
+        // A single dollar after a space, or before a letter, a digit or a bracket, is not the end: a price or a shell variable.
+        if (sizeOpen === 1 && (afterBlank || !endsFormula(code))) return nok(code);
         effects.exit('mathTextSequence');
         effects.exit('mathText');
         return ok(code);

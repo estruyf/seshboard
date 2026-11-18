@@ -15,11 +15,26 @@ export function splitBlocks(text: string): string[] {
   }
   const blocks: string[] = [];
   for (const token of tokens) {
-    // Spacing and link definitions belong with what came before (a definition alone renders nothing).
-    if ((token.type === 'space' || token.type === 'def') && blocks.length) blocks[blocks.length - 1] += token.raw;
+    // Spacing and link definitions belong with what came before (a definition alone renders nothing), and so does
+    // everything after a `$$` nothing has closed yet: a formula can have a blank line in it.
+    if (blocks.length && (token.type === 'space' || token.type === 'def' || opensMath(blocks[blocks.length - 1]!))) blocks[blocks.length - 1] += token.raw;
     else blocks.push(token.raw);
   }
   return blocks.length ? blocks : [text];
+}
+
+/** Whether a block has a `$$` that nothing closes: counted outside code fences and inline code, where it is just text. */
+export function opensMath(block: string): boolean {
+  let fenced = false;
+  let count = 0;
+  for (const line of block.split('\n')) {
+    if (/^ {0,3}(?:```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced) count += line.replace(/`[^`]*`?/g, '').match(/(?<!\\)\$\$/g)?.length ?? 0;
+  }
+  return count % 2 === 1;
 }
 
 /**

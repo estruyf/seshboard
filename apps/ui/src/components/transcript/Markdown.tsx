@@ -7,7 +7,7 @@ import { remarkBareLinks } from './bareLinks.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
-import { MathCode, MathDrawnContext } from './Maths.tsx';
+import { MathCode, streamingBlocks } from './Maths.tsx';
 import { mathKind, remarkMaths } from './maths.ts';
 import { remarkSkimFade } from './skimFade.ts';
 import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
@@ -137,16 +137,9 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant
   const blocks = useMemo(() => splitBlocks(withoutSkimMarks(text)), [text]);
   return (
     <div className={proseOf(variant)}>
-      {blocks.map((block, i) => (
-        // Blocks only ever grow at the end, so the index is a stable key.
-        i === blocks.length - 1 ? (
-          // Maths in the block being written shows as source: an unclosed `$$` would draw half a formula.
-          <MathDrawnContext key={i} value={false}>
-            <Block text={healMarkdown(block)} />
-          </MathDrawnContext>
-        ) : (
-          <Block key={i} text={block} />
-        )
+      {/* Blocks only ever grow at the end, so the index is a stable key. */}
+      {streamingBlocks(blocks, (block, last) => (
+        <Block text={last ? healMarkdown(block) : block} />
       ))}
     </div>
   );
