@@ -56,6 +56,22 @@ interface Context {
 }
 
 const mono = (inner: string) => (inner ? `<code style="${css(CODE_STYLE)}">${inner}</code>` : '');
+/** Block elements, which a monospace font goes on as a style (a `code` around them would put blocks inside inline code). */
+const BLOCKS = new Set(['div', 'p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote']);
+
+/**
+ * Text whose line breaks and spaces `white-space` kept: a break becomes `<br>`, and spaces that would collapse once pasted
+ * (leading ones, runs) become non-breaking, so an indent survives.
+ */
+function preformattedText(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) => escapeText(line.replace(/^ +/, (spaces) => '\u00a0'.repeat(spaces.length)).replace(/ {2,}/g, (spaces) => `${'\u00a0'.repeat(spaces.length - 1)} `)).replace(/\u00a0/g, '&nbsp;'))
+    .join('<br>');
+}
+
+/** Tags `markup` writes in its own way, which a monospace font is not added to. */
+const OWN_MARKUP = new Set(['a', 'pre', 'code', 'table', 'th', 'td', 'ol']);
 
 /** One element's tag around its content. */
 function markup(tag: string, node: ClipNode, inner: string): string {
@@ -71,24 +87,76 @@ function markup(tag: string, node: ClipNode, inner: string): string {
     const start = node.getAttribute?.('start');
     return start && /^-?\d+$/.test(start) ? `<ol start="${start}">${inner}</ol>` : `<ol>${inner}</ol>`;
   }
-  if (KEPT.has(tag)) return DROPPED_WHEN_EMPTY.has(tag) && inner.trim() === '' ? '' : `<${tag}>${inner}</${tag}>`;
+  if (KEPT.has(tag)) {
+    if (DROPPED_WHEN_EMPTY.has(tag) && inner.trim() === '') return '';
+    return node.monospace && BLOCKS.has(tag) ? `<${tag} style="${css(CODE_STYLE)}">${inner}</${tag}>` : `<${tag}>${inner}</${tag}>`;
+  }
   // Anything else (spans, the transcript's own wrappers) only holds its content.
   return inner;
 }
 
+/** A block that keeps its line breaks in a monospace font (a diff row, a command's output): code, so it pastes as a code block with its indent. */
+const isCodeRow = (node: ClipNode, context: Context) => node.nodeType === 1 && !!node.preformatted && !!node.monospace && !context.code && BLOCKS.has(tagOf(node));
+
+function renderChildren(node: ClipNode, context: Context): string {
+  let html = '';
+  for (let i = 0; i < node.childNodes.length; i++) {
+    const child = node.childNodes[i]!;
+    if (!isCodeRow(child, context) || DROPPED.has(tagOf(child))) {
+      html += render(child, context);
+      continue;
+    }
+    // Rows that follow each other are one code block, a line each.
+    const rows: string[] = [];
+    while (i < node.childNodes.length && isCodeRow(node.childNodes[i]!, context)) rows.push(renderChildren(node.childNodes[i++]!, { pre: true, code: true }));
+    i--;
+    html += `<pre style="${css(PRE_STYLE)}">${rows.join('\n')}</pre>`;
+  }
+  return html;
+}
+
 function render(node: ClipNode, context: Context): string {
   // A line break in text that keeps them through `white-space` is gone once pasted, unless it is a `<br>`.
-  if (node.nodeType === 3) return context.pre && !context.code ? escapeText(node.textContent ?? '').replace(/\r?\n/g, '<br>') : escapeText(node.textContent ?? '');
+  if (node.nodeType === 3) return context.pre && !context.code ? preformattedText(node.textContent ?? '') : escapeText(node.textContent ?? '');
   // An element, or the fragment a selection clones into.
   if (node.nodeType !== 1 && node.nodeType !== 11) return '';
   const tag = tagOf(node);
   if (DROPPED.has(tag)) return '';
   if (tag === 'br' || tag === 'hr') return `<${tag}>`;
   const next = { pre: context.pre || !!node.preformatted, code: context.code || tag === 'pre' || tag === 'code' };
-  let inner = '';
-  for (let i = 0; i < node.childNodes.length; i++) inner += render(node.childNodes[i]!, next);
-  if (node.monospace && !next.code) inner = mono(inner);
+  let inner = renderChildren(node, next);
+  if (node.monospace && !next.code && !KEPT.has(tag) && !OWN_MARKUP.has(tag)) inner = mono(inner);
   return markup(tag, node, inner);
+}
+
+const BLOCK_TEXT = new Set(['p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr', 'blockquote', 'ul', 'ol', 'table', 'pre', 'hr']);
+
+/** A selection's text from the cleaned tree, for when it differs from what the browser would copy (a formula's source). Blocks on their own lines, cells apart by a tab. */
+export function plainText(fragment: ClipNode): string {
+  let out = '';
+  const lineBreak = () => {
+    if (out && !out.endsWith('\n')) out += '\n';
+  };
+  const walk = (node: ClipNode) => {
+    if (node.nodeType === 3) {
+      out += node.textContent ?? '';
+      return;
+    }
+    if (node.nodeType !== 1 && node.nodeType !== 11) return;
+    const tag = tagOf(node);
+    if (DROPPED.has(tag)) return;
+    if (tag === 'br') {
+      out += '\n';
+      return;
+    }
+    const block = BLOCK_TEXT.has(tag);
+    if (block) lineBreak();
+    for (let i = 0; i < node.childNodes.length; i++) walk(node.childNodes[i]!);
+    if (tag === 'td' || tag === 'th') out += '\t';
+    if (block) lineBreak();
+  };
+  walk(fragment);
+  return out.replace(/\t\n/g, '\n').replace(/\n+$/, '');
 }
 
 /**
@@ -106,10 +174,12 @@ function render(node: ClipNode, context: Context): string {
  */
 export function cleanSelectionHtml(fragment: ClipNode, ancestors: readonly ClipNode[] = []): string {
   const code = ancestors.some((a) => tagOf(a) === 'pre' || tagOf(a) === 'code');
-  const context = { pre: !!fragment.preformatted, code };
-  let html = '';
-  for (let i = 0; i < fragment.childNodes.length; i++) html += render(fragment.childNodes[i]!, context);
-  if (fragment.monospace && !code) html = mono(html);
+  // A selection inside a block that keeps its line breaks in a monospace font (a diff row) is a code block.
+  const block = !!fragment.preformatted && !!fragment.monospace && !code;
+  const context = { pre: !!fragment.preformatted, code: code || block };
+  let html = renderChildren(fragment, context);
+  if (block && html.trim()) html = `<pre style="${css(PRE_STYLE)}">${html}</pre>`;
+  else if (fragment.monospace && !code && !block) html = mono(html);
   if (!html.trim()) return '';
   const spans = ancestors.length > 0 && CONTAINERS.has(tagOf(ancestors[0]!));
   for (const ancestor of ancestors) {
