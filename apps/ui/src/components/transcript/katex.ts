@@ -7,13 +7,27 @@ export type Katex = typeof import('katex').default;
 
 let loaded: Katex | null = null;
 let loading: Promise<Katex> | null = null;
+let sheet: CSSStyleSheet | null = null;
 
 /** KaTeX if it is loaded already, so a formula can be drawn in the render that asks for it. */
 export const katexNow = (): Katex | null => loaded;
 
+/**
+ * KaTeX's rules for the shadow root a drawn formula sits in (the document's styles don't reach into one), or null when
+ * there is no such thing as a constructable style sheet here. Without the `@font-face` rules, which only count in the
+ * document, where the stylesheet imported below declares them.
+ */
+export const katexSheet = (): CSSStyleSheet | null => sheet;
+
 export function loadKatex(): Promise<Katex> {
-  loading ??= Promise.all([import('katex'), import('katex/dist/katex.min.css')]).then(
-    ([module]) => (loaded = module.default),
+  loading ??= Promise.all([import('katex'), import('katex/dist/katex.min.css'), import('katex/dist/katex.min.css?inline')]).then(
+    ([module, , css]) => {
+      if (typeof CSSStyleSheet !== 'undefined') {
+        sheet = new CSSStyleSheet();
+        sheet.replaceSync(css.default.replace(/@font-face\s*\{[^}]*\}/g, ''));
+      }
+      return (loaded = module.default);
+    },
     (error: unknown) => {
       // Try again the next time a formula shows.
       loading = null;
@@ -45,7 +59,7 @@ const forget = (key: string) => {
 /**
  * A formula as KaTeX's HTML, or null when it doesn't parse or is too long. Cached by source, so a long conversation
  * scrolling past doesn't draw the same formula again. `trust: false` (no `\href`, `\includegraphics` and the like),
- * `maxSize` (the biggest box or rule, in em) and `maxExpand` (macro expansions) keep a formula from drawing over the page or
+ * `maxSize` (the biggest box or rule, in em) and `maxExpand` (macro expansions, KaTeX's default: a long `aligned` derivation needs it) keep a formula from drawing over the page or
  * running away, and `strict: 'ignore'` stops console warnings for what Claude writes; an error throws so the caller can
  * show the source instead.
  */
@@ -62,7 +76,7 @@ export function drawMath(katex: Katex, source: string, display: boolean): string
   }
   let html: string | null;
   try {
-    html = katex.renderToString(source, { displayMode: display, throwOnError: true, trust: false, strict: 'ignore', errorColor: ERROR_COLOUR, maxSize: 10, maxExpand: 200, output: 'htmlAndMathml' });
+    html = katex.renderToString(source, { displayMode: display, throwOnError: true, trust: false, strict: 'ignore', errorColor: ERROR_COLOUR, maxSize: 10, maxExpand: 1000, output: 'htmlAndMathml' });
     if (html.includes(ERROR_COLOUR)) html = null;
   } catch {
     html = null;

@@ -6974,35 +6974,43 @@ async function runMathsStep(win: BrowserWindow): Promise<string> {
   const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
   const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
   const wide = Array.from({ length: 80 }, (_, i) => `x_{${i + 1}}`).join(' + ');
+  // A drawn formula sits in a shadow root (so a selection copies only its TeX): its KaTeX is in there.
+  const DRAWN = (selector: string, within = PREVIEW) => `[...(${within}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector(${JSON.stringify(selector)}))`;
   try {
     writeFileSync(
       md,
       `# Maths\n\nA square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.\n\n$$\n\\int_0^1 x\\,dx = \\frac12\n$$\n\n\`\`\`math\n\\sum_{i=1}^n i = \\frac{n(n+1)}{2}\n\`\`\`\n\nBroken: $\\frac{1$ here.\n\nPlaced: before $\\llap{\\kern-60em CLICK}$ after, and $\\rule{1em}{2000em}$ too.\n\n$$\n${wide}\n$$\n`,
     );
     await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
-    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${PREVIEW}?.querySelector('.katex')`, 10_000))) return 'the formulas were not drawn in the Markdown preview';
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DRAWN('.katex')}`, 10_000))) return 'the formulas were not drawn in the Markdown preview';
     const found = (await js(
       `(() => { const p = ${PREVIEW}; const html = (sel) => p.querySelectorAll(sel).length;
         const inline = p.querySelector('[data-math="inline"]'); const block = p.querySelector('[data-code-preview-block] [data-math="block"]');
         const wideBox = [...p.querySelectorAll('[data-math="block"]')].pop();
-        return { inline: html('[data-math="inline"] .katex'), blocks: html('[data-code-preview-block] [data-math="block"] .katex-display'), switches: html('[data-code-preview-block] [data-code-view="source"]'),
+        return { inline: html('[data-math="inline"] [data-math-visual]'), blocks: html('[data-code-preview-block] [data-math="block"] [data-math-visual]'), switches: html('[data-code-preview-block] [data-code-view="source"]'),
           text: p.innerText, broken: p.querySelector('[data-math-error]')?.innerText ?? null,
-          colour: inline && getComputedStyle(inline.querySelector('.katex')).color, prose: getComputedStyle(p).color,
+          colour: inline && getComputedStyle(inline.querySelector('[data-math-visual]').shadowRoot.querySelector('.katex')).color, drawnInShadow: [...p.querySelectorAll('[data-math-visual]')].every((v) => v.shadowRoot?.querySelector('.katex') && v.children.length === 0), prose: getComputedStyle(p).color,
           fonts: [...document.fonts].filter((f) => f.family.replace(/["']/g, '').startsWith('KaTeX') && f.status === 'loaded').length,
           wideScrolls: wideBox.scrollWidth > wideBox.clientWidth, wideFits: wideBox.getBoundingClientRect().right <= p.getBoundingClientRect().right + 1, pageScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth,
           blockInner: !!block,
           clipped: [...p.querySelectorAll('[data-math="inline"]')].map((m) => getComputedStyle(m).overflowX + '/' + getComputedStyle(m).overflowY + ':' + Math.round(m.getBoundingClientRect().height) + 'x' + Math.round(m.getBoundingClientRect().width)),
-          sources: [...p.querySelectorAll('[data-math-source]')].map((m) => m.dataset.mathSource).filter(Boolean).length
+          sources: [...p.querySelectorAll('[data-math-source]')].map((m) => m.dataset.mathSource).filter(Boolean).length,
+          // What Copy, Quote and Remember read: a selection across a line of text, and one that is only a formula.
+          selected: (() => { const sel = getSelection(); const pick = (fn) => { const r = document.createRange(); fn(r); sel.removeAllRanges(); sel.addRange(r); const t = String(sel); sel.removeAllRanges(); return t; };
+            return { line: pick((r) => r.selectNodeContents(p.querySelector('p'))), alone: pick((r) => r.selectNode(p.querySelector('[data-math="inline"]'))), block: pick((r) => r.selectNodeContents(p.querySelector('[data-code-preview] [data-math="block"]'))) }; })()
         }; })()`,
-    )) as { inline: number; blocks: number; switches: number; text: string; broken: string | null; colour: string | null; prose: string; fonts: number; wideScrolls: boolean; wideFits: boolean; pageScrolls: boolean; blockInner: boolean; clipped: string[]; sources: number };
+    )) as { inline: number; blocks: number; switches: number; text: string; broken: string | null; colour: string | null; prose: string; fonts: number; wideScrolls: boolean; wideFits: boolean; pageScrolls: boolean; blockInner: boolean; clipped: string[]; sources: number; drawnInShadow: boolean; selected: { line: string; alone: string; block: string } };
     if (found.inline !== 3) return `${found.inline} inline formulas were drawn, not 3`;
+    if (!found.drawnInShadow) return 'a formula is not drawn in its shadow root alone';
     // One that places itself (a negative kern, a tall rule) is clipped to its own box, and every drawn formula keeps its TeX for a copy.
     if (!found.clipped.every((box) => box.startsWith('clip/clip'))) return `an inline formula is not clipped to its box (${found.clipped.join(' ')})`;
     if (found.sources !== 6) return `${found.sources} formulas carry their TeX for a copy, not 6`;
     if (found.blocks !== 3) return `${found.blocks} blocks were drawn, not 3 (a $$ block, a math fence and a wide one)`;
     if (found.switches !== 3) return `${found.switches} math blocks have a Source switch, not 3`;
     if (!found.text.includes('it costs $5 and $10 a month')) return 'the dollar amount did not stay text';
-    if (found.text.includes('$x^2')) return 'an inline formula still shows its dollars';
+    if (found.selected.line !== 'A square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.') return `a selection across a line with a formula reads ${JSON.stringify(found.selected.line)}`;
+    if (found.selected.alone !== '$x^2 + y^2 = z^2$') return `a selection of only a formula reads ${JSON.stringify(found.selected.alone)}`;
+    if (found.selected.block.trim() !== '$$\n\\int_0^1 x\\,dx = \\frac12\n$$') return `a selection of a formula block reads ${JSON.stringify(found.selected.block)}`;
     if (!found.broken?.includes('\\frac{1')) return `a formula that doesn't parse shows ${JSON.stringify(found.broken)}, not its source`;
     if (found.colour !== found.prose) return `a formula is ${found.colour}, not the text colour ${found.prose}`;
     if (found.fonts < 1) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
@@ -7015,7 +7023,7 @@ async function runMathsStep(win: BrowserWindow): Promise<string> {
     await js(`${FIRST}.querySelector('[data-code-view="source"]').click()`);
     if (!(await waitInPage(win, `!${FIRST}.querySelector('[data-code-preview]') && ${FIRST}.innerText.includes('\\int_0^1')`, 3_000))) return 'Source did not show the formula as written';
     await js(`${FIRST}.querySelector('[data-code-view="preview"]').click()`);
-    if (!(await waitInPage(win, `${FIRST}.querySelector('[data-math="block"] .katex')`, 3_000))) return 'Preview did not draw the formula again';
+    if (!(await waitInPage(win, `${DRAWN('.katex', FIRST)}`, 3_000))) return 'Preview did not draw the formula again';
     return 'ok: $x^2$, a $$ block and a math fence are drawn by KaTeX in the text colour with its fonts loaded, a dollar amount stays text, a formula that does not parse shows its source, a wide one scrolls inside its block, and Source and Preview switch';
   } finally {
     pressKey(win, 'Escape');

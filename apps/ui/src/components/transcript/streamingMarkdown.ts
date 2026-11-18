@@ -14,27 +14,52 @@ export function splitBlocks(text: string): string[] {
     return [text];
   }
   const blocks: string[] = [];
+  const scan: MathScan = { fence: null, math: false };
   for (const token of tokens) {
     // Spacing and link definitions belong with what came before (a definition alone renders nothing), and so does
-    // everything after a `$$` nothing has closed yet: a formula can have a blank line in it.
-    if (blocks.length && (token.type === 'space' || token.type === 'def' || opensMath(blocks[blocks.length - 1]!))) blocks[blocks.length - 1] += token.raw;
+    // everything after a `$$` line nothing has closed yet: a formula can have a blank line in it.
+    if (blocks.length && (token.type === 'space' || token.type === 'def' || scan.math)) blocks[blocks.length - 1] += token.raw;
     else blocks.push(token.raw);
+    scanMath(token.raw, scan);
   }
   return blocks.length ? blocks : [text];
 }
 
-/** Whether a block has a `$$` that nothing closes: counted outside code fences and inline code, where it is just text. */
-export function opensMath(block: string): boolean {
-  let fenced = false;
-  let count = 0;
-  for (const line of block.split('\n')) {
-    if (/^ {0,3}(?:```|~~~)/.test(line)) {
-      fenced = !fenced;
+/** Where a reader of the text is: in a code fence (its mark and length) or in a `$$` block that nothing has closed yet. */
+interface MathScan {
+  fence: { mark: string; length: number } | null;
+  math: boolean;
+}
+
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/;
+/** A `$$` line: it opens a block (its meta can't hold a `$`) and, with nothing after it, closes one. `pid $$ is…` and `$$x$$` aren't. */
+const MATH_LINE = /^ {0,3}\$\$([^$]*)$/;
+
+/** Reads lines (whole ones) and updates where the reader is: once for each, so a long reply isn't read again for every token. */
+function scanMath(text: string, state: MathScan): void {
+  for (const line of text.split('\n')) {
+    if (state.math) {
+      // Inside a `$$` block a fence is text; only a bare `$$` ends it.
+      if (/^ {0,3}\$\$\s*$/.test(line)) state.math = false;
       continue;
     }
-    if (!fenced) count += line.replace(/`[^`]*`?/g, '').match(/(?<!\\)\$\$/g)?.length ?? 0;
+    const fence = FENCE_LINE.exec(line)?.[1];
+    if (state.fence) {
+      // Only a fence of the same mark, at least as long, ends it: a short one inside a longer one is text.
+      if (fence && fence[0] === state.fence.mark && fence.length >= state.fence.length && /^[`~]+\s*$/.test(line.trim())) state.fence = null;
+    } else if (fence) {
+      state.fence = { mark: fence[0]!, length: fence.length };
+    } else if (MATH_LINE.test(line)) {
+      state.math = true;
+    }
   }
-  return count % 2 === 1;
+}
+
+/** Whether the text ends inside a `$$` block nothing closes: `$$` at the start of a line, outside code fences. */
+export function opensMath(text: string): boolean {
+  const state: MathScan = { fence: null, math: false };
+  scanMath(text, state);
+  return state.math;
 }
 
 /**

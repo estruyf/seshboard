@@ -10,7 +10,7 @@ import { drawMath, katexNow, loadKatex, MAX_FORMULA } from './katex.ts';
 import { MathCode, MathDrawnContext, streamingBlocks } from './Maths.tsx';
 import { mathKind, mathSourceText, remarkMaths } from './maths.ts';
 import { fadeCountOf, keepFromMarks, replySentences } from './skimFade.ts';
-import { splitBlocks } from './streamingMarkdown.ts';
+import { opensMath, splitBlocks } from './streamingMarkdown.ts';
 
 // The real CodeBlock needs the window (themes, highlighting); a stand-in with its parts is enough to see what a math block holds.
 vi.mock('./CodeBlock.tsx', () => ({
@@ -38,6 +38,9 @@ const chat = (text: string, drawn = true) =>
 /** The text of rendered HTML: tags dropped, entities decoded. */
 const textOf = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
 
+/** The HTML without the hidden TeX a drawn formula carries for a copy (`data-math-copy`). */
+const shown = (html: string) => html.replace(/<span data-math-copy[^>]*>[^<]*<\/span>/g, '');
+
 /** A previewed file's: its plugins, with raw HTML sanitised. */
 const file = (text: string) =>
   renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: FILE_REMARK_PLUGINS, rehypePlugins: FILE_REHYPE_PLUGINS, components }, text));
@@ -63,7 +66,9 @@ describe('maths in Markdown', () => {
     const html = chat('Then $x^2 + y^2 = z^2$ holds.');
     expect(html).toContain('class="katex"');
     expect(html).toContain('data-math="inline"');
-    expect(html).not.toContain('$x^2');
+    expect(shown(html)).not.toContain('$x^2');
+    // What a selection holds: the TeX, in its delimiters.
+    expect(html).toContain('data-math-copy="true" aria-hidden="true" class="absolute top-0 left-0 size-px overflow-hidden whitespace-pre opacity-0">$x^2 + y^2 = z^2$</span>');
   });
 
   it('draws $$ blocks and math fences as a block with the Preview and Source switch', () => {
@@ -175,6 +180,32 @@ describe('dollar amounts', () => {
     expect(mathNodes('($x$)')).toEqual(['inlineMath:x']);
   });
 
+  it('draws a formula next to Markdown marks, operators and brackets', () => {
+    const draws = ['**$x$**', '*$x$*', '_$x$_', '~~$x$~~', '$x$<br>', '$x$|', '$x$>0', '«$x$»', '$x$ here', '$x$\u00a0here', '[$x$]', '$x$:'];
+    for (const text of draws) expect(mathNodes(text), text).toEqual(['inlineMath:x']);
+    expect(mathNodes('$x$/$y$')).toEqual(['inlineMath:x', 'inlineMath:y']);
+    expect(mathNodes('$a$+$b$')).toEqual(['inlineMath:a', 'inlineMath:b']);
+    expect(mathNodes('$x$=$y$')).toEqual(['inlineMath:x', 'inlineMath:y']);
+    expect(mathNodes('$x$×$y$')).toEqual(['inlineMath:x', 'inlineMath:y']);
+    // The marks still do their work around it.
+    expect(chat('**$x$**')).toMatch(/<strong>[^]*class="katex"/);
+    expect(chat('~~$x$~~')).toMatch(/<del>[^]*class="katex"/);
+  });
+
+  it('draws a formula in Chinese and Japanese text, which has no spaces', () => {
+    expect(mathNodes('设$x$为实数')).toEqual(['inlineMath:x']);
+    expect(mathNodes('日本$x$日本')).toEqual(['inlineMath:x']);
+    expect(mathNodes('令$x$。')).toEqual(['inlineMath:x']);
+    expect(mathNodes('令$x$，$y$、$z$；')).toEqual(['inlineMath:x', 'inlineMath:y', 'inlineMath:z']);
+    expect(mathNodes('한국어$x$한국어')).toEqual(['inlineMath:x']);
+    // Prices and variables still don't, next to a character of these scripts or not.
+    expect(mathNodes('价格是$5和$10')).toEqual([]);
+  });
+
+  it('does not take the shell\'s $@, $*, $? and $# for a formula', () => {
+    for (const text of ['"$@" and "$*"', 'status $? and $#', 'run $@ then $*.', 'echo "$#" "$?"']) expect(mathNodes(text), text).toEqual([]);
+  });
+
   it('keeps $$ working as remark-math does', () => {
     expect(mathNodes('$$ x + 1 $$')).toEqual(['inlineMath:x + 1']);
   });
@@ -212,8 +243,46 @@ describe('maths inside other Markdown', () => {
     const inline = chat('A $x^2$ b');
     expect(inline).toContain('data-math-source="x^2"');
     expect(inline).not.toContain('data-math-display');
-    expect(inline).toContain('class="select-none"');
+    expect(inline).toContain('data-math-visual');
     expect(chat('$$\ny\n$$')).toMatch(/data-math="block" data-math-source="y" data-math-display=""/);
+  });
+});
+
+describe('a $$ block while streaming', () => {
+  it('opens only for a $$ at the start of a line', () => {
+    expect(opensMath('$$\na')).toBe(true);
+    expect(opensMath('  $$\na')).toBe(true);
+    expect(opensMath('$$ \\frac{a}{b}')).toBe(true);
+    expect(opensMath('$$\na\n$$')).toBe(false);
+    expect(opensMath('pid $$ is the shell.')).toBe(false);
+    expect(opensMath('One $$x$$ here\n\nand $$y$$')).toBe(false);
+    expect(opensMath('$$x$$')).toBe(false);
+  });
+  it('ignores $$ in code', () => {
+    expect(opensMath('```sh\n$$\n```')).toBe(false);
+    expect(opensMath('```sh\n$$')).toBe(false);
+    expect(opensMath('~~~\n$$\n~~~\n\nafter')).toBe(false);
+    // A shorter fence inside a longer one is text, so what follows is still code.
+    expect(opensMath('````md\n```\n$$\n```\n$$\n````')).toBe(false);
+    // Indented code is not a $$ line.
+    expect(opensMath('    $$\n    x')).toBe(false);
+    // Inside a block a fence is text.
+    expect(opensMath('$$\n```\n')).toBe(true);
+  });
+  it('does not merge the rest of a reply after a stray $$', () => {
+    const blocks = splitBlocks('The pid $$ is the shell.\n\nSecond.\n\nThird.');
+    expect(blocks).toHaveLength(3);
+  });
+  it('reads a long reply once, not once for every block', () => {
+    const text = `Start $$ here\n\n${Array.from({ length: 4000 }, (_, i) => `Paragraph ${i} with some words in it.`).join('\n\n')}`;
+    expect(text.length).toBeGreaterThan(150_000);
+    const begun = performance.now();
+    const blocks = splitBlocks(text);
+    expect(blocks.length).toBeGreaterThan(3999);
+    // Generous: it took a second and more when every block was read again from its start.
+    expect(performance.now() - begun).toBeLessThan(5_000);
+    // And an open block really does take everything until its end.
+    expect(splitBlocks(`$$\na\n\n${text.replace('Start $$ here', 'Start')}`)).toHaveLength(1);
   });
 });
 
@@ -225,7 +294,7 @@ describe('streaming', () => {
     );
     expect(html.match(/data-math="inline"/g)).toHaveLength(2);
     expect(html).toContain('$c$');
-    expect(html).not.toContain('$a$');
+    expect(shown(html)).not.toContain('$a$');
   });
 });
 
@@ -269,6 +338,10 @@ describe('KaTeX limits', () => {
     expect(html).not.toMatch(/style="[^"]*2000em/);
     expect(html).toContain('border-top-width:10em');
     expect(drawMath(katexOf(), '\\raisebox{40em}{x}', false)!).not.toMatch(/style="[^"]*40em/);
+  });
+  it('draws a long derivation: 26 lines of \\implies in an aligned block', () => {
+    const lines = Array.from({ length: 26 }, (_, i) => `x_{${i}} &\\implies x_{${i + 1}}`).join(' \\\\ ');
+    expect(drawMath(katexOf(), `\\begin{aligned} ${lines} \\end{aligned}`, true)).toContain('katex');
   });
   it('shows the source of a formula that expands without end, or is very long', () => {
     expect(drawMath(katexOf(), '\\def\\a{\\a\\a}\\a', false)).toBeNull();

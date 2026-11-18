@@ -1,7 +1,7 @@
-import { createContext, memo, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CodeBlock } from './CodeBlock.tsx';
-import { drawMath, katexNow, loadKatex, type Katex } from './katex.ts';
-import { mathSourceText, type MathKind } from './maths.ts';
+import { drawMath, katexNow, katexSheet, loadKatex, type Katex } from './katex.ts';
+import { mathCopyText, mathSourceText, type MathKind } from './maths.ts';
 
 /**
  * Whether formulas are drawn. False for the block Claude is still writing: an unclosed `$$` would draw half a formula, so
@@ -27,18 +27,44 @@ function useKatex(): Katex | null {
 }
 
 /**
+ * KaTeX's output, in a shadow root once it is on screen. A selection that spans a formula would otherwise copy its pieces
+ * (`x2x2`, and a line break for each inline table KaTeX builds a script or a fraction from, even with `user-select: none`);
+ * a shadow root's content is not part of it, so only the TeX beside it (`data-math-copy`) is. The root carries KaTeX's
+ * own rules (`katexSheet`); fonts come from the document. Until then (and where there is no shadow root to make, as when
+ * rendering to a string) the HTML is plain children of the span.
+ */
+function Visual({ html }: { html: string }) {
+  const host = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = host.current;
+    const sheet = katexSheet();
+    if (!el || !sheet) return;
+    const root = el.shadowRoot ?? el.attachShadow({ mode: 'open' });
+    root.adoptedStyleSheets = [sheet];
+    root.innerHTML = html;
+    // The light copy isn't drawn any more (a shadow host shows only its root); leave none in the page to find or copy.
+    el.replaceChildren();
+  }, [html]);
+  return <span ref={host} data-math-visual className="select-none" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+/**
  * A drawn formula, in a wrapper that carries its TeX (`data-math-source`, and `data-math-display` for a formula on a line
- * of its own) so a copy can write the formula back as it was written instead of the glyphs and the MathML. KaTeX's output
- * itself can't be selected: part by part it would copy as `x2x2`.
+ * of its own). A hidden span holds the TeX in its delimiters (`data-math-copy`), which a selection includes:
+ * `getSelection().toString()`, so Copy, Quote and Remember, give `then $x^2$ holds`. It is hidden from screen readers,
+ * who get KaTeX's MathML.
  */
 function Drawn({ source, display, block, html }: { source: string; display: boolean; block: boolean; html: string }) {
-  const kind = block ? 'block' : display ? 'display' : 'inline';
+  const kind: MathKind = block ? 'block' : display ? 'display' : 'inline';
   // Inline: clipped to its own box, since a negative kern or a raised box would draw over the text around it (`maxSize` can't stop those).
   // On a line of its own: scrolls sideways when wide instead of widening the pane.
   const layout = block || display ? 'block max-w-full overflow-x-auto overflow-y-hidden' : 'inline-block max-w-full overflow-clip align-baseline [overflow-clip-margin:0.2em]';
   return (
-    <span data-math={kind} data-math-source={source} data-math-display={display || block ? '' : undefined} className={layout}>
-      <span className="select-none" dangerouslySetInnerHTML={{ __html: html }} />
+    <span data-math={kind} data-math-source={source} data-math-display={display || block ? '' : undefined} className={`relative ${layout}`}>
+      <Visual html={html} />
+      <span data-math-copy aria-hidden="true" className="absolute top-0 left-0 size-px overflow-hidden whitespace-pre opacity-0">
+        {mathCopyText(kind, source)}
+      </span>
     </span>
   );
 }
