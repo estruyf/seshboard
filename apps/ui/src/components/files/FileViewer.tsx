@@ -88,6 +88,11 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
   // A file outside the project (a link to one) shows its name only: its folders aren't in the tree.
   const crumbs = relative === null ? [basename(tab.path)] : relative.split('/').filter(Boolean);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // The tab in front comes into view when it changes (Quick open, a link, ← →).
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabsRef.current?.querySelector('[data-files-tab-front]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab.path, tabs.length]);
   const command = useFilesPanel((s) => s.sessions.get(sessionId)?.command ?? null);
 
   // --- Find in the file (⌘F) -------------------------------------------------------------------------------------
@@ -248,7 +253,17 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
       data-files-viewer={tab.path}
     >
       {tabs.length > 1 && (
-        <div role="tablist" aria-label="Open files" className="flex shrink-0 gap-0.5 overflow-x-auto px-2 pt-1.5">
+        // The tab in front sits on the file's own surface, with an accent bar on top, as an editor's does. The strip
+        // scrolls sideways with the wheel, without a scrollbar over the tabs.
+        <div
+          ref={tabsRef}
+          role="tablist"
+          aria-label="Open files"
+          onWheel={(e) => {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
+          }}
+          className="flex shrink-0 gap-0.5 overflow-x-auto px-2 pt-1.5 [scrollbar-width:none]"
+        >
           {tabs.map((t) => {
             const isFront = t.path === tab.path;
             const rel = relativeOf(t.path);
@@ -266,9 +281,10 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
                   const next = tabs[(at + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length]!;
                   useFilesPanel.getState().setFront(sessionId, next.path);
                 }}
-                className={`group flex h-7 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded-t-md pr-1 pl-2.5 text-ui ${isFront ? 'bg-code text-text' : 'text-muted hover:bg-border/45 hover:text-text'}`}
+                className={`group flex h-7 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded-t-md pr-1 pl-2.5 text-ui ${isFront ? 'bg-code font-semibold text-text shadow-[inset_0_2px_0_var(--color-accent-ink)]' : 'text-muted hover:bg-border/45 hover:text-text'}`}
                 data-tooltip={rel ?? t.path}
                 data-files-tab={t.path}
+                data-files-tab-front={isFront || undefined}
               >
                 <span className="truncate">{basename(t.path)}</span>
                 {rel !== null && changed.has(rel) && <span aria-label="Changed in this session" className="size-1.5 shrink-0 rounded-full bg-accent-ink" />}
@@ -288,7 +304,8 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
           })}
         </div>
       )}
-      <div className="flex h-9 shrink-0 items-center gap-1 px-2" data-files-viewer-bar="">
+      {/* The path and the tools sit on the file's surface too, so the tab in front runs into the file. */}
+      <div className="flex h-9 shrink-0 items-center gap-1 bg-code px-2" data-files-viewer-bar="">
         {lead}
         <nav aria-label="Path" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-1 text-ui text-muted">
           {crumbs.map((part, i) => {
@@ -332,7 +349,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
           </span>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1 px-2 pb-1" data-file-preview-toolbar="">
+      <div className="flex shrink-0 items-center gap-1 bg-code px-2 pb-1" data-file-preview-toolbar="">
         {switcher}
         <div className="ml-auto flex items-center">
           <Button variant="quiet" size="sm" iconOnly icon={<Search size={14} aria-hidden />} aria-label="Find in file" shortcut="files.find" onClick={openFind} data-files-find-open="" />
