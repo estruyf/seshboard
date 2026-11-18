@@ -104,7 +104,8 @@ function connect(extra: { worktreeFactsWaitMs?: number; trashed?: string[][]; tr
     engine.close();
     port1.close();
     port2.close();
-    rmSync(dataDir, { recursive: true, force: true });
+    // The engine may still be writing its last files after close; retry instead of failing on ENOTEMPTY.
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
   return { engine, client, dataDir, projectDir };
 }

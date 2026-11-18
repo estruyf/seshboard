@@ -178,14 +178,18 @@ function gitGrep(git: string, options: GrepOptions, pattern: RegExp): Promise<Gr
     let done = false;
     let rest = '';
     let stderr = '';
+    let exited = false;
     const finish = (result: GrepResult | RpcError) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
       options.signal?.removeEventListener('abort', onAbort);
+      const settle = () => (result instanceof RpcError ? reject(result) : resolve(result));
+      if (exited) return settle();
+      // Settle once git is gone: on Windows a running process keeps its folder from being deleted or moved.
+      child.once('close', settle);
+      child.once('error', settle);
       child.kill();
-      if (result instanceof RpcError) reject(result);
-      else resolve(result);
     };
     const result = (): GrepResult => ({ matches, files: files.size, truncated });
     const timer = setTimeout(() => {
@@ -221,8 +225,12 @@ function gitGrep(git: string, options: GrepOptions, pattern: RegExp): Promise<Gr
     });
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => (stderr += chunk));
-    child.on('error', (error) => finish(new RpcError('INTERNAL', error.message)));
+    child.on('error', (error) => {
+      exited = true;
+      finish(new RpcError('INTERNAL', error.message));
+    });
     child.on('close', (code) => {
+      exited = true;
       // 1 is "nothing found"; 128 is an error, most often a regular expression git can't read.
       if (code && code > 1) {
         const message = stderr.trim().replace(/^fatal: /, '').replace(/^command line, '.*?': /, '') || `git grep exited with ${code}`;
