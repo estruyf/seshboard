@@ -4,20 +4,22 @@ import ReactMarkdown from 'react-markdown';
 import { describe, expect, it } from 'vitest';
 import { previewSchema } from '../filePreview/sanitizeSchema.ts';
 import { REHYPE_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
+import { escapeLoneTags } from './escapeLoneTags.ts';
 import { fileUrlTransform } from './fileRefs.ts';
 import { ReplyImage } from './ReplyImage.tsx';
 import { replySentences } from './skimFade.ts';
-import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
+import { healMarkdown, splitBlocks, streamingBlocks } from './streamingMarkdown.ts';
 
-// The plugins `Markdown.tsx` renders with (`chatPlugins.ts`).
-const render = (text: string, keep: readonly number[] | null = null) =>
+// What `Markdown.tsx` renders with: the text through `escapeLoneTags`, read once with the plugins of `chatPlugins.ts`.
+const renderSource = (source: string, keep: readonly number[] | null = null) =>
   renderToStaticMarkup(
     createElement(
       ReactMarkdown,
       { remarkPlugins: remarkPluginsFor(keep), rehypePlugins: REHYPE_PLUGINS, remarkRehypeOptions: REMARK_REHYPE_OPTIONS, urlTransform: fileUrlTransform },
-      text,
+      source,
     ),
   );
+const render = (text: string, keep: readonly number[] | null = null) => renderSource(escapeLoneTags(text), keep);
 
 describe('Markdown in a reply', () => {
   it('renders the plain Markdown it did before', () => {
@@ -243,6 +245,36 @@ describe('text that only looks like a tag', () => {
     expect(render('a <kbd>x</kbd> <b>y</b> <span>z</span>')).toBe('<p>a <kbd>x</kbd> <b>y</b> <span>z</span></p>');
   });
 
+  it('keeps a stray tag from changing the rest, and the rest from changing it', () => {
+    const div = render('<div>\n<b>bold\n</div>\n\nAfter paragraph.');
+    expect(div).not.toMatch(/\\|<b>|<strong>/);
+    expect(div).toContain('&lt;b&gt;bold');
+    expect(div).toContain('<p>After paragraph.</p>');
+    expect(render('<ul><li>a<li>b</ul>')).toBe('<ul><li>a</li><li>b</li></ul>');
+    expect(render('<table>\n<tr><td>a<td>b\n</table>\n\nAfter')).toMatch(/<table>[\s\S]*<td>a<\/td>[\s\S]*<td>b\s*<\/td>[\s\S]*<\/table>\s*<p>After<\/p>/);
+    const fence = render('<script> tags go at the end.\n\n```html\n<script src="x"></script>\n```\n\nAfter the code.');
+    expect(fence).toContain('&lt;script&gt; tags go at the end.');
+    expect(fence).toContain('<pre><code class="language-html">');
+    expect(fence).toContain('After the code.');
+    expect(fence).not.toMatch(/<script/);
+    const many = render(Array.from({ length: 14 }, (_, i) => `<script> stray ${i}.`).join('\n\n') + '\n\nEnd.');
+    expect(many.match(/&lt;script&gt; stray/g)).toHaveLength(14);
+    expect(many).toContain('<p>End.</p>');
+    expect(render(Array.from({ length: 12 }, () => '<textarea>').join('\n') + '\n\nEnd.')).toContain('End.');
+  });
+
+  it('reads references and footnotes across a stray tag', () => {
+    const reference = render('Before [a][1].\n\n<script> stray.\n\n[1]: https://example.com/x');
+    expect(reference).toContain('href="https://example.com/x"');
+    expect(reference).toContain('&lt;script&gt; stray.');
+    const footnote = render('Text[^1].\n\n<pre> stray.\n\n[^1]: The note');
+    expect(footnote).toContain('data-footnote-ref');
+    expect(footnote).toMatch(/data-footnotes[\s\S]*The note/);
+    const after = render('<pre> stray.\n\nSee [x] and [^2].\n\n[x]: https://example.com/y\n\n[^2]: Second');
+    expect(after).toContain('href="https://example.com/y"');
+    expect(after).toContain('data-footnote-ref');
+  });
+
   it('numbers Skim sentences as it renders them', () => {
     const text = 'It returns Promise<void> when done. The next sentence follows. And one more.';
     expect(replySentences(text)).toHaveLength(3);
@@ -251,7 +283,7 @@ describe('text that only looks like a tag', () => {
 });
 
 describe('a reply still being written', () => {
-  const stream = (text: string) => render(healMarkdown(text));
+  const stream = (text: string) => streamingBlocks(text).map((block) => renderSource(block)).join('');
 
   it('leaves half a tag out until it is complete', () => {
     for (const half of ['Line one <br', 'Line one <deta', 'Line one </summ', 'Line one <a href="x', 'Line one <!-', 'Line one <kb']) {
@@ -281,10 +313,27 @@ describe('a reply still being written', () => {
     expect(healMarkdown('```\nx\n```\n\nthen <div')).not.toContain('<div');
   });
 
-  it('shows the text before an open details block', () => {
+  it('shows an open details block as a disclosure while it is written', () => {
     const html = stream('Intro\n\n<details>\n<summary>More</summary>\n\nBody **so far');
     expect(html).toContain('Intro');
-    expect(html).toContain('<strong>so far</strong>');
+    expect(html).toMatch(/<details>[\s\S]*<summary>More<\/summary>[\s\S]*<strong>so far<\/strong>[\s\S]*<\/details>/);
+    expect(html).not.toContain('&lt;');
+    expect(stream('<details>\n<summary>Mo')).toContain('<details>');
+  });
+
+  it('closes each details the last block left open, and none that is a sentence', () => {
+    expect(healMarkdown('<details>\n<summary>s</summary>\n\nBody **so')).toBe('<details>\n<summary>s</summary>\n\nBody **so**\n\n</details>');
+    expect(healMarkdown('<details>\n<details>\nx')).toMatch(/\n\n<\/details>\n\n<\/details>$/);
+    expect(healMarkdown('<details>\nx\n</details>\n\nDone')).toBe('<details>\nx\n</details>\n\nDone');
+    expect(healMarkdown('<details> hides content.')).toBe('<details> hides content.');
+    expect(healMarkdown('Wrap it in a <details>')).toBe('Wrap it in a <details>');
+  });
+
+  it('shows a details sentence in a reply being written as text', () => {
+    const html = stream('<details> hides content.\n\nNext.\n\nLast');
+    expect(html).toContain('&lt;details&gt; hides content.');
+    expect(html).not.toMatch(/<details/);
+    expect(html).toContain('<p>Last</p>');
   });
 
   it('keeps what is inside a details block in its block while it is written', () => {

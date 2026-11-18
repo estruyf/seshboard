@@ -4,10 +4,11 @@ import { withoutSkimMarks } from '@seshboard/protocol/client';
 import { CheckMark } from '../ui/Checkbox.tsx';
 import { REHYPE_PLUGINS, REMARK_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
 import { CodeBlock } from './CodeBlock.tsx';
+import { escapeLoneTags } from './escapeLoneTags.ts';
 import { FileLink } from './FileLink.tsx';
 import { ReplyImage } from './ReplyImage.tsx';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
-import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
+import { streamingBlocks } from './streamingMarkdown.ts';
 
 /** Fenced-block languages that get a Preview | Source switch. */
 const MARKDOWN = new Set(['markdown', 'md']);
@@ -124,14 +125,16 @@ const proseOf = (variant: MarkdownVariant) => (variant === 'reading' ? READING_P
 const previewComponents: Components = { ...markdownComponents, code: (props) => renderCode(props, false) };
 
 const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
+  const source = useMemo(() => escapeLoneTags(text), [text]);
   return (
     <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} remarkRehypeOptions={REMARK_REHYPE_OPTIONS} urlTransform={fileUrlTransform} components={previewComponents}>
-      {text}
+      {source}
     </ReactMarkdown>
   );
 });
 
 
+/** One block of Markdown. Its `text` has been through `escapeLoneTags` already, as a whole reply (not block by block: a tag and its end tag can be in different ones). */
 const Block = memo(function Block({ text, keep = null }: { text: string; keep?: readonly number[] | null }) {
   const plugins = useMemo(() => (keep ? remarkPluginsFor(keep) : REMARK_PLUGINS), [keep]);
   return (
@@ -143,9 +146,10 @@ const Block = memo(function Block({ text, keep = null }: { text: string; keep?: 
 
 /** Assistant prose. Memoised: finished messages never change, so they render once. `keep`: the sentences Skim keeps; the rest fade. */
 export const Markdown = memo(function Markdown({ text, variant = 'chat', keep = null }: { text: string; variant?: MarkdownVariant; keep?: readonly number[] | null }) {
+  const source = useMemo(() => escapeLoneTags(text), [text]);
   return (
     <div className={proseOf(variant)}>
-      <Block text={text} keep={keep} />
+      <Block text={source} keep={keep} />
     </div>
   );
 });
@@ -157,12 +161,12 @@ export const Markdown = memo(function Markdown({ text, variant = 'chat', keep = 
  */
 export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant = 'chat' }: { text: string; variant?: MarkdownVariant }) {
   // Skim's keep line, while it is written, never shows.
-  const blocks = useMemo(() => splitBlocks(withoutSkimMarks(text)), [text]);
+  const blocks = useMemo(() => streamingBlocks(withoutSkimMarks(text)), [text]);
   return (
     <div className={proseOf(variant)}>
       {blocks.map((block, i) => (
         // Blocks only ever grow at the end, so the index is a stable key.
-        <Block key={i} text={i === blocks.length - 1 ? healMarkdown(block) : block} />
+        <Block key={i} text={block} />
       ))}
     </div>
   );

@@ -1,24 +1,27 @@
 import { Lexer } from 'marked';
 import remend from 'remend';
 import { chatSchema } from './chatSchema.ts';
+import { escapeLoneTags } from './escapeLoneTags.ts';
 
 /** What is not HTML in a block: comments, fenced code and inline code. */
 const NOT_HTML = /<!--[\s\S]*?-->|(```|~~~)[\s\S]*?(?:\1|$)|`[^`]*`/g;
 
-/**
- * How many `<details>` a block of HTML opens, minus how many it closes: what is between them belongs in one block. As in
- * `remarkUnknownHtml`, a tag in a sentence is no disclosure, so only a block of HTML counts, and an opener only when it
- * stands for one: its tag ends the line or goes on with another tag (`<details>`, `<details><summary>`), where
- * `<details> hides content.` is a sentence, which does not hold the blocks after it. (A reply still being written can't say if
- * its closing tag will come: an opener that stands for one holds the rest until it does.) Only lower case is a tag.
- */
-function detailsDelta(raw: string, html: boolean): number {
-  if (!html) return 0;
+/** A `<details>` that stands for a disclosure: alone on its line, or going on with another tag (`<summary>`). `<details> hides content.` is a sentence. */
+const DETAILS_OPENER = /^[ \t]*<details(?:\s[^>]*)?>[ \t]*(?=\r?\n|<|$)/gm;
+const DETAILS_CLOSER = /<\/details\s*>/g;
+
+/** How many disclosures `raw` leaves open (negative: closes). Only lower case is a tag. */
+function openDetails(raw: string): number {
   const text = raw.replace(NOT_HTML, '');
-  const opens = text.match(/<details(?:\s[^>]*)?>[ \t]*(?=\r?\n|<|$)/g)?.length ?? 0;
-  const closes = text.match(/<\/details\s*>/g)?.length ?? 0;
-  return opens - closes;
+  return (text.match(DETAILS_OPENER)?.length ?? 0) - (text.match(DETAILS_CLOSER)?.length ?? 0);
 }
+
+/**
+ * What is between a block of HTML's `<details>` and its `</details>` belongs in one block. As in `escapeLoneTags`, a tag in a
+ * sentence is no disclosure, so only a block of HTML counts, and an opener only when it stands for one. (A reply still being
+ * written can't say if its closing tag will come: an opener that stands for one holds the rest until it does, see `healMarkdown`.)
+ */
+const detailsDelta = (raw: string, html: boolean): number => (html ? openDetails(raw) : 0);
 
 /**
  * Splits Markdown into top-level blocks (paragraphs, lists, fences, tables…),
@@ -60,10 +63,23 @@ const FENCE = /^[ \t>]*(?:(?:[-*+]|\d+[.)])[ \t]+)*(?:```|~~~)/;
  * link shows as its text; an unfinished image stays as typed until it's complete.
  * Half an HTML tag at the end is left out until its `>` arrives: shown as text it would flash raw, and where it
  * starts an HTML block the reader of the HTML would drop it anyway. Only a tag the reply may use counts: `x<y when`
- * is text, and stays (remend's own `htmlTags` would drop any `<word` at the end, so it is off).
+ * is text, and stays (remend's own `htmlTags` would drop any `<word` at the end, so it is off). A `<details>` still open gets its
+ * `</details>`, so it shows as a disclosure while it is written, not as source until the end tag comes.
  */
 export function healMarkdown(text: string): string {
-  return remend(withoutPartialTag(text), { linkMode: 'text-only', images: false, inlineKatex: false, katex: false, htmlTags: false });
+  const healed = remend(withoutPartialTag(text), { linkMode: 'text-only', images: false, inlineKatex: false, katex: false, htmlTags: false });
+  return healed + '\n\n</details>'.repeat(Math.max(0, openDetails(healed)));
+}
+
+/**
+ * The blocks of a reply that is still being written: the last one healed, then the lone tags in the whole text made text
+ * (`escapeLoneTags`, which must see the text before it is split: a tag and its end tag can be in different blocks), and the
+ * text split.
+ */
+export function streamingBlocks(text: string): string[] {
+  const blocks = splitBlocks(text);
+  const last = blocks.length - 1;
+  return splitBlocks(escapeLoneTags(blocks.slice(0, last).join('') + healMarkdown(blocks[last]!)));
 }
 
 /** The text without a tag cut off at its end. Inside a fence or inline code it is text, so it stays. */
