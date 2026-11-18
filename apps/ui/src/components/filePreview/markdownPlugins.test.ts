@@ -22,6 +22,12 @@ describe('Markdown in a previewed file', () => {
     expect(html).not.toMatch(/script|alert|onclick|style=|class=|iframe|javascript:|<form/i);
     expect(html).toContain('hi');
   });
+  it('drops picture and source (their srcset loads any address), style, title and textarea with their content', () => {
+    const html = render('<picture><source srcset="file://evil.example/x.png"><img src="a.png"></picture>\n\n<style>p { color: red }</style>\n\n<title>t</title><textarea>secret</textarea>after');
+    expect(html).not.toMatch(/<picture|<source|srcset|evil|color|secret|>t</);
+    expect(html).toContain('src="a.png"');
+    expect(html).toContain('after');
+  });
   it('allows file: links and only language classes on code', () => {
     const html = render('[x](file:///a/b.md)\n\n```ts\nconst a = 1;\n```\n\n<code class="evil language-js">y</code>');
     expect(html).toContain('href="file:///a/b.md"');

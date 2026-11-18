@@ -7704,14 +7704,17 @@ async function runMarkdownRepliesStep(win: BrowserWindow): Promise<string> {
       await js(`document.querySelector('${view} blockquote:not([data-alert])')?.scrollIntoView({ block: 'start' })`);
       await shot(win, `markdown-replies-${mode}.png`);
     }
-    // The same reply in reading mode.
-    if (!(await js(`(() => { const b = [...document.querySelectorAll('${view} [data-read-button]')].at(-1); if (!b) return false; b.click(); return true; })()`))) return 'failed: no Read button on the reply';
-    if (!(await waitInPage(win, "document.querySelector('[data-read-mode] blockquote[data-alert]')", 4_000))) return 'failed: reading mode does not show the alert';
-    const reading = (await js(check('[data-read-mode]'))) as string;
-    if (reading !== 'ok') return `failed: in reading mode, ${reading}`;
-    pressKey(win, 'Escape');
-    await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000);
-    return 'ok: the quote has a bar in the text colour with its list and code, the table cell breaks, the alert and the task list show, in dark, light and reading mode';
+    // The same reply in reading mode, in both schemes (the paper is warm in light and the same as the page in dark).
+    for (const mode of ['dark', 'light'] as const) {
+      if (!(await setColorScheme(win, mode))) return `failed: ${mode} did not apply`;
+      if (!(await js(`(() => { const b = [...document.querySelectorAll('${view} [data-read-button]')].at(-1); if (!b) return false; b.click(); return true; })()`))) return 'failed: no Read button on the reply';
+      if (!(await waitInPage(win, "document.querySelector('[data-read-mode] blockquote[data-alert]')", 4_000))) return `failed: reading mode in ${mode} does not show the alert`;
+      const reading = (await js(check('[data-read-mode]'))) as string;
+      if (reading !== 'ok') return `failed: in reading mode in ${mode}, ${reading}`;
+      pressKey(win, 'Escape');
+      if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'failed: Esc did not close reading mode';
+    }
+    return 'ok: the quote has a bar in the text colour with its list and code, the table cell breaks, the alert and the task list show, in dark, light and reading mode (both)';
   } finally {
     updatePreferences({ colorScheme: scheme });
     if (back && back !== id) await open(back);

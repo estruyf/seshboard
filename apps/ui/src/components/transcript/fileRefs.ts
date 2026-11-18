@@ -55,11 +55,12 @@ const LOCAL_FILE = /^file:\/\/(localhost)?\/(?![\\/])/i;
  * The `urlTransform` of the Markdown in replies and previewed files. react-markdown's default empties every link whose
  * protocol it doesn't know: `file:///…`, and on Windows a drive path too (`C:/a.ts` reads as the protocol `C:`). Such a
  * link points nowhere and a click does nothing, so a link (`href`) to a file on this computer is kept, to become a file
- * link; everything else gets the default. Images keep the default: a `file:` picture would load without a click, and on
- * Windows one on a share connects to that server. A kept link is never followed as it is: a file link opens through the
+ * link; everything else gets the default. An image (`src`) is kept only as an absolute `http(s)://` address: a `file:` picture would load without a click, and on
+ * Windows one on a share connects to that server, as does a protocol-relative (`//host/x.png`) or backslash (`\\host\x.png`) one. A kept link is never followed as it is: a file link opens through the
  * engine, on a click, and the main process refuses to open any window that isn't http(s).
  */
 export function fileUrlTransform(url: string, key?: string): string {
+  if (key === 'src') return /^https?:\/\//i.test(url) ? defaultUrlTransform(url) : '';
   return key === 'href' && (LOCAL_FILE.test(url) || DRIVE.test(url)) ? url : defaultUrlTransform(url);
 }
 

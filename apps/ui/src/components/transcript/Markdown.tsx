@@ -1,18 +1,11 @@
 import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import type { PluggableList } from 'unified';
 import { withoutSkimMarks } from '@seshboard/protocol/client';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize from 'rehype-sanitize';
-import remarkGfm from 'remark-gfm';
 import { CheckMark } from '../ui/Checkbox.tsx';
-import { remarkAlerts } from '../filePreview/remarkAlerts.ts';
-import { remarkBareLinks } from './bareLinks.ts';
-import { chatSchema } from './chatSchema.ts';
+import { REHYPE_PLUGINS, REMARK_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
-import { remarkSkimFade } from './skimFade.ts';
 import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
 
 /** Fenced-block languages that get a Preview | Source switch. */
@@ -55,7 +48,7 @@ export const markdownComponents: Components = {
 export function TaskBox({ type, checked }: { type?: string; checked?: boolean }) {
   if (type !== 'checkbox') return null;
   return (
-    <span role="checkbox" aria-checked={Boolean(checked)} aria-readonly="true" data-task-box={checked ? 'checked' : 'open'} className="mr-1.5 inline-flex align-[-2px]">
+    <span role="checkbox" aria-checked={Boolean(checked)} aria-readonly="true" aria-label={checked ? 'Done' : 'Not done'} data-task-box={checked ? 'checked' : 'open'} className="mr-1.5 inline-flex align-[-2px]">
       <CheckMark checked={Boolean(checked)} />
     </span>
   );
@@ -64,7 +57,7 @@ export function TaskBox({ type, checked }: { type?: string; checked?: boolean })
 /** What a `code` element holds if it is a fenced block, null for inline code; `markdown`: its language gets a Preview | Source switch. */
 export function fencedBlock(className: string | undefined, children: ReactNode): { code: string; language: string | undefined; markdown: boolean } | null {
   const text = String(children ?? '');
-  const language = /language-([\w+#-]+)/.exec(className ?? '')?.[1];
+  const language = /language-([\w+#.-]+)/.exec(className ?? '')?.[1];
   if (!language && !text.includes('\n')) return null;
   return { code: text.replace(/\n$/, ''), language, markdown: Boolean(language && MARKDOWN.has(language.toLowerCase())) };
 }
@@ -99,7 +92,8 @@ const ALERTS =
 
 /** What is the same in both sizes: task lists have no bullet (their box is the marker), and the raw HTML a reply may hold (`details`, `kbd`). */
 const RICH =
-  '[&_ul.contains-task-list]:list-none [&_ul.contains-task-list]:pl-0 [&_ol.contains-task-list]:list-none [&_ol.contains-task-list]:pl-0 [&_li.task-list-item]:list-none ' +
+  // A list of only tasks loses the room of its bullets; one with plain items keeps it and their bullets. A list inside a task has its indent.
+  '[&_li.task-list-item]:list-none [&_:is(ul,ol).contains-task-list:not(:has(>li:not(.task-list-item)))]:pl-0 [&_li.task-list-item_:is(ul,ol)]:pl-5! ' +
   '[&_summary]:cursor-pointer [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-edge [&_kbd]:bg-text/6 [&_kbd]:px-1 [&_kbd]:py-px [&_kbd]:font-mono [&_kbd]:text-[0.85em] ' +
   `[&_hr]:border-edge ${ALERTS}`;
 
@@ -127,18 +121,9 @@ const proseOf = (variant: MarkdownVariant) => (variant === 'reading' ? READING_P
  */
 const previewComponents: Components = { ...markdownComponents, code: (props) => renderCode(props, false) };
 
-/** GFM links `https://` and `www.` addresses; `remarkBareLinks` the ones written without either (`github.com/…`); `remarkAlerts` marks GitHub's alerts. */
-const PLUGINS = [remarkGfm, remarkBareLinks, remarkAlerts];
-
-/**
- * Raw HTML in a reply (`<br>` in a table cell, `details`, `kbd`) is parsed and then sanitised (`chatSchema`) before anything
- * renders. Anything that must not go through the sanitiser (maths) is added after it.
- */
-export const REHYPE_PLUGINS: PluggableList = [rehypeRaw, [rehypeSanitize, chatSchema]];
-
 const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={PLUGINS} rehypePlugins={REHYPE_PLUGINS} urlTransform={fileUrlTransform} components={previewComponents}>
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} remarkRehypeOptions={REMARK_REHYPE_OPTIONS} urlTransform={fileUrlTransform} components={previewComponents}>
       {text}
     </ReactMarkdown>
   );
@@ -146,9 +131,9 @@ const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
 
 
 const Block = memo(function Block({ text, keep = null }: { text: string; keep?: readonly number[] | null }) {
-  const plugins = useMemo(() => (keep ? [...PLUGINS, [remarkSkimFade, { keep }] as const] : PLUGINS), [keep]);
+  const plugins = useMemo(() => (keep ? remarkPluginsFor(keep) : REMARK_PLUGINS), [keep]);
   return (
-    <ReactMarkdown remarkPlugins={plugins as PluggableList} rehypePlugins={REHYPE_PLUGINS} urlTransform={fileUrlTransform} components={markdownComponents}>
+    <ReactMarkdown remarkPlugins={plugins} rehypePlugins={REHYPE_PLUGINS} remarkRehypeOptions={REMARK_REHYPE_OPTIONS} urlTransform={fileUrlTransform} components={markdownComponents}>
       {text}
     </ReactMarkdown>
   );

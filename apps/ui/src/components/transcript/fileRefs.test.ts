@@ -93,6 +93,15 @@ describe('fileUrlTransform', () => {
     expect(render('[a](file:////server/share/a.ts)', fileUrlTransform)).toContain('href=""');
   });
 
+  it('keeps an image only as an absolute http(s) address', () => {
+    for (const src of ['//evil.example/x.png', '\\\\evil\\x.png', 'file://evil.example/x.png', '/a/b.png', 'a/b.png', 'data:image/png;base64,AAAA', 'ftp://evil.example/x.png', 'C:/a.png']) {
+      expect(fileUrlTransform(src, 'src'), src).toBe('');
+    }
+    expect(fileUrlTransform('https://example.com/a.png', 'src')).toBe('https://example.com/a.png');
+    expect(fileUrlTransform('HTTP://example.com/a.png', 'src')).toBe('HTTP://example.com/a.png');
+    expect(render('![a](//evil.example/x.png)', fileUrlTransform)).not.toMatch(/src="[^"]/);
+  });
+
   it('treats everything else as the default does', () => {
     expect(fileUrlTransform('https://example.com/a')).toBe('https://example.com/a');
     expect(fileUrlTransform('src/a.ts#L3')).toBe('src/a.ts#L3');
