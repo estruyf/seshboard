@@ -192,6 +192,11 @@
       "page": "sessions/file-preview"
     },
     {
+      "id": "feature:maths",
+      "name": "Maths drawn in replies and Markdown previews",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "palette:toggle-files",
       "name": "Toggle Files",
       "page": "sessions/file-preview"
