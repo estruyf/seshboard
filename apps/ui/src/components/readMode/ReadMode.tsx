@@ -10,6 +10,7 @@ import { fitSidebar } from '../../state/sidebarWidth.ts';
 import { Markdown, StreamingMarkdown } from '../transcript/Markdown.tsx';
 import { currentHeading, STREAMING_BLOCK, type ReadReply } from '../transcript/readReply.ts';
 import { TranscriptItem } from '../transcript/TranscriptItem.tsx';
+import { useCleanCopy } from '../transcript/useCleanCopy.ts';
 import { RemoteText } from '../computers/RemoteText.tsx';
 import { RemoteToolList } from '../computers/RemoteToolList.tsx';
 import { overlayOpen } from '../../lib/modalGuards.ts';
@@ -63,6 +64,8 @@ export function ReadMode({ sessionId, title, live, cwd, reply, remote }: { sessi
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const scroller = useRef<HTMLDivElement>(null);
+  // Reading mode is outside the conversation's container: ⌘C on a selection copies clean HTML here too.
+  useCleanCopy(scroller);
   const progress = useRef<HTMLDivElement>(null);
   const [current, setCurrent] = useState(-1);
   const writing = reply.blocks.some((b) => b.key === STREAMING_BLOCK);

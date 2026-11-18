@@ -1,11 +1,12 @@
 import { ImageOff } from 'lucide-react';
-import { memo, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useFilePreview } from '../../state/filePreviewStore.ts';
 import { callComputer } from '../computers/callComputer.ts';
 import { fileUrl } from '../transcript/fileRefs.ts';
 import { markdownComponents, PROSE } from '../transcript/Markdown.tsx';
+import { useCleanCopy } from '../transcript/useCleanCopy.ts';
 import { useFileLinkActions } from '../transcript/useFileLinkActions.tsx';
 import { FILE_REHYPE_PLUGINS, FILE_REMARK_PLUGINS, fileUrlTransform } from './markdownPlugins.ts';
 import { RemoteFileContext, type RemoteFileSession } from './remotePreview.ts';
@@ -125,6 +126,8 @@ function scrollToAnchor(id: string) {
  */
 export const FileMarkdown = memo(function FileMarkdown({ text, baseDir }: { text: string; baseDir: string }) {
   const remote = useContext(RemoteFileContext);
+  const root = useRef<HTMLDivElement>(null);
+  useCleanCopy(root);
   const components = useMemo<Components>(
     () => ({
       ...markdownComponents,
@@ -162,7 +165,7 @@ export const FileMarkdown = memo(function FileMarkdown({ text, baseDir }: { text
     [baseDir, remote],
   );
   return (
-    <div className={FILE_PROSE}>
+    <div ref={root} className={FILE_PROSE}>
       <ReactMarkdown remarkPlugins={FILE_REMARK_PLUGINS} rehypePlugins={FILE_REHYPE_PLUGINS} urlTransform={fileUrlTransform} components={components}>
         {text}
       </ReactMarkdown>
