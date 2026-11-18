@@ -124,7 +124,7 @@ describe('what a reply may load', () => {
   it('shows the alt text of an image that is blocked', () => {
     expect(renderToStaticMarkup(createElement(ReplyImage, { src: '', alt: 'diagram' }))).toBe('<span class="text-muted">[diagram]</span>');
     expect(renderToStaticMarkup(createElement(ReplyImage, { src: '', alt: '' }))).toBe('');
-    expect(renderToStaticMarkup(createElement(ReplyImage, { src: '/a/b.png', alt: 'd' }))).toContain('<img src="/a/b.png" alt="d"/>');
+    expect(renderToStaticMarkup(createElement(ReplyImage, { src: '/a/b.png', alt: 'd' }))).toMatch(/<img src="\/a\/b\.png" alt="d" class="[^"]*max-w-full[^"]*"\/>/);
   });
 
   it('takes no keyboard, form or id attributes', () => {
@@ -183,7 +183,7 @@ describe('text that only looks like a tag', () => {
   });
 
   it('renders a tag in a sentence that has its other half, and void tags', () => {
-    expect(render('Press <kbd>Ctrl</kbd> and <b>bold <i>it</i></b> and <details><summary>s</summary>x</details> end')).toMatch(/<kbd>Ctrl<\/kbd>[\s\S]*<b>bold <i>it<\/i><\/b>[\s\S]*<details><summary>s<\/summary>x<\/details>/);
+    expect(render('Press <kbd>Ctrl</kbd> and <b>bold <i>it</i></b> end')).toMatch(/<kbd>Ctrl<\/kbd>[\s\S]*<b>bold <i>it<\/i><\/b>/);
     expect(render('line<br>two and <br/> three <img src="https://example.com/a.png" alt="x"> end')).toMatch(/line<br\/>two[\s\S]*<br\/>[\s\S]*<img/);
     expect(render('| a |\n|---|\n| one<br>two |')).toContain('one<br/>two');
     expect(render('**bold <b>nested</b>** and *a <i>b*')).toMatch(/<strong>bold <b>nested<\/b><\/strong>/);
@@ -195,6 +195,52 @@ describe('text that only looks like a tag', () => {
     expect(render('Dispatch<SetStateAction<S>> is it')).toContain('Dispatch&lt;SetStateAction&lt;S&gt;&gt; is it');
     expect(render('Map<K, V> and <DETAILS>x</DETAILS> and <Br> done')).toContain('&lt;Br&gt; done');
     expect(render('<SCRIPT>alert(1)</SCRIPT>')).not.toMatch(/<script/i);
+  });
+
+  it('does not let a tag at the start of a line take the rest of the reply', () => {
+    const rest = '\n\nNext **bold**.\n\n- list item\n\nLast.';
+    for (const [text, shown] of [
+      ['<script> tags go at the end.', '&lt;script&gt; tags go at the end.'],
+      ['<style> goes in the head.', '&lt;style&gt; goes in the head.'],
+      ['<textarea> is a field.', '&lt;textarea&gt; is a field.'],
+      ['<pre> is the tag for code.', '&lt;pre&gt; is the tag for code.'],
+      ['<details> hides content.', '&lt;details&gt; hides content.'],
+      ['<b>', '&lt;b&gt;'],
+      ['<div>', '&lt;div&gt;'],
+      ['</details> closes it.', '&lt;/details&gt; closes it.'],
+    ] as const) {
+      const html = render(text + rest);
+      expect(html, text).toContain(shown);
+      expect(html, text).toContain('<strong>bold</strong>');
+      expect(html, text).toMatch(/<ul>\s*<li>list item<\/li>\s*<\/ul>\s*<p>Last\.<\/p>/);
+      expect(html, text).not.toMatch(/<(?:script|style|textarea|pre|details|b|div)[ >]/);
+    }
+    // In a quote and a list item.
+    expect(render('> <details> hides\n>\n> After.\n\nOutside')).toMatch(/&lt;details&gt; hides[\s\S]*After\.[\s\S]*Outside/);
+    expect(render('- <pre> in a list\n- next item')).toMatch(/&lt;pre&gt; in a list[\s\S]*next item/);
+    expect(render('- <pre> in a list\n- next item')).not.toContain('<pre');
+  });
+
+  it('keeps a block of HTML that has its end tag, in one block or over several', () => {
+    expect(render('<details>\n<summary>s</summary>\n\nHidden **text**\n\n- a\n\n</details>\n\nAfter')).toMatch(/<details>[\s\S]*<strong>text<\/strong>[\s\S]*<\/details>\s*<p>After<\/p>/);
+    expect(render('<pre>\ncode <b>x</b>\n\nmore\n</pre>\n\nAfter')).toMatch(/<pre>[\s\S]*<b>x<\/b>[\s\S]*more[\s\S]*<\/pre>/);
+    expect(render('<div align="center">\n\n**Title**\n\n</div>')).toContain('<div align="center">');
+    expect(render('<script>alert(1)</script>\n\nAfter')).not.toMatch(/script|alert/);
+    expect(render('<script>if (a<b) { x() }</script>\n\nAfter')).toContain('After');
+    expect(render('<table>\n<tr><td>a</td></tr>\n</table>')).toContain('<table>');
+    expect(render('> <details>\n> <summary>s</summary>\n>\n> in\n>\n> </details>')).toMatch(/<details>[\s\S]*in[\s\S]*<\/details>/);
+  });
+
+  it('shows a block tag in a sentence as text', () => {
+    for (const [text, shown] of [
+      ['a <details>x</details> b', 'a &lt;details&gt;x&lt;/details&gt; b'],
+      ['a <table>t</table> b', 'a &lt;table&gt;t&lt;/table&gt; b'],
+      ['a <pre>x</pre> b', 'a &lt;pre&gt;x&lt;/pre&gt; b'],
+      ['a <ul>x</ul> b', 'a &lt;ul&gt;x&lt;/ul&gt; b'],
+      ['a <div>x</div> b', 'a &lt;div&gt;x&lt;/div&gt; b'],
+    ] as const) expect(render(text), text).toBe(`<p>${shown}</p>`);
+    // Inline tags stay.
+    expect(render('a <kbd>x</kbd> <b>y</b> <span>z</span>')).toBe('<p>a <kbd>x</kbd> <b>y</b> <span>z</span></p>');
   });
 
   it('numbers Skim sentences as it renders them', () => {
@@ -253,6 +299,9 @@ describe('a reply still being written', () => {
   it('does not stay in a details block that is only mentioned in a sentence', () => {
     expect(splitBlocks('Wrap it in a <details> element.\n\nSecond.\n\n- list')).toHaveLength(3);
     expect(splitBlocks('Close it with </details> after.\n\nSecond.\n\nThird')).toHaveLength(3);
+    // Nor one at the start of a line that goes on as a sentence.
+    expect(splitBlocks('<details> hides content.\n\nNext.\n\nLast.')).toHaveLength(3);
+    expect(splitBlocks('<pre> is the tag for code.\n\nNext.\n\nLast.').length).toBeGreaterThan(0);
     expect(splitBlocks('Use <details>x</details> here.\n\nSecond.\n\nThird')).toHaveLength(3);
     // A block of HTML still holds the rest.
     expect(splitBlocks('<details>\n<summary>s</summary>\n\nBody\n\nMore')).toHaveLength(1);
@@ -262,8 +311,9 @@ describe('a reply still being written', () => {
     expect(splitBlocks('<!-- <details> -->\n\nOne\n\nTwo')).toHaveLength(3);
     expect(splitBlocks('Use `<details>` here\n\nOne\n\nTwo')).toHaveLength(3);
     expect(splitBlocks('```html\n<details>\n```\n\nOne\n\nTwo')).toHaveLength(3);
-    // A closing tag at the end of a paragraph closes it.
-    const closed = splitBlocks('<details>\n<summary>s</summary>\n\nBody </details>\n\nOne\n\nTwo');
+    // A closing tag at the end of a paragraph closes nothing: it is text.
+    expect(render('<details>\n<summary>s</summary>\n\nBody </details>\n\nOne')).toContain('Body &lt;/details&gt;');
+    const closed = splitBlocks('<details>\n<summary>s</summary>\n\nBody\n\n</details>\n\nOne\n\nTwo');
     expect(closed).toHaveLength(3);
     expect(closed[0]).toContain('</details>');
   });

@@ -97,6 +97,8 @@ describe('fileUrlTransform', () => {
       expect(fileUrlTransform(src, 'src'), src).toBe(src);
     }
     expect(isLocalImage('/Users/me/a.png')).toBe(true);
+    expect(isLocalImage('/netflix/a.png')).toBe(true);
+    expect(isLocalImage('/network/a.png')).toBe(true);
     expect(isLocalImage('file:///C:/a.png')).toBe(true);
   });
 
@@ -124,6 +126,9 @@ describe('fileUrlTransform', () => {
       './b.png',
       'data:image/png;base64,AAAA',
       'ftp://evil.example/x.png',
+      '/net/host/x.png',
+      '/NET/host/x.png',
+      'file:///net/host/x.png',
       '/100%/x.png',
       '',
     ]) {

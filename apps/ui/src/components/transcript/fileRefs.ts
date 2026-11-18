@@ -55,9 +55,10 @@ const LOCAL_FILE = /^file:\/\/(localhost)?\/(?![\\/])/i;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
 /**
- * Whether an image's address is a file of this computer: `/Users/me/a.png` (one slash, not two), `C:/a.png`, `C:\a.png` or
- * `file:///a.png`, never `//host/…`, `\\host\…` or `file://host/…`. The address is also checked decoded, so `%5C%5Chost` or
- * `%2F%2Fhost` don't make a share of it, and a drive's colon is followed by one separator, not two.
+ * Whether an image's address is a file of this computer: `/Users/me/a.png` (one slash, not two), `C:/a.png`, `C:\a.png`,
+ * `file:///a.png` or `file:///C:/a.png`. Never `//host/…`, `\\host\…`, `file://host/…` or a path under `/net/` (some Linux
+ * setups mount remote hosts there). The address is also checked decoded, so `%5C%5Chost` or `%2F%2Fhost` don't make a share of
+ * it, a drive's colon is followed by one separator, not two, and a control character (a browser drops tabs and line breaks) is no address.
  */
 export function isLocalImage(url: string): boolean {
   if (CONTROL.test(url)) return false;
@@ -71,6 +72,7 @@ export function isLocalImage(url: string): boolean {
   return [url, decoded].every((value) => {
     // After `file://` the path starts with its own slash: `/a.png`, or `/C:/a.png` for a drive.
     const path = /^file:\/\/\//i.test(value) ? value.slice('file://'.length) : value;
+    if (/^\/net(?:\/|$)/i.test(path)) return false;
     return /^\/(?![\\/])/.test(path) || /^\/?[A-Za-z]:[\\/](?![\\/])/.test(path);
   });
 }

@@ -6,16 +6,18 @@ import { chatSchema } from './chatSchema.ts';
 const NOT_HTML = /<!--[\s\S]*?-->|(```|~~~)[\s\S]*?(?:\1|$)|`[^`]*`/g;
 
 /**
- * How many `<details>` a piece of Markdown opens, minus how many it closes. In a block of HTML both count. In text a `<details>`
- * only opens something with its `</details>` in the same text, so a pair nets nothing and an open one (`wrap it in a <details>
- * element`) counts for nothing, as `remarkUnknownHtml` shows it as text; a closing tag with no opening one ends an open block's
- * (`Body </details>` at the end of a paragraph). Only lower case is a tag.
+ * How many `<details>` a block of HTML opens, minus how many it closes: what is between them belongs in one block. As in
+ * `remarkUnknownHtml`, a tag in a sentence is no disclosure, so only a block of HTML counts, and an opener only when it
+ * stands for one: its tag ends the line or goes on with another tag (`<details>`, `<details><summary>`), where
+ * `<details> hides content.` is a sentence, which does not hold the blocks after it. (A reply still being written can't say if
+ * its closing tag will come: an opener that stands for one holds the rest until it does.) Only lower case is a tag.
  */
 function detailsDelta(raw: string, html: boolean): number {
+  if (!html) return 0;
   const text = raw.replace(NOT_HTML, '');
-  const opens = text.match(/<details[\s>]/g)?.length ?? 0;
+  const opens = text.match(/<details(?:\s[^>]*)?>[ \t]*(?=\r?\n|<|$)/g)?.length ?? 0;
   const closes = text.match(/<\/details\s*>/g)?.length ?? 0;
-  return html ? opens - closes : -Math.max(0, closes - opens);
+  return opens - closes;
 }
 
 /**

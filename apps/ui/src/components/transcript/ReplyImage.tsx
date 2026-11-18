@@ -6,5 +6,6 @@ import type { ReactNode } from 'react';
  */
 export function ReplyImage({ src, alt }: { src?: string | Blob; alt?: string }): ReactNode {
   if (typeof src !== 'string' || !src) return alt ? <span className="text-muted">[{alt}]</span> : null;
-  return <img src={src} alt={alt ?? ''} />;
+  // A full-size screenshot stays inside the column, in its proportions.
+  return <img src={src} alt={alt ?? ''} className="h-auto max-w-full" />;
 }
