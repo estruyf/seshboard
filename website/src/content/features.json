@@ -3122,6 +3122,11 @@
       "page": "sessions/file-preview"
     },
     {
+      "id": "feature:mermaid-diagrams",
+      "name": "Mermaid diagrams drawn in replies, Markdown previews and Markdown blocks, in the theme's colours, with a larger view that zooms and pans",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "feature:web-preview",
       "name": "Web preview: your running dev server beside the conversation, with back, forward, reload, an address bar and phone width",
       "page": "sessions/web-preview"

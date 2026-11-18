@@ -6961,6 +6961,86 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/**
+ * Mermaid diagrams (#255), in a throwaway Markdown file in a folder of its own, opened in the file preview: a flowchart and
+ * a pie chart are drawn as SVG (Mermaid loads on first use, under the window's Content-Security-Policy), a block that does
+ * not parse shows its source with "Couldn't draw this diagram.", Source and Preview switch, the colours follow light and dark
+ * (the diagram is drawn again), and a click opens the flowchart larger, where the buttons zoom and Escape closes only the
+ * overlay. The folder is removed at the end.
+ */
+async function runMermaidStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-mermaid-')));
+  const md = join(dir, 'diagrams.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const BLOCKS = `${DIALOG}.querySelectorAll('[data-mermaid]')`;
+  const original = preferences.get().colorScheme;
+  try {
+    writeFileSync(md, '# Diagrams\n\n```mermaid\nflowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C[Ship]\n  B -->|no| D[Wait]\n```\n\n```Mermaid\nthis is not a diagram\n```\n\n```mermaid\npie title Pets\n  "Dogs" : 3\n  "Cats" : 2\n```\n\n```mermaid\nxychart-beta\n  title "Sales"\n  x-axis [jan, feb, mar]\n  y-axis "Units" 0 --> 100\n  bar [30, 60, 90]\n```\n');
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DIALOG}.querySelectorAll('[data-mermaid]').length === 4`, 5_000))) return 'the Markdown file did not open with its four diagram blocks';
+    // Mermaid is fetched the first time, so the first one takes longer.
+    if (!(await waitInPage(win, `${BLOCKS}[0].dataset.mermaidState === 'drawn' && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 15_000))) {
+      return `the flowchart was not drawn (it is ${await js(`${BLOCKS}[0]?.dataset.mermaidState ?? 'missing'`)})`;
+    }
+    const flow = (await js(`(() => { const b = ${BLOCKS}[0]; const svg = b.querySelector('[data-mermaid-diagram] svg'); return { text: svg.textContent, scripts: svg.querySelectorAll('script').length, width: svg.getBoundingClientRect().width }; })()`)) as { text: string; scripts: number; width: number };
+    if (!flow.text.includes('Start') || !flow.text.includes('Ready?') || !flow.text.includes('Ship')) return `the flowchart's labels read ${JSON.stringify(flow.text)}`;
+    if (flow.scripts !== 0 || flow.width < 50) return `the flowchart has ${flow.scripts} scripts and is ${flow.width}px wide`;
+
+    // A chart type that is not a flowchart comes with Mermaid.
+    if (!(await waitInPage(win, `${BLOCKS}[2].dataset.mermaidState === 'drawn' && ${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Dogs')`, 5_000))) return `the pie chart was not drawn (${await js(`${BLOCKS}[2].dataset.mermaidState + ': ' + (${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent ?? '').slice(0, 200)`)})`;
+
+    if (!(await waitInPage(win, `${BLOCKS}[3].dataset.mermaidState === 'drawn' && ${BLOCKS}[3].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Sales')`, 5_000))) return 'the bar chart (xychart-beta) was not drawn';
+
+    // A diagram that does not parse stays source, with a line under it.
+    if (!(await waitInPage(win, `${BLOCKS}[1].dataset.mermaidState === 'error'`, 5_000))) return 'the broken diagram did not report that it cannot be drawn';
+    const broken = (await js(`(() => { const b = ${BLOCKS}[1]; return { line: b.querySelector('[data-mermaid-error]')?.textContent ?? null, source: b.querySelector('[data-code-language]')?.textContent ?? '', svgs: b.querySelectorAll('[data-mermaid-diagram] svg').length }; })()`)) as { line: string | null; source: string; svgs: number };
+    if (broken.line !== "Couldn't draw this diagram.") return `the broken diagram's line reads ${JSON.stringify(broken.line)}`;
+    if (!broken.source.includes('this is not a diagram') || broken.svgs !== 0) return `the broken diagram shows ${JSON.stringify(broken.source)} and ${broken.svgs} drawings`;
+    // Mermaid builds a diagram in a hidden element: a failed one must not leave it in the page.
+    if (await js("!!document.querySelector('body > [id^=\"dsb-mermaid-\"]')")) return 'a failed diagram left its hidden element in the page';
+
+    // Preview | Source on the flowchart.
+    await js(`${BLOCKS}[0].querySelector('[data-code-view="source"]').click()`);
+    if (!(await waitInPage(win, `!${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg') && ${BLOCKS}[0].innerText.includes('flowchart LR')`, 3_000))) return 'Source did not show the diagram text';
+    await js(`${BLOCKS}[0].querySelector('[data-code-view="preview"]').click()`);
+    if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 3_000))) return 'Preview did not bring the diagram back';
+
+    // Light and dark: drawn again with the theme's colours.
+    const drawing = () => js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML ?? ''`) as Promise<string>;
+    await setColorScheme(win, 'light');
+    await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 5_000);
+    await shot(win, 'mermaid-light.png');
+    const light = await drawing();
+    await setColorScheme(win, 'dark');
+    if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML !== ${JSON.stringify(light)} && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 8_000))) return 'the diagram was not drawn again when the colour scheme changed';
+    await shot(win, 'mermaid-dark.png');
+
+    // Larger, with zoom; Escape closes the overlay and leaves the preview.
+    await js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram]').click()`);
+    const OVERLAY = "document.querySelector('[data-mermaid-overlay][role=dialog]')";
+    if (!(await waitInPage(win, `${OVERLAY}?.querySelector('[data-mermaid-viewport] svg') && ${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent.endsWith('%')`, 3_000))) return 'a click on the diagram did not open it larger';
+    const percent = () => js(`parseInt(${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent)`) as Promise<number>;
+    const before = await percent();
+    await js(`${OVERLAY}.querySelector('[data-mermaid-zoom-in]').click()`);
+    if (!(await waitInPage(win, `parseInt(${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent) > ${before}`, 2_000))) return `Zoom in did not zoom (${before}%)`;
+    await js(`${OVERLAY}.querySelector('[data-mermaid-actual]').click()`);
+    if ((await waitInPage(win, `${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent === '100%'`, 2_000)) === false) return 'Actual size did not show 100%';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${OVERLAY} && ${DIALOG}`, 3_000))) return 'Escape did not close the overlay and leave the preview';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    return `ok: a flowchart, a pie chart and a bar chart are drawn as SVG in the preview, a broken diagram shows its source and "Couldn't draw this diagram.", Source and Preview switch, the diagram is drawn again in dark mode, and a click opens it larger with zoom (${before}% to more, then 100%), where Escape closes only the overlay`;
+  } finally {
+    updatePreferences({ colorScheme: original });
+    for (let i = 0; i < 3 && (await js(`!!${DIALOG} || !!document.querySelector('[data-mermaid-overlay]')`)); i++) {
+      pressKey(win, 'Escape');
+      await settle(win);
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** ⌘⇧F, type a word, open the first hit: the session opens with that message highlighted. */
 /**
  * Find in the session (⌘F), read-only: searches for a word from one of Claude's replies, checks the
@@ -14527,6 +14607,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('file preview', () => runFilePreviewStep(win));
+  await step('mermaid diagrams', () => runMermaidStep(win));
   // Pictures of the Files panel in dark and light, in the demo home (CI uploads them with the results).
   const filesPictures = process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_SMOKE_FILES_PICTURES
     ? { shot: (name: string) => shot(win, name), setScheme: (scheme: 'light' | 'dark') => setColorScheme(win, scheme), scheme: () => preferences.get().colorScheme, restoreScheme: (colorScheme: string) => updatePreferences({ colorScheme: colorScheme as 'light' | 'dark' | 'system' }) }

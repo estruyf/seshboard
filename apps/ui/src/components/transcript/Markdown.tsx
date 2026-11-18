@@ -6,6 +6,8 @@ import remarkGfm from 'remark-gfm';
 import { remarkBareLinks } from './bareLinks.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
+import { MermaidBlock } from './MermaidBlock.tsx';
+import { isMermaidFence } from './mermaidRender.ts';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
 import { remarkSkimFade } from './skimFade.ts';
 import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
@@ -55,6 +57,8 @@ export function fencedBlock(className: string | undefined, children: ReactNode):
 /** Inline code, or a fenced block; `previews`: a Markdown block opens rendered (not inside another one's preview). */
 function renderCode({ className, children }: { className?: string; children?: ReactNode }, previews: boolean) {
   const fence = fencedBlock(className, children);
+  // A diagram is drawn, also in a Markdown block's preview (it holds no Markdown, so there is nothing to nest).
+  if (fence && isMermaidFence(fence.language)) return <MermaidBlock code={fence.code} />;
   // Markdown Claude writes out (a README, a PR description) opens rendered, with its source a click away.
   if (fence) return <CodeBlock code={fence.code} language={fence.language} preview={previews && fence.markdown ? <PreviewBlock text={fence.code} /> : undefined} />;
   // Long inline code (URLs, paths) wraps instead of pushing the pane wider.
