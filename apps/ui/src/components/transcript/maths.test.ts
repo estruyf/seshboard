@@ -216,6 +216,21 @@ describe('dollar amounts', () => {
     expect(mathNodes('- $$\n  x\n  $$')).toHaveLength(1);
   });
 
+  it('draws a $$ formula written on one line with spaces, alone or in a list item', () => {
+    const lines = ['$$ E = mc^2 $$', '$$ \\sum_{i=1}^n i = \\frac{n(n+1)}{2} $$', '$$E = mc^2$$'];
+    for (const line of lines) {
+      for (const text of [line, `Before.\n\n${line}\n\nAfter.`, `- ${line}`, `- item\n- ${line}\n- item`, `> ${line}`]) {
+        const html = chat(text);
+        expect(html, text).toContain('data-math="display"');
+        expect(html, text).toContain('katex-display');
+        expect(mathNodes(text).some((node) => node.startsWith('inlineMath:')), text).toBe(true);
+        // And it is no block that holds the rest of a streaming reply.
+        expect(opensMath(text), text).toBe(false);
+      }
+    }
+    expect(splitBlocks('$$ E = mc^2 $$\n\nNext.')).toHaveLength(2);
+  });
+
   it('keeps $$ working as remark-math does', () => {
     expect(mathNodes('$$ x + 1 $$')).toEqual(['inlineMath:x + 1']);
   });
