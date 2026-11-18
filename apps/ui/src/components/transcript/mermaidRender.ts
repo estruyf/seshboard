@@ -12,13 +12,26 @@ export interface MermaidApi {
 }
 
 /** A diagram drawn, or why it wasn't. */
-export type DrawOutcome = { ok: true; svg: string } | { ok: false; error: string };
+/** `load`: Mermaid itself could not be fetched, which says nothing about the diagram. */
+export type DrawOutcome = { ok: true; svg: string } | { ok: false; error: string; load?: true };
+
+/** The most characters of diagram text drawn (Mermaid's own limit is 50,000, and past it draws an error box instead of failing). */
+export const MAX_DIAGRAM_TEXT = 25_000;
+/** The most edges drawn in one diagram (Mermaid's default is 500); past it Mermaid throws and the block shows its source. */
+export const MAX_DIAGRAM_EDGES = 300;
+
+/**
+ * Settings a diagram's own `%%{init: …}%%` or front matter may not change, on top of Mermaid's own list (`securityLevel`,
+ * limits, …): the theme, whose colours are the app's, and the label kind (see `mermaidConfig`). Mermaid drops these keys
+ * from a diagram's settings wherever they are nested, so `flowchart: { htmlLabels: true }` is dropped as well.
+ */
+const SECURE_KEYS = ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges', 'theme', 'themeVariables', 'themeCSS', 'htmlLabels', 'fontFamily', 'fontSize', 'darkMode'];
 
 /**
  * The settings every diagram is drawn with. `strict` keeps scripts and click handlers out of diagrams (Mermaid
  * sanitises what it returns), and `suppressErrorRendering` makes a bad diagram throw instead of drawing Mermaid's own bomb.
  * Labels are SVG text, not HTML in a `foreignObject`: they take the page's line height and paragraph margins otherwise,
- * and no longer fit the boxes Mermaid measured for them.
+ * and no longer fit the boxes Mermaid measured for them. The keys in `SECURE_KEYS` are the app's: a diagram can't set them.
  */
 export function mermaidConfig(themeVariables: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -30,6 +43,9 @@ export function mermaidConfig(themeVariables: Record<string, unknown>): Record<s
     logLevel: 'fatal',
     htmlLabels: false,
     flowchart: { htmlLabels: false },
+    maxTextSize: MAX_DIAGRAM_TEXT,
+    maxEdges: MAX_DIAGRAM_EDGES,
+    secure: SECURE_KEYS,
   };
 }
 
@@ -71,7 +87,7 @@ export function createMermaidRenderer({ load, cleanup, budget = 3_000_000 }: Mer
     try {
       mermaid = await load();
     } catch (error) {
-      return { ok: false, error: message(error) };
+      return { ok: false, error: message(error), load: true };
     }
     const id = `sb-mermaid-${++counter}`;
     try {
@@ -93,6 +109,8 @@ export function createMermaidRenderer({ load, cleanup, budget = 3_000_000 }: Mer
       return hit.startsWith(OK) ? { ok: true, svg: hit.slice(1) } : { ok: false, error: hit.slice(1) };
     },
     render(source, themeVariables) {
+      // Mermaid would draw its own error box for this; the block shows the source instead.
+      if (source.length > MAX_DIAGRAM_TEXT) return Promise.resolve({ ok: false, error: `The diagram is over ${MAX_DIAGRAM_TEXT} characters.` });
       const key = keyOf(source, themeVariables);
       const cached = this.peek(source, themeVariables);
       if (cached) return Promise.resolve(cached);
@@ -124,4 +142,17 @@ export function svgSize(svg: string): { width: number; height: number } | null {
  */
 export function minDiagramWidth(naturalWidth: number): number {
   return Math.round(Math.min(naturalWidth, Math.max(280, naturalWidth * 0.6)));
+}
+
+/**
+ * The SVG with its ids made its own: Mermaid names everything after the diagram (`sb-mermaid-3`, its markers
+ * `sb-mermaid-3_flowchart-pointEnd`, the `#sb-mermaid-3 …` selectors of its style sheet). The same diagram shown twice (two replies, or
+ * the inline copy and the overlay) would share them, and an arrowhead would point at a marker in the other copy, which
+ * disappears with it. `suffix` makes the copy's names different; the svg is returned as it is when it has no id.
+ */
+export function uniqueSvgIds(svg: string, suffix: string): string {
+  const id = /^\s*(?:<\?xml[^>]*>\s*)?<svg\b[^>]*?\sid="([^"]+)"/i.exec(svg)?.[1];
+  if (!id) return svg;
+  // Not followed by a digit, so `sb-mermaid-1` doesn't take the start of `sb-mermaid-12`.
+  return svg.replace(new RegExp(`${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\d)`, 'g'), `${id}-${suffix}`);
 }

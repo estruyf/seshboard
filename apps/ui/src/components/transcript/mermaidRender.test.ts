@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMermaidRenderer, isMermaidFence, mermaidConfig, minDiagramWidth, svgSize, type MermaidApi } from './mermaidRender.ts';
+import { createMermaidRenderer, isMermaidFence, MAX_DIAGRAM_EDGES, MAX_DIAGRAM_TEXT, mermaidConfig, minDiagramWidth, svgSize, uniqueSvgIds, type MermaidApi } from './mermaidRender.ts';
 
 const VARS = { primaryColor: '#fff' };
 
@@ -34,6 +34,17 @@ describe('mermaidConfig', () => {
     expect(config.suppressErrorRendering).toBe(true);
     expect(config.theme).toBe('base');
     expect(config.themeVariables).toBe(VARS);
+  });
+
+  it("keeps the app's theme and label kind out of a diagram's own settings, and limits its size", () => {
+    const config = mermaidConfig(VARS);
+    // Mermaid drops these keys from `%%{init: …}%%` and front matter (nested ones too), and keeps its own secure keys.
+    expect(config.secure).toEqual(expect.arrayContaining(['secure', 'securityLevel', 'maxTextSize', 'maxEdges', 'suppressErrorRendering', 'startOnLoad', 'theme', 'themeVariables', 'themeCSS', 'htmlLabels', 'fontFamily']));
+    expect(config.htmlLabels).toBe(false);
+    expect(config.maxTextSize).toBe(MAX_DIAGRAM_TEXT);
+    expect(config.maxEdges).toBe(MAX_DIAGRAM_EDGES);
+    expect(MAX_DIAGRAM_TEXT).toBeLessThan(50_000);
+    expect(MAX_DIAGRAM_EDGES).toBeLessThan(500);
   });
 });
 
@@ -110,8 +121,31 @@ describe('createMermaidRenderer', () => {
         return api;
       },
     });
-    expect(await renderer.render('graph TD; A-->B', VARS)).toEqual({ ok: false, error: 'chunk failed' });
+    expect(await renderer.render('graph TD; A-->B', VARS)).toEqual({ ok: false, error: 'chunk failed', load: true });
     expect(renderer.peek('graph TD; A-->B', VARS)).toBeUndefined();
+    expect((await renderer.render('graph TD; A-->B', VARS)).ok).toBe(true);
+  });
+
+  it('says plainly that Mermaid could not load, apart from a diagram that does not parse', async () => {
+    const renderer = createMermaidRenderer({
+      load: async () => {
+        throw new Error('chunk failed');
+      },
+    });
+    expect(await renderer.render('graph TD; A-->B', VARS)).toEqual({ ok: false, error: 'chunk failed', load: true });
+    const { api } = fakeMermaid(async () => {
+      throw new Error('Parse error');
+    });
+    const parsing = createMermaidRenderer({ load: async () => api });
+    expect(await parsing.render('nope', VARS)).toEqual({ ok: false, error: 'Parse error' });
+  });
+
+  it('does not hand Mermaid a diagram over the size limit, which it would draw an error box for', async () => {
+    const { api, calls } = fakeMermaid();
+    const renderer = createMermaidRenderer({ load: async () => api });
+    const outcome = await renderer.render(`graph TD\n${'A-->B\n'.repeat(MAX_DIAGRAM_TEXT / 6 + 10)}`, VARS);
+    expect(outcome.ok).toBe(false);
+    expect(calls).toHaveLength(0);
     expect((await renderer.render('graph TD; A-->B', VARS)).ok).toBe(true);
   });
 
@@ -143,5 +177,25 @@ describe('minDiagramWidth', () => {
     expect(minDiagramWidth(1000)).toBe(600);
     expect(minDiagramWidth(200)).toBe(200);
     expect(minDiagramWidth(400)).toBe(280);
+  });
+});
+
+describe('uniqueSvgIds', () => {
+  const svg = '<svg id="sb-mermaid-3" viewBox="0 0 10 10"><style>#sb-mermaid-3 .a{fill:red}#sb-mermaid-3 .b{marker-end:url(#sb-mermaid-3_flowchart-pointEnd)}</style><defs><marker id="sb-mermaid-3_flowchart-pointEnd"/></defs><path marker-end="url(#sb-mermaid-3_flowchart-pointEnd)"/><g id="sb-mermaid-31"/></svg>';
+
+  it("gives a copy its own ids, so a marker's url() points at the copy's own", () => {
+    const copy = uniqueSvgIds(svg, 'c1');
+    expect(copy).toContain('<svg id="sb-mermaid-3-c1"');
+    expect(copy).toContain('<style>#sb-mermaid-3-c1 .a');
+    expect(copy).toContain('<marker id="sb-mermaid-3-c1_flowchart-pointEnd"/>');
+    expect(copy).toContain('marker-end="url(#sb-mermaid-3-c1_flowchart-pointEnd)"');
+    // `sb-mermaid-31` is another name that only starts like it.
+    expect(copy).toContain('<g id="sb-mermaid-31"/>');
+    expect(copy).not.toContain('sb-mermaid-3_');
+  });
+
+  it('makes two copies different from each other, and leaves an svg without an id alone', () => {
+    expect(uniqueSvgIds(svg, 'c1')).not.toBe(uniqueSvgIds(svg, 'c2'));
+    expect(uniqueSvgIds('<svg viewBox="0 0 1 1"><g/></svg>', 'c1')).toBe('<svg viewBox="0 0 1 1"><g/></svg>');
   });
 });

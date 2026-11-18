@@ -4,6 +4,7 @@ import type { PluggableList } from 'unified';
 import { withoutSkimMarks } from '@seshboard/protocol/client';
 import remarkGfm from 'remark-gfm';
 import { remarkBareLinks } from './bareLinks.ts';
+import { BlockWritingContext } from './blockWriting.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
 import { MermaidBlock } from './MermaidBlock.tsx';
@@ -138,7 +139,9 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant
     <div className={proseOf(variant)}>
       {blocks.map((block, i) => (
         // Blocks only ever grow at the end, so the index is a stable key.
-        <Block key={i} text={i === blocks.length - 1 ? healMarkdown(block) : block} />
+        <BlockWritingContext key={i} value={i === blocks.length - 1}>
+          <Block text={i === blocks.length - 1 ? healMarkdown(block) : block} />
+        </BlockWritingContext>
       ))}
     </div>
   );

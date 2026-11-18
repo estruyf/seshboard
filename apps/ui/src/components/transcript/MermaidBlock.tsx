@@ -1,12 +1,14 @@
 import { Maximize2 } from 'lucide-react';
-import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { Button } from '../ui/Button.tsx';
+import { BlockWritingContext } from './blockWriting.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { MermaidOverlay } from './MermaidOverlay.tsx';
-import { createMermaidRenderer, minDiagramWidth, svgSize, type DrawOutcome } from './mermaidRender.ts';
+import { failureLine, pickOutcome, shouldDraw, type Drawn } from './mermaidBlockState.ts';
+import { createMermaidRenderer, minDiagramWidth, svgSize, uniqueSvgIds } from './mermaidRender.ts';
 import { mermaidThemeVariables } from './mermaidTheme.ts';
 import { useDark } from './VisualBlock.tsx';
 
@@ -20,38 +22,36 @@ const renderer = createMermaidRenderer({
   },
 });
 
-/** How long the source must stay as it is before it is drawn: a block Claude is still writing keeps showing its source. */
-const SETTLE_MS = 350;
-
 /**
  * A ```` ```mermaid ```` block: drawn as a diagram, with the Preview | Source switch and Copy a Markdown block has. Until it
- * is drawn (Mermaid loading, or the block still being written, which changes faster than `SETTLE_MS`) it shows its source;
- * when it can't be drawn it shows its source with a line saying so. The colours come from the app's tokens, read when it is
- * drawn, and it is drawn again when the theme or the colour scheme changes (the old drawing stays until the new one is ready).
- * A click on the diagram opens it larger.
+ * is drawn (Mermaid loading) it shows its source, and while the reply holding it is still being written
+ * (`BlockWritingContext`) it only shows its source: a half-written diagram is never drawn. When it can't be drawn it shows
+ * its source with a line saying so. The colours come from the app's tokens, read when it is drawn, and it is drawn again when the theme or the
+ * colour scheme changes (the old drawing stays until the new one is ready). A click on the diagram opens it larger.
  */
 export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
+  const writing = useContext(BlockWritingContext);
   const dark = useDark();
   const active = useThemes((s) => s.active);
   const colorScheme = usePreferences((s) => s.prefs.colorScheme);
   // The theme's style is applied before this renders (the store applies it as it changes), so the tokens read are the new ones.
   const variables = useMemo(() => mermaidThemeVariables((name) => getComputedStyle(document.documentElement).getPropertyValue(name)), [dark, active, colorScheme]);
   const cached = renderer.peek(code, variables);
-  // The last outcome, tagged with its source: a changed source starts over, a changed theme keeps the old drawing until the new one arrives.
-  const [drawn, setDrawn] = useState<{ code: string; outcome: DrawOutcome } | null>(null);
-  const outcome = cached ?? (drawn?.code === code ? drawn.outcome : null);
+  const [drawn, setDrawn] = useState<Drawn | null>(null);
+  // What this block showed last, for a theme change on a block that came out of the cache.
+  const shown = useRef<Drawn | null>(null);
+  const outcome = pickOutcome(code, cached, drawn, shown.current);
+  if (outcome) shown.current = { code, outcome };
 
+  const draw = shouldDraw(writing, cached);
   useEffect(() => {
-    if (cached) return;
+    if (!draw) return;
     let cancelled = false;
-    const timer = setTimeout(() => {
-      void renderer.render(code, variables).then((result) => !cancelled && setDrawn({ code, outcome: result }));
-    }, SETTLE_MS);
+    void renderer.render(code, variables).then((result) => !cancelled && setDrawn({ code, outcome: result }));
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
-  }, [code, variables, cached]);
+  }, [code, variables, draw]);
 
   if (outcome?.ok) return <Diagram code={code} svg={outcome.svg} />;
   return (
@@ -59,16 +59,27 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
       <CodeBlock code={code} language="mermaid" />
       {outcome && (
         <p className="-mt-1 mb-2 px-1 text-meta text-muted" data-mermaid-error="">
-          Couldn't draw this diagram.
+          {failureLine(outcome)}
         </p>
       )}
     </div>
   );
 });
 
+/** Makes each insertion of a drawing its own ids (see `uniqueSvgIds`). */
+let copies = 0;
+const ownCopy = (svg: string) => uniqueSvgIds(svg, `c${++copies}`);
+
 function Diagram({ code, svg }: { code: string; svg: string }) {
   const [open, setOpen] = useState(false);
   const size = useMemo(() => svgSize(svg), [svg]);
+  const inline = useMemo(() => ownCopy(svg), [svg]);
+  const larger = useMemo(() => ownCopy(svg), [svg]);
+  // A link in the diagram (`click A href …`) goes where it says; it doesn't also open the overlay.
+  const onClick = (event: MouseEvent) => {
+    if (!size || (event.target as Element).closest('a') || window.getSelection()?.toString()) return;
+    setOpen(true);
+  };
   const style = size ? ({ '--mermaid-min': `${minDiagramWidth(size.width)}px` } as CSSProperties) : undefined;
   const preview = (
     <div className="group/diagram relative">
@@ -76,8 +87,8 @@ function Diagram({ code, svg }: { code: string; svg: string }) {
         // The SVG is what Mermaid returned under `securityLevel: 'strict'`. A wide diagram shrinks to fit, down to a readable size, then scrolls sideways.
         className={`overflow-x-auto py-2 select-text [&_svg]:mx-auto [&_svg]:min-w-(--mermaid-min) ${size ? 'cursor-zoom-in' : ''}`}
         style={style}
-        onClick={() => size && !window.getSelection()?.toString() && setOpen(true)}
-        dangerouslySetInnerHTML={{ __html: svg }}
+        onClick={onClick}
+        dangerouslySetInnerHTML={{ __html: inline }}
         data-mermaid-diagram=""
       />
       {size && (
@@ -91,7 +102,7 @@ function Diagram({ code, svg }: { code: string; svg: string }) {
     <div data-mermaid="" data-mermaid-state="drawn">
       <CodeBlock code={code} language="mermaid" copyLabel="Copy diagram source" preview={preview} />
       {/* In the body: the conversation's rows are positioned by transforms, which would hold a fixed overlay inside them. */}
-      {open && size && createPortal(<MermaidOverlay svg={svg} size={size} onClose={() => setOpen(false)} />, document.body)}
+      {open && size && createPortal(<MermaidOverlay svg={larger} size={size} onClose={() => setOpen(false)} />, document.body)}
     </div>
   );
 }

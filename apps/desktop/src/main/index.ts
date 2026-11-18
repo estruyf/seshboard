@@ -6975,10 +6975,14 @@ async function runMermaidStep(win: BrowserWindow): Promise<string> {
   const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
   const BLOCKS = `${DIALOG}.querySelectorAll('[data-mermaid]')`;
   const original = preferences.get().colorScheme;
+  const open = () => js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+  const drawing = () => js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML ?? ''`) as Promise<string>;
   try {
-    writeFileSync(md, '# Diagrams\n\n```mermaid\nflowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C[Ship]\n  B -->|no| D[Wait]\n```\n\n```Mermaid\nthis is not a diagram\n```\n\n```mermaid\npie title Pets\n  "Dogs" : 3\n  "Cats" : 2\n```\n\n```mermaid\nxychart-beta\n  title "Sales"\n  x-axis [jan, feb, mar]\n  y-axis "Units" 0 --> 100\n  bar [30, 60, 90]\n```\n');
-    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
-    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DIALOG}.querySelectorAll('[data-mermaid]').length === 4`, 5_000))) return 'the Markdown file did not open with its four diagram blocks';
+    // A diagram's script must never run: alert() is replaced by a flag, as a real one would block the window.
+    await js('window.__mermaidAlert = window.alert; window.__alerted = false; window.alert = () => { window.__alerted = true; }; null');
+    writeFileSync(md, '# Diagrams\n\n```mermaid\nflowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C[Ship]\n  B -->|no| D[Wait]\n```\n\n```Mermaid\nthis is not a diagram\n```\n\n```mermaid\npie title Pets\n  "Dogs" : 3\n  "Cats" : 2\n```\n\n```mermaid\nxychart-beta\n  title "Sales"\n  x-axis [jan, feb, mar]\n  y-axis "Units" 0 --> 100\n  bar [30, 60, 90]\n```\n\n```mermaid\n%%{init: {"securityLevel":"loose","theme":"dark","themeVariables":{"primaryColor":"#ff0000"},"htmlLabels":true,"flowchart":{"htmlLabels":true}}}%%\nflowchart LR\n  A["<img src=x onerror=alert(1)>"] --> B[Safe]\n  click A call alert()\n  click B href "javascript:alert(1)"\n```\n');
+    await open();
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DIALOG}.querySelectorAll('[data-mermaid]').length === 5`, 5_000))) return 'the Markdown file did not open with its five diagram blocks';
     // Mermaid is fetched the first time, so the first one takes longer.
     if (!(await waitInPage(win, `${BLOCKS}[0].dataset.mermaidState === 'drawn' && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 15_000))) {
       return `the flowchart was not drawn (it is ${await js(`${BLOCKS}[0]?.dataset.mermaidState ?? 'missing'`)})`;
@@ -6986,6 +6990,22 @@ async function runMermaidStep(win: BrowserWindow): Promise<string> {
     const flow = (await js(`(() => { const b = ${BLOCKS}[0]; const svg = b.querySelector('[data-mermaid-diagram] svg'); return { text: svg.textContent, scripts: svg.querySelectorAll('script').length, width: svg.getBoundingClientRect().width }; })()`)) as { text: string; scripts: number; width: number };
     if (!flow.text.includes('Start') || !flow.text.includes('Ready?') || !flow.text.includes('Ship')) return `the flowchart's labels read ${JSON.stringify(flow.text)}`;
     if (flow.scripts !== 0 || flow.width < 50) return `the flowchart has ${flow.scripts} scripts and is ${flow.width}px wide`;
+
+    // A block that mounts from the cache (the preview closed and opened again) and then gets another theme keeps its drawing
+    // while the new one is made, instead of falling back to its source.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    await open();
+    if (!(await waitInPage(win, `${BLOCKS}[0]?.dataset.mermaidState === 'drawn'`, 3_000))) return 'the flowchart was not drawn at once from the cache when the preview opened again';
+    const wasDark = (await js("matchMedia('(prefers-color-scheme: dark)').matches")) as boolean;
+    const first = await drawing();
+    await js(`window.__mermaidStates = []; window.__mermaidStop = false; (function tick() { window.__mermaidStates.push(${BLOCKS}[0]?.dataset.mermaidState ?? 'gone'); if (!window.__mermaidStop) requestAnimationFrame(tick); })()`);
+    await setColorScheme(win, wasDark ? 'light' : 'dark');
+    const redrawn = await waitInPage(win, `${BLOCKS}[0]?.querySelector('[data-mermaid-diagram] svg')?.innerHTML !== ${JSON.stringify(first)} && ${BLOCKS}[0].dataset.mermaidState === 'drawn'`, 8_000);
+    await js('window.__mermaidStop = true');
+    const states = (await js('[...new Set(window.__mermaidStates)]')) as string[];
+    if (!redrawn) return 'a diagram from the cache was not drawn again for the other colour scheme';
+    if (states.join() !== 'drawn') return `a diagram from the cache showed ${states.join(', ')} while it was drawn again for the other colour scheme, not its old drawing`;
 
     // A chart type that is not a flowchart comes with Mermaid.
     if (!(await waitInPage(win, `${BLOCKS}[2].dataset.mermaidState === 'drawn' && ${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Dogs')`, 5_000))) return `the pie chart was not drawn (${await js(`${BLOCKS}[2].dataset.mermaidState + ': ' + (${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent ?? '').slice(0, 200)`)})`;
@@ -7000,6 +7020,22 @@ async function runMermaidStep(win: BrowserWindow): Promise<string> {
     // Mermaid builds a diagram in a hidden element: a failed one must not leave it in the page.
     if (await js("!!document.querySelector('body > [id^=\"dsb-mermaid-\"]')")) return 'a failed diagram left its hidden element in the page';
 
+    // Hostile text: the diagram's own settings can't loosen the security level or replace the theme, and nothing it holds runs.
+    if (!(await waitInPage(win, `['drawn', 'error'].includes(${BLOCKS}[4].dataset.mermaidState)`, 5_000))) return 'the hostile diagram neither drew nor failed';
+    const hostile = (await js(`(() => { const b = ${BLOCKS}[4]; const svg = b.querySelector('[data-mermaid-diagram] svg'); const all = svg ? [...svg.querySelectorAll('*')] : []; return { state: b.dataset.mermaidState, source: b.querySelector('[data-code-language]')?.textContent ?? '', handlers: all.flatMap((el) => [...el.attributes].filter((a) => /^on/i.test(a.name)).map((a) => el.tagName + '.' + a.name)), scripts: all.filter((el) => /^(script|img|iframe|object|foreignobject)$/i.test(el.tagName)).map((el) => el.tagName), links: all.flatMap((el) => [...el.attributes].filter((a) => /javascript:/i.test(a.value)).map((a) => el.tagName + '.' + a.name)), red: svg ? /#ff0000|rgb\\(255, ?0, ?0\\)/i.test(svg.outerHTML) : false, text: svg?.textContent ?? '', alerted: window.__alerted }; })()`)) as { state: string; source: string; handlers: string[]; scripts: string[]; links: string[]; red: boolean; text: string; alerted: boolean };
+    if (hostile.state !== 'drawn') return `the hostile diagram is ${hostile.state}, not drawn: its safe parts should still draw`;
+    if (!hostile.text.includes('Safe')) return `the hostile diagram reads ${JSON.stringify(hostile.text)}`;
+    if (hostile.handlers.length || hostile.scripts.length || hostile.links.length) return `the hostile diagram kept ${JSON.stringify({ handlers: hostile.handlers, elements: hostile.scripts, links: hostile.links })}`;
+    if (hostile.red) return 'the diagram replaced the app\'s colours with its own theme variables';
+    if (await js(`${BLOCKS}[4].querySelector('[data-mermaid-diagram] foreignObject') !== null`)) return 'the diagram brought back HTML labels';
+    // Clicking its nodes runs nothing either.
+    await js(`${BLOCKS}[4].querySelectorAll('[data-mermaid-diagram] .node').forEach((n) => n.dispatchEvent(new MouseEvent('click', { bubbles: true })))`);
+    await settle(win);
+    if (await js('window.__alerted === true')) return 'a hostile diagram ran a script (alert was called)';
+    // A click on a node is a click on the diagram, which opens it larger: close that overlay before the next part.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-mermaid-overlay]')", 3_000))) return 'a click on the hostile diagram opened an overlay that Escape did not close';
+
     // Preview | Source on the flowchart.
     await js(`${BLOCKS}[0].querySelector('[data-code-view="source"]').click()`);
     if (!(await waitInPage(win, `!${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg') && ${BLOCKS}[0].innerText.includes('flowchart LR')`, 3_000))) return 'Source did not show the diagram text';
@@ -7007,7 +7043,6 @@ async function runMermaidStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 3_000))) return 'Preview did not bring the diagram back';
 
     // Light and dark: drawn again with the theme's colours.
-    const drawing = () => js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML ?? ''`) as Promise<string>;
     await setColorScheme(win, 'light');
     await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 5_000);
     await shot(win, 'mermaid-light.png');
@@ -7030,8 +7065,9 @@ async function runMermaidStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!${OVERLAY} && ${DIALOG}`, 3_000))) return 'Escape did not close the overlay and leave the preview';
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
-    return `ok: a flowchart, a pie chart and a bar chart are drawn as SVG in the preview, a broken diagram shows its source and "Couldn't draw this diagram.", Source and Preview switch, the diagram is drawn again in dark mode, and a click opens it larger with zoom (${before}% to more, then 100%), where Escape closes only the overlay`;
+    return `ok: a flowchart, a pie chart and a bar chart are drawn as SVG in the preview, a diagram from the cache keeps its drawing while it is drawn again for another colour scheme, a hostile diagram can't change the security level, theme or labels and runs and keeps nothing (no handlers, javascript: links or images), a broken diagram shows its source and "Couldn't draw this diagram.", Source and Preview switch, the diagram is drawn again in dark mode, and a click opens it larger with zoom (${before}% to more, then 100%), where Escape closes only the overlay`;
   } finally {
+    await js('if (window.__mermaidAlert) { window.alert = window.__mermaidAlert; delete window.__mermaidAlert; }');
     updatePreferences({ colorScheme: original });
     for (let i = 0; i < 3 && (await js(`!!${DIALOG} || !!document.querySelector('[data-mermaid-overlay]')`)); i++) {
       pressKey(win, 'Escape');

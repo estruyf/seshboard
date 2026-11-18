@@ -94,7 +94,7 @@ export function MermaidOverlay({ svg, size, onClose }: { svg: string; size: { wi
   );
 
   return (
-    <Dialog title="Diagram" subtitle="Scroll to zoom, drag to move" width="full" flush headerActions={actions} onClose={onClose} data-mermaid-overlay="">
+    <Dialog title="Diagram" subtitle="Scroll to zoom, drag to move" width="full" flush headerActions={actions} initialFocus={box} onClose={onClose} data-mermaid-overlay="">
       <div
         ref={box}
         tabIndex={0}
