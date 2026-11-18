@@ -6961,6 +6961,63 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/**
+ * Maths in a Markdown preview (#348), on a throwaway file: `$x^2$`, a `$$` block and a math fence are drawn by KaTeX (its
+ * fonts load under the window's CSP), in the text's colour; a dollar amount stays text; a formula that doesn't parse shows its
+ * source; a wide formula scrolls inside its block instead of widening the page; a block's Source and Preview switch works.
+ * The folder is removed at the end.
+ */
+async function runMathsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-maths-')));
+  const md = join(dir, 'maths.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  const wide = Array.from({ length: 80 }, (_, i) => `x_{${i + 1}}`).join(' + ');
+  try {
+    writeFileSync(
+      md,
+      `# Maths\n\nA square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.\n\n$$\n\\int_0^1 x\\,dx = \\frac12\n$$\n\n\`\`\`math\n\\sum_{i=1}^n i = \\frac{n(n+1)}{2}\n\`\`\`\n\nBroken: $\\frac{1$ here.\n\n$$\n${wide}\n$$\n`,
+    );
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${PREVIEW}?.querySelector('.katex')`, 10_000))) return 'the formulas were not drawn in the Markdown preview';
+    const found = (await js(
+      `(() => { const p = ${PREVIEW}; const html = (sel) => p.querySelectorAll(sel).length;
+        const inline = p.querySelector('[data-math="inline"]'); const block = p.querySelector('[data-code-preview-block] [data-math="block"]');
+        const wideBox = [...p.querySelectorAll('[data-math="block"]')].pop();
+        return { inline: html('[data-math="inline"] .katex'), blocks: html('[data-code-preview-block] [data-math="block"] .katex-display'), switches: html('[data-code-preview-block] [data-code-view="source"]'),
+          text: p.innerText, broken: p.querySelector('[data-math-error]')?.innerText ?? null,
+          colour: inline && getComputedStyle(inline.querySelector('.katex')).color, prose: getComputedStyle(p).color,
+          fonts: [...document.fonts].filter((f) => f.family.replace(/["']/g, '').startsWith('KaTeX') && f.status === 'loaded').length,
+          wideScrolls: wideBox.scrollWidth > wideBox.clientWidth, wideFits: wideBox.getBoundingClientRect().right <= p.getBoundingClientRect().right + 1, pageScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          blockInner: !!block }; })()`,
+    )) as { inline: number; blocks: number; switches: number; text: string; broken: string | null; colour: string | null; prose: string; fonts: number; wideScrolls: boolean; wideFits: boolean; pageScrolls: boolean; blockInner: boolean };
+    if (found.inline !== 1) return `${found.inline} inline formulas were drawn, not 1`;
+    if (found.blocks !== 3) return `${found.blocks} blocks were drawn, not 3 (a $$ block, a math fence and a wide one)`;
+    if (found.switches !== 3) return `${found.switches} math blocks have a Source switch, not 3`;
+    if (!found.text.includes('it costs $5 and $10 a month')) return 'the dollar amount did not stay text';
+    if (found.text.includes('$x^2')) return 'an inline formula still shows its dollars';
+    if (!found.broken?.includes('\\frac{1')) return `a formula that doesn't parse shows ${JSON.stringify(found.broken)}, not its source`;
+    if (found.colour !== found.prose) return `a formula is ${found.colour}, not the text colour ${found.prose}`;
+    if (found.fonts < 1) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
+    if (!found.wideScrolls || !found.wideFits || found.pageScrolls) return `a wide formula does not scroll inside its block (scrolls ${found.wideScrolls}, fits ${found.wideFits}, page scrolls ${found.pageScrolls})`;
+
+    await shot(win, 'maths-preview.png');
+
+    // Source shows the formula as written and Preview draws it again.
+    const FIRST = `${PREVIEW}.querySelector('[data-code-preview-block]')`;
+    await js(`${FIRST}.querySelector('[data-code-view="source"]').click()`);
+    if (!(await waitInPage(win, `!${FIRST}.querySelector('[data-code-preview]') && ${FIRST}.innerText.includes('\\int_0^1')`, 3_000))) return 'Source did not show the formula as written';
+    await js(`${FIRST}.querySelector('[data-code-view="preview"]').click()`);
+    if (!(await waitInPage(win, `${FIRST}.querySelector('[data-math="block"] .katex')`, 3_000))) return 'Preview did not draw the formula again';
+    return 'ok: $x^2$, a $$ block and a math fence are drawn by KaTeX in the text colour with its fonts loaded, a dollar amount stays text, a formula that does not parse shows its source, a wide one scrolls inside its block, and Source and Preview switch';
+  } finally {
+    pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click()");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** ⌘⇧F, type a word, open the first hit: the session opens with that message highlighted. */
 /**
  * Find in the session (⌘F), read-only: searches for a word from one of Claude's replies, checks the
@@ -14527,6 +14584,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('file preview', () => runFilePreviewStep(win));
+  await step('maths: Markdown preview', () => runMathsStep(win));
   // Pictures of the Files panel in dark and light, in the demo home (CI uploads them with the results).
   const filesPictures = process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_SMOKE_FILES_PICTURES
     ? { shot: (name: string) => shot(win, name), setScheme: (scheme: 'light' | 'dark') => setColorScheme(win, scheme), scheme: () => preferences.get().colorScheme, restoreScheme: (colorScheme: string) => updatePreferences({ colorScheme: colorScheme as 'light' | 'dark' | 'system' }) }

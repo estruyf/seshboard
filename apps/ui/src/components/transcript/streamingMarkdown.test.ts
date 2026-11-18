@@ -35,4 +35,7 @@ describe('healMarkdown', () => {
     const text = 'Done: **all** `good` [link](https://example.com).';
     expect(healMarkdown(text)).toBe(text);
   });
+  it('leaves an unclosed $$ and $ as written (maths is drawn once the block is complete)', () => {
+    for (const text of ['$$\n\\frac{a}{', 'Let $x^2', 'cost $5 and $']) expect(healMarkdown(text)).toBe(text);
+  });
 });
