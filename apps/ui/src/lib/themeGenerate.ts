@@ -163,6 +163,8 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     card: hex(card),
     popover: hex(popover),
     'code-bg': hex(sidebar),
+    // A file or diff in a side panel sits on the canvas, so it stands apart from the panel (sidebar) around it.
+    'code-pane': toHex(read(canvas)),
     border: hex(surface(steps.border, 1.5)),
     'overlay-border': hex(surface(steps.overlayBorder, 2)),
     'overlay-shadow': SHADES[mode]['overlay-shadow'],

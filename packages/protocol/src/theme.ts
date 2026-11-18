@@ -24,6 +24,7 @@ const TOKEN_HELP: Partial<Record<(typeof THEME_TOKENS)[number], string>> = {
   card: 'Cards: your prompt, plans, permission and question cards, the message box.',
   popover: 'Menus, popovers and dialogs.',
   'code-bg': 'Code blocks and diffs.',
+  'code-pane': 'A file or diff inside a side panel (the Files viewer, Changes): set apart from sidebar. Usually bg.',
   border: 'Lines between areas.',
   'overlay-border': 'Borders on menus and dialogs, and on fields and chips inside them.',
   'overlay-shadow': 'The shadow colour under menus and dialogs (the app builds the layers).',

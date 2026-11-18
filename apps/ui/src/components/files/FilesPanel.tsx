@@ -279,7 +279,8 @@ export function FilesPanel({ sessionId, cwd, width, onWidth, changes, changesBas
       aria-label="Files"
       tabIndex={-1}
       onKeyDown={onKey}
-      className={full ? 'relative flex min-w-0 flex-1 flex-col bg-sidebar outline-none' : 'relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l'}
+      // `code-pane`: the file sits on its own surface, apart from the panel around it.
+      className={`code-pane ${full ? 'relative flex min-w-0 flex-1 flex-col bg-sidebar outline-none' : 'relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l'}`}
       style={full ? undefined : { width }}
       data-files-panel=""
       data-files-mode={state.mode}
