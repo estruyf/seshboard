@@ -1,6 +1,8 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { isContextMenuKey } from '../../lib/contextMenu.ts';
+import type { OpenFilesMenu } from './FilesMenu.tsx';
 import type { TouchedFiles } from './touchedFiles.ts';
 import { buildTree, treeKey, visibleRows, type FileTreeRow } from './fileTree.ts';
 
@@ -24,6 +26,8 @@ interface FileTreeProps {
   touched: TouchedFiles;
   /** Asks the tree to bring this folder into view and focus it (a breadcrumb was clicked). */
   reveal: { path: string; nonce: number } | null;
+  /** Right-click or Shift+F10 on a row: Add to message, Open, Copy path. */
+  onContextMenu: OpenFilesMenu;
 }
 
 /**
@@ -31,7 +35,7 @@ interface FileTreeProps {
  * Claude changed or read in this session. Keys as the tree pattern has them: ↑ ↓ move, → opens a folder, ← closes it,
  * ↩ opens a file. Only the rows on screen are in the DOM.
  */
-export function FileTree({ files, truncated, error, open, filter, onFilter, onToggle, onOpen, selected, touched, reveal }: FileTreeProps) {
+export function FileTree({ files, truncated, error, open, filter, onFilter, onToggle, onOpen, selected, touched, reveal, onContextMenu }: FileTreeProps) {
   const root = useMemo(() => buildTree(files ?? []), [files]);
   const rows = useMemo(() => visibleRows(root, open, filter, files ?? []), [root, open, filter, files]);
   const [active, setActive] = useState(0);
@@ -59,6 +63,12 @@ export function FileTree({ files, truncated, error, open, filter, onFilter, onTo
   }, [reveal, rows]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const row = rows[Math.min(active, rows.length - 1)];
+    if (row && isContextMenuKey(event)) {
+      event.preventDefault();
+      const element = document.getElementById(treeItemId(row.path)) ?? event.currentTarget;
+      return onContextMenu({ kind: row.dir ? 'folder' : 'file', path: row.path }, null, element);
+    }
     const step = treeKey(event.key, rows, Math.min(active, rows.length - 1));
     if (!step) return;
     event.preventDefault();
@@ -134,6 +144,10 @@ export function FileTree({ files, truncated, error, open, filter, onFilter, onTo
                   aria-expanded={row.dir ? row.open : undefined}
                   aria-selected={isSelected}
                   onClick={() => click(row, item.index)}
+                  onContextMenu={(e) => {
+                    setActive(item.index);
+                    onContextMenu({ kind: row.dir ? 'folder' : 'file', path: row.path }, e, e.currentTarget);
+                  }}
                   className={`absolute inset-x-0 flex cursor-default items-center gap-1 rounded-md pr-2 text-ui whitespace-nowrap ${isSelected ? 'bg-selected text-text' : 'text-text hover:bg-border/45'} ${item.index === active ? 'group-focus-visible/tree:outline-1 group-focus-visible/tree:-outline-offset-1 group-focus-visible/tree:outline-focus-ring' : ''}`}
                   style={{ top: item.start, height: ROW_PX, paddingLeft: 4 + row.depth * INDENT_PX }}
                   data-files-node={row.path}

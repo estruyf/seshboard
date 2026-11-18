@@ -1,5 +1,6 @@
-import { ChevronDown, ChevronUp, Maximize2, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Maximize2, MessageSquarePlus, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename } from '../../lib/format.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -10,6 +11,7 @@ import { toast } from '../../state/toastStore.ts';
 import { fileLinesItem } from '../composer/contextItems.ts';
 import { useFilePreviewContent } from '../filePreview/useFilePreviewContent.tsx';
 import { Button } from '../ui/Button.tsx';
+import { addToMessage, type OpenFilesMenu } from './FilesMenu.tsx';
 import { insideFolder } from './touchedFiles.ts';
 import { fenceLanguage, lineSpan, markdownOutline } from './viewerModel.ts';
 
@@ -41,6 +43,8 @@ interface FileViewerProps {
   search?: { matches: readonly ViewerMatch[]; current: number; onStep(step: 1 | -1): void };
   /** Something before the breadcrumb (‹ Results at Side). */
   lead?: ReactNode;
+  /** Right-click or Shift+F10 on the file or a tab: Add to message, Find, Copy path. */
+  onContextMenu: OpenFilesMenu;
 }
 
 const FIND_OWNER = (sessionId: string) => `files-find:${sessionId}`;
@@ -81,7 +85,7 @@ function rangeInLine(row: Element, start: number, length: number): Range | null 
  * open files, Markdown rendered or as source with an outline, find in the file (⌘F), go to line (⌘⌥L), the lines
  * Claude changed marked in the gutter, and a selection of lines that goes into the message.
  */
-export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDiff, reloadKey, outline, onFolder, search, lead }: FileViewerProps) {
+export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDiff, reloadKey, outline, onFolder, search, lead, onContextMenu }: FileViewerProps) {
   const target = useMemo(() => ({ path: tab.path, sessionId, seq: tab.seq, ...(tab.line ? { line: tab.line } : {}), ...(tab.endLine ? { endLine: tab.endLine } : {}) }), [tab, sessionId]);
   const { name, kind, switcher, tools, body, text, showsSource } = useFilePreviewContent(target, { marks, reloadKey, renderedLabel: 'Rendered' });
   const relative = insideFolder(tab.path, cwd);
@@ -188,14 +192,21 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
 
   // --- Lines to Claude ---------------------------------------------------------------------------------------------
   const [selection, setSelection] = useState<{ start: number; end: number; x: number; y: number } | null>(null);
-  const readSelection = () => {
+  /** The lines the text picked in the source spans, or null (nothing picked, or the rendered page). */
+  const pickedLines = (): { start: number; end: number; range: Range } | null => {
     const root = bodyRef.current;
     const picked = window.getSelection();
-    if (!root || !showsSource || !picked || picked.isCollapsed || !root.contains(picked.anchorNode)) return setSelection(null);
+    if (!root || !showsSource || !picked || picked.isCollapsed || !root.contains(picked.anchorNode)) return null;
     const a = lineOf(picked.anchorNode);
     const b = lineOf(picked.focusNode);
-    if (a === null || b === null) return setSelection(null);
-    const rect = picked.getRangeAt(0).getBoundingClientRect();
+    return a === null || b === null ? null : { start: Math.min(a, b), end: Math.max(a, b), range: picked.getRangeAt(0) };
+  };
+  const readSelection = () => {
+    const root = bodyRef.current;
+    const lines = pickedLines();
+    if (!root || !lines) return setSelection(null);
+    const { start: a, end: b } = lines;
+    const rect = lines.range.getBoundingClientRect();
     const box = root.getBoundingClientRect();
     // Above the selection, or under it when there is no room above (the first lines of the file).
     const above = rect.top - box.top - 40;
@@ -206,6 +217,8 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
     const lines = text.split(/\r?\n/).slice(selection.start - 1, selection.end).join('\n');
     return fileLinesItem(tab.path, { start: selection.start, end: selection.end }, lines, fenceLanguage(tab.path));
   };
+  /** The file itself, when no lines are picked: as the companion's Add Selection does with nothing selected. */
+  const addFile = () => addToMessage(sessionId, [{ kind: 'file', path: tab.path, directory: false }], name);
   const addLines = (focus: boolean) => {
     const item = linesItem();
     if (!item) return;
@@ -227,10 +240,28 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
     if (matches(event, 'files.find')) {
       event.preventDefault();
       openFind();
-    } else if (matches(event, 'files.add-lines') && selection) {
+    } else if (matches(event, 'files.add-lines')) {
       event.preventDefault();
-      addLines(false);
+      if (selection) addLines(false);
+      else addFile();
+    } else if (isContextMenuKey(event) && !(event.target as HTMLElement).closest('[role="tab"], [role="toolbar"], input')) {
+      event.preventDefault();
+      openViewerMenu(null, bodyRef.current ?? event.currentTarget);
     }
+  };
+  const openViewerMenu = (event: MouseEvent | null, element: Element) => {
+    const lines = pickedLines();
+    if (lines && !selection) readSelection();
+    onContextMenu({ kind: 'viewer', path: tab.path, lines: lines ? { start: lines.start, end: lines.end } : null }, event, element, { addLines: (focus) => (lines ? addPicked(lines, focus) : addFile()) });
+  };
+  /** Adds lines picked when the menu opened (the menu's focus may clear the toolbar's state). */
+  const addPicked = (lines: { start: number; end: number }, focus: boolean) => {
+    if (text === null) return;
+    const item = fileLinesItem(tab.path, lines, text.split(/\r?\n/).slice(lines.start - 1, lines.end).join('\n'), fenceLanguage(tab.path));
+    useDrafts.getState().addContext(sessionId, [item]);
+    if (focus) useDrafts.getState().requestFocus(sessionId);
+    else toast(`Added ${item.label} to the message`);
+    setSelection(null);
   };
 
   // --- Outline ---------------------------------------------------------------------------------------------------
@@ -275,7 +306,13 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
                 tabIndex={isFront ? 0 : -1}
                 onClick={() => useFilesPanel.getState().setFront(sessionId, t.path)}
                 onAuxClick={(e: MouseEvent) => e.button === 1 && useFilesPanel.getState().closeTab(sessionId, t.path)}
+                onContextMenu={(e) => onContextMenu({ kind: 'tab', path: t.path, tabs: tabs.length }, e, e.currentTarget)}
                 onKeyDown={(e) => {
+                  if (isContextMenuKey(e)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return onContextMenu({ kind: 'tab', path: t.path, tabs: tabs.length }, null, e.currentTarget);
+                  }
                   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
                   const at = tabs.findIndex((x) => x.path === t.path);
                   const next = tabs[(at + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length]!;
@@ -352,6 +389,18 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
       <div className="flex shrink-0 items-center gap-1 bg-code px-2 pb-1" data-file-preview-toolbar="">
         {switcher}
         <div className="ml-auto flex items-center">
+          {/* As the companion's button in an editor's title: the lines picked, or else the whole file. */}
+          <Button
+            variant="quiet"
+            size="sm"
+            iconOnly
+            icon={<MessageSquarePlus size={14} aria-hidden />}
+            aria-label={selection ? `Add ${lineSpan(selection.start, selection.end)} to message` : 'Add file to message'}
+            shortcut="files.add-lines"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => (selection ? addLines(false) : addFile())}
+            data-files-add-to-message=""
+          />
           <Button variant="quiet" size="sm" iconOnly icon={<Search size={14} aria-hidden />} aria-label="Find in file" shortcut="files.find" onClick={openFind} data-files-find-open="" />
           <Button variant="quiet" size="sm" onClick={() => setGoto('')} data-tooltip={`Go to line (${formatKeys(keysFor('files.go-to-line'))})`} data-files-goto-open="">
             Go to line
@@ -360,7 +409,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
           <Button variant="quiet" size="sm" iconOnly icon={<Maximize2 size={13} aria-hidden />} aria-label="Open in a dialog" data-file-preview-detach="" onClick={() => useFilePreview.getState().detach(sessionId)} />
         </div>
       </div>
-      <div ref={bodyRef} className="relative flex min-h-0 flex-1" data-files-viewer-body="">
+      <div ref={bodyRef} className="relative flex min-h-0 flex-1" onContextMenu={(e) => !(e.target as HTMLElement).closest('input, [role="toolbar"]') && openViewerMenu(e, e.currentTarget)} data-files-viewer-body="">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
         {headings.length > 1 && (
           <nav aria-label="Outline" className="w-52 shrink-0 overflow-y-auto bg-code px-2 py-3" data-files-outline="">

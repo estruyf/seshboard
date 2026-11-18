@@ -6,6 +6,7 @@ import { useDrafts } from '../../state/draftsStore.ts';
 import { useFilesPanel, useSessionFiles, type FileSearchQuery } from '../../state/filesPanelStore.ts';
 import { searchResultsItem } from '../composer/contextItems.ts';
 import { Button } from '../ui/Button.tsx';
+import type { OpenFilesMenu } from './FilesMenu.tsx';
 import type { ViewerMatch } from './FileViewer.tsx';
 
 /** One match of `files.grep`. */
@@ -32,13 +33,15 @@ interface FileSearchProps {
   narrow: boolean;
   /** The viewer beside the list (or instead of it at Side) for a file, its matches and the one picked. */
   viewer(path: string, matches: readonly ViewerMatch[], current: number, onStep: (step: 1 | -1) => void, lead: ReactNode): ReactNode;
+  /** Right-click on a file of the results: Add to message, Open, Copy path. */
+  onContextMenu: OpenFilesMenu;
 }
 
 /**
  * Search in files (⌘⌥F): text or a regular expression, match case and whole word, and globs to include and leave out,
  * through `git grep` (it respects .gitignore). Results group by file; ↑ ↓ walk the matches and the viewer follows.
  */
-export function FileSearch({ sessionId, cwd, narrow, viewer }: FileSearchProps) {
+export function FileSearch({ sessionId, cwd, narrow, viewer, onContextMenu }: FileSearchProps) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const files = useSessionFiles(sessionId);
@@ -190,6 +193,7 @@ export function FileSearch({ sessionId, cwd, narrow, viewer }: FileSearchProps) 
                 type="button"
                 aria-expanded={!isFolded}
                 onClick={() => setFolded((f) => (f.has(path) ? new Set([...f].filter((p) => p !== path)) : new Set(f).add(path)))}
+                onContextMenu={(e) => onContextMenu({ kind: 'file', path }, e, e.currentTarget)}
                 className="flex h-7 w-full items-center gap-1.5 rounded-md px-1.5 text-left text-ui text-text hover:bg-border/45"
                 data-files-result-file={path}
               >

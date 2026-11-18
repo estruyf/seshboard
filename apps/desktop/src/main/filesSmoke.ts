@@ -190,6 +190,17 @@ export async function runFilesToMessageStep(win: BrowserWindow, pics?: FilesPict
   if (!(await waitInPage(win, `!!(${chip})`, 3_000))) return `no ${name}:2–3 chip in the message box (${before} file chips before)`;
   await js(win, `(${chip}).querySelector('[data-context-chip-remove]').click()`);
   if (!(await waitInPage(win, `!(${chip})`, 3_000))) return 'the chip did not come out again';
+  // As the companion does from VS Code's explorer: a right-click on a file of the tree, Add file to message.
+  await js(win, `${PANEL}.querySelector('[data-files-show-tree]')?.click()`);
+  const node = `${PANEL}.querySelector('[data-files-node=${JSON.stringify(name)}]')`;
+  if (!(await waitInPage(win, `!!${node}`, 3_000))) return `${name} is not in the tree`;
+  await js(win, `(() => { const n = ${node}; const r = n.getBoundingClientRect(); n.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 20, clientY: r.top + 5 })); })()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-files-menu-item=\"add-file\"]')", 3_000))) return 'a right-click on a file did not show Add file to message';
+  await js(win, "document.querySelector('[data-files-menu-item=\"add-file\"]').click()");
+  const fileChip = `[...document.querySelectorAll('${S} [data-context-chip="file"]')].find((c) => c.innerText.trim() === ${JSON.stringify(name)})`;
+  if (!(await waitInPage(win, `!!(${fileChip})`, 3_000))) return `Add file to message put no ${name} chip in the box`;
+  await js(win, `(${fileChip}).querySelector('[data-context-chip-remove]').click()`);
+  if (!(await waitInPage(win, `!(${fileChip})`, 3_000))) return 'the file chip did not come out again';
   // The picture of a file Claude changed: its lines marked in the gutter, with Show diff.
   // The demo's dark mode session changed src/lib/theme.ts.
   const changedFile = existsSync(join(cwd, 'src/lib/theme.ts')) ? 'src/lib/theme.ts' : null;
@@ -198,7 +209,7 @@ export async function runFilesToMessageStep(win: BrowserWindow, pics?: FilesPict
     await js(win, `window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(full)}, sessionId: document.querySelector('${S}').dataset.currentSession } }))`);
     if (await waitInPage(win, `(${viewer(full)})?.querySelector('[data-line-changed]')`, 5_000)) await pictures(win, pics, 'files-changed', 'full');
   }
-  return `ok: selecting lines 2 to 3 showed "${label}", Add to message put the ${name}:2–3 chip in the box, and it came out again`;
+  return `ok: selecting lines 2 to 3 showed "${label}", Add to message put the ${name}:2–3 chip in the box, a right-click on ${name} in the tree added the file, and both came out again`;
 }
 
 /** A file link in a reply opens in Files, at its line, not in the old Preview panel. */

@@ -314,7 +314,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⌥E | Show or hide Files (The project's files: browse, read and search them beside the conversation) |
 | ⌘⌥P | Quick open a file (Type part of a name; name:42 opens it at line 42. Outside a session, in the selected project) |
 | ⌘⌥F | Search in files (with text selected in the viewer, it searches for that) |
-| ⌘⌥M | Add the selected lines to the message (in the Files viewer) |
+| ⌘⌥M | Add the selected lines, or the file, to the message (in the Files viewer) |
 | ⌘⌥L | Go to line (in the Files viewer) |
 | ⌘F | Find in the file (in the Files viewer) |
 | ⌘⇧D | Show or hide Changes |

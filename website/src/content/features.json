@@ -223,7 +223,7 @@
     },
     {
       "id": "shortcut:files.add-lines",
-      "name": "Add the selected lines to the message",
+      "name": "Add the selected lines, or the file, to the message",
       "page": "sessions/file-preview"
     },
     {

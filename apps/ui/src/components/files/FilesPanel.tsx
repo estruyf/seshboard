@@ -14,6 +14,7 @@ import { useWidth } from '../ui/useWidth.ts';
 import { BackToConversation, PanelSize } from '../webPreview/BrowserPane.tsx';
 import { parentFolders } from './fileTree.ts';
 import { FileSearch } from './FileSearch.tsx';
+import { useFilesMenu } from './FilesMenu.tsx';
 import { FileTree } from './FileTree.tsx';
 import { FileViewer, type ViewerMatch } from './FileViewer.tsx';
 import { insideFolder } from './touchedFiles.ts';
@@ -56,6 +57,8 @@ export function FilesPanel({ sessionId, cwd, width, onWidth, changes, changesBas
   const full = state.full;
   const narrow = !full && measured < NARROW_PX;
   const front = frontTabOf(state);
+  // Right-click and Shift+F10: Add to message (the session's), Open, Copy path, on the tree, the viewer and the tabs.
+  const filesMenu = useFilesMenu(sessionId, cwd);
 
   // The tree's files: read when the panel opens, again when Claude adds or changes files, and when the window comes back.
   const [list, setList] = useState<{ files: string[]; truncated: boolean } | null>(listCache.get(cwd) ?? null);
@@ -182,6 +185,7 @@ export function FilesPanel({ sessionId, cwd, width, onWidth, changes, changesBas
       onFolder={showFolder}
       search={extra.search}
       lead={extra.lead}
+      onContextMenu={filesMenu.open}
     />
   );
 
@@ -218,6 +222,7 @@ export function FilesPanel({ sessionId, cwd, width, onWidth, changes, changesBas
       selected={front ? insideFolder(front.path, cwd) : null}
       touched={touched}
       reveal={reveal}
+      onContextMenu={filesMenu.open}
     />
   );
 
@@ -228,7 +233,7 @@ export function FilesPanel({ sessionId, cwd, width, onWidth, changes, changesBas
   );
 
   let content: ReactNode;
-  if (state.mode === 'search') content = <FileSearch sessionId={sessionId} cwd={cwd} narrow={narrow} viewer={searchViewer} />;
+  if (state.mode === 'search') content = <FileSearch sessionId={sessionId} cwd={cwd} narrow={narrow} viewer={searchViewer} onContextMenu={filesMenu.open} />;
   else if (narrow)
     content =
       narrowTree || !front ? (
@@ -332,6 +337,7 @@ export function FilesPanel({ sessionId, cwd, width, onWidth, changes, changesBas
         <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close Files" shortcut="files.toggle" onClick={close} data-files-close="" />
       </header>
       {content}
+      {filesMenu.menu}
     </aside>
   );
 }

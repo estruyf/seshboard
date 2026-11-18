@@ -1014,7 +1014,7 @@ export const SHORTCUTS = [
   {
     id: "files.add-lines",
     keys: ["mod+alt+m"],
-    action: "Add the selected lines to the message",
+    action: "Add the selected lines, or the file, to the message",
     section: "session",
     context: "In the Files viewer",
     when: inSession,
