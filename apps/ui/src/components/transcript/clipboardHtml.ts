@@ -15,7 +15,7 @@ export const isWebLink = (href: string | null | undefined) => !!href && /^(https
  * The part of a DOM node the cleaner reads, so it runs without a DOM in tests. `selectionClip.ts` builds these from the
  * live page (the selected part of it, with only the text a person could select) and sets what only the live page knows:
  * `preformatted` (the element keeps its line breaks through `white-space`, as a prompt or a diff row does) and `monospace`
- * (its text is in a monospace font, and its parent's is not).
+ * (its text is in a monospace font, which an element inherits from the container that sets it).
  */
 export interface ClipNode {
   nodeType: number;
@@ -53,6 +53,8 @@ const tagOf = (node: ClipNode) => node.nodeName.toLowerCase();
 interface Context {
   pre: boolean;
   code: boolean;
+  /** Already in a monospace font by an element above: it is not set again. */
+  mono: boolean;
 }
 
 const mono = (inner: string) => (inner ? `<code style="${css(CODE_STYLE)}">${inner}</code>` : '');
@@ -73,8 +75,8 @@ function preformattedText(text: string): string {
 /** Tags `markup` writes in its own way, which a monospace font is not added to. */
 const OWN_MARKUP = new Set(['a', 'pre', 'code', 'table', 'th', 'td', 'ol']);
 
-/** One element's tag around its content. */
-function markup(tag: string, node: ClipNode, inner: string): string {
+/** One element's tag around its content; `font`: it sets a monospace font that nothing above it has. */
+function markup(tag: string, node: ClipNode, inner: string, font = false): string {
   if (tag === 'a') {
     const href = node.getAttribute?.('href');
     return isWebLink(href) ? `<a href="${escapeAttribute(href!)}">${inner}</a>` : inner;
@@ -89,7 +91,7 @@ function markup(tag: string, node: ClipNode, inner: string): string {
   }
   if (KEPT.has(tag)) {
     if (DROPPED_WHEN_EMPTY.has(tag) && inner.trim() === '') return '';
-    return node.monospace && BLOCKS.has(tag) ? `<${tag} style="${css(CODE_STYLE)}">${inner}</${tag}>` : `<${tag}>${inner}</${tag}>`;
+    return font && BLOCKS.has(tag) ? `<${tag} style="${css(CODE_STYLE)}">${inner}</${tag}>` : `<${tag}>${inner}</${tag}>`;
   }
   // Anything else (spans, the transcript's own wrappers) only holds its content.
   return inner;
@@ -108,7 +110,7 @@ function renderChildren(node: ClipNode, context: Context): string {
     }
     // Rows that follow each other are one code block, a line each.
     const rows: string[] = [];
-    while (i < node.childNodes.length && isCodeRow(node.childNodes[i]!, context)) rows.push(renderChildren(node.childNodes[i++]!, { pre: true, code: true }));
+    while (i < node.childNodes.length && isCodeRow(node.childNodes[i]!, context)) rows.push(renderChildren(node.childNodes[i++]!, { pre: true, code: true, mono: true }));
     i--;
     html += `<pre style="${css(PRE_STYLE)}">${rows.join('\n')}</pre>`;
   }
@@ -123,10 +125,11 @@ function render(node: ClipNode, context: Context): string {
   const tag = tagOf(node);
   if (DROPPED.has(tag)) return '';
   if (tag === 'br' || tag === 'hr') return `<${tag}>`;
-  const next = { pre: context.pre || !!node.preformatted, code: context.code || tag === 'pre' || tag === 'code' };
+  const font = !!node.monospace && !context.mono && !context.code;
+  const next = { pre: context.pre || !!node.preformatted, code: context.code || tag === 'pre' || tag === 'code', mono: context.mono || !!node.monospace };
   let inner = renderChildren(node, next);
-  if (node.monospace && !next.code && !KEPT.has(tag) && !OWN_MARKUP.has(tag)) inner = mono(inner);
-  return markup(tag, node, inner);
+  if (font && !KEPT.has(tag) && !OWN_MARKUP.has(tag)) inner = mono(inner);
+  return markup(tag, node, inner, font);
 }
 
 const BLOCK_TEXT = new Set(['p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr', 'blockquote', 'ul', 'ol', 'table', 'pre', 'hr']);
@@ -176,10 +179,11 @@ export function cleanSelectionHtml(fragment: ClipNode, ancestors: readonly ClipN
   const code = ancestors.some((a) => tagOf(a) === 'pre' || tagOf(a) === 'code');
   // A selection inside a block that keeps its line breaks in a monospace font (a diff row) is a code block.
   const block = !!fragment.preformatted && !!fragment.monospace && !code;
-  const context = { pre: !!fragment.preformatted, code: code || block };
+  const context = { pre: !!fragment.preformatted, code: code || block, mono: !!fragment.monospace };
   let html = renderChildren(fragment, context);
   if (block && html.trim()) html = `<pre style="${css(PRE_STYLE)}">${html}</pre>`;
-  else if (fragment.monospace && !code && !block) html = mono(html);
+  // A span, not code: what is selected in a monospace container may hold blocks.
+  else if (fragment.monospace && !code && !block && html.trim() && !(html.startsWith('<pre ') && html.endsWith('</pre>') && html.split('<pre ').length === 2)) html = `<span style="${css(CODE_STYLE)}">${html}</span>`;
   if (!html.trim()) return '';
   const spans = ancestors.length > 0 && CONTAINERS.has(tagOf(ancestors[0]!));
   for (const ancestor of ancestors) {

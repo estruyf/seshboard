@@ -149,6 +149,14 @@ describe('cleanSelectionHtml', () => {
 
     it('puts a monospace font on a block that is not preformatted as a style, not as code around blocks', () => {
       expect(cleanSelectionHtml(fragment([flagged(el('p', 'cmd'), { monospace: true })]))).toMatch(/^<p style="font-family:[^"]*monospace">cmd<\/p>$/);
+      expect(cleanSelectionHtml(fragment(['cmd'], { monospace: true }), [shell('div')])).toMatch(/^<span style="font-family:[^"]*monospace">cmd<\/span>$/);
+    });
+
+    it('copies rows that inherit their font from the container that sets it as one code block', () => {
+      const row = (line: string) => flagged(el('div', line), { preformatted: true, monospace: true });
+      const html = cleanSelectionHtml(fragment([flagged(el('div', row('    a'), row('b')), { monospace: true })]));
+      expect(html).toMatch(/^<div style="font-family:[^"]*monospace"><pre style="[^"]*">    a\nb<\/pre><\/div>$/);
+      expect(cleanSelectionHtml(fragment([row('    a'), row('b')], { monospace: true }))).toMatch(/^<pre [^>]*>    a\nb<\/pre>$/);
     });
   });
 

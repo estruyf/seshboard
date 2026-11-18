@@ -69,8 +69,8 @@ function attributesOf(el: LiveNode, range: LiveRange): ClipNode['getAttribute'] 
 interface Walk {
   range: LiveRange;
   style(el: LiveNode): LiveStyle;
-  /** A formula was in the selection: its source is in the clip, so the text is made from the clip too. */
-  math: boolean;
+  /** The TeX of the formulas in the selection, each copied as its source. */
+  formulas: string[];
 }
 
 /** An element's children as the page shows them: a closed details shows only its summary, the rest is hidden by `content-visibility`, not `display`. */
@@ -97,7 +97,7 @@ const isWithin = (range: LiveRange, el: LiveNode) => {
  * ends in, is not, and an element the range only touches at an edge (an item at offset 0) is dropped if nothing is left.
  * A formula (`data-math-source`) is its source in `$…$`, or `$$…$$` for a block (`data-math-display`).
  */
-function build(node: LiveNode, walk: Walk, select: string, parentMonospace: boolean): ClipNode | null {
+function build(node: LiveNode, walk: Walk, select: string): ClipNode | null {
   const { range } = walk;
   if (node.nodeType === 3) {
     if (select === 'none' || !range.intersectsNode(node)) return null;
@@ -110,29 +110,34 @@ function build(node: LiveNode, walk: Walk, select: string, parentMonospace: bool
   if (isUnseen(node, style)) return null;
   const source = node.getAttribute?.('data-math-source');
   if (source) {
-    walk.math = true;
+    walk.formulas.push(source);
     const display = !!node.hasAttribute?.('data-math-display');
     const formula = textNode(display ? `$$${source}$$` : `$${source}$`);
     return display ? { nodeType: 1, nodeName: 'DIV', textContent: null, childNodes: [formula] } : formula;
   }
   const own = style.userSelect && style.userSelect !== 'auto' ? style.userSelect : select;
-  const monospace = isMonospace(style);
-  const childNodes = shown(node).flatMap((child) => build(child, walk, own, monospace) ?? []);
+  const childNodes = shown(node).flatMap((child) => build(child, walk, own) ?? []);
   if (childNodes.length === 0 && node.localName !== 'br' && node.localName !== 'hr' && !isWithin(range, node)) return null;
-  return { nodeType: 1, nodeName: node.nodeName, textContent: null, childNodes, getAttribute: attributesOf(node, range), preformatted: KEEPS_BREAKS.has(style.whiteSpace), monospace: monospace && !parentMonospace };
+  return { nodeType: 1, nodeName: node.nodeName, textContent: null, childNodes, getAttribute: attributesOf(node, range), preformatted: KEEPS_BREAKS.has(style.whiteSpace), monospace: isMonospace(style) };
+}
+
+/** The nearest formula wrapper at or above `node`, below `root`. */
+function formulaAround(node: LiveNode, root: LiveNode): LiveNode | null {
+  for (let n: LiveNode | null = node; n && n !== root; n = n.parentElement) if (isElement(n) && n.getAttribute?.('data-math-source')) return n;
+  return null;
 }
 
 /**
  * The selection as it goes on the clipboard, from `range` inside `root`: clean HTML and the text, or null when the range is
- * not wholly inside `root` (unless it covers all of it, as Select all does, then it is the root's content) or has nothing to
- * copy. `selectedText` is what the browser would copy as text, used unless a formula changes it.
+ * not wholly inside `root` or has nothing to copy. `selectedText` is what the browser would copy as text, which is the clip's
+ * text too; only when a formula's TeX is missing from it (the page gave none) is the text made from the clip.
  */
 export function clipFromRange(root: LiveNode, range: LiveRange, style: (el: LiveNode) => LiveStyle, selectedText: () => string): { html: string; text: string } | null {
-  // The start is at or before the root's first point and the end at or after its last.
-  const covers = range.comparePoint(root, 0) >= 0 && range.comparePoint(root, root.childNodes.length) <= 0;
-  if (!covers && !(isInside(range.startContainer, root) && isInside(range.endContainer, root))) return null;
-  const common = covers ? root : range.commonAncestorContainer;
-  const element = isElement(common) ? common : common.parentElement;
+  if (!isInside(range.startContainer, root) || !isInside(range.endContainer, root)) return null;
+  const common = range.commonAncestorContainer;
+  // A selection inside a formula is the whole formula.
+  const formula = formulaAround(common, root);
+  const element = formula ? formula.parentElement : isElement(common) ? common : common.parentElement;
   if (!element) return null;
   const elementStyle = style(element);
   // `user-select` as it is used: the window is `none` except where `.select-text` opts in, and Chromium puts that on the elements below. Climbs for a browser that does not.
@@ -144,19 +149,20 @@ export function clipFromRange(root: LiveNode, range: LiveRange, style: (el: Live
       break;
     }
   }
-  const monospace = isMonospace(elementStyle);
-  const walk: Walk = { range, style, math: false };
+  const walk: Walk = { range, style, formulas: [] };
   // What is selected below the common ancestor: its children, or the slice of the text node when the selection is inside one.
-  const below = isElement(common) ? shown(common) : [common];
-  const childNodes = below.flatMap((child) => build(child, walk, select, monospace) ?? []);
-  const fragment: ClipNode = { nodeType: 11, nodeName: '#document-fragment', textContent: null, childNodes, preformatted: KEEPS_BREAKS.has(elementStyle.whiteSpace), monospace };
+  const below = formula ? [formula] : isElement(common) ? shown(common) : [common];
+  const childNodes = below.flatMap((child) => build(child, walk, select) ?? []);
+  const fragment: ClipNode = { nodeType: 11, nodeName: '#document-fragment', textContent: null, childNodes, preformatted: KEEPS_BREAKS.has(elementStyle.whiteSpace), monospace: isMonospace(elementStyle) };
   const ancestors: ClipNode[] = [];
   // From the common ancestor up to the root, which is the page's prose container and holds nothing the clipboard keeps.
   for (let e: LiveNode | null = element; e && e !== root && isInside(e, root); e = e.parentElement) {
     ancestors.push({ nodeType: 1, nodeName: e.nodeName, textContent: null, childNodes: [], getAttribute: attributesOf(e, range) });
   }
   const html = cleanSelectionHtml(fragment, ancestors);
-  return html ? { html, text: walk.math ? plainText(fragment) : selectedText() } : null;
+  if (!html) return null;
+  const selected = selectedText();
+  return { html, text: walk.formulas.every((tex) => selected.includes(tex)) ? selected : plainText(fragment) };
 }
 
 export interface Clip {
@@ -168,15 +174,12 @@ export interface Clip {
 export function currentClip(): Clip | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
-  const range = selection.getRangeAt(0);
-  const common = range.commonAncestorContainer;
-  const from = common instanceof Element ? common : common.parentElement;
-  // Select all starts and ends outside the root, so look for a root inside the common ancestor too.
-  const root = from?.closest(`[${CLEAN_COPY}]`) ?? [...(from?.querySelectorAll(`[${CLEAN_COPY}]`) ?? [])].find((el) => range.intersectsNode(el));
+  const common = selection.getRangeAt(0).commonAncestorContainer;
+  const root = (common instanceof Element ? common : common.parentElement)?.closest(`[${CLEAN_COPY}]`);
   return root ? selectionClip(root) : null;
 }
 
-/** The selection as it goes on the clipboard, if it is wholly inside `root` (or covers it): the one place that decides it, for ⌘C, the floating toolbar's Copy and the menus'. */
+/** The selection as it goes on the clipboard, if it is wholly inside `root`: the one place that decides it, for ⌘C, the floating toolbar's Copy and the menus'. */
 export function selectionClip(root: Element): Clip | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
@@ -193,6 +196,6 @@ export async function copySelection(fallback: string, clip?: Clip | null): Promi
     if (found) await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([found.html], { type: 'text/html' }), 'text/plain': new Blob([found.text], { type: 'text/plain' }) })]);
     else await navigator.clipboard.writeText(fallback);
   } catch {
-    await navigator.clipboard.writeText(found?.text ?? fallback);
+    await navigator.clipboard.writeText(found?.text ?? fallback).catch(() => {});
   }
 }
