@@ -7159,47 +7159,134 @@ async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * A selection in the transcript copies as clean HTML (`useCleanCopy`): the structure of a reply (a list, inline code)
- * with no classes, theme colours, data attributes or buttons, and the selection's text as plain text. Read-only: it
- * dispatches a copy event with a DataTransfer of its own, so the clipboard is untouched. A reply with a list and inline code
- * on screen is used; the demo's open session may have none, then a block of that shape is added to the transcript for the step.
+ * A selection in the transcript copies as clean HTML (`useCleanCopy`): the structure of what is selected (a list, inline code,
+ * two table rows, a bold run) with no classes, theme colours, data attributes or buttons, and without what a person could not
+ * select (the speaker's name, the turn line). Read-only: it dispatches `copy` events with a DataTransfer of its own, so the
+ * clipboard is untouched, and the blocks it adds to the transcript for the step are removed again. The HTML is parsed, not
+ * searched: a reply's own words ("in the background") would match a pattern.
  */
 async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   await transcriptAtRest(win);
   const view = `[data-current-session="${smokeSessionId}"]`;
-  const result = (await js(`(() => {
+  const report = (await js(`(() => {
     const area = document.querySelector('${view} [data-transcript]');
-    if (!area) return { error: 'no transcript' };
-    let block = [...area.querySelectorAll('[data-remember-from="claude"] .markdown')].find((m) => m.querySelector('li') && m.querySelector(':not(pre) > code'));
-    const added = !block;
-    if (added) {
-      block = document.createElement('div');
+    if (!area) return { none: true };
+    const problems = [];
+    const added = [];
+    const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+    // Every element and attribute the clipboard keeps: no class, data attribute, button or theme colour.
+    const audit = (label, body) => {
+      for (const el of body.querySelectorAll('*')) {
+        if (['BUTTON', 'SVG', 'INPUT', 'TEXTAREA', 'IMG'].includes(el.tagName)) problems.push(label + ': a <' + el.tagName.toLowerCase() + '>');
+        for (const attribute of el.attributes) {
+          if (!['href', 'start', 'style'].includes(attribute.name)) problems.push(label + ': ' + attribute.name + '= on <' + el.tagName.toLowerCase() + '>');
+          else if (attribute.name === 'style' && /color|background/i.test(attribute.value)) problems.push(label + ': style ' + attribute.value);
+        }
+      }
+    };
+    // Selects the range and copies, as ⌘C does: a copy event at 'target' with a DataTransfer to read.
+    const copy = (range, target) => {
+      document.activeElement?.blur();
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const data = new DataTransfer();
+      const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain'), selected: selection.toString() };
+    };
+    const rangeOf = (startNode, startOffset, endNode, endOffset) => {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+      return range;
+    };
+    const add = (el) => (area.appendChild(el), added.push(el), el);
+    try {
+      // 1. A reply on screen with a list and inline code, or a block of that shape.
+      let reply = [...area.querySelectorAll('[data-remember-from="claude"] .markdown')].find((m) => m.querySelector('li') && m.querySelector(':not(pre) > code'));
+      const real = !!reply;
+      if (!reply) {
+        reply = add(document.createElement('div'));
+        reply.className = 'markdown text-body select-text';
+        reply.innerHTML = '<p class="text-text">Steps:</p><ul class="list-disc"><li class="my-0.5" style="color: red">Run <code class="rounded bg-border/60 font-mono">npm test</code></li><li><strong>Bold</strong> and <a href="https://example.com" class="text-link">a link</a></li></ul><button type="button">Copy code</button>';
+      }
+      const whole = document.createRange();
+      whole.selectNodeContents(reply);
+      const first = copy(whole, reply);
+      if (!first.prevented) problems.push('a copy of a reply was left to the browser, with its theme colours');
+      const body = parse(first.html);
+      if (!body.querySelector('li') || !body.querySelector('code')) problems.push('the HTML of a reply has no <li> and <code>');
+      audit('reply', body);
+      if (!first.text) problems.push('the copy of a reply has no plain text');
+
+      // 2. Parts of a block: items 3 and 4 of a list, two table rows, a few words in a bold run, a prompt with line breaks,
+      // and what a person could not select (the speaker's name, a line of numbers) in the middle of it.
+      const block = add(document.createElement('div'));
       block.className = 'markdown text-body select-text';
-      block.innerHTML = '<p class="text-text">Steps:</p><ul class="list-disc"><li class="my-0.5" style="color: red">Run <code class="rounded bg-border/60 font-mono">npm test</code></li><li><strong>Bold</strong> and <a href="https://example.com" class="text-link">a link</a></li></ul><button type="button">Copy code</button>';
-      area.appendChild(block);
+      block.innerHTML = '<h2 class="sr-only">Speaker</h2><ol><li>one</li><li>two</li><li>three</li><li>four</li></ol><table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table><p>Some <strong>bold run</strong> here</p><p class="whitespace-pre-wrap" data-lines></p><p class="select-none">turn line</p>';
+      block.querySelector('[data-lines]').append('first line' + String.fromCharCode(10) + 'second line');
+      const li = [...block.querySelectorAll('li')];
+      const items = copy(rangeOf(li[2].firstChild, 0, li[3].firstChild, 4), li[2]);
+      const list = parse(items.html).querySelector('ol');
+      if (!list || list.getAttribute('start') !== '3' || list.querySelectorAll('li').length !== 2) problems.push('items 3 and 4 of a list: ' + items.html.slice(0, 120));
+      const cells = [...block.querySelectorAll('td')];
+      const rows = copy(rangeOf(cells[0].firstChild, 0, cells[3].firstChild, 1), cells[0]);
+      const table = parse(rows.html).querySelector('table > tbody');
+      if (!table || table.querySelectorAll('tr').length !== 2 || table.querySelectorAll('td').length !== 4) problems.push('two table rows: ' + rows.html.slice(0, 160));
+      const strong = block.querySelector('strong');
+      const bold = copy(rangeOf(strong.firstChild, 0, strong.firstChild, 4), strong);
+      if (!parse(bold.html).querySelector('strong')) problems.push('words in a bold run lost the bold: ' + bold.html.slice(0, 80));
+      const lines = block.querySelector('[data-lines]');
+      const broken = copy(rangeOf(lines.firstChild, 0, lines.firstChild, lines.firstChild.length), lines);
+      if (!parse(broken.html).querySelector('br')) problems.push('a prompt lost its line break: ' + broken.html.slice(0, 80));
+      const all = document.createRange();
+      all.selectNodeContents(block);
+      const unseen = copy(all, block);
+      const unseenBody = parse(unseen.html);
+      if (unseenBody.querySelector('h2') || unseenBody.textContent.includes('turn line') || unseenBody.textContent.includes('Speaker')) problems.push('text nobody could select is in the HTML: ' + unseen.html.slice(0, 120));
+      if (unseen.text.includes('turn line')) problems.push('the plain text has unselectable text');
+
+      // 3. Across two messages: no speaker heading and none of the turn line's numbers.
+      const messages = [...area.querySelectorAll('[data-transcript-item]')].filter((m) => !added.includes(m)).slice(0, 2);
+      let across = 0;
+      if (messages.length === 2) {
+        const range = rangeOf(messages[0], 0, messages[1], messages[1].childNodes.length);
+        const unselectable = [...area.querySelectorAll('h2.sr-only, [data-turn-meta], [data-skim-stats]')].filter((e) => !added.includes(e) && range.intersectsNode(e) && e.textContent.trim());
+        const crossed = copy(range, messages[0]);
+        const crossedBody = parse(crossed.html);
+        audit('across messages', crossedBody);
+        for (const e of unselectable) {
+          across++;
+          const text = e.textContent.trim();
+          if (e.matches('h2') ? [...crossedBody.querySelectorAll('h2')].some((h) => h.textContent.trim() === text) : crossedBody.textContent.includes(text)) problems.push('a selection across two messages has "' + text + '"');
+        }
+      }
+
+      // 4. Fields keep their own copy: a text field inside the transcript, and the message box.
+      const field = add(document.createElement('textarea'));
+      field.value = 'typed text';
+      field.focus();
+      field.select();
+      const fieldEvent = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+      field.dispatchEvent(fieldEvent);
+      if (fieldEvent.defaultPrevented) problems.push('a copy in a text field was taken over');
+      const composer = document.querySelector('${view} [data-composer]');
+      if (composer) {
+        const composerEvent = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+        composer.dispatchEvent(composerEvent);
+        if (composerEvent.defaultPrevented) problems.push('a copy in the message box was taken over');
+      }
+      return { problems, real, across, messages: messages.length };
+    } finally {
+      window.getSelection().removeAllRanges();
+      for (const el of added) el.remove();
     }
-    document.activeElement?.blur();
-    const range = document.createRange();
-    range.selectNodeContents(block);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-    const data = new DataTransfer();
-    const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
-    block.dispatchEvent(event);
-    const out = { added, prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain'), selected: selection.toString() };
-    selection.removeAllRanges();
-    if (added) block.remove();
-    return out;
-  })()`)) as { error?: string; added: boolean; prevented: boolean; html: string; text: string; selected: string };
-  if (result.error) return 'ok: no transcript on screen';
-  if (!result.prevented) return 'the copy was left to the browser, with its theme colours';
-  if (!result.html) return 'the copy has no text/html';
-  if (!result.html.includes('<li>') || !result.html.includes('<code')) return `the HTML has no <li> and <code>: ${result.html.slice(0, 120)}`;
-  if (/\sclass=|data-|<button|color:|background/.test(result.html)) return `the HTML keeps classes, colours or buttons: ${result.html.slice(0, 160)}`;
-  if (result.text !== result.selected) return `the plain text is ${JSON.stringify(result.text.slice(0, 40))}, not the selection`;
-  return `ok: a ${result.added ? 'list' : "reply's list"} copies as clean HTML and the selection as text`;
+  })()`)) as { none?: boolean; problems: string[]; real: boolean; across: number; messages: number };
+  if (report.none) return 'ok: no transcript on screen';
+  if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+  return `ok: a ${report.real ? "reply's" : 'made-up'} list, table rows, list items, a bold run and line breaks copy as clean HTML; ${report.across} unselectable lines stay out across ${report.messages} messages; fields keep their own copy`;
 }
 
 /**

@@ -59,6 +59,7 @@ import { ComposerChipRow } from '../composer/ComposerChips.tsx';
 import { ComposerTray } from '../composer/ComposerTray.tsx';
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { RemoteText } from './RemoteText.tsx';
+import { useCleanCopy } from '../transcript/useCleanCopy.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { RemoteSessionCost } from '../usage/SessionCost.tsx';
 import { useWidth } from '../ui/useWidth.ts';
@@ -122,6 +123,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   const [catchUp, setCatchUp] = useState<CatchUp | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  useCleanCopy(scroller);
   // The header's hairline shows only while the conversation scrolls under it.
   const edge = useScrollEdge(scroller);
   const atBottom = useRef(true);
