@@ -149,6 +149,74 @@ describe('createMermaidRenderer', () => {
     expect((await renderer.render('graph TD; A-->B', VARS)).ok).toBe(true);
   });
 
+  describe('with a signal', () => {
+    const gate = () => {
+      let open!: () => void;
+      const opened = new Promise<void>((resolve) => (open = resolve));
+      return { opened, open };
+    };
+
+    it('skips a queued drawing nobody wants any more, and does not keep it', async () => {
+      const first = gate();
+      const { api, calls } = fakeMermaid(async (id, text) => {
+        if (text === 'first') await first.opened;
+        return { svg: `<svg id="${id}">${text}</svg>` };
+      });
+      const renderer = createMermaidRenderer({ load: async () => api });
+      const running = renderer.render('first', VARS);
+      const scrolledPast = new AbortController();
+      const skipped = renderer.render('second', VARS, scrolledPast.signal);
+      const wanted = renderer.render('third', VARS, new AbortController().signal);
+      scrolledPast.abort();
+      first.open();
+      expect((await running).ok).toBe(true);
+      expect(await skipped).toEqual({ ok: false, error: 'Skipped', skipped: true });
+      expect((await wanted).ok).toBe(true);
+      expect(calls).toEqual(['first', 'third']);
+      expect(renderer.peek('second', VARS)).toBeUndefined();
+      // Asked for again, it is drawn.
+      expect((await renderer.render('second', VARS)).ok).toBe(true);
+      expect(calls).toEqual(['first', 'third', 'second']);
+    });
+
+    it('draws a job while any block that asked for it is still there', async () => {
+      const first = gate();
+      const { api, calls } = fakeMermaid(async (id, text) => {
+        if (text === 'first') await first.opened;
+        return { svg: `<svg id="${id}">${text}</svg>` };
+      });
+      const renderer = createMermaidRenderer({ load: async () => api });
+      const running = renderer.render('first', VARS);
+      const leaving = new AbortController();
+      const one = renderer.render('shared', VARS, leaving.signal);
+      const two = renderer.render('shared', VARS, new AbortController().signal);
+      leaving.abort();
+      first.open();
+      await running;
+      expect((await one).ok).toBe(true);
+      expect(await two).toBe(await one);
+      expect(calls).toEqual(['first', 'shared']);
+    });
+
+    it('lets a drawing that has started finish and keeps it, whoever left', async () => {
+      const started = gate();
+      const finish = gate();
+      const { api } = fakeMermaid(async (id, text) => {
+        started.open();
+        await finish.opened;
+        return { svg: `<svg id="${id}">${text}</svg>` };
+      });
+      const renderer = createMermaidRenderer({ load: async () => api });
+      const leaving = new AbortController();
+      const drawing = renderer.render('now', VARS, leaving.signal);
+      await started.opened;
+      leaving.abort();
+      finish.open();
+      expect((await drawing).ok).toBe(true);
+      expect(renderer.peek('now', VARS)?.ok).toBe(true);
+    });
+  });
+
   it('forgets the oldest drawings past its budget', async () => {
     const { api } = fakeMermaid(async (id, text) => ({ svg: `<svg id="${id}">${text}</svg>` }));
     const renderer = createMermaidRenderer({ load: async () => api, budget: 400 });
@@ -192,6 +260,16 @@ describe('uniqueSvgIds', () => {
     // `sb-mermaid-31` is another name that only starts like it.
     expect(copy).toContain('<g id="sb-mermaid-31"/>');
     expect(copy).not.toContain('sb-mermaid-3_');
+  });
+
+  it('renames ids, references and selectors only, not a label that happens to say the same', () => {
+    const labelled = '<svg id="sb-mermaid-3" viewBox="0 0 1 1" aria-labelledby="sb-mermaid-3_title"><style>#sb-mermaid-3 .x{fill:red}</style><text>see sb-mermaid-3 and sb-mermaid-3_x</text><a href="#sb-mermaid-3_n" xlink:href="#sb-mermaid-3_n"/></svg>';
+    const copy = uniqueSvgIds(labelled, 'c2');
+    expect(copy).toContain('<text>see sb-mermaid-3 and sb-mermaid-3_x</text>');
+    expect(copy).toContain('aria-labelledby="sb-mermaid-3-c2_title"');
+    expect(copy).toContain('#sb-mermaid-3-c2 .x');
+    expect(copy).toContain('href="#sb-mermaid-3-c2_n"');
+    expect(copy).toContain('<svg id="sb-mermaid-3-c2"');
   });
 
   it('makes two copies different from each other, and leaves an svg without an id alone', () => {

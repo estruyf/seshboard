@@ -2,6 +2,7 @@ import { Maximize, Minus, Plus, ScanSearch } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { diagramLink, followDiagramLink } from './mermaidLinks.ts';
 import { actualSize, fitView, panBy, wheelFactor, zoomAt, ZOOM_STEP, type DiagramView } from './mermaidZoom.ts';
 
 /** How far an arrow key moves the diagram. */
@@ -43,7 +44,8 @@ export function MermaidOverlay({ svg, size, onClose }: { svg: string; size: { wi
   const own = () => setView(actualSize(size, viewport()));
 
   const onPointerDown = (event: PointerEvent) => {
-    if (event.button !== 0) return;
+    // A press on a link in the diagram is a click on it, which capturing the pointer would swallow.
+    if (event.button !== 0 || diagramLink(event.target as Element).anchor) return;
     drag.current = { x: event.clientX, y: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -106,6 +108,7 @@ export function MermaidOverlay({ svg, size, onClose }: { svg: string; size: { wi
         onPointerUp={() => (drag.current = null)}
         onPointerCancel={() => (drag.current = null)}
         onKeyDown={onKeyDown}
+        onClick={followDiagramLink}
         data-mermaid-viewport
       >
         <div

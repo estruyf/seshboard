@@ -8,6 +8,7 @@ import { BlockWritingContext } from './blockWriting.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { MermaidOverlay } from './MermaidOverlay.tsx';
 import { failureLine, pickOutcome, shouldDraw, type Drawn } from './mermaidBlockState.ts';
+import { followDiagramLink } from './mermaidLinks.ts';
 import { createMermaidRenderer, minDiagramWidth, svgSize, uniqueSvgIds } from './mermaidRender.ts';
 import { mermaidThemeVariables } from './mermaidTheme.ts';
 import { useDark } from './VisualBlock.tsx';
@@ -41,16 +42,17 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
   // What this block showed last, for a theme change on a block that came out of the cache.
   const shown = useRef<Drawn | null>(null);
   const outcome = pickOutcome(code, cached, drawn, shown.current);
-  if (outcome) shown.current = { code, outcome };
+  useEffect(() => {
+    if (outcome) shown.current = { code, outcome };
+  }, [code, outcome]);
 
   const draw = shouldDraw(writing, cached);
   useEffect(() => {
     if (!draw) return;
-    let cancelled = false;
-    void renderer.render(code, variables).then((result) => !cancelled && setDrawn({ code, outcome: result }));
-    return () => {
-      cancelled = true;
-    };
+    // Left when the block goes (scrolled away, or a new theme): a drawing still waiting its turn is then skipped.
+    const wanted = new AbortController();
+    void renderer.render(code, variables, wanted.signal).then((result) => !wanted.signal.aborted && setDrawn({ code, outcome: result }));
+    return () => wanted.abort();
   }, [code, variables, draw]);
 
   if (outcome?.ok) return <Diagram code={code} svg={outcome.svg} />;
@@ -74,10 +76,11 @@ function Diagram({ code, svg }: { code: string; svg: string }) {
   const [open, setOpen] = useState(false);
   const size = useMemo(() => svgSize(svg), [svg]);
   const inline = useMemo(() => ownCopy(svg), [svg]);
-  const larger = useMemo(() => ownCopy(svg), [svg]);
+  // Its own copy of the drawing, made when the overlay opens.
+  const larger = useMemo(() => (open ? ownCopy(svg) : null), [open, svg]);
   // A link in the diagram (`click A href …`) goes where it says; it doesn't also open the overlay.
   const onClick = (event: MouseEvent) => {
-    if (!size || (event.target as Element).closest('a') || window.getSelection()?.toString()) return;
+    if (followDiagramLink(event) || !size || window.getSelection()?.toString()) return;
     setOpen(true);
   };
   const style = size ? ({ '--mermaid-min': `${minDiagramWidth(size.width)}px` } as CSSProperties) : undefined;
@@ -102,7 +105,7 @@ function Diagram({ code, svg }: { code: string; svg: string }) {
     <div data-mermaid="" data-mermaid-state="drawn">
       <CodeBlock code={code} language="mermaid" copyLabel="Copy diagram source" preview={preview} />
       {/* In the body: the conversation's rows are positioned by transforms, which would hold a fixed overlay inside them. */}
-      {open && size && createPortal(<MermaidOverlay svg={larger} size={size} onClose={() => setOpen(false)} />, document.body)}
+      {larger && size && createPortal(<MermaidOverlay svg={larger} size={size} onClose={() => setOpen(false)} />, document.body)}
     </div>
   );
 }

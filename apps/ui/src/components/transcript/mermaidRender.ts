@@ -12,8 +12,8 @@ export interface MermaidApi {
 }
 
 /** A diagram drawn, or why it wasn't. */
-/** `load`: Mermaid itself could not be fetched, which says nothing about the diagram. */
-export type DrawOutcome = { ok: true; svg: string } | { ok: false; error: string; load?: true };
+/** `load`: Mermaid itself could not be fetched, which says nothing about the diagram. `skipped`: nobody wanted it any more, so it wasn't drawn (never kept). */
+export type DrawOutcome = { ok: true; svg: string } | { ok: false; error: string; load?: true; skipped?: true };
 
 /** The most characters of diagram text drawn (Mermaid's own limit is 50,000, and past it draws an error box instead of failing). */
 export const MAX_DIAGRAM_TEXT = 25_000;
@@ -62,8 +62,12 @@ export interface MermaidRendererOptions {
 export interface MermaidRenderer {
   /** The outcome for this source and theme if it was drawn before, without drawing. */
   peek(source: string, themeVariables: Record<string, unknown>): DrawOutcome | undefined;
-  /** Draws it, after the ones asked for before it; the same source and theme asked for twice is drawn once. */
-  render(source: string, themeVariables: Record<string, unknown>): Promise<DrawOutcome>;
+  /**
+   * Draws it, after the ones asked for before it; the same source and theme asked for twice is drawn once. `signal`: the
+   * block that asked no longer needs it (it unmounted, or its theme changed). A drawing nobody wants when its turn comes is
+   * skipped and not kept, so blocks that scroll past in a moment don't each cost a drawing; one already started finishes and is kept.
+   */
+  render(source: string, themeVariables: Record<string, unknown>, signal?: AbortSignal): Promise<DrawOutcome>;
 }
 
 const OK = '1';
@@ -77,7 +81,8 @@ const FAILED = '0';
  */
 export function createMermaidRenderer({ load, cleanup, budget = 3_000_000 }: MermaidRendererOptions): MermaidRenderer {
   const cache = new SizedCache(budget);
-  const pending = new Map<string, Promise<DrawOutcome>>();
+  /** `askers`: those still waiting for it; a job nobody is waiting for when its turn comes is not drawn. */
+  const pending = new Map<string, { promise: Promise<DrawOutcome>; askers: number }>();
   let tail: Promise<unknown> = Promise.resolve();
   let counter = 0;
   const keyOf = (source: string, themeVariables: Record<string, unknown>) => `${JSON.stringify(themeVariables)}\0${source}`;
@@ -108,19 +113,31 @@ export function createMermaidRenderer({ load, cleanup, budget = 3_000_000 }: Mer
       if (hit === undefined) return undefined;
       return hit.startsWith(OK) ? { ok: true, svg: hit.slice(1) } : { ok: false, error: hit.slice(1) };
     },
-    render(source, themeVariables) {
+    render(source, themeVariables, signal) {
       // Mermaid would draw its own error box for this; the block shows the source instead.
       if (source.length > MAX_DIAGRAM_TEXT) return Promise.resolve({ ok: false, error: `The diagram is over ${MAX_DIAGRAM_TEXT} characters.` });
       const key = keyOf(source, themeVariables);
       const cached = this.peek(source, themeVariables);
       if (cached) return Promise.resolve(cached);
-      const running = pending.get(key);
-      if (running) return running;
-      const job = tail.then(() => draw(source, themeVariables, key));
-      tail = job;
-      pending.set(key, job);
-      void job.finally(() => pending.delete(key));
-      return job;
+      let job = pending.get(key);
+      if (!job) {
+        const created: { promise: Promise<DrawOutcome>; askers: number } = { askers: 0, promise: undefined as unknown as Promise<DrawOutcome> };
+        created.promise = tail.then((): Promise<DrawOutcome> | DrawOutcome => {
+          if (created.askers > 0) return draw(source, themeVariables, key);
+          // Nobody is waiting: forget the job now, so a block that asks after this starts a new one.
+          pending.delete(key);
+          return { ok: false, error: 'Skipped', skipped: true };
+        });
+        tail = created.promise;
+        pending.set(key, created);
+        void created.promise.finally(() => pending.get(key) === created && pending.delete(key));
+        job = created;
+      }
+      const asked = job;
+      if (signal?.aborted) return asked.promise;
+      asked.askers++;
+      signal?.addEventListener('abort', () => void asked.askers--, { once: true });
+      return asked.promise;
     },
   };
 }
@@ -148,11 +165,14 @@ export function minDiagramWidth(naturalWidth: number): number {
  * The SVG with its ids made its own: Mermaid names everything after the diagram (`sb-mermaid-3`, its markers
  * `sb-mermaid-3_flowchart-pointEnd`, the `#sb-mermaid-3 …` selectors of its style sheet). The same diagram shown twice (two replies, or
  * the inline copy and the overlay) would share them, and an arrowhead would point at a marker in the other copy, which
- * disappears with it. `suffix` makes the copy's names different; the svg is returned as it is when it has no id.
+ * disappears with it. `suffix` makes the copy's names different. Only the places a name is used in are renamed: attribute
+ * values (`id`, `href="#…"`, `url(#…)`, `aria-labelledby`) and the style sheet, never the text of a label. The svg is
+ * returned as it is when it has no id.
  */
 export function uniqueSvgIds(svg: string, suffix: string): string {
   const id = /^\s*(?:<\?xml[^>]*>\s*)?<svg\b[^>]*?\sid="([^"]+)"/i.exec(svg)?.[1];
   if (!id) return svg;
   // Not followed by a digit, so `sb-mermaid-1` doesn't take the start of `sb-mermaid-12`.
-  return svg.replace(new RegExp(`${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\d)`, 'g'), `${id}-${suffix}`);
+  const name = new RegExp(`${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\d)`, 'g');
+  return svg.replace(/<style\b[^>]*>[\s\S]*?<\/style>|="[^"]*"/gi, (place) => place.replace(name, `${id}-${suffix}`));
 }
