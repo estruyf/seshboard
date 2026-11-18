@@ -163,7 +163,7 @@ The formulas are `code` elements with `language-math` classes (`mathKind`), draw
 
 **Copy.** KaTeX's boxes copy as line breaks and glyphs (`x2x2`), so the drawn formula sits in a shadow root (`data-math-visual`, with KaTeX's rules as an adopted style sheet; the fonts come from the document), which a selection doesn't read. Beside it a hidden `aria-hidden` span (`data-math-copy`) holds the TeX in its delimiters, so `getSelection().toString()`, and with it Copy, Quote and Remember, gives `then $x^2$ holds`. The wrapper carries `data-math-source` and `data-math-display`. Screen readers get KaTeX's MathML.
 
-**Streaming.** The block still being written (`StreamingMarkdown`'s last one) shows maths as written (`MathDrawnContext`). `splitBlocks` keeps a `$$` block with a blank line in one block while it is open: a `$$` at the start of a line outside code fences, read once per reply.
+**Streaming.** The block still being written (`StreamingMarkdown`'s last one) shows maths as written (`MathDrawnContext`). `splitBlocks` keeps a `$$` block with a blank line in one block while it is open: a `$$` at the start of a line (after a quote or list marker too) outside code fences, read once per reply. A `$$` followed by a sentence (`$$ is the shell pid`) is text, in `maths.ts` (`isProse`) and in the split alike.
 
 **Not drawn.** Another computer's file preview draws maths (it is the same `FileMarkdown`); another computer's conversation text (`RemoteText`) and the phone app keep showing the source.
 

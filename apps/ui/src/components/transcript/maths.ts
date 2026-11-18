@@ -129,9 +129,59 @@ function mathText(): Construct {
   return { ...original, tokenize };
 }
 
-/** The micromark extension: `remark-math`'s block maths, and the text maths above. */
+/**
+ * Whether a line that starts with `$$` goes on as a sentence: after the `$$` there is text and it holds a space (`$$ is the
+ * shell pid`). `remark-math` would read a block from it that swallows the rest of the reply. A fence's meta (`$$latex`),
+ * nothing, and spaces after it are not.
+ */
+export const isProse = (afterFence: string): boolean => /\S\s|^\s+\S/.test(afterFence.trimEnd());
+
+/** The `$$` block construct of micromark-extension-math, except that a `$$` line that is a sentence doesn't open one. */
+function mathFlow(): Construct {
+  const original = math().flow![DOLLAR] as Construct;
+
+  /** Looks at the line from its `$$` on, and succeeds when `isProse` says so. */
+  const sentence: Construct = {
+    partial: true,
+    tokenize(effects, ok, nok) {
+      let text = '';
+      return start;
+
+      function start(code: Code): State | undefined {
+        effects.enter('mathFlowFenceMeta');
+        return code === DOLLAR ? fence(code) : nok(code);
+      }
+      function fence(code: Code): State | undefined {
+        if (code === DOLLAR) {
+          effects.consume(code);
+          return fence;
+        }
+        return rest(code);
+      }
+      function rest(code: Code): State | undefined {
+        if (code === null || code < -2) {
+          effects.exit('mathFlowFenceMeta');
+          return isProse(text) ? ok(code) : nok(code);
+        }
+        text += code === -2 || code === -1 ? ' ' : String.fromCodePoint(code);
+        effects.consume(code);
+        return rest;
+      }
+    },
+  };
+
+  function tokenize(this: TokenizeContext, effects: Parameters<Tokenizer>[0], ok: State, nok: State): State {
+    const begin = original.tokenize.call(this, effects, ok, nok);
+    // A sentence: not a block. Anything else: the original's.
+    return (code: Code) => effects.check(sentence, nok, begin as State)(code);
+  }
+
+  return { ...original, tokenize };
+}
+
+/** The micromark extension: the block maths above and the text maths. */
 export function mathExtension(): Extension {
-  return { flow: math().flow, text: { [DOLLAR]: mathText() } };
+  return { flow: { [DOLLAR]: mathFlow() }, text: { [DOLLAR]: mathText() } };
 }
 
 /** The remark plugin: maths in a reply and in a previewed file. Parse-only, so Skim's sentence count can use it too. */

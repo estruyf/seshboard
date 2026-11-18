@@ -1,5 +1,6 @@
 import { Lexer } from 'marked';
 import remend from 'remend';
+import { isProse } from './maths.ts';
 
 /**
  * Splits Markdown into top-level blocks (paragraphs, lists, fences, tables…),
@@ -32,15 +33,18 @@ interface MathScan {
 }
 
 const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/;
-/** A `$$` line: it opens a block (its meta can't hold a `$`) and, with nothing after it, closes one. `pid $$ is…` and `$$x$$` aren't. */
-const MATH_LINE = /^ {0,3}\$\$([^$]*)$/;
+/** What may come before a `$$` on its line: up to 3 spaces, and the markers of a quote or a list item (nested too). */
+const LINE_START = '^ {0,3}(?:(?:>[ \\t]*|(?:[-*+]|\\d{1,9}[.)])[ \\t]+))*';
+/** A `$$` line: it opens a block (its meta can't hold a `$`, or be a sentence) and, with nothing after it, closes one. `pid $$ is…`, `$$ is the shell pid` and `$$x$$` don't. */
+const MATH_LINE = new RegExp(`${LINE_START}\\$\\$([^$]*)$`);
+const MATH_CLOSE = new RegExp(`${LINE_START}\\$\\$\\s*$`);
 
 /** Reads lines (whole ones) and updates where the reader is: once for each, so a long reply isn't read again for every token. */
 function scanMath(text: string, state: MathScan): void {
   for (const line of text.split('\n')) {
     if (state.math) {
       // Inside a `$$` block a fence is text; only a bare `$$` ends it.
-      if (/^ {0,3}\$\$\s*$/.test(line)) state.math = false;
+      if (MATH_CLOSE.test(line)) state.math = false;
       continue;
     }
     const fence = FENCE_LINE.exec(line)?.[1];
@@ -49,8 +53,9 @@ function scanMath(text: string, state: MathScan): void {
       if (fence && fence[0] === state.fence.mark && fence.length >= state.fence.length && /^[`~]+\s*$/.test(line.trim())) state.fence = null;
     } else if (fence) {
       state.fence = { mark: fence[0]!, length: fence.length };
-    } else if (MATH_LINE.test(line)) {
-      state.math = true;
+    } else {
+      const meta = MATH_LINE.exec(line)?.[1];
+      if (meta !== undefined && !isProse(meta)) state.math = true;
     }
   }
 }

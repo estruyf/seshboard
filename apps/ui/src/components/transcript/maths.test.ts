@@ -206,6 +206,16 @@ describe('dollar amounts', () => {
     for (const text of ['"$@" and "$*"', 'status $? and $#', 'run $@ then $*.', 'echo "$#" "$?"']) expect(mathNodes(text), text).toEqual([]);
   });
 
+  it('does not read a block from a $$ that is a sentence, but still from a fence with a meta', () => {
+    expect(mathNodes('$$ is the shell pid\n\nNext.')).toEqual([]);
+    expect(chat('$$ is the shell pid\n\nNext.')).toContain('Next.');
+    expect(chat('$$ is the shell pid\n\nNext.')).not.toContain('katex');
+    expect(mathNodes('$$x$$')).toEqual(['inlineMath:x']);
+    expect(mathNodes('$$latex\nx\n$$')).toEqual(['math:x']);
+    expect(mathNodes('$$  \nx\n$$')).toEqual(['math:x']);
+    expect(mathNodes('- $$\n  x\n  $$')).toHaveLength(1);
+  });
+
   it('keeps $$ working as remark-math does', () => {
     expect(mathNodes('$$ x + 1 $$')).toEqual(['inlineMath:x + 1']);
   });
@@ -252,7 +262,7 @@ describe('a $$ block while streaming', () => {
   it('opens only for a $$ at the start of a line', () => {
     expect(opensMath('$$\na')).toBe(true);
     expect(opensMath('  $$\na')).toBe(true);
-    expect(opensMath('$$ \\frac{a}{b}')).toBe(true);
+    expect(opensMath('$$\\frac{a}{b}')).toBe(true);
     expect(opensMath('$$\na\n$$')).toBe(false);
     expect(opensMath('pid $$ is the shell.')).toBe(false);
     expect(opensMath('One $$x$$ here\n\nand $$y$$')).toBe(false);
@@ -268,6 +278,27 @@ describe('a $$ block while streaming', () => {
     expect(opensMath('    $$\n    x')).toBe(false);
     // Inside a block a fence is text.
     expect(opensMath('$$\n```\n')).toBe(true);
+  });
+  it('sees a $$ block in a list item or a quote', () => {
+    expect(opensMath('- $$\n  x')).toBe(true);
+    expect(opensMath('- $$\n  x\n  $$')).toBe(false);
+    expect(opensMath('1. $$\n   x')).toBe(true);
+    expect(opensMath('> $$\n> x')).toBe(true);
+    expect(opensMath('> $$\n> x\n> $$')).toBe(false);
+    expect(opensMath('- > $$\n  > x')).toBe(true);
+    expect(opensMath('* * $$\n    x')).toBe(true);
+    expect(splitBlocks('- $$\n  x\n\n  y\n  $$\n\nAfter.')).toHaveLength(2);
+    expect(splitBlocks('> $$\n> x\n>\n> y\n> $$\n\nAfter.')).toHaveLength(2);
+    expect(splitBlocks('1. step\n\n   $$\n   a\n\n   b\n   $$\n\nAfter.')).toHaveLength(2);
+  });
+  it('does not take a $$ sentence for a block', () => {
+    expect(opensMath('$$ is the shell pid')).toBe(false);
+    expect(opensMath('$$ is the shell pid\n\nNext.')).toBe(false);
+    expect(splitBlocks('$$ is the shell pid\n\nNext.\n\nThen.')).toHaveLength(3);
+    // A fence's meta, nothing, or spaces after it still open one.
+    expect(opensMath('$$latex\nx')).toBe(true);
+    expect(opensMath('$$   \nx')).toBe(true);
+    expect(opensMath('$$\nx')).toBe(true);
   });
   it('does not merge the rest of a reply after a stray $$', () => {
     const blocks = splitBlocks('The pid $$ is the shell.\n\nSecond.\n\nThird.');
