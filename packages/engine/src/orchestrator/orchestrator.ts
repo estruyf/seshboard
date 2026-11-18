@@ -162,7 +162,9 @@ export class Orchestrator {
     const working = this.deps.store.workersOf(orchestratorId).filter((w) => w.sessionId && this.deps.status(w.sessionId) === 'working').length;
     if (working >= ORCHESTRATOR_MAX_WORKING) return fail(`${working} sessions of this orchestrator work already, which is the most at once. Start "${args.title}" when one finishes.`);
     const agents = this.deps.agents(projectRoot);
-    let agent = agents[0] ?? null;
+    // Without an agent asked for, the session runs with the orchestrator's own profile, not the project's.
+    const own = this.deps.session(orchestratorId)?.profileId ?? null;
+    let agent = agents.find((a) => a.profileId === own) ?? agents[0] ?? null;
     if (args.agent) {
       const wanted = args.agent.toLowerCase();
       agent = agents.find((a) => a.name.toLowerCase() === wanted) ?? agents.find((a) => a.agent.toLowerCase() === wanted) ?? null;
@@ -181,8 +183,7 @@ export class Orchestrator {
       permissionMode: defaults.permissionMode ?? 'acceptEdits',
       workspace,
       baseRef: defaults.baseRef ?? 'fresh',
-      // Only a profile that was asked for: without one the session follows the project's.
-      profileId: args.agent && agent ? agent.profileId : null,
+      profileId: agent?.profileId ?? null,
     };
     const hold = this.deps.hold(draft);
     if (hold) {

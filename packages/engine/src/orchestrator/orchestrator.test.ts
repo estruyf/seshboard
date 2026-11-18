@@ -67,7 +67,7 @@ describe('Orchestrator: start_session', () => {
     const { orchestrator, started, parents, store } = setup();
     const result = await orchestrator.run('orc', 'start_session', { title: 'Fix login', prompt: 'Fix the redirect.' });
     expect(result).toEqual({ text: expect.stringContaining('Started "Fix login" as session worker-1, in its own worktree') });
-    expect(started[0]).toMatchObject({ title: 'Fix login', instructions: expect.stringContaining(WORKER_JUDGMENT), draft: { cwd: ROOT, prompt: 'Fix the redirect.', workspace: 'worktree', permissionMode: 'acceptEdits', profileId: null, baseRef: 'fresh' } });
+    expect(started[0]).toMatchObject({ title: 'Fix login', instructions: expect.stringContaining(WORKER_JUDGMENT), draft: { cwd: ROOT, prompt: 'Fix the redirect.', workspace: 'worktree', permissionMode: 'acceptEdits', profileId: 'default', baseRef: 'fresh' } });
     expect(parents.get('worker-1')).toBe('orc');
     expect(store.workersOf('orc')).toMatchObject([{ sessionId: 'worker-1', itemId: null, title: 'Fix login' }]);
     expect(orchestrator.infos()).toMatchObject([{ sessionId: 'orc', projectRoot: ROOT, workers: [{ sessionId: 'worker-1', title: 'Fix login', pr: null }] }]);
@@ -79,6 +79,13 @@ describe('Orchestrator: start_session', () => {
     await orchestrator.run('orc', 'start_session', { title: 'Docs', prompt: 'Write them.', model: 'haiku' });
     expect(started[0]!.draft).toMatchObject({ model: 'haiku', effort: 'low', permissionMode: 'plan', baseRef: 'head' });
     expect(started[0]!.instructions).toContain('Branch from dev.');
+  });
+
+  it('starts with the orchestrator’s own profile, not the project’s, when no agent is asked for', async () => {
+    const { orchestrator, started } = setup({ session: (id) => ({ projectRoot: ROOT, profileId: id === 'orc' ? 'copilot-1' : 'default' }) });
+    const result = await orchestrator.run('orc', 'start_session', { title: 'A', prompt: 'a' });
+    expect(started[0]!.draft.profileId).toBe('copilot-1');
+    expect(result.text).toContain('with Copilot');
   });
 
   it('starts with another agent by its profile’s or its own name, in the folder when it has no worktrees', async () => {

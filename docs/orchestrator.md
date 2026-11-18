@@ -69,7 +69,7 @@ The specs, the role and every text the agent reads are in `packages/protocol/src
 - **Workspace:** its own worktree in a git repository, so sessions side by side never share files. `workspace: "current"` uses the project's folder. Outside git, or with an agent that has no worktrees, it is the folder.
 - **Mode:** the project's default permission mode. Without one it is Accept edits, so a session doesn't stall on every file. The orchestrator can't pick a mode, so it can never start a session that skips permission prompts unless the project's own default says so.
 - **Model and effort:** the project's defaults, or the `model` the orchestrator names for one task.
-- **Agent:** the project's profile, or the one named in `agent`. A model the provider doesn't have is left out, as for a schedule.
+- **Agent:** the orchestrator's own profile, or the one named in `agent`. A model the provider doesn't have is left out, as for a schedule.
 - **Instructions:** after its agent's system prompt, at each start and resume: the built-in judgment line (`WORKER_JUDGMENT`: build, make any reversible call yourself, check in later with the calls you made), then the project's Orchestrator instructions. The line is always there, and the project's text never replaces it. The orchestrator itself gets the idea in its role, not "just build".
 
 ## Limits
