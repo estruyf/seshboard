@@ -48,6 +48,13 @@ function press(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'a
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers: platformModifiers(modifiers) });
 }
 
+/** Presses and lets go of the mouse in the middle of the element `expression` finds, as a real click does. */
+async function clickAt(win: BrowserWindow, expression: string): Promise<void> {
+  const box = (await js(win, `(() => { const r = (${expression}).getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+  win.webContents.sendInputEvent({ type: 'mouseDown', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+  win.webContents.sendInputEvent({ type: 'mouseUp', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+}
+
 /** The session's folder, from the view. */
 async function sessionCwd(win: BrowserWindow): Promise<string | null> {
   const cwd = (await js(win, `document.querySelector('${S}')?.dataset.cwd ?? null`)) as string | null;
@@ -191,11 +198,18 @@ export async function runFilesToMessageStep(win: BrowserWindow, pics?: FilesPict
     if (!(await waitInPage(win, `${PANEL}.querySelector('[data-files-selection-bar]')`, 3_000))) return 'the toolbar did not come back after the pictures';
   }
   const before = (await js(win, `document.querySelectorAll('${S} [data-context-chip="file"]').length`)) as number;
-  await js(win, `${PANEL}.querySelector('[data-files-add-lines]').click()`);
+  // A real click, as a person makes it: the press and the release go through the viewer's own handlers first.
+  await clickAt(win, `${PANEL}.querySelector('[data-files-add-lines]')`);
   const chip = `[...document.querySelectorAll('${S} [data-context-chip="file"]')].find((c) => c.innerText.includes('${name}:2–3'))`;
   if (!(await waitInPage(win, `!!(${chip})`, 3_000))) return `no ${name}:2–3 chip in the message box (${before} file chips before)`;
   await js(win, `(${chip}).querySelector('[data-context-chip-remove]').click()`);
   if (!(await waitInPage(win, `!(${chip})`, 3_000))) return 'the chip did not come out again';
+  // Ask about the lines: the same chip, and the message box takes focus.
+  if (!(await selectLines())) return 'selecting lines again did not show the toolbar';
+  await clickAt(win, `${PANEL}.querySelector('[data-files-ask-lines]')`);
+  if (!(await waitInPage(win, `!!(${chip}) && document.activeElement?.closest('${S}') && document.activeElement.tagName === 'TEXTAREA'`, 3_000))) return 'Ask about lines put no chip in the box, or the box did not take focus';
+  await js(win, `(${chip}).querySelector('[data-context-chip-remove]').click()`);
+  if (!(await waitInPage(win, `!(${chip})`, 3_000))) return 'the Ask chip did not come out again';
   // As the companion does from VS Code's explorer: a right-click on a file of the tree, Add file to message.
   await js(win, `${PANEL}.querySelector('[data-files-show-tree]')?.click()`);
   const node = `${PANEL}.querySelector('[data-files-node=${JSON.stringify(name)}]')`;
@@ -215,7 +229,7 @@ export async function runFilesToMessageStep(win: BrowserWindow, pics?: FilesPict
     await js(win, `window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(full)}, sessionId: document.querySelector('${S}').dataset.currentSession } }))`);
     if (await waitInPage(win, `(${viewer(full)})?.querySelector('[data-line-changed]')`, 5_000)) await pictures(win, pics, 'files-changed', 'full');
   }
-  return `ok: selecting lines 2 to 3 showed "${label}", Add to message put the ${name}:2–3 chip in the box, a right-click on ${name} in the tree added the file, and both came out again`;
+  return `ok: selecting lines 2 to 3 showed "${label}", Add to message and Ask about lines (real clicks) put the ${name}:2–3 chip in the box, a right-click on ${name} in the tree added the file, and both came out again`;
 }
 
 /** A file link in a reply opens in Files, at its line, not in the old Preview panel. */

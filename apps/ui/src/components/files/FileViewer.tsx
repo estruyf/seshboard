@@ -284,7 +284,9 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
       aria-label={name}
       className={`flex min-h-0 min-w-0 flex-1 flex-col ${inset ? 'pl-2' : ''}`}
       onKeyDown={onKeyDown}
-      onMouseUp={readSelection}
+      // Not on a button (the selection's own toolbar): reading the selection there would redraw the toolbar under the
+      // pointer between the press and the release, and the browser would send no click.
+      onMouseUp={(e) => !(e.target as HTMLElement).closest('button, [role="toolbar"]') && readSelection()}
       onKeyUp={(e) => e.shiftKey && readSelection()}
       data-files-viewer={tab.path}
     >
