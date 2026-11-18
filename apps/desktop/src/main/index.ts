@@ -7505,6 +7505,85 @@ async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * A selection in the file preview with a real formula and a real Mermaid diagram (`useCleanCopy` on the preview's Markdown),
+ * in a throwaway file in a folder of its own: a sentence with `$x^2 + y^2$` copies with the formula as its TeX in `$…$` exactly once
+ * (not KaTeX's pieces, no `.katex`, no `math`) and its text is the sentence; a `$$` block copies as its source in `$$…$$`; a selection
+ * from the line before a diagram to the line after has both lines and no `svg` (the diagram is left out, not copied as its source).
+ * Read-only: `copy` events with a DataTransfer of its own, the clipboard is untouched. The folder is removed at the end.
+ */
+async function runCopyFormulaStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-copy-formula-')));
+  const md = join(dir, 'copy.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  try {
+    writeFileSync(md, '# Copy\n\nThen $x^2 + y^2$ holds.\n\n$$\nE = mc^2\n$$\n\nBefore the diagram.\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Ship]\n```\n\nAfter the diagram.\n');
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && [...(${PREVIEW}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector('.katex')) && !!${PREVIEW}?.querySelector('[data-mermaid-state="drawn"] svg')`, 20_000))) return 'the formula and the diagram were not drawn in the Markdown preview';
+    const report = (await js(`(() => {
+      const preview = ${PREVIEW};
+      const problems = [];
+      const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+      const copy = (range, target) => {
+        document.activeElement?.blur();
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const data = new DataTransfer();
+        const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        const out = { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain') };
+        selection.removeAllRanges();
+        return out;
+      };
+      const times = (text, part) => text.split(part).length - 1;
+      const paragraph = (start) => [...preview.querySelectorAll('p')].find((p) => p.textContent.trim().startsWith(start));
+      // 1. The sentence with an inline formula.
+      const sentence = paragraph('Then');
+      if (!sentence) return { problems: ['the sentence is not in the preview'] };
+      if (!sentence.closest('[data-clean-copy]')) problems.push('the preview is not a clean-copy container');
+      const range = document.createRange();
+      range.selectNodeContents(sentence);
+      const line = copy(range, sentence);
+      const lineBody = parse(line.html);
+      if (!line.prevented) problems.push('the copy was left to the browser');
+      if (times(lineBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the formula is in the HTML ' + times(lineBody.textContent, '$x^2 + y^2$') + ' times: ' + line.html.slice(0, 160));
+      if (lineBody.querySelector('[class*=katex], math, svg, annotation') || [...lineBody.querySelectorAll('*')].some((e) => [...e.attributes].some((a) => a.name === 'class' || a.name.startsWith('data-')))) problems.push('the HTML keeps KaTeX, MathML or attributes: ' + line.html.slice(0, 160));
+      if (line.text !== 'Then $x^2 + y^2$ holds.') problems.push('the text is ' + JSON.stringify(line.text));
+      // 2. From the sentence through the $$ block.
+      const block = preview.querySelector('[data-math="block"]');
+      const through = document.createRange();
+      through.setStart(sentence.firstChild, 0);
+      through.setEnd(block, block.childNodes.length);
+      const blockCopy = copy(through, sentence);
+      const blockBody = parse(blockCopy.html);
+      if (times(blockBody.textContent, 'E = mc^2') !== 1 || !blockBody.textContent.includes('$$') || blockBody.querySelector('[class*=katex], math, svg')) problems.push('a $$ block copies as ' + JSON.stringify(blockBody.textContent.slice(0, 120)));
+      if (times(blockBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the sentence before the block has its formula ' + times(blockBody.textContent, '$x^2 + y^2$') + ' times');
+      // 3. From the line before the diagram to the line after it.
+      const before = paragraph('Before the diagram');
+      const after = paragraph('After the diagram');
+      const around = document.createRange();
+      around.setStart(before.firstChild, 0);
+      around.setEnd(after.firstChild, after.firstChild.length);
+      const diagram = copy(around, before);
+      const diagramBody = parse(diagram.html);
+      if (!diagram.prevented) problems.push('the copy around a diagram was left to the browser');
+      if (!diagramBody.textContent.includes('Before the diagram.') || !diagramBody.textContent.includes('After the diagram.')) problems.push('the copy around a diagram has ' + JSON.stringify(diagramBody.textContent.slice(0, 120)));
+      if (diagramBody.querySelector('svg') || /Start|Ship|flowchart/.test(diagramBody.textContent)) problems.push('the copy around a diagram has the diagram: ' + diagram.html.slice(0, 160));
+      window.getSelection().removeAllRanges();
+      return { problems };
+    })()`)) as { problems: string[] };
+    if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+    return 'ok: a sentence copies its formula once as $…$ with the sentence as text, a $$ block as its source, and a selection around a Mermaid diagram has its lines and no svg (the diagram is left out)';
+  } finally {
+    pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click(); window.getSelection().removeAllRanges(); null");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
  * The actions of Claude's replies sit in a row of their own under the text, so they never cover it;
  * the row is hidden until you hover or tab to it, and showing it doesn't change the reply's height.
  * Your prompt cards keep the toolbar floating over their top edge. Read-only: it focuses a button but
@@ -14892,6 +14971,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
   await step('copy a selection: clean HTML', () => runCopySelectionStep(win));
+  await step('copy a selection: a formula and a diagram in the file preview', () => runCopyFormulaStep(win), { timeoutMs: 60_000 });
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('conversation view: Skim folds, shows the stats and fades by the keep line, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
