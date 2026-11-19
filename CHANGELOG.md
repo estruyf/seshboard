@@ -79,6 +79,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **JSON and XML are readable in the browser in dark mode.** A REST response the browser shows as text, such as JSON or an XML feed, had white text on a white page. It now gets a dark background, as in Chrome.
 - **The speaker on a browser tab no longer blinks.** A tab playing music showed and hid its speaker at every quiet moment in the music. The speaker now stays until the page has been quiet for two seconds, as in Chrome.
 - **Enter in the browser's address bar reloads the page** when you haven't changed the address, instead of asking you to type one. A loading page now shows a short line that runs along the toolbar, as in VS Code, instead of a full-width pulse.
 - **Copying from the browser's address bar gives a link.** The bar shows an address without `https://`, but a copy of it now takes the full address, so it pastes as a link in other apps.

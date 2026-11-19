@@ -29,6 +29,12 @@ const PAGES: Record<string, string> = {
   '/pick': '<title>Smoke pick</title><main><h1 id=heading>Pick me</h1><p id=words>Some words to quote here.</p><button class="cta" data-testid=buy onclick="document.body.dataset.clicked=1">Buy now</button></main>',
 };
 
+/** Responses Chromium shows itself, as text: a REST API's JSON and an Atom feed (what SharePoint's REST API sends). */
+const RAW: Record<string, { type: string; body: string }> = {
+  '/data.json': { type: 'application/json; charset=utf-8', body: '{"value":[{"Id":2,"FileRef":"/sites/Front Matter/Home"}]}' },
+  '/feed.xml': { type: 'application/atom+xml;type=feed;charset=utf-8', body: '<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>2</id></entry></feed>' },
+};
+
 /** The page's icon, for the tab's favicon: padded past what the window keeps as it is, so the tab shows it shrunk. */
 const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><desc>${'padding '.repeat(4_000)}</desc><circle cx="8" cy="8" r="7" fill="#e8590c"/></svg>`;
 
@@ -38,7 +44,7 @@ export interface BrowserSmokeDeps {
   /** Sets the browser on or off, as Settings would. */
   setBrowser(on: boolean): void;
   /** Sets the browser's other preferences: its card in the sidebar, previews, control by agents. */
-  setPrefs(patch: { browserIntro?: 'ask' | 'done'; webPreview?: boolean; browserControl?: boolean }): void;
+  setPrefs(patch: { browserIntro?: 'ask' | 'done'; webPreview?: boolean; browserControl?: boolean; colorScheme?: 'system' | 'light' | 'dark' }): void;
   /** The browser tools' calls, as the engine's bridge makes them (main's `browserAgent`). */
   agent?(request: BrowserToolRequest): Promise<BrowserToolResult>;
   /** The outside addresses the preview sent to the browser (recorded, not opened, in a smoke run). */
@@ -67,6 +73,12 @@ async function site(): Promise<string> {
       response.writeHead(200, { 'content-type': 'application/octet-stream', 'x-content-type-options': 'nosniff', 'content-disposition': `attachment; filename="${DOWNLOAD_NAME}"`, 'content-length': String(DOWNLOAD_TEXT.length) });
       response.write(DOWNLOAD_TEXT.slice(0, 8));
       heldDownload = response;
+      return;
+    }
+    const raw = RAW[request.url ?? ''];
+    if (raw) {
+      response.writeHead(200, { 'content-type': raw.type });
+      response.end(raw.body);
       return;
     }
     const body = PAGES[request.url ?? ''];
@@ -977,4 +989,39 @@ export async function runBrowserDownloadStep(win: BrowserWindow, deps: BrowserSm
   if (!existsSync(file) || readFileSync(file, 'utf8') !== DOWNLOAD_TEXT) return `the file is not in the Downloads folder as it was sent (${file})`;
   await js(`${done}.querySelector('[data-toast-close]')?.click()`);
   return 'ok: the file saved in the Downloads folder, its long name cut and shown in full, Show in Finder offered';
+}
+
+/**
+ * "browser text page": in the dark, JSON and XML that Chromium shows as text get a dark canvas under their light text,
+ * not the white of the page's `<webview>`.
+ */
+export async function runBrowserTextPageStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const url = await site();
+  const address = '[data-browser-view] [data-browser-address]';
+  deps.setBrowser(true);
+  deps.setPrefs({ colorScheme: 'dark' });
+  try {
+    if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
+    if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
+    if (!(await waitInPage(win, q('[data-browser-tab-list] [data-browser-open-tab]'), 3_000))) return 'no Browser view';
+    const seen: string[] = [];
+    for (const path of Object.keys(RAW)) {
+      await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
+      if (!(await waitInPage(win, `${q(address)} && !${q(address)}.disabled`, 3_000))) return 'Open tab gave no address bar';
+      await setFieldValue(win, address, `${url.replace('http://', '')}${path.slice(1)}`);
+      await js(`${q(address)}.form.requestSubmit()`);
+      let page: WebContents | undefined;
+      if (!(await until(() => (page = webContents.getAllWebContents().find((c) => c.getType() === 'webview' && !c.isDestroyed() && c.getURL().endsWith(path))) !== undefined, 10_000))) return `${path} did not load`;
+      // The canvas comes on dom-ready, after the page shows.
+      const colours = `(() => { const style = getComputedStyle(document.documentElement); const text = getComputedStyle(document.body ?? document.documentElement).color; return style.backgroundColor + ' / ' + text; })()`;
+      const dark = `(() => { const rgb = getComputedStyle(document.documentElement).backgroundColor.match(/\\d+/g)?.map(Number) ?? []; return rgb.length === 3 && rgb[0] + rgb[1] + rgb[2] < 200; })()`;
+      if (!(await waitInPage({ webContents: page! }, dark, 3_000))) return `${path} has no dark canvas in the dark (background / text: ${String(await page!.executeJavaScript(colours).catch(() => '?'))})`;
+      seen.push(`${path} ${String(await page!.executeJavaScript(colours))}`);
+    }
+    await deps.shot('browser-text-page');
+    return `ok: dark canvas under ${seen.join(', ')}`;
+  } finally {
+    deps.setPrefs({ colorScheme: 'system' });
+  }
 }
