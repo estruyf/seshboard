@@ -7111,6 +7111,11 @@ async function runMathsStep(win: BrowserWindow): Promise<string> {
     );
     await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
     if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DRAWN('.katex')}`, 10_000))) return 'the formulas were not drawn in the Markdown preview';
+    // The fonts are requested once the formulas are on screen and arrive a little later (slower on a CI machine): wait for one
+    // to be loaded, and say at once if the window refused them.
+    const KATEX_FONTS = "[...document.fonts].filter((f) => f.family.replace(/[\"']/g, '').startsWith('KaTeX'))";
+    if (!(await waitInPage(win, `${KATEX_FONTS}.some((f) => f.status === 'loaded' || f.status === 'error')`, 10_000))) return "KaTeX's fonts were never requested";
+    if (await js(`${KATEX_FONTS}.some((f) => f.status === 'error') && !${KATEX_FONTS}.some((f) => f.status === 'loaded')`)) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
     const found = (await js(
       `(() => { const p = ${PREVIEW}; const html = (sel) => p.querySelectorAll(sel).length;
         const inline = p.querySelector('[data-math="inline"]'); const block = p.querySelector('[data-code-preview-block] [data-math="block"]');
