@@ -1,3 +1,4 @@
+import { useSelectAllInText } from '../transcript/useSelectAllInText.ts';
 import { QuickOpenHost } from '../files/QuickOpen.tsx';
 import { useEffect } from 'react';
 import { SelectionMenu } from '../SelectionMenu.tsx';
@@ -97,6 +98,8 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   // Saved prompts reach the slash menu and the message box here too; a change made in any window shows in all.
   useSavedPromptsSync();
   useReadyReport();
+  // Select all (⌘A) in the conversation selects only that text here too.
+  useSelectAllInText();
   usePopoutWindow(sessionId);
   // Main keeps the session's panels, to give them back to the main window when this one goes.
   usePopoutViewReport(sessionId);

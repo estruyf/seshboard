@@ -1,14 +1,11 @@
 import { useEffect, type RefObject } from 'react';
-import { CLEAN_COPY, selectionClip } from './selectionClip.ts';
-
-/** Where a copy is the browser's own: text fields and the terminal handle their selection themselves. */
-const OWN_COPY = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), .xterm';
+import { CLEAN_COPY, OWN_COPY, selectionClip } from './selectionClip.ts';
 
 /**
  * Copies a selection in `container` (the conversation, reading mode, a previewed file) as clean HTML, plus its text.
  * Chromium would put the computed styles (the theme's colours, a background behind code) into the HTML, which reads badly
- * pasted into an email or a document. It leaves a selection that is not wholly inside `container` (Select all, which
- * covers more), or inside a field or the terminal, to the browser. The menus' and the toolbar's Copy do the same
+ * pasted into an email or a document. It leaves a selection that is not wholly inside `container`, or inside a field or the terminal, to the browser (Select all
+ * is taken to the text you are in by `useSelectAllInText`). The menus' and the toolbar's Copy do the same
  * through `copySelection`.
  */
 export function useCleanCopy(container: RefObject<HTMLElement | null>): void {
@@ -27,9 +24,11 @@ export function useCleanCopy(container: RefObject<HTMLElement | null>): void {
       event.clipboardData.setData('text/plain', clip.text);
       event.preventDefault();
     };
-    el.addEventListener('copy', onCopy);
+    // On the document, not the container: the copy event is aimed at the focused element, which after Select all may be
+    // outside the container (the session's row in the sidebar). `selectionClip` only takes a selection inside it.
+    document.addEventListener('copy', onCopy);
     return () => {
-      el.removeEventListener('copy', onCopy);
+      document.removeEventListener('copy', onCopy);
       el.removeAttribute(CLEAN_COPY);
     };
   }, [container]);

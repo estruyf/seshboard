@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isSessionUpdate, ORCHESTRATOR_MAX_WORKING, ORCHESTRATOR_PROMPT, WORKER_JUDGMENT, type CatchUp, type LaterDraft, type ProjectDefaults, type WorkerStatus } from '@seshboard/protocol';
+import { isSessionUpdate, ORCHESTRATOR_MAX_WORKING, ORCHESTRATOR_PROMPT, WORKER_JUDGMENT, type CatchUp, type LaterDraft, type ProfileDefaults, type ProjectDefaults, type WorkerStatus } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { Orchestrator, type OrchestratorDeps } from './orchestrator.ts';
 import { OrchestratorBridge } from './orchestratorBridge.ts';
@@ -37,11 +37,14 @@ function setup(overrides: Partial<OrchestratorDeps> = {}) {
   const parents = new Map<string, string>();
   const status = new Map<string, WorkerStatus>();
   let defaults = {} as ProjectDefaults;
+  const profileDefaults = new Map<string, ProfileDefaults>();
   let changes = 0;
   const orchestrator = new Orchestrator({
     store,
     session: () => ({ projectRoot: ROOT, profileId: 'default' }),
     defaults: () => defaults,
+    profileDefaults: (id) => profileDefaults.get(id) ?? ({} as ProfileDefaults),
+    globals: () => ({ model: null, effort: null }),
     inRepo: () => true,
     agents: () => AGENTS,
     hold: () => null,
@@ -59,7 +62,7 @@ function setup(overrides: Partial<OrchestratorDeps> = {}) {
     ...overrides,
   });
   orchestrator.mark('orc', ROOT);
-  return { orchestrator, store, started, queued, sent, parents, status, changes: () => changes, setDefaults: (d: Partial<ProjectDefaults>) => (defaults = d as ProjectDefaults) };
+  return { orchestrator, store, started, queued, sent, parents, status, changes: () => changes, setDefaults: (d: Partial<ProjectDefaults>) => (defaults = d as ProjectDefaults), setProfileDefaults: (id: string, d: Partial<ProfileDefaults>) => void profileDefaults.set(id, d as ProfileDefaults) };
 }
 
 describe('Orchestrator: start_session', () => {
@@ -67,7 +70,7 @@ describe('Orchestrator: start_session', () => {
     const { orchestrator, started, parents, store } = setup();
     const result = await orchestrator.run('orc', 'start_session', { title: 'Fix login', prompt: 'Fix the redirect.' });
     expect(result).toEqual({ text: expect.stringContaining('Started "Fix login" as session worker-1, in its own worktree') });
-    expect(started[0]).toMatchObject({ title: 'Fix login', instructions: expect.stringContaining(WORKER_JUDGMENT), draft: { cwd: ROOT, prompt: 'Fix the redirect.', workspace: 'worktree', permissionMode: 'acceptEdits', profileId: null, baseRef: 'fresh' } });
+    expect(started[0]).toMatchObject({ title: 'Fix login', instructions: expect.stringContaining(WORKER_JUDGMENT), draft: { cwd: ROOT, prompt: 'Fix the redirect.', workspace: 'worktree', permissionMode: 'acceptEdits', profileId: 'default', baseRef: 'fresh' } });
     expect(parents.get('worker-1')).toBe('orc');
     expect(store.workersOf('orc')).toMatchObject([{ sessionId: 'worker-1', itemId: null, title: 'Fix login' }]);
     expect(orchestrator.infos()).toMatchObject([{ sessionId: 'orc', projectRoot: ROOT, workers: [{ sessionId: 'worker-1', title: 'Fix login', pr: null }] }]);
@@ -79,6 +82,27 @@ describe('Orchestrator: start_session', () => {
     await orchestrator.run('orc', 'start_session', { title: 'Docs', prompt: 'Write them.', model: 'haiku' });
     expect(started[0]!.draft).toMatchObject({ model: 'haiku', effort: 'low', permissionMode: 'plan', baseRef: 'head' });
     expect(started[0]!.instructions).toContain('Branch from dev.');
+  });
+
+  it('takes its profile’s defaults where the project sets none, and the global model last', async () => {
+    const { orchestrator, started, setDefaults, setProfileDefaults } = setup({ globals: () => ({ model: 'opus', effort: 'high' }) });
+    setProfileDefaults('default', { permissionMode: 'auto', effort: 'medium', baseRef: 'head' });
+    await orchestrator.run('orc', 'start_session', { title: 'A', prompt: 'a' });
+    expect(started[0]!.draft).toMatchObject({ model: 'opus', effort: 'medium', permissionMode: 'auto', baseRef: 'head' });
+    setDefaults({ permissionMode: 'plan' });
+    await orchestrator.run('orc', 'start_session', { title: 'B', prompt: 'b' });
+    expect(started[1]!.draft.permissionMode).toBe('plan');
+    setDefaults({ permissionMode: null, globalPermissionMode: true });
+    setProfileDefaults('default', {});
+    await orchestrator.run('orc', 'start_session', { title: 'C', prompt: 'c' });
+    expect(started[2]!.draft).toMatchObject({ permissionMode: 'acceptEdits', baseRef: 'fresh' });
+  });
+
+  it('starts with the orchestrator’s own profile, not the project’s, when no agent is asked for', async () => {
+    const { orchestrator, started } = setup({ session: (id) => ({ projectRoot: ROOT, profileId: id === 'orc' ? 'copilot-1' : 'default' }) });
+    const result = await orchestrator.run('orc', 'start_session', { title: 'A', prompt: 'a' });
+    expect(started[0]!.draft.profileId).toBe('copilot-1');
+    expect(result.text).toContain('with Copilot');
   });
 
   it('starts with another agent by its profile’s or its own name, in the folder when it has no worktrees', async () => {
