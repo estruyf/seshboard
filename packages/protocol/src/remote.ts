@@ -494,6 +494,8 @@ export const remoteContract = {
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
     /** Sends one message from Up next now, stopping Claude's turn first; the rest keep waiting. With `REMOTE_FEATURE_QUEUE_SEND_NOW`. */
     'session.queue.sendNow': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
+    /** Puts one message from Up next at another place in it (`toIndex`, from 0). With `REMOTE_FEATURE_QUEUE_MOVE`. */
+    'session.queue.move': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200), toIndex: z.number().int().min(0).max(1000) }), result: z.object({}) },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (`RemoteSession.background`); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string().min(1).max(200) }), result: z.object({}) },

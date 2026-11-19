@@ -26,6 +26,7 @@ export * from './pullRequestConstants.ts';
 export * from './worktreeName.ts';
 export * from './worktreeBase.ts';
 export * from './remoteWorktreeBase.ts';
+export * from './remoteOnlyBranches.ts';
 export * from './context.ts';
 export * from './companion.ts';
 export * from './companionConstants.ts';

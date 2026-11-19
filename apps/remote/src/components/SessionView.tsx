@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { agentName, apiRetryLine, type ApiRetry, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
+import { agentName, apiRetryLine, type ApiRetry, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_MOVE, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { useReceivedRetry } from '../lib/receivedRetry.ts';
 import { runsOf } from '../lib/runs.ts';
@@ -446,6 +446,7 @@ export function SessionView({
               queue={queue}
               onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))}
               onSendNow={features.includes(REMOTE_FEATURE_QUEUE_SEND_NOW) ? (id) => void client?.call('session.queue.sendNow', { sessionId, id }).catch((e: Error) => setError(e.message)) : null}
+              onMove={features.includes(REMOTE_FEATURE_QUEUE_MOVE) ? (id, toIndex) => void client?.call('session.queue.move', { sessionId, id, toIndex }).catch((e: Error) => setError(e.message)) : null}
             />
           )}
           {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
@@ -764,16 +765,24 @@ function BackgroundLine({ text }: { text: string }) {
   );
 }
 
-/** What waits for the turn to end. Send now (from a computer that takes it) stops Claude and sends that one at once. */
-function UpNext({ queue, onRemove, onSendNow }: { queue: QueuedMessage[]; onRemove: (id: string) => void; onSendNow: ((id: string) => void) | null }) {
+/**
+ * What waits for the turn to end. Send now (from a computer that takes it) stops Claude and sends that one at once, and
+ * Move up (from a computer that takes it) puts one before the message above it.
+ */
+function UpNext({ queue, onRemove, onSendNow, onMove }: { queue: QueuedMessage[]; onRemove: (id: string) => void; onSendNow: ((id: string) => void) | null; onMove: ((id: string, toIndex: number) => void) | null }) {
   return (
     <section aria-label="Up next" className="px-3 pt-2 sm:px-6">
       <div className="mx-auto w-full max-w-3xl px-1">
         <h2 className="text-meta font-semibold tracking-wide text-faint uppercase">Up next</h2>
         <ul>
-          {queue.map((item) => (
+          {queue.map((item, index) => (
             <li key={item.id} className="flex items-center gap-2 py-0.5">
               <span className="min-w-0 flex-1 truncate text-ui">{item.text}</span>
+              {onMove && index > 0 && (
+                <Button variant="quiet" size="md" aria-label="Move up" title="Move up" onClick={() => onMove(item.id, index - 1)} className="px-2!" data-remote-move-up={item.id}>
+                  <ArrowUp className="size-4" aria-hidden />
+                </Button>
+              )}
               {onSendNow && (
                 <Button variant="quiet" size="md" onClick={() => onSendNow(item.id)} title="Stop Claude and send this now" className="px-2!" data-remote-send-now={item.id}>
                   <Zap className="size-3.5" aria-hidden />

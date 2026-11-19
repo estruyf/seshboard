@@ -201,6 +201,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
     sendQueuedNow: async (sessionId, id) => void calls.push(`send now ${sessionId} ${id}`),
+    moveQueued: (sessionId, id, toIndex) => void calls.push(`move ${sessionId} ${id} ${toIndex}`),
     limit: (sessionId) => limitOf[sessionId] ?? null,
     resumeLimit: async (sessionId) => void calls.push(`resume ${sessionId}`),
     armLimit: (sessionId, armed) => void calls.push(`arm ${sessionId} ${armed}`),
@@ -547,6 +548,9 @@ describe('Remote hub', () => {
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'f', worktree: false, checkoutBranch: 'feat/login' });
     expect(created.at(-1)!.choice).toMatchObject({ worktree: false, checkoutBranch: 'feat/login' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'g', worktree: false, checkoutBranch: 'origin/main' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // Only on the remote: checked out as a new branch that tracks it.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'g2', worktree: false, checkoutBranch: 'dev' });
+    expect(created.at(-1)!.choice).toMatchObject({ worktree: false, checkoutBranch: 'dev' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'h', worktree: false, checkoutBranch: 'taken' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'i', worktree: true, checkoutBranch: 'feat/login' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(await remote.call('later.add', { projectId: projectIdOf(ROOT), prompt: 'j', worktree: false, checkoutBranch: 'feat/login' })).toEqual({ id: 'later-1' });
@@ -916,6 +920,20 @@ describe('Remote hub', () => {
     expect(calls).toContain(`send now ${SESSION} q1`);
     await expect(remote.call('session.queue.sendNow', { sessionId: HIDDEN, id: 'q1' })).rejects.toBeDefined();
     expect(calls).not.toContain(`send now ${HIDDEN} q1`);
+  });
+
+  it('moves a message in Up next, only for a session in the list, and sends the phone the list after', async () => {
+    const { hub, port, on, calls } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const heard: string[] = [];
+    remote.on('upNext.changed', (event) => heard.push(event.sessionId));
+    await remote.call('session.queue.move', { sessionId: SESSION, id: 'q2', toIndex: 0 });
+    expect(calls).toContain(`move ${SESSION} q2 0`);
+    await until(() => heard.length >= 1);
+    expect(heard).toEqual([SESSION]);
+    await expect(remote.call('session.queue.move', { sessionId: HIDDEN, id: 'q2', toIndex: 0 })).rejects.toBeDefined();
+    expect(calls).not.toContain(`move ${HIDDEN} q2 0`);
   });
 
   it('gives a phone how a session stands with its usage limit, and lets it resume or arm only a session in the list', async () => {

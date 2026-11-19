@@ -71,6 +71,7 @@ import {
   REMOTE_DESKTOP_ORIGIN,
   type RemoteProfile,
   type TriggerSession,
+  remoteOnlyBranches,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
@@ -210,6 +211,8 @@ export interface RemoteHubOptions {
   dequeue(sessionId: string, id: string): void;
   /** Send now on a message in Up next: Claude's turn stops and it goes, as on the computer. */
   sendQueuedNow(sessionId: string, id: string): Promise<void>;
+  /** Puts a message in Up next at another place, as dragging it on the computer does. */
+  moveQueued(sessionId: string, id: string, toIndex: number): void;
   /** A session's Up next as it is now, for a phone that starts watching it (it may have missed changes while away). */
   upNext(sessionId: string): QueuedMessage[];
   /** How a session stands with its profile's usage limit; null when its profile isn't at one. */
@@ -949,8 +952,9 @@ export class RemoteHub {
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
-    const { branches, checkedOutElsewhere } = await this.options.branches(project.root);
-    if (!branches.includes(branch)) throw new RpcError('NOT_FOUND', `No branch ${branch} in ${project.name}`);
+    const { branches, checkedOutElsewhere, remoteBranches } = await this.options.branches(project.root);
+    // One only a remote has is checked out as a new branch that tracks it.
+    if (!branches.includes(branch) && !remoteOnlyBranches(branches, remoteBranches ?? []).some((b) => b.name === branch)) throw new RpcError('NOT_FOUND', `No branch ${branch} in ${project.name}`);
     if (checkedOutElsewhere.includes(branch)) throw new RpcError('INVALID_PARAMS', `${branch} is checked out in another worktree`);
     return choice;
   }
@@ -1046,6 +1050,13 @@ export class RemoteHub {
       'session.queue.sendNow': async ({ sessionId, id }) => {
         this.checkSession(sessionId);
         await this.options.sendQueuedNow(sessionId, id);
+        return {};
+      },
+      'session.queue.move': ({ sessionId, id, toIndex }, phone) => {
+        this.checkSession(sessionId);
+        this.options.moveQueued(sessionId, id, toIndex);
+        // Sent or removed meanwhile: nothing moved, so no update comes; this one sets its list right.
+        phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
         return {};
       },
       'session.interrupt': async ({ sessionId }) => {

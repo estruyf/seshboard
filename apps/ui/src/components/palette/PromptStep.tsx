@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, GitBranch, GitBranchPlus, SquarePen } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { AUTO_MODEL, type ImageAttachment, type LaterDraft, type PermissionMode, type ProjectInspection } from '@seshboard/protocol/client';
+import { AUTO_MODEL, remoteOnlyBranches, type ImageAttachment, type LaterDraft, type PermissionMode, type ProjectInspection } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
@@ -159,7 +159,10 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
     checkoutBranch,
     isGitRepo: inspection?.isGitRepo ?? null,
   });
-  const branchOptions = d.branch && !gitBranches.branches.includes(d.branch) ? [d.branch, ...gitBranches.branches] : gitBranches.branches;
+  // A fresh clone has only its default branch here: the ones only on a remote are listed too, and checked out as new tracking branches.
+  const onRemote = remoteOnlyBranches(gitBranches.branches, gitBranches.remoteBranches ?? []);
+  const switchable = [...gitBranches.branches, ...onRemote.map((b) => b.name)];
+  const branchOptions = d.branch && !switchable.includes(d.branch) ? [d.branch, ...switchable] : switchable;
   const blocked = !client ? 'Connecting to the engine…' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'This folder no longer exists') : null;
   const canStart = !busy && !blocked && text.trim() !== '';
   const focus = useFocus();
@@ -347,7 +350,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
             disabled={gitBranches.branches.length === 0}
             choices={[
               ...(gitBranches.current ? [] : [{ value: '', label: 'Stay on the current checkout' }]),
-              ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null), ...(gitBranches.checkedOutElsewhere?.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
+              ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null) ?? onRemote.find((r) => r.name === b)?.remote, ...(gitBranches.checkedOutElsewhere?.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
             ]}
           >
             <GitBranch size={13} className="shrink-0" aria-hidden />

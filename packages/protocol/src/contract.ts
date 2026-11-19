@@ -1034,7 +1034,8 @@ export const contract = {
       }),
     },
     /**
-     * Checks out a local branch in the checkout at `cwd` with `git switch`: uncommitted changes that
+     * Checks out a branch in the checkout at `cwd` with `git switch` (one only a remote has, as a new local
+     * branch that tracks it, from `origin` when more remotes have it): uncommitted changes that
      * don't conflict come along, and git refuses (GIT_FAILED) when they do. Nothing is stashed or
      * discarded. Refused (SESSION_BUSY) while Claude is working in a session in this checkout.
      */

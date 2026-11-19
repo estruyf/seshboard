@@ -51,6 +51,7 @@ describe('the remote contracts', () => {
       'session.interrupt',
       'session.markRead',
       'session.markUnread',
+      'session.queue.move',
       'session.queue.remove',
       'session.queue.sendNow',
       'session.respond',

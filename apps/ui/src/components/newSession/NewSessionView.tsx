@@ -1,7 +1,7 @@
 import { ViewHeader } from '../ViewHeader.tsx';
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
+import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, remoteOnlyBranches, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useProvider, useProviderReadiness, useProviders } from '../../state/providersStore.ts';
 import { ProviderUsage } from '../providers/ProviderUsage.tsx';
 import { hasPlanUsage } from '../providers/quotaText.ts';
@@ -883,7 +883,10 @@ function LocalNewSession() {
   const checkoutBranch = checkoutBranchFor(d, useWorktree, gitBranches.current);
   /** A branch kept from before (a draft, the project's default) can since be checked out in another worktree. */
   const branchTaken = branchBlocked(checkoutBranch, gitBranches.checkedOutElsewhere);
-  const branchOptions = d.branch && !gitBranches.branches.includes(d.branch) ? [d.branch, ...gitBranches.branches] : gitBranches.branches;
+  // A fresh clone has only its default branch here: the ones only on a remote are listed too, and checked out as new tracking branches.
+  const onRemote = remoteOnlyBranches(gitBranches.branches, gitBranches.remoteBranches ?? []);
+  const switchable = [...gitBranches.branches, ...onRemote.map((b) => b.name)];
+  const branchOptions = d.branch && !switchable.includes(d.branch) ? [d.branch, ...switchable] : switchable;
   // With another provider, its own model, effort and mode are what the project saves.
   const asDefaults = toProjectDefaults(
     { ...d, workspace: useWorktree ? 'worktree' : d.workspace, ...(runWith ? { model: runWithModel, effort: providerEffortShown, permissionMode: runWithMode } : {}) },
@@ -1727,7 +1730,7 @@ function LocalNewSession() {
                       width={300}
                       choices={[
                         ...(gitBranches.current ? [] : [{ value: '', label: 'Stay on the current checkout' }]),
-                        ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null), ...(gitBranches.checkedOutElsewhere?.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
+                        ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null) ?? onRemote.find((r) => r.name === b)?.remote, ...(gitBranches.checkedOutElsewhere?.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
                       ]}
                     >
                       <GitBranch size={14} className="shrink-0" aria-hidden />
