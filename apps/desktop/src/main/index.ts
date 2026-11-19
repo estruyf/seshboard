@@ -7308,6 +7308,98 @@ async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * ⌘A (Ctrl+A) in the conversation and in reading mode selects only that text (`useSelectAllInText`), so a copy of it is the clean
+ * HTML: the selection lies inside the area, the HTML (parsed) has no class, data attribute, button or colour and none of the sidebar's or
+ * the reading bar's text. In a text field it still selects only the field's text, and in the message box it leaves the conversation
+ * alone. The conversation is virtualised: Select all takes the rows drawn. Read-only: the key is pressed in the page, `copy` events carry
+ * a DataTransfer of their own, and what the step adds to the conversation is removed again.
+ */
+async function runSelectAllCopyStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await transcriptAtRest(win);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const AREA = `${view} [data-transcript]`;
+  const READ = '[data-read-mode] [data-read-scroll]';
+  // Selects with the key from a state with no selection and no focus in the area, then copies as ⌘C does, to the focused element.
+  const reset = (pointerIn: string | null) =>
+    js(`(() => { window.getSelection().removeAllRanges(); document.activeElement?.blur(); ${pointerIn ? `document.querySelector(${JSON.stringify(pointerIn)})?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));` : ''} return true; })()`);
+  const copyOf = (selector: string, outside: string) =>
+    js(`(() => {
+      const root = document.querySelector(${JSON.stringify(selector)});
+      const selection = window.getSelection();
+      const problems = [];
+      if (!root || selection.rangeCount === 0) return ['nothing is selected'];
+      const range = selection.getRangeAt(0);
+      if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) problems.push('the selection reaches outside the text');
+      const data = new DataTransfer();
+      const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+      (document.activeElement ?? document.body).dispatchEvent(event);
+      if (!event.defaultPrevented) problems.push('the copy was left to the browser, with its theme colours');
+      const body = new DOMParser().parseFromString(data.getData('text/html'), 'text/html').body;
+      if (!body.textContent.trim()) problems.push('the copy is empty');
+      for (const el of body.querySelectorAll('*')) {
+        if (['BUTTON', 'SVG', 'INPUT', 'TEXTAREA', 'IMG'].includes(el.tagName)) problems.push('a <' + el.tagName.toLowerCase() + '> in the HTML');
+        for (const a of el.attributes) {
+          if (!['href', 'start', 'style'].includes(a.name)) problems.push(a.name + '= on <' + el.tagName.toLowerCase() + '>');
+          else if (a.name === 'style' && /color|background/i.test(a.value)) problems.push('style ' + a.value);
+        }
+      }
+      // Text of the window around the area: the sidebar's rows and the reading bar.
+      for (const text of (${outside}).map((t) => t.trim()).filter((t) => t.length > 8 && !root.textContent.includes(t))) if (body.textContent.includes(text)) problems.push('the HTML has "' + text.slice(0, 30) + '" from outside the text');
+      selection.removeAllRanges();
+      return problems;
+    })()`) as Promise<string[]>;
+  const ROWS = "[...document.querySelectorAll('[data-session-id]')].map((row) => row.textContent)";
+  try {
+    if (!(await js(`!!document.querySelector('${AREA} [data-transcript-item]')`))) return 'ok: no conversation on screen';
+    // 1. The conversation: after a click in it, ⌘A selects its text, not the window.
+    await reset(AREA);
+    pressKey(win, 'A', ['meta']);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`, 3_000))) {
+      const where = await js("(() => { const s = window.getSelection(); return s.rangeCount ? s.getRangeAt(0).startContainer.nodeName + ' > ' + s.getRangeAt(0).endContainer.nodeName : 'none'; })()");
+      return `⌘A in the conversation did not select just its text (${where})`;
+    }
+    const conversation = await copyOf(AREA, ROWS);
+    if (conversation.length > 0) return `⌘A in the conversation: ${conversation.slice(0, 3).join('; ')}`;
+
+    // 2. A text field in the area keeps its own Select all, and so does the message box: the key is not taken (a key event sent to the page
+    // does not run the menu's Select all, so what the browser would do with it is not seen here) and the conversation stays unselected.
+    await js("window.__smokeKeys = []; window.__smokeKeyListener = (e) => window.__smokeKeys.push(e.defaultPrevented); window.addEventListener('keydown', window.__smokeKeyListener); true");
+    await js(`(() => { const field = document.createElement('textarea'); field.value = 'typed text'; field.dataset.smokeSelectAll = ''; document.querySelector('${AREA}').appendChild(field); window.getSelection().removeAllRanges(); field.focus(); return document.activeElement === field; })()`);
+    pressKey(win, 'A', ['meta']);
+    await settle(win);
+    if ((await js('JSON.stringify(window.__smokeKeys)')) !== '[false]') return `⌘A in a text field was taken (${await js('JSON.stringify(window.__smokeKeys)')})`;
+    await js("document.querySelector('[data-smoke-select-all]')?.remove(); window.__smokeKeys = []; true");
+    const composer = `${view} [data-composer]`;
+    if (await js(`!!document.querySelector('${composer}')`)) {
+      await js(`(() => { window.getSelection().removeAllRanges(); document.querySelector('${composer}').focus(); return true; })()`);
+      pressKey(win, 'A', ['meta']);
+      await settle(win);
+      const stayed = (await js(`(() => { const s = window.getSelection(); return { composer: document.activeElement === document.querySelector('${composer}'), keys: window.__smokeKeys, inConversation: s.rangeCount > 0 && document.querySelector('${AREA}').contains(s.anchorNode) && !s.isCollapsed }; })()`)) as { composer: boolean; keys: boolean[]; inConversation: boolean };
+      if (!stayed.composer || stayed.inConversation || stayed.keys.join() !== 'false') return `⌘A in the message box ${stayed.inConversation ? 'selected the conversation' : stayed.composer ? 'was taken' : 'lost the focus'}`;
+    }
+
+    // 3. Reading mode: ⌘A selects its text, with no click in it.
+    await js("window.getSelection().removeAllRanges(); document.activeElement?.blur(); true");
+    const reading = (await js(`(() => { const b = document.querySelector('${view} [data-read-button]'); if (!b) return false; b.click(); return true; })()`)) as boolean;
+    if (!reading) return 'ok: ⌘A in the conversation copies clean HTML and keeps its own in fields; no reply to read on screen';
+    if (!(await waitInPage(win, `!!document.querySelector('${READ}[data-clean-copy]')`, 5_000))) return 'reading mode did not open';
+    await reset(null);
+    pressKey(win, 'A', ['meta']);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${READ}'); })()`, 3_000))) return '⌘A in reading mode did not select just its text';
+    const readBar = "[...document.querySelectorAll('[data-read-mode] [data-read-position], [data-read-mode] header, [data-read-mode] nav')].map((e) => e.textContent).concat(" + ROWS + ')';
+    const read = await copyOf(READ, readBar);
+    pressKey(win, 'Escape');
+    await waitInPage(win, '!document.querySelector("[data-read-mode]")', 3_000);
+    if (read.length > 0) return `⌘A in reading mode: ${read.slice(0, 3).join('; ')}`;
+    return 'ok: ⌘A selects only the conversation, or reading mode, and a copy is clean HTML without the sidebar or the bar; in a text field and the message box the key is left to the browser (the conversation is drawn a screenful at a time: it selects the rows drawn)';
+  } finally {
+    await js("if (window.__smokeKeyListener) { window.removeEventListener('keydown', window.__smokeKeyListener); delete window.__smokeKeyListener; } document.querySelectorAll('[data-smoke-select-all]').forEach((e) => e.remove()); window.getSelection().removeAllRanges(); document.activeElement?.blur?.(); null");
+    if (await js("!!document.querySelector('[data-read-mode]')")) pressKey(win, 'Escape');
+  }
+}
+
+/**
  * The actions of Claude's replies sit in a row of their own under the text, so they never cover it;
  * the row is hidden until you hover or tab to it, and showing it doesn't change the reply's height.
  * Your prompt cards keep the toolbar floating over their top edge. Read-only: it focuses a button but
@@ -14693,6 +14785,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
   await step('copy a selection: clean HTML', () => runCopySelectionStep(win));
+  await step('copy a selection: Select all in the conversation and in reading mode', () => runSelectAllCopyStep(win), { timeoutMs: 60_000 });
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('conversation view: Skim folds, shows the stats and fades by the keep line, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });

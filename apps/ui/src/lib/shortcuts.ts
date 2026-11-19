@@ -272,7 +272,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail" | "files";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail" | "files" | "text";
 
 export interface ShortcutDef {
   id: string;
@@ -858,6 +858,15 @@ export const SHORTCUTS = [
     section: "session",
     context: "In a session",
     when: inSession,
+  },
+  {
+    id: "text.select-all",
+    keys: ["mod+a"],
+    action: "Select all of the text you are in",
+    section: "session",
+    context: "In the conversation, reading mode and a file preview",
+    note: "It selects only that text, so a copy has no colours. The conversation is drawn a screenful at a time: it selects the replies drawn.",
+    where: "text",
   },
   {
     id: "read.previous",

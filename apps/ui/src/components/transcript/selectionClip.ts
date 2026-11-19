@@ -3,6 +3,9 @@ import { cleanSelectionHtml, plainText, type ClipNode } from './clipboardHtml.ts
 /** Marks a container whose selections copy as clean HTML (`useCleanCopy`); the menus' Copy finds the root of a selection by it. */
 export const CLEAN_COPY = 'data-clean-copy';
 
+/** Where a copy or Select all is the browser's own: text fields and the terminal handle their selection themselves. */
+export const OWN_COPY = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), .xterm';
+
 /** `white-space` values that keep a text's line breaks. */
 const KEEPS_BREAKS = new Set(['pre', 'pre-wrap', 'pre-line', 'break-spaces']);
 const MONOSPACE = /mono|menlo|consolas|courier/i;
