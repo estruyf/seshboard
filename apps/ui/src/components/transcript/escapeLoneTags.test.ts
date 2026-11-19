@@ -40,6 +40,8 @@ describe('escapeLoneTags', () => {
   it('finds the tag in a quote or a list item at its place in the source', () => {
     expect(escapeLoneTags('> <details> hides\n>\n> After.')).toBe('> &lt;details> hides\n>\n> After.');
     expect(escapeLoneTags('> <div>\n> <b>bold\n> </div>')).toBe('> <div>\n> &lt;b>bold\n> </div>');
+    expect(escapeLoneTags('>\t<details> hides\n>\n> After.')).toBe('>\t&lt;details> hides\n>\n> After.');
+    expect(escapeLoneTags('> <div>\n>\t<b>bold\n> </div>')).toBe('> <div>\n>\t&lt;b>bold\n> </div>');
     expect(escapeLoneTags('- <pre> in a list\n- next')).toBe('- &lt;pre> in a list\n- next');
     expect(escapeLoneTags('1. item\n\n   <div>\n   <b>bold\n   </div>')).toBe('1. item\n\n   <div>\n   &lt;b>bold\n   </div>');
   });

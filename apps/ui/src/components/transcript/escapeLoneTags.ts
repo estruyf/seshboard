@@ -131,8 +131,11 @@ function sourceOffset(markdown: string, node: Html, index: number): number | nul
   let sourceStart = 0;
   for (let line = 0; line < value.length; line++) {
     if (index <= valueStart + value[line]!.length) {
-      if (!source[line]!.endsWith(value[line]!)) return null;
-      return start + sourceStart + (source[line]!.length - value[line]!.length) + (index - valueStart);
+      // The value's start of a line may be spaces where the source has a tab (`>\t<details>`): what counts is the end.
+      const lead = value[line]!.length - value[line]!.trimStart().length;
+      const column = index - valueStart;
+      if (column < lead || !source[line]!.endsWith(value[line]!.slice(lead))) return null;
+      return start + sourceStart + (source[line]!.length - (value[line]!.length - column));
     }
     valueStart += value[line]!.length + 1;
     sourceStart += source[line]!.length + 1;
@@ -141,10 +144,11 @@ function sourceOffset(markdown: string, node: Html, index: number): number | nul
 }
 
 /**
- * The offsets in `markdown` of the `<` of every tag that is text and not HTML. `open`: text after `markdown` could change what
- * is found in it, because a block of HTML is left open (an opener without its end tag, or a block that runs to the end of the text).
+ * The offsets in `markdown` of the `<` of every tag that is text and not HTML. `open`: text after `markdown` could change what is
+ * found in it, because an opener of the document has no end tag yet (and fewer than `giveUpAfter` blank lines follow it: past that it is
+ * taken for text, see `escapeLoneTagsOpen`). `reachesEnd`: a block of HTML runs to the end of the text (and fewer than `giveUpAfter` blank lines come after it starts).
  */
-function loneTags(markdown: string): { offsets: number[]; open: boolean } {
+function loneTags(markdown: string, giveUpAfter: number): { offsets: number[]; open: boolean; reachesEnd: boolean } {
   const offsets: number[] = [];
   let open = false;
   const add = (node: Html, index: number) => {
@@ -154,16 +158,24 @@ function loneTags(markdown: string): { offsets: number[]; open: boolean } {
 
   /** A block of HTML in the document, paired across the blocks of its parent: `<details>` opens in one and closes in another, with Markdown between. */
   const flow = (parent: Parent) => {
-    const events: Array<TagEvent & { node: Html }> = [];
-    for (const node of parent.children) {
-      if (node.type !== 'html') continue;
+    const events: Array<TagEvent & { node: Html; index: number }> = [];
+    parent.children.forEach((node, index) => {
+      if (node.type !== 'html') return;
       if (!isKnownHtml(node.value)) for (const at of tagStarts(node.value)) add(node, at);
-      else for (const event of tagEvents(node.value)) events.push({ ...event, node });
-    }
+      else for (const event of tagEvents(node.value)) events.push({ ...event, node, index });
+    });
     for (const event of events) if (event.prose) add(event.node, event.at);
     const pairable = events.filter((event) => !event.prose);
     const { lone, unclosed } = unpairedAmong(pairable);
-    if (unclosed.size > 0) open = true;
+    // Only the document's own blocks can still be closed by what is added after it: a quote or a list item is over by then. An
+    // opener has had its chance once `giveUpAfter` blank lines have passed (a `<pre>` takes the rest as one block, so it is counted in the text).
+    if (parent.type === 'root') {
+      for (const k of unclosed) {
+        const at = sourceOffset(markdown, pairable[k]!.node, pairable[k]!.at);
+        const passed = at === null ? 0 : (markdown.slice(at).match(/\n[ \t]*\n/g)?.length ?? 0);
+        if (passed < giveUpAfter) open = true;
+      }
+    }
     for (const k of lone) add(pairable[k]!.node, pairable[k]!.at);
   };
 
@@ -193,11 +205,16 @@ function loneTags(markdown: string): { offsets: number[]; open: boolean } {
   };
   const tree = processor.parse(markdown);
   walk(tree);
-  // A block of HTML that runs to the end (an unclosed `<pre>` or `<script>` takes all after it) goes on into what is added.
+  // A block of HTML that runs to the end goes on into what is added (an unclosed `<pre>` takes all after it, and what it takes
+  // decides what is made text in it), until `giveUpAfter` blank lines have passed.
   const end = markdown.trimEnd().length;
-  const reachesEnd = (node: Parent): boolean => node.children.some((child) => (child.type === 'html' ? (child.position?.end.offset ?? 0) >= end : 'children' in child && reachesEnd(child as Parent)));
-  if (!open && reachesEnd(tree)) open = true;
-  return { offsets, open };
+  const reaches = (node: Parent): boolean =>
+    node.children.some((child) => {
+      if (child.type !== 'html') return 'children' in child && reaches(child as Parent);
+      if ((child.position?.end.offset ?? 0) < end) return false;
+      return (markdown.slice(child.position?.start.offset ?? 0).match(/\n[ \t]*\n/g)?.length ?? 0) < giveUpAfter;
+    });
+  return { offsets, open, reachesEnd: reaches(tree) };
 }
 
 /**
@@ -220,18 +237,33 @@ export function escapeLoneTags(markdown: string): string {
 
 /**
  * `escapeLoneTags`, and whether text added after `markdown` could change the result for it (`open`): it ends in a block of HTML, or
- * leaves an opener unclosed. When it can't, `escapeLoneTags(a + b)` is `escapeLoneTags(a) + escapeLoneTags(b)` for a `b` that starts a
- * block, which lets a reply being written be escaped only after its last finished block.
+ * leaves an opener of the document unclosed. When it can't, `escapeLoneTags(a + b)` is `escapeLoneTags(a) + escapeLoneTags(b)` for a
+ * `b` that starts a block, which lets a reply being written be escaped only after its last finished block.
+ *
+ * `escapes`: where in the result each `&lt;` we wrote starts (so a length in the result is a length in `markdown` less 3 for each before it).
+ *
+ * `giveUpAfter`, for a reply being written: an opener that `giveUpAfter` blank lines have passed without its end tag counts as text, and is
+ * not open. The text is then final for the caller (it keeps it, and does not read it again on every delta); the result differs from
+ * `escapeLoneTags` only if the end tag comes much later, and the reply once finished is read whole.
  */
-export function escapeLoneTagsOpen(markdown: string): { text: string; open: boolean } {
-  if (!/<\/?[A-Za-z]/.test(markdown)) return { text: markdown, open: false };
+export function escapeLoneTagsOpen(markdown: string, giveUpAfter = Infinity): { text: string; open: boolean; escapes: number[] } {
+  if (!/<\/?[A-Za-z]/.test(markdown)) return { text: markdown, open: false, escapes: [] };
   let text = markdown;
   let open = false;
+  let escapes: number[] = [];
   for (;;) {
-    const found = loneTags(text);
+    const found = loneTags(text, giveUpAfter);
     open ||= found.open;
-    const offsets = [...new Set(found.offsets)].sort((a, b) => b - a);
-    if (offsets.length === 0) return { text, open };
-    for (const at of offsets) text = `${text.slice(0, at)}&lt;${text.slice(at + 1)}`;
+    const offsets = [...new Set(found.offsets)].sort((a, b) => a - b);
+    open ||= found.reachesEnd;
+    if (offsets.length === 0) return { text, open, escapes };
+    for (let i = offsets.length - 1; i >= 0; i--) text = `${text.slice(0, offsets[i]!)}&lt;${text.slice(offsets[i]! + 1)}`;
+    // Where each `&lt;` we wrote is now: the ones from before move on by what is written before them.
+    let before = 0;
+    const moved = escapes.map((at) => {
+      while (before < offsets.length && offsets[before]! < at) before++;
+      return at + 3 * before;
+    });
+    escapes = [...moved, ...offsets.map((at, i) => at + 3 * i)].sort((a, b) => a - b);
   }
 }

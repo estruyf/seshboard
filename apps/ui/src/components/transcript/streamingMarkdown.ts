@@ -94,6 +94,9 @@ function withTail(prefix: readonly string[], text: string): string[] {
   return [...prefix, ...tail];
 }
 
+/** Blank lines after an opener that has no end tag, past which a reply being written takes it for text (`escapeLoneTagsOpen`), so a `<div>` alone on a line doesn't keep the whole reply from being kept. */
+const GIVE_UP_AFTER = 8;
+
 /** What `streamingBlocks` has done for a reply: the start of its text that is final, and that start's blocks, escaped. */
 export interface StreamingCache {
   raw: string;
@@ -102,30 +105,47 @@ export interface StreamingCache {
 
 export const newStreamingCache = (): StreamingCache => ({ raw: '', blocks: [] });
 
+/** Where two texts are the same up to. */
+function commonLength(a: string, b: string): number {
+  let i = 0;
+  const max = Math.min(a.length, b.length);
+  while (i < max && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+  return i;
+}
+
 /**
  * `streamingBlocksFresh`, without reading the whole reply again on every delta. Only the last block of a reply changes as it is
- * written, so the blocks before it are escaped once, as a start that is kept in `cache` (the result is what `streamingBlocksFresh`
- * gives for the whole text). That is only so while nothing there can still change: a `<div>` or `<pre>` still waiting for its
- * end tag, or a block of HTML that runs to the end, keeps the whole of the text since it in play, as it did.
+ * written, so the blocks before it are kept in `cache` once they can't change (the result is what `streamingBlocksFresh` gives
+ * for the whole text). The text since the kept start is escaped, and all but the last of its blocks are kept, with as much of the
+ * raw text as they stand for (the escaping only adds `&lt;`, so a length in the result is a length of the raw text less 3 for each
+ * before it). That is only so while nothing there can still change: a `<div>` or `<pre>` still waiting for its end tag keeps the text
+ * since it in play, as it did, but only until `GIVE_UP_AFTER` blank lines have passed: then the opener is text for good (an end tag
+ * that comes later finds nothing to close, until the reply is finished and read whole). `giveUpAfter` is for tests, which want the
+ * result to be exactly the whole text's.
  */
-export function streamingBlocks(text: string, cache: StreamingCache = newStreamingCache()): string[] {
+export function streamingBlocks(text: string, cache: StreamingCache = newStreamingCache(), giveUpAfter = GIVE_UP_AFTER): string[] {
   if (!text.startsWith(cache.raw)) {
     cache.raw = '';
     cache.blocks = [];
   }
   const tail = text.slice(cache.raw.length);
-  const blocks = splitBlocks(tail);
-  const last = blocks.length - 1;
-  if (last > 0) {
-    const stable = blocks.slice(0, last).join('');
-    const { text: escaped, open } = escapeLoneTagsOpen(stable);
-    if (!open) {
-      cache.raw += stable;
-      cache.blocks = [...cache.blocks, ...splitBlocks(escaped)];
-      return withTail(cache.blocks, escapeLoneTags(healMarkdown(blocks[last]!)));
+  const raw = splitBlocks(tail);
+  const last = raw.length - 1;
+  const healed = raw.slice(0, last).join('') + healMarkdown(raw[last]!);
+  const { text: escaped, open, escapes } = escapeLoneTagsOpen(healed, giveUpAfter);
+  const blocks = splitBlocks(escaped);
+  if (!open && blocks.length > 1) {
+    const stable = blocks.slice(0, -1);
+    const length = stable.join('').length;
+    const rawLength = length - 3 * escapes.filter((at) => at < length).length;
+    // The raw text must be what was escaped: healing the end of the reply (or a `>` in a list) changed none of it.
+    if (rawLength > 0 && rawLength <= commonLength(tail, healed)) {
+      cache.raw += tail.slice(0, rawLength);
+      cache.blocks = [...cache.blocks, ...stable];
+      return withTail(cache.blocks, blocks[blocks.length - 1]!);
     }
   }
-  return withTail(cache.blocks, streamingText(tail));
+  return withTail(cache.blocks, escaped);
 }
 
 /** The text without a tag cut off at its end. Inside a fence or inline code it is text, so it stays. */

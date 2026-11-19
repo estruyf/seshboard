@@ -9,7 +9,9 @@ const DOCUMENTS: Record<string, string> = {
   details: `${PROSE}<details>\n<summary>More</summary>\n\nHidden **text** with Promise<void>\n\n- a\n- b\n\nMore hidden.\n\n</details>\n\nAfter the details.\n\n${PROSE}`,
   strays: `${PROSE}<script> stray one.\n\nNext **bold**.\n\n<pre> stray two.\n\n- list\n\n<details> hides content.\n\n<b>\n\nLast paragraph with Foo<I>.\n\n${PROSE}`,
   divOverBlocks: `${PROSE}<div align="center">\n\n**Title** for Component<P>\n\nMiddle block.\n\n</div>\n\nAfter the div.\n\n<table>\n<tr><td>a<td>b\n</table>\n\n${PROSE}`,
-  unclosedForLong: `Intro.\n\n<div>\n\n${PROSE}${PROSE}Middle.\n\n</div>\n\nEnd.`,
+  // An opener whose end tag comes within a few blocks.
+  divClosesSoon: `Intro.\n\n<div>\n\n${PROSE}Middle.\n\n</div>\n\nEnd.\n\n${PROSE}`,
+  openTwo: `<div>\n\nOne.\n\n<pre>\n\nTwo.\n\n</pre>\n\nThree.\n\n</div>\n\n${PROSE}`,
   pairedPre: `<pre>\ncode <b>x</b>\n\nmore\n</pre>\n\n${PROSE}<script>alert(1)</script>\n\n${PROSE}`,
   quotes: `> <details> hides\n>\n> After.\n\n> <div>\n> <b>bold\n> </div>\n\n- <pre> in a list\n- next\n\n${PROSE}`,
   footnotes: `Text[^1] and [ref][1].\n\n<pre> stray.\n\n[^1]: The note\n\n[1]: https://example.com/x\n\n${PROSE}`,
@@ -22,25 +24,32 @@ describe('streamingBlocks with a cache', () => {
       const cache = newStreamingCache();
       for (let end = 1; end <= text.length; end += end < 60 ? 1 : 7) {
         const prefix = text.slice(0, end);
-        expect(streamingBlocks(prefix, cache), `${name} at ${end}: ${JSON.stringify(prefix.slice(-40))}`).toEqual(streamingBlocksFresh(prefix));
+        expect(streamingBlocks(prefix, cache, Infinity), `${name} at ${end}: ${JSON.stringify(prefix.slice(-40))}`).toEqual(streamingBlocksFresh(prefix));
       }
-      expect(streamingBlocks(text, cache), name).toEqual(streamingBlocksFresh(text));
+      expect(streamingBlocks(text, cache, Infinity), name).toEqual(streamingBlocksFresh(text));
     }
   });
 
   it('starts again when the text is not the one it kept going on from', () => {
     const cache = newStreamingCache();
-    streamingBlocks(DOCUMENTS.prose!, cache);
-    expect(streamingBlocks(DOCUMENTS.details!, cache)).toEqual(streamingBlocksFresh(DOCUMENTS.details!));
-    expect(streamingBlocks('Short.', cache)).toEqual(streamingBlocksFresh('Short.'));
+    streamingBlocks(DOCUMENTS.prose!, cache, Infinity);
+    expect(streamingBlocks(DOCUMENTS.details!, cache, Infinity)).toEqual(streamingBlocksFresh(DOCUMENTS.details!));
+    expect(streamingBlocks('Short.', cache, Infinity)).toEqual(streamingBlocksFresh('Short.'));
   });
 
-  it('keeps the blocks before the last when a block is still open, and gives the same blocks', () => {
+  it('keeps what is before an opener, and takes an opener for text once blocks pass without its end tag', () => {
     const cache = newStreamingCache();
-    const text = DOCUMENTS.unclosedForLong!;
-    // The div is open for most of the text: nothing after it is kept, and the result is still the same.
-    for (const end of [10, 40, 200, 400, text.length - 20]) expect(streamingBlocks(text.slice(0, end), cache)).toEqual(streamingBlocksFresh(text.slice(0, end)));
-    expect(cache.raw.length).toBeLessThan(text.indexOf('<div>') + 10);
+    const text = `Intro.\n\n<div>\n\n${PROSE.repeat(4)}Middle.\n\n</div>\n\nEnd.`;
+    const open = text.indexOf('<div>');
+    // While the div is near, nothing after it is kept, and the result is what the whole text gives.
+    for (const end of [10, 40, open + 12, open + 60]) expect(streamingBlocks(text.slice(0, end), cache), `${end}`).toEqual(streamingBlocksFresh(text.slice(0, end)));
+    expect(cache.raw.length).toBeLessThanOrEqual(open);
+    // Many blocks later it is text, and what is after it is kept.
+    const later = streamingBlocks(text.slice(0, text.indexOf('Middle.')), cache);
+    expect(cache.raw.length).toBeGreaterThan(open + 100);
+    expect(later.join('')).toContain('&lt;div>');
+    // The reply once finished is read whole: the div is live.
+    expect(streamingBlocksFresh(text).join('')).toContain('<div>');
   });
 
   it('is fast on a long reply with many generics, one delta at a time', () => {
@@ -59,5 +68,23 @@ describe('streamingBlocks with a cache', () => {
     console.log(`streaming, ${base.length} characters: ${each.toFixed(2)} ms per delta`);
     // Without the cache this is about 300 ms; the limit is generous, for slow runners.
     expect(each).toBeLessThan(25);
+  });
+
+  it('is fast when the reply starts with an opener that never gets its end tag', () => {
+    for (const opener of ['<div>', '<pre>', '<script> stray.', '<details> hides content.', '<b>']) {
+      const para = PROSE.repeat(1);
+      const base = `${opener}\n\n${para.repeat(Math.ceil(17_000 / para.length))}`;
+      const cache = newStreamingCache();
+      streamingBlocks(base, cache);
+      let text = base;
+      const started = performance.now();
+      for (let i = 0; i < 80; i++) {
+        text += 'More text with Promise<void> in it.\n\n'.slice((i * 5) % 30, ((i + 1) * 5) % 30 || undefined);
+        streamingBlocks(text, cache);
+      }
+      const each = (performance.now() - started) / 80;
+      console.log(`streaming after ${JSON.stringify(opener)}, ${base.length} characters: ${each.toFixed(2)} ms per delta`);
+      expect(each, opener).toBeLessThan(25);
+    }
   });
 });
