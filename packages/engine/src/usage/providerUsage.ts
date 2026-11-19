@@ -146,3 +146,30 @@ export function codexUsage(lines: readonly string[]): UsageLine[] {
   }
   return found;
 }
+
+/** What a step of Antigravity's log has when it called a model. */
+export const ANTIGRAVITY_USAGE_MARKERS = ['"input_tokens"'];
+
+/** Where Antigravity CLI keeps a conversation's step log, below its `brain/`: the only file of its folder that is read. */
+const ANTIGRAVITY_LOG = /[\\/]brain[\\/]([0-9a-f-]{36})[\\/]\.system_generated[\\/]logs[\\/]transcript\.jsonl$/i;
+
+/**
+ * Google Antigravity CLI's usage, from a conversation's step log (`brain/<id>/.system_generated/logs/transcript.jsonl`,
+ * checked with agy 1.5.12): each model call is a `PLANNER_RESPONSE` step with its model and tokens, numbered in the
+ * conversation (`step_index`). Its input leaves out what was read from the cache. A file anywhere else reads as none.
+ */
+export function antigravityUsage(lines: readonly string[], path: string): UsageLine[] {
+  const sessionId = ANTIGRAVITY_LOG.exec(path)?.[1]?.toLowerCase();
+  if (!sessionId) return [];
+  const found: UsageLine[] = [];
+  for (const line of lines) {
+    const step = parse(line);
+    if (!step || step.type !== 'PLANNER_RESPONSE') continue;
+    const model = text(step.model);
+    const at = Date.parse(String(step.created_at ?? ''));
+    const index = typeof step.step_index === 'number' ? step.step_index : null;
+    if (!model || index === null || !Number.isFinite(at)) continue;
+    found.push({ key: `antigravity|${sessionId}|${index}`, sessionId, at, model, cwd: null, input: count(step.input_tokens), output: count(step.output_tokens), cacheRead: count(step.cache_read_tokens), cacheWrite: 0, cacheWrite1h: 0, fast: false });
+  }
+  return found;
+}

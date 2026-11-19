@@ -258,6 +258,8 @@ export interface EngineOptions {
   copilot?: ProviderOptions['copilot'];
   /** A fake `codex` and `codex app-server` (tests). Defaults to the user's own `codex`. */
   codex?: ProviderOptions['codex'];
+  /** A fake `agy` and `agy acp` (tests, and the demo's `demoAntigravity`). Defaults to the user's own `agy`. */
+  antigravity?: ProviderOptions['antigravity'];
   /** How long `worktrees.list` waits for the facts of the worktrees before it answers without them (tests set 0). Defaults to 1.5 seconds. */
   worktreeFactsWaitMs?: number;
   /** Start watching ~/.claude immediately. Defaults to true. */
@@ -393,7 +395,7 @@ export interface ArchivedCleanup {
  * What may go to the Trash, which main checks again: a Claude profile's session files, a Copilot profile's session
  * folders, a Codex profile's rollout files, new files in a repository, memory.
  */
-export type TrashScope = { configDir: string } | { copilotHome: string } | { codexHome: string } | { repoRoot: string } | MemoryTrashScope;
+export type TrashScope = { configDir: string } | { copilotHome: string } | { codexHome: string } | { agyHome: string } | { repoRoot: string } | MemoryTrashScope;
 
 export interface Engine {
   /** Serves the contract over a transport (one per window). Returns a detach function. */
@@ -604,6 +606,12 @@ export function createEngine(options: EngineOptions): Engine {
     onSessionChanged: (sessionId) => void sessions.reread(sessionId).catch((error: Error) => log('warn', `Reading ${sessionId} again failed: ${error.message}`)),
     ...(options.copilot ? { copilot: options.copilot } : {}),
     ...(options.codex ? { codex: options.codex } : {}),
+    ...(options.antigravity ? { antigravity: options.antigravity } : {}),
+    // Antigravity has no fork: Ask about this session's throwaway is a session of its own, which goes to the Trash after.
+    // Without a Trash (tests), it stays.
+    discard: async (_provider, home, paths) => {
+      if (options.trash && paths.length) await options.trash(paths, { agyHome: home });
+    },
   };
   const providerProfiles = new ProviderProfiles(() => profiles.providerProfiles(), (profile) => createProvider(profile, providerOptions));
   // GitHub Copilot allowed in Settings › Providers (before providers were profiles) is a Copilot profile on its own folder.
@@ -3029,6 +3037,9 @@ export function createEngine(options: EngineOptions): Engine {
   /** Main sends the settings when the engine starts and after each change; until then, the defaults (deleting off). */
   let retention: RetentionPolicy = DEFAULT_RETENTION;
   /** Session files only ever go to the Trash: without a way to put them there, nothing is deleted. */
+  /** The scope main checks another provider's session files against: its folder, named for its provider. */
+  const providerTrashScope = (provider: OptionalProvider, home: string): TrashScope =>
+    provider === 'codex' ? { codexHome: home } : provider === 'antigravity' ? { agyHome: home } : { copilotHome: home };
   const sessionTrash = () => {
     if (!options.trash) throw new RpcError('NO_TRASH', "Seshboard can't move sessions to the Trash here, so it won't delete them.");
     return options.trash;
@@ -3200,7 +3211,7 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.release(sessionId);
       const paths = adapter.trashPaths(sessionId).filter((p) => existsSync(p));
       if (!paths.length) throw new RpcError('NOT_FOUND', 'No files found for this session');
-      await toTrash(paths, adapter.id === 'codex' ? { codexHome: adapter.home } : { copilotHome: adapter.home });
+      await toTrash(paths, providerTrashScope(adapter.id, adapter.home));
     } else {
       if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
         throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');

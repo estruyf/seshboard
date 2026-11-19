@@ -108,8 +108,10 @@ export interface CodexLocks {
  * elsewhere. Where the system can't name the holder at all (Windows), a lock file is taken as open: a file a killed
  * Codex left behind then counts until Codex clears it.
  */
-export function codexLocks(codexHome: string, options: { holders?: LockHolders | null; now?: () => number } = {}): CodexLocks {
+export function codexLocks(codexHome: string, options: { holders?: LockHolders | null; now?: () => number; lockFile?: (threadId: string) => string } = {}): CodexLocks {
   const holders = options.holders === undefined ? systemLockHolders() : options.holders;
+  // Another agent's lock files work the same way (Antigravity's `presence/<id>.lock`).
+  const fileOf = options.lockFile ?? ((threadId: string) => lockFile(codexHome, threadId));
   const now = options.now ?? Date.now;
   let last: { key: string; at: number; holders: Map<string, number[]> } | null = null;
   let known = new Map<string, number[]>();
@@ -122,7 +124,7 @@ export function codexLocks(codexHome: string, options: { holders?: LockHolders |
         if (ownThreads?.has(threadId)) continue;
         try {
           // By its real path, as `lsof` names it (macOS's temp folders are behind `/var` → `/private/var`).
-          const file = realpathSync(lockFile(codexHome, threadId));
+          const file = realpathSync(fileOf(threadId));
           const stat = statSync(file);
           files.set(file, { threadId, stamp: `${file}:${stat.ino}:${stat.mtimeMs}` });
         } catch {

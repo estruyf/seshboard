@@ -57,6 +57,35 @@ export function isTrashableCodexSession(path: string, codexHome: string): boolea
   }
 }
 
+/**
+ * What Delete moves to the Trash of a Google Antigravity conversation, in the profile's `--gemini-dir`
+ * (`<dir>/antigravity-cli/`): its history `conversations/<uuid>.db` and `annotations/<uuid>.pbtxt` (real files), and its
+ * folder `brain/<uuid>` (a real folder). Never a link, another file, or anything outside those three folders, and the
+ * folders above it must really be inside the profile's folder.
+ */
+export function isTrashableAgySession(path: string, agyHome: string): boolean {
+  if (resolve(path) !== path || resolve(agyHome) !== agyHome || agyHome === sep) return false;
+  const data = join(agyHome, 'antigravity-cli');
+  const folder = dirname(path);
+  const name = basename(path);
+  const kind =
+    folder === join(data, 'conversations') && /^[0-9a-f-]{36}\.db$/i.test(name) && SESSION_FOLDER.test(name.slice(0, -3))
+      ? 'file'
+      : folder === join(data, 'annotations') && /^[0-9a-f-]{36}\.pbtxt$/i.test(name) && SESSION_FOLDER.test(name.slice(0, -6))
+        ? 'file'
+        : folder === join(data, 'brain') && SESSION_FOLDER.test(name)
+          ? 'folder'
+          : null;
+  if (!kind) return false;
+  try {
+    if (realpathSync(folder) !== join(realpathSync(agyHome), folder.slice(agyHome.length + 1))) return false;
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    return kind === 'file' ? (stat?.isFile() ?? false) : (stat?.isDirectory() ?? false);
+  } catch {
+    return false;
+  }
+}
+
 /** A Claude Code config folder named by the engine: an absolute, normalised path with a projects folder. */
 export function isConfigDir(dir: unknown): dir is string {
   if (typeof dir !== 'string' || resolve(dir) !== dir || dir === sep) return false;

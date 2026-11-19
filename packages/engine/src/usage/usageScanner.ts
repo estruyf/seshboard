@@ -4,7 +4,7 @@ import { open, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import { longPromptOver, type SessionProvider } from '@seshboard/protocol';
-import { CODEX_USAGE_MARKERS, codexUsage, COPILOT_USAGE_MARKERS, copilotUsage } from './providerUsage.ts';
+import { ANTIGRAVITY_USAGE_MARKERS, antigravityUsage, CODEX_USAGE_MARKERS, codexUsage, COPILOT_USAGE_MARKERS, copilotUsage } from './providerUsage.ts';
 import { hourOf, parsePromptLine, parseUsageLine, PROMPT_MARKER, PROMPT_NOT, USAGE_MARKER, type PromptLine, type UsageLine } from './transcriptUsage.ts';
 
 /** A config folder to read: its `projects/` transcripts count for `scope`, or another provider's session files in its folder. */
@@ -21,6 +21,8 @@ const LAYOUT: Record<SessionProvider, { dirs: string[]; file: (name: string) => 
   copilot: { dirs: ['session-state'], file: (name) => name === 'events.jsonl' },
   // A thread that is archived moves to `archived_sessions/`: its responses are already counted, by their ids.
   codex: { dirs: ['sessions', 'archived_sessions'], file: (name) => name.startsWith('rollout-') && name.endsWith('.jsonl') },
+  // Each conversation's step log; the reader takes only the one in `.system_generated/logs/`, not a file the agent wrote.
+  antigravity: { dirs: [join('antigravity-cli', 'brain')], file: (name) => name === 'transcript.jsonl' },
 };
 
 /**
@@ -30,6 +32,7 @@ const LAYOUT: Record<SessionProvider, { dirs: string[]; file: (name: string) => 
 const READERS: Partial<Record<SessionProvider, { markers: Buffer[]; read: (lines: string[], path: string) => UsageLine[] }>> = {
   copilot: { markers: COPILOT_USAGE_MARKERS.map((m) => Buffer.from(m)), read: (lines, path) => copilotUsage(lines, basename(dirname(path))) },
   codex: { markers: CODEX_USAGE_MARKERS.map((m) => Buffer.from(m)), read: (lines) => codexUsage(lines) },
+  antigravity: { markers: ANTIGRAVITY_USAGE_MARKERS.map((m) => Buffer.from(m)), read: (lines, path) => antigravityUsage(lines, path) },
 };
 
 /** The scope a config folder counts under: its real path, so two profiles on one folder (or a link to it) count once. */

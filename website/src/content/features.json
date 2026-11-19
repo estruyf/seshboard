@@ -2032,6 +2032,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:antigravity-sessions",
+      "name": "Google Antigravity sessions: Settings: Profiles offers Antigravity CLI when it finds it; Add profile with Antigravity as the tool uses its own folder (~/.gemini), skips sign in when it is signed in already, and ends on Antigravity is ready with your Google plan; its sessions show in the sidebar with Antigravity's mark, in search, catch-up and on the phone, with their transcript, tool calls and diffs; New session, the queue, schedules, triggers and pipeline steps start them with Antigravity's models, thinking levels and the four permission modes, and the message box continues them and steers a running turn; Ask about this session, its slash commands (Compact), Tools with its MCP servers, Open in Antigravity CLI, and Delete to the Trash",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"
