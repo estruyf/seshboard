@@ -1154,9 +1154,10 @@ function openSettings(section: 'about' | null = null): void {
 function selectAllInFocused(from?: unknown): void {
   // The window the menu item was used in (Electron hands it over), else the focused one.
   const win = from instanceof BrowserWindow ? from : BrowserWindow.getFocusedWindow();
-  const focused = electronWebContents.getFocusedWebContents() ?? win?.webContents;
-  if (!focused) return;
-  if (focused !== win?.webContents) return focused.selectAll();
+  // A native panel (Save, Open) in front of the window has the focus, not a window of ours: its field selects its own text, as the role did.
+  if (!win) return process.platform === 'darwin' ? Menu.sendActionToFirstResponder('selectAll:') : undefined;
+  const focused = electronWebContents.getFocusedWebContents() ?? win.webContents;
+  if (focused !== win.webContents) return focused.selectAll();
   focused
     .executeJavaScript("(() => { const detail = { handled: false }; window.dispatchEvent(new CustomEvent('seshboard:select-all', { detail })); return detail.handled; })()")
     .then((handled: boolean) => !handled && focused.selectAll(), () => focused.selectAll());

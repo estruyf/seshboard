@@ -25,9 +25,9 @@ export function useSelectAllInText(): void {
     /** Selects the text of the area this key or menu item means; false leaves it to the browser. `target`: where the key event was aimed. */
     const selectAll = (target: Element | null): boolean => {
       const active = document.activeElement;
-      // Reading mode is over the conversation: only its own text counts while it is open, and focus behind it is no focus.
+      // Reading mode is over the conversation: only its own text counts while it is open, and focus behind it is no focus. An area that is hidden (display: none behind an expanded Changes panel or a maximised terminal) or inert is never chosen.
       const top = document.querySelector('[data-read-mode]');
-      const scoped = (root: Element | null) => (root && (!top || top.contains(root)) && !root.closest('[inert]') ? root : null);
+      const scoped = (root: Element | null) => (root && (!top || top.contains(root)) && !root.closest('[inert]') && root.checkVisibility() ? root : null);
       const focusedElement = active && active !== document.body && active !== document.documentElement && (!top || top.contains(active)) ? active : null;
       const selection = window.getSelection();
       const root = selectAllRoot<Element>({
