@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { ChangedFile, ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from '@seshboard/protocol';
+import { remoteOnlyBranches, type ChangedFile, type ChangesBase, type GitChanges, type GitSyncAction, type WorktreeStatus } from '@seshboard/protocol';
 import { programPath } from '../system/program.ts';
 
 const MAX_DIFF_BYTES = 512 * 1024;
@@ -175,15 +175,19 @@ async function olderGitRefs(cwd: string, run: typeof git, error: Error): Promise
 }
 
 /**
- * Checks out an existing local branch, or a remote one as a new tracking branch. Git keeps
+ * Checks out an existing local branch, or one only a remote has as a new tracking branch. Git keeps
  * uncommitted changes that don't conflict and refuses otherwise; nothing is ever discarded.
  */
 export async function switchBranch(cwd: string, branch: string): Promise<void> {
   // Never let a branch name be read as an option.
   if (branch.startsWith('-')) throw new GitError(`Not a branch name: ${branch}`);
-  const { current } = await listBranches(cwd);
+  const { current, branches } = await listBranches(cwd);
   if (current === branch) return;
-  await git(cwd, ['switch', branch]);
+  if (branches.includes(branch)) return void (await git(cwd, ['switch', branch]));
+  // Only on a remote (a fresh clone has just the default branch here): a new local branch that tracks it.
+  const onRemote = remoteOnlyBranches(branches, await listRemoteBranches(cwd)).find((b) => b.name === branch);
+  if (!onRemote) throw new GitError(`No branch ${branch}`);
+  await git(cwd, ['switch', '--track', onRemote.ref]);
 }
 
 /** The top folder of the checkout `cwd` is in (a worktree is its own checkout), or null outside git. */

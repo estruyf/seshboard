@@ -151,6 +151,15 @@ describe('the branch on another computer', () => {
     expect(remoteCheckoutBranch(null, branches, false)).toBeNull();
     expect(remoteCheckoutBranch('feat/login', null, false)).toBeNull();
   });
+
+  it('lists the branches only a remote has after the local ones, and checks one out', () => {
+    const cloned = { current: 'main', branches: ['main'], checkedOutElsewhere: [], remoteBranches: ['origin/era2', 'origin/main'] };
+    expect(remoteBranchChoices(cloned)).toEqual([
+      { value: 'main', label: 'main', note: 'current' },
+      { value: 'era2', label: 'era2', note: 'origin' },
+    ]);
+    expect(remoteCheckoutBranch('era2', cloned, false)).toBe('era2');
+  });
 });
 
 describe('remoteProviderCreate', () => {

@@ -43,6 +43,7 @@ export { randomWorktreeName } from './worktreeName.ts';
 export { anyFactsPending, mergeFacts, mergePullRequests, PENDING_FACTS, withFacts } from './worktreeFacts.ts';
 export { fallbackModelFor, inheritedDefault, inheritedPermissionMode } from './permissionModes.ts';
 export { branchOfBase, isBranchBase, isWorktreeBase, projectPrBase, worktreeRequestBase, type BranchBase, type WorktreeBase } from './worktreeBase.ts';
+export { remoteOnlyBranches, type RemoteOnlyBranch } from './remoteOnlyBranches.ts';
 export { remoteBaseChoices, remoteBaseListed, remoteBaseName, remoteFreshBase, type RemoteBaseChoice } from './remoteWorktreeBase.ts';
 export { expandHome, isAbsolutePath, isLocalAbsolutePath, isSameOrInside, joinPath, pathInside, separatorOf, trimTrailingSeparators } from './paths.ts';
 export { commandLabel } from './commandLabel.ts';

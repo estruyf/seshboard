@@ -547,6 +547,9 @@ describe('Remote hub', () => {
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'f', worktree: false, checkoutBranch: 'feat/login' });
     expect(created.at(-1)!.choice).toMatchObject({ worktree: false, checkoutBranch: 'feat/login' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'g', worktree: false, checkoutBranch: 'origin/main' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // Only on the remote: checked out as a new branch that tracks it.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'g2', worktree: false, checkoutBranch: 'dev' });
+    expect(created.at(-1)!.choice).toMatchObject({ worktree: false, checkoutBranch: 'dev' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'h', worktree: false, checkoutBranch: 'taken' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'i', worktree: true, checkoutBranch: 'feat/login' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(await remote.call('later.add', { projectId: projectIdOf(ROOT), prompt: 'j', worktree: false, checkoutBranch: 'feat/login' })).toEqual({ id: 'later-1' });

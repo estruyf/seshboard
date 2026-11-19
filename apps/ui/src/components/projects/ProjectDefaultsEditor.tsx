@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AUTO_MODEL, branchOfBase, isBranchBase, PROVIDER_SHORT_NAMES, type BranchBase, type ClaudeProfile, type Effort, type ModelOption, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type ProviderMode, type WorktreeBase } from '@seshboard/protocol/client';
+import { AUTO_MODEL, branchOfBase, isBranchBase, PROVIDER_SHORT_NAMES, remoteOnlyBranches, type BranchBase, type ClaudeProfile, type Effort, type ModelOption, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type ProviderMode, type WorktreeBase } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { globalModeLabel, MODE_CHOICES, MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -148,7 +148,9 @@ export function ProjectDefaultsEditor({
   // A project's value, or GLOBAL where it skips its profile's (`skips`).
   const inheritValue = (value: string | null, skips: boolean | undefined) => value ?? (root && skips ? GLOBAL : UNSET);
   const baseLabel = { fresh: 'from origin', head: 'from HEAD' } as const;
-  const branchOptions = defaults.branch && !branches.branches.includes(defaults.branch) ? [defaults.branch, ...branches.branches] : branches.branches;
+  // The branches only on a remote too: checking one out makes a local branch that tracks it.
+  const switchable = [...branches.branches, ...remoteOnlyBranches(branches.branches, branches.remoteBranches ?? []).map((b) => b.name)];
+  const branchOptions = defaults.branch && !switchable.includes(defaults.branch) ? [defaults.branch, ...switchable] : switchable;
   // A project's worktrees can start from any of its branches; a profile has no repository, so only origin or HEAD.
   const listedBases: BranchBase[] = root ? [...branches.branches.map((b) => `refs/heads/${b}` as const), ...(branches.remoteBranches ?? []).map((b) => `refs/remotes/${b}` as const)] : [];
   const baseOptions = isBranchBase(defaults.baseRef) && !listedBases.includes(defaults.baseRef) ? [defaults.baseRef, ...listedBases] : listedBases;

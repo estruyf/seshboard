@@ -71,6 +71,7 @@ import {
   REMOTE_DESKTOP_ORIGIN,
   type RemoteProfile,
   type TriggerSession,
+  remoteOnlyBranches,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
@@ -949,8 +950,9 @@ export class RemoteHub {
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
-    const { branches, checkedOutElsewhere } = await this.options.branches(project.root);
-    if (!branches.includes(branch)) throw new RpcError('NOT_FOUND', `No branch ${branch} in ${project.name}`);
+    const { branches, checkedOutElsewhere, remoteBranches } = await this.options.branches(project.root);
+    // One only a remote has is checked out as a new branch that tracks it.
+    if (!branches.includes(branch) && !remoteOnlyBranches(branches, remoteBranches ?? []).some((b) => b.name === branch)) throw new RpcError('NOT_FOUND', `No branch ${branch} in ${project.name}`);
     if (checkedOutElsewhere.includes(branch)) throw new RpcError('INVALID_PARAMS', `${branch} is checked out in another worktree`);
     return choice;
   }

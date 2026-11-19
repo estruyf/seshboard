@@ -1,3 +1,4 @@
+import { remoteOnlyBranches } from '@seshboard/protocol/client';
 import { Check, ChevronDown, GitBranch } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -9,7 +10,8 @@ import { useSharingCheckout } from './useSharingCheckout.ts';
 
 /**
  * The branch checked out in a session's folder (not a worktree), read live from git, as a small text
- * button in the session header's meta line, with a menu to switch to another local branch.
+ * button in the session header's meta line, with a menu to switch to another branch: a local one, or one only a
+ * remote has (a fresh clone's), which the switch makes a local branch that tracks it.
  * `busy`: Claude is working in this session, so switching waits. A new `openRequest` (the git menu's
  * "Switch branch…") opens the menu as if the button was clicked.
  */
@@ -21,6 +23,8 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
   const [branches, setBranches] = useState<string[] | null>(null);
   // Branches checked out in another worktree (Claude Code's, say): git won't switch to them here.
   const [elsewhere, setElsewhere] = useState<ReadonlySet<string>>(() => new Set());
+  // Branches only a remote has, by name, with that remote (`origin`).
+  const [onRemote, setOnRemote] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [open, setOpen] = useState<{ x: number; y: number } | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +36,10 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
   const load = useCallback(() => {
     client?.call('git.branches', { cwd }).then(
       (result) => {
-        setBranches(result.current === null && result.branches.length === 0 ? [] : result.branches);
+        const remoteOnly = remoteOnlyBranches(result.branches, result.remoteBranches ?? []);
+        setBranches(result.current === null && result.branches.length === 0 ? [] : [...result.branches, ...remoteOnly.map((b) => b.name)]);
         setElsewhere(new Set(result.checkedOutElsewhere ?? []));
+        setOnRemote(new Map(remoteOnly.map((b) => [b.name, b.remote])));
         useCheckoutBranches.getState().set([cwd], result.current);
       },
       () => setBranches([]),
@@ -189,11 +195,12 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
                   className={`flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none focus-visible:bg-accent/15 disabled:opacity-50 ${taken ? 'cursor-default opacity-50' : 'hover:bg-accent/15'}`}
                 >
                   <span className="min-w-0 flex-1 truncate font-mono text-ui text-text">{branch}</span>
+                  {onRemote.has(branch) && <span className="shrink-0 text-meta text-faint">{onRemote.get(branch)}</span>}
                   <Check size={13} className={`shrink-0 text-accent-ink ${branch === current ? '' : 'invisible'}`} />
                 </button>
               );
             })}
-            {listed.length === 0 && <p className="px-3 py-1.5 text-ui text-muted">{query ? 'No matching branch' : 'No local branches'}</p>}
+            {listed.length === 0 && <p className="px-3 py-1.5 text-ui text-muted">{query ? 'No matching branch' : 'No branches'}</p>}
             {switching && (
               <p role="status" className="border-t border-border px-3 pt-1.5 pb-1 text-meta text-muted">
                 Switching…
