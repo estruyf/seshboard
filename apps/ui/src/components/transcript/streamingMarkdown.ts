@@ -2,6 +2,7 @@ import { Lexer } from 'marked';
 import remend from 'remend';
 import { chatSchema } from './chatSchema.ts';
 import { escapeLoneTags, escapeLoneTagsOpen } from './escapeLoneTags.ts';
+import { isProse } from './maths.ts';
 
 /** What is not HTML in a block: comments, fenced code and inline code. */
 const NOT_HTML = /<!--[\s\S]*?-->|(```|~~~)[\s\S]*?(?:\1|$)|`[^`]*`/g;
@@ -39,13 +40,57 @@ export function splitBlocks(text: string): string[] {
   // How many `<details>` an HTML block opened and nothing closed yet: what is inside belongs in the same block, or it would
   // render outside the disclosure until the reply is done.
   let open = 0;
+  const scan: MathScan = { fence: null, math: false };
   for (const token of tokens) {
-    // Spacing and link definitions belong with what came before (a definition alone renders nothing).
-    if ((token.type === 'space' || token.type === 'def' || open > 0) && blocks.length) blocks[blocks.length - 1] += token.raw;
+    // Spacing and link definitions belong with what came before (a definition alone renders nothing), and so does
+    // everything after a `$$` line nothing has closed yet (a formula can have a blank line in it) and what is inside a `<details>`.
+    if (blocks.length && (token.type === 'space' || token.type === 'def' || scan.math || open > 0)) blocks[blocks.length - 1] += token.raw;
     else blocks.push(token.raw);
+    scanMath(token.raw, scan);
     if (token.type !== 'code') open = Math.max(0, open + detailsDelta(token.raw, token.type === 'html'));
   }
   return blocks.length ? blocks : [text];
+}
+
+/** Where a reader of the text is: in a code fence (its mark and length) or in a `$$` block that nothing has closed yet. */
+interface MathScan {
+  fence: { mark: string; length: number } | null;
+  math: boolean;
+}
+
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/;
+/** What may come before a `$$` on its line: up to 3 spaces, and the markers of a quote or a list item (nested too). */
+const LINE_START = '^ {0,3}(?:(?:>[ \\t]*|(?:[-*+]|\\d{1,9}[.)])[ \\t]+))*';
+/** A `$$` line: it opens a block (its meta can't hold a `$`, or be a sentence) and, with nothing after it, closes one. `pid $$ is…`, `$$ is the shell pid` and `$$x$$` don't. */
+const MATH_LINE = new RegExp(`${LINE_START}\\$\\$([^$]*)$`);
+const MATH_CLOSE = new RegExp(`${LINE_START}\\$\\$\\s*$`);
+
+/** Reads lines (whole ones) and updates where the reader is: once for each, so a long reply isn't read again for every token. */
+function scanMath(text: string, state: MathScan): void {
+  for (const line of text.split('\n')) {
+    if (state.math) {
+      // Inside a `$$` block a fence is text; only a bare `$$` ends it.
+      if (MATH_CLOSE.test(line)) state.math = false;
+      continue;
+    }
+    const fence = FENCE_LINE.exec(line)?.[1];
+    if (state.fence) {
+      // Only a fence of the same mark, at least as long, ends it: a short one inside a longer one is text.
+      if (fence && fence[0] === state.fence.mark && fence.length >= state.fence.length && /^[`~]+\s*$/.test(line.trim())) state.fence = null;
+    } else if (fence) {
+      state.fence = { mark: fence[0]!, length: fence.length };
+    } else {
+      const meta = MATH_LINE.exec(line)?.[1];
+      if (meta !== undefined && !isProse(meta)) state.math = true;
+    }
+  }
+}
+
+/** Whether the text ends inside a `$$` block nothing closes: `$$` at the start of a line, outside code fences. */
+export function opensMath(text: string): boolean {
+  const state: MathScan = { fence: null, math: false };
+  scanMath(text, state);
+  return state.math;
 }
 
 /** A tag cut off at the end of a line (`<deta`, `</summ`, `<a href="x`, `<!-`), as far as a tag goes: nothing after it yet closes it. */
@@ -53,6 +98,13 @@ const PARTIAL_TAG = /<(?:\/?([A-Za-z][A-Za-z0-9-]*)([^<>\n]{0,200})|!-{0,2})$/;
 
 /** The tags a reply's HTML may use (and the ones the sanitiser strips): only those are held back while they are half written. */
 const TAGS = [...(chatSchema.tagNames ?? []), ...(chatSchema.strip ?? [])];
+
+/** Whether the text ends inside a formula: in a `$$` block nothing has closed, or after a `$` in the paragraph that nothing has closed (`If $a<b`). */
+function inFormula(before: string): boolean {
+  if (opensMath(before)) return true;
+  const paragraph = before.slice(before.lastIndexOf('\n\n') + 2);
+  return (paragraph.replace(/\\\$/g, '').replace(/\$\$/g, '').match(/\$/g)?.length ?? 0) % 2 === 1;
+}
 
 /** A fence's line, also inside a list item or a quote. */
 const FENCE = /^[ \t>]*(?:(?:[-*+]|\d+[.)])[ \t]+)*(?:```|~~~)/;
@@ -97,7 +149,7 @@ function withTail(prefix: readonly string[], text: string): string[] {
 /** Blank lines after an opener that has no end tag, past which a reply being written takes it for text (`escapeLoneTagsOpen`), so a `<div>` alone on a line doesn't keep the whole reply from being kept. */
 const GIVE_UP_AFTER = 8;
 
-/** What `streamingBlocks` has done for a reply: the start of its text that is final, and that start's blocks, escaped. */
+/** What `streamingBlockTexts` has done for a reply: the start of its text that is final, and that start's blocks, escaped. */
 export interface StreamingCache {
   raw: string;
   blocks: string[];
@@ -123,7 +175,7 @@ function commonLength(a: string, b: string): number {
  * that comes later finds nothing to close, until the reply is finished and read whole). `giveUpAfter` is for tests, which want the
  * result to be exactly the whole text's.
  */
-export function streamingBlocks(text: string, cache: StreamingCache = newStreamingCache(), giveUpAfter = GIVE_UP_AFTER): string[] {
+export function streamingBlockTexts(text: string, cache: StreamingCache = newStreamingCache(), giveUpAfter = GIVE_UP_AFTER): string[] {
   if (!text.startsWith(cache.raw)) {
     cache.raw = '';
     cache.blocks = [];
@@ -162,5 +214,5 @@ function withoutPartialTag(text: string): string {
   const before = text.slice(0, match.index);
   const fenced = before.split('\n').filter((line) => FENCE.test(line)).length % 2 === 1;
   const inCode = (before.match(/`+/g)?.length ?? 0) % 2 === 1;
-  return fenced || inCode ? text : before;
+  return fenced || inCode || inFormula(before) ? text : before;
 }

@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { copySelection } from '../transcript/selectionClip.ts';
 import { Button } from '../ui/Button.tsx';
 import { placeToolbar, selectionLines, type Rect } from './selectionToolbar.ts';
 
@@ -165,7 +166,7 @@ export function SelectionToolbar({ anchor, toolbarRef, container, onClose, actio
     event.preventDefault();
   };
 
-  const copy = () => void navigator.clipboard.writeText(anchor.text).then(() => setCopied(true), () => {});
+  const copy = () => void copySelection(anchor.text).then(() => setCopied(true), () => {});
   const action = (index: number) => ({
     ref: (el: HTMLButtonElement | null) => {
       buttons.current[index] = el;

@@ -4,9 +4,10 @@ import remarkParse from 'remark-parse';
 import type { PluggableList } from 'unified';
 import { unified } from 'unified';
 import { chatSchema } from './chatSchema.ts';
+import { remarkMaths } from './maths.ts';
 
 /** The Markdown syntax a reply is read with (GFM, and what else adds syntax, such as maths). The pre-pass reads it the same way the renderer does. */
-export const MARKDOWN_SYNTAX: PluggableList = [remarkGfm];
+export const MARKDOWN_SYNTAX: PluggableList = [remarkGfm, remarkMaths];
 
 const processor = unified().use(remarkParse).use(MARKDOWN_SYNTAX);
 

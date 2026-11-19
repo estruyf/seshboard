@@ -6,9 +6,13 @@ import { REHYPE_PLUGINS, REMARK_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor
 import { CodeBlock } from './CodeBlock.tsx';
 import { escapeLoneTags } from './escapeLoneTags.ts';
 import { FileLink } from './FileLink.tsx';
+import { MermaidBlock } from './MermaidBlock.tsx';
+import { isMermaidFence } from './mermaidRender.ts';
 import { ReplyImage } from './ReplyImage.tsx';
 import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
-import { newStreamingCache, streamingBlocks } from './streamingMarkdown.ts';
+import { MathCode, streamingBlocks } from './Maths.tsx';
+import { mathKind } from './maths.ts';
+import { newStreamingCache, streamingBlockTexts } from './streamingMarkdown.ts';
 
 /** Fenced-block languages that get a Preview | Source switch. */
 const MARKDOWN = new Set(['markdown', 'md']);
@@ -67,7 +71,12 @@ export function fencedBlock(className: string | undefined, children: ReactNode):
 
 /** Inline code, or a fenced block; `previews`: a Markdown block opens rendered (not inside another one's preview). */
 function renderCode({ className, children }: { className?: string; children?: ReactNode }, previews: boolean) {
+  // Maths (`$x$`, `$$…$$`, a math block) is drawn by KaTeX, loaded the first time one shows.
+  const math = mathKind(className);
+  if (math) return <MathCode kind={math} source={String(children ?? '').replace(/\n$/, '')} />;
   const fence = fencedBlock(className, children);
+  // A diagram is drawn, also in a Markdown block's preview (it holds no Markdown, so there is nothing to nest).
+  if (fence && isMermaidFence(fence.language)) return <MermaidBlock code={fence.code} />;
   // Markdown Claude writes out (a README, a PR description) opens rendered, with its source a click away.
   if (fence) return <CodeBlock code={fence.code} language={fence.language} preview={previews && fence.markdown ? <PreviewBlock text={fence.code} /> : undefined} />;
   // Long inline code (URLs, paths) wraps instead of pushing the pane wider.
@@ -163,12 +172,12 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant
   // Skim's keep line, while it is written, never shows.
   // What is final of the text so far is escaped once and kept: only the last block changes as the text grows.
   const cache = useRef(newStreamingCache());
-  const blocks = useMemo(() => streamingBlocks(withoutSkimMarks(text), cache.current), [text]);
+  const blocks = useMemo(() => streamingBlockTexts(withoutSkimMarks(text), cache.current), [text]);
   return (
     <div className={proseOf(variant)}>
-      {blocks.map((block, i) => (
-        // Blocks only ever grow at the end, so the index is a stable key.
-        <Block key={i} text={block} />
+      {/* Blocks only ever grow at the end, so the index is a stable key. */}
+      {streamingBlocks(blocks, (block) => (
+        <Block text={block} />
       ))}
     </div>
   );

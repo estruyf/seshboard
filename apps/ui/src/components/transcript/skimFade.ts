@@ -101,7 +101,7 @@ export function replySentences(markdown: string): string[] {
 const comparable = (text: string) =>
   text
     .toLowerCase()
-    .replace(/[*_`"'“”‘’]/g, '')
+    .replace(/[*_`"'“”‘’$]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 

@@ -6961,6 +6961,203 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/**
+ * Mermaid diagrams (#255), in a throwaway Markdown file in a folder of its own, opened in the file preview: a flowchart and
+ * a pie chart are drawn as SVG (Mermaid loads on first use, under the window's Content-Security-Policy), a block that does
+ * not parse shows its source with "Couldn't draw this diagram.", Source and Preview switch, the colours follow light and dark
+ * (the diagram is drawn again), and a click opens the flowchart larger, where the buttons zoom and Escape closes only the
+ * overlay. The folder is removed at the end.
+ */
+async function runMermaidStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-mermaid-')));
+  const md = join(dir, 'diagrams.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const BLOCKS = `${DIALOG}.querySelectorAll('[data-mermaid]')`;
+  const original = preferences.get().colorScheme;
+  const open = () => js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+  const drawing = () => js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML ?? ''`) as Promise<string>;
+  try {
+    // A diagram's script must never run: alert() is replaced by a flag, as a real one would block the window.
+    await js('window.__mermaidAlert = window.alert; window.__alerted = false; window.alert = () => { window.__alerted = true; }; null');
+    writeFileSync(md, '# Diagrams\n\n```mermaid\nflowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C[Ship]\n  B -->|no| D[Wait]\n```\n\n```Mermaid\nthis is not a diagram\n```\n\n```mermaid\npie title Pets\n  "Dogs" : 3\n  "Cats" : 2\n```\n\n```mermaid\nxychart-beta\n  title "Sales"\n  x-axis [jan, feb, mar]\n  y-axis "Units" 0 --> 100\n  bar [30, 60, 90]\n```\n\n```mermaid\n%%{init: {"securityLevel":"loose","theme":"dark","themeVariables":{"primaryColor":"#ff0000"},"htmlLabels":true,"flowchart":{"htmlLabels":true}}}%%\nflowchart LR\n  A["<img src=x onerror=alert(1)>"] --> B[Safe]\n  click A call alert()\n  click B href "javascript:alert(1)"\n```\n\n```mermaid\nflowchart LR\n  A[Docs] --> B[Next]\n  click A href "https://example.com/docs"\n```\n');
+    await open();
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DIALOG}.querySelectorAll('[data-mermaid]').length === 6`, 5_000))) return 'the Markdown file did not open with its six diagram blocks';
+    // Mermaid is fetched the first time, so the first one takes longer.
+    if (!(await waitInPage(win, `${BLOCKS}[0].dataset.mermaidState === 'drawn' && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 15_000))) {
+      return `the flowchart was not drawn (it is ${await js(`${BLOCKS}[0]?.dataset.mermaidState ?? 'missing'`)})`;
+    }
+    const flow = (await js(`(() => { const b = ${BLOCKS}[0]; const svg = b.querySelector('[data-mermaid-diagram] svg'); return { text: svg.textContent, scripts: svg.querySelectorAll('script').length, width: svg.getBoundingClientRect().width }; })()`)) as { text: string; scripts: number; width: number };
+    if (!flow.text.includes('Start') || !flow.text.includes('Ready?') || !flow.text.includes('Ship')) return `the flowchart's labels read ${JSON.stringify(flow.text)}`;
+    if (flow.scripts !== 0 || flow.width < 50) return `the flowchart has ${flow.scripts} scripts and is ${flow.width}px wide`;
+
+    // A block that mounts from the cache (the preview closed and opened again) and then gets another theme keeps its drawing
+    // while the new one is made, instead of falling back to its source.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    await open();
+    if (!(await waitInPage(win, `${BLOCKS}[0]?.dataset.mermaidState === 'drawn'`, 3_000))) return 'the flowchart was not drawn at once from the cache when the preview opened again';
+    const wasDark = (await js("matchMedia('(prefers-color-scheme: dark)').matches")) as boolean;
+    const first = await drawing();
+    await js(`window.__mermaidStates = []; window.__mermaidStop = false; (function tick() { window.__mermaidStates.push(${BLOCKS}[0]?.dataset.mermaidState ?? 'gone'); if (!window.__mermaidStop) requestAnimationFrame(tick); })()`);
+    await setColorScheme(win, wasDark ? 'light' : 'dark');
+    const redrawn = await waitInPage(win, `${BLOCKS}[0]?.querySelector('[data-mermaid-diagram] svg')?.innerHTML !== ${JSON.stringify(first)} && ${BLOCKS}[0].dataset.mermaidState === 'drawn'`, 8_000);
+    await js('window.__mermaidStop = true');
+    const states = (await js('[...new Set(window.__mermaidStates)]')) as string[];
+    if (!redrawn) return 'a diagram from the cache was not drawn again for the other colour scheme';
+    if (states.join() !== 'drawn') return `a diagram from the cache showed ${states.join(', ')} while it was drawn again for the other colour scheme, not its old drawing`;
+
+    // A chart type that is not a flowchart comes with Mermaid.
+    if (!(await waitInPage(win, `${BLOCKS}[2].dataset.mermaidState === 'drawn' && ${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Dogs')`, 5_000))) return `the pie chart was not drawn (${await js(`${BLOCKS}[2].dataset.mermaidState + ': ' + (${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent ?? '').slice(0, 200)`)})`;
+
+    if (!(await waitInPage(win, `${BLOCKS}[3].dataset.mermaidState === 'drawn' && ${BLOCKS}[3].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Sales')`, 5_000))) return 'the bar chart (xychart-beta) was not drawn';
+
+    // A diagram that does not parse stays source, with a line under it.
+    if (!(await waitInPage(win, `${BLOCKS}[1].dataset.mermaidState === 'error'`, 5_000))) return 'the broken diagram did not report that it cannot be drawn';
+    const broken = (await js(`(() => { const b = ${BLOCKS}[1]; return { line: b.querySelector('[data-mermaid-error]')?.textContent ?? null, source: b.querySelector('[data-code-language]')?.textContent ?? '', svgs: b.querySelectorAll('[data-mermaid-diagram] svg').length }; })()`)) as { line: string | null; source: string; svgs: number };
+    if (broken.line !== "Couldn't draw this diagram.") return `the broken diagram's line reads ${JSON.stringify(broken.line)}`;
+    if (!broken.source.includes('this is not a diagram') || broken.svgs !== 0) return `the broken diagram shows ${JSON.stringify(broken.source)} and ${broken.svgs} drawings`;
+    // Mermaid builds a diagram in a hidden element: a failed one must not leave it in the page.
+    if (await js("!!document.querySelector('body > [id^=\"dsb-mermaid-\"]')")) return 'a failed diagram left its hidden element in the page';
+
+    // Hostile text: the diagram's own settings can't loosen the security level or replace the theme, and nothing it holds runs.
+    if (!(await waitInPage(win, `['drawn', 'error'].includes(${BLOCKS}[4].dataset.mermaidState)`, 5_000))) return 'the hostile diagram neither drew nor failed';
+    const hostile = (await js(`(() => { const b = ${BLOCKS}[4]; const svg = b.querySelector('[data-mermaid-diagram] svg'); const all = svg ? [...svg.querySelectorAll('*')] : []; return { state: b.dataset.mermaidState, source: b.querySelector('[data-code-language]')?.textContent ?? '', handlers: all.flatMap((el) => [...el.attributes].filter((a) => /^on/i.test(a.name)).map((a) => el.tagName + '.' + a.name)), scripts: all.filter((el) => /^(script|img|iframe|object|foreignobject)$/i.test(el.tagName)).map((el) => el.tagName), links: all.flatMap((el) => [...el.attributes].filter((a) => /javascript:/i.test(a.value)).map((a) => el.tagName + '.' + a.name)), red: svg ? /#ff0000|rgb\\(255, ?0, ?0\\)/i.test(svg.outerHTML) : false, text: svg?.textContent ?? '', alerted: window.__alerted }; })()`)) as { state: string; source: string; handlers: string[]; scripts: string[]; links: string[]; red: boolean; text: string; alerted: boolean };
+    if (hostile.state !== 'drawn') return `the hostile diagram is ${hostile.state}, not drawn: its safe parts should still draw`;
+    if (!hostile.text.includes('Safe')) return `the hostile diagram reads ${JSON.stringify(hostile.text)}`;
+    if (hostile.handlers.length || hostile.scripts.length || hostile.links.length) return `the hostile diagram kept ${JSON.stringify({ handlers: hostile.handlers, elements: hostile.scripts, links: hostile.links })}`;
+    if (hostile.red) return 'the diagram replaced the app\'s colours with its own theme variables';
+    if (await js(`${BLOCKS}[4].querySelector('[data-mermaid-diagram] foreignObject') !== null`)) return 'the diagram brought back HTML labels';
+    // Clicking its nodes runs nothing either.
+    await js(`${BLOCKS}[4].querySelectorAll('[data-mermaid-diagram] .node').forEach((n) => n.dispatchEvent(new MouseEvent('click', { bubbles: true })))`);
+    await settle(win);
+    if (await js('window.__alerted === true')) return 'a hostile diagram ran a script (alert was called)';
+    // A click on a node is a click on the diagram, which opens it larger: close that overlay before the next part.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-mermaid-overlay]')", 3_000))) return 'a click on the hostile diagram opened an overlay that Escape did not close';
+
+    // A link in a diagram opens the way a link in the Markdown does (a new window, which main hands to the browser), and
+    // doesn't also open the diagram larger. window.open is a spy here, so nothing leaves the sandbox.
+    if (!(await waitInPage(win, `${BLOCKS}[5].dataset.mermaidState === 'drawn' && ${BLOCKS}[5].querySelector('[data-mermaid-diagram] a')`, 5_000))) return 'the diagram with a link was not drawn with its link';
+    await js("window.__mermaidOpen = window.open; window.__opened = []; window.open = (...args) => { window.__opened.push(args[0]); return null; }; null");
+    await js(`${BLOCKS}[5].querySelector('[data-mermaid-diagram] a').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))`);
+    const opened = (await js('window.__opened')) as string[];
+    if (opened.join() !== 'https://example.com/docs') return `a click on the diagram's link opened ${JSON.stringify(opened)}`;
+    await settle(win);
+    if (await js("!!document.querySelector('[data-mermaid-overlay]')")) return 'a click on the diagram\'s link also opened the diagram larger';
+
+    // Preview | Source on the flowchart.
+    await js(`${BLOCKS}[0].querySelector('[data-code-view="source"]').click()`);
+    if (!(await waitInPage(win, `!${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg') && ${BLOCKS}[0].innerText.includes('flowchart LR')`, 3_000))) return 'Source did not show the diagram text';
+    await js(`${BLOCKS}[0].querySelector('[data-code-view="preview"]').click()`);
+    if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 3_000))) return 'Preview did not bring the diagram back';
+
+    // Light and dark: drawn again with the theme's colours.
+    await setColorScheme(win, 'light');
+    await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 5_000);
+    await shot(win, 'mermaid-light.png');
+    const light = await drawing();
+    await setColorScheme(win, 'dark');
+    if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML !== ${JSON.stringify(light)} && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 8_000))) return 'the diagram was not drawn again when the colour scheme changed';
+    await shot(win, 'mermaid-dark.png');
+
+    // Larger, with zoom; Escape closes the overlay and leaves the preview.
+    await js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram]').click()`);
+    const OVERLAY = "document.querySelector('[data-mermaid-overlay][role=dialog]')";
+    if (!(await waitInPage(win, `${OVERLAY}?.querySelector('[data-mermaid-viewport] svg') && ${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent.endsWith('%')`, 3_000))) return 'a click on the diagram did not open it larger';
+    const percent = () => js(`parseInt(${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent)`) as Promise<number>;
+    const before = await percent();
+    await js(`${OVERLAY}.querySelector('[data-mermaid-zoom-in]').click()`);
+    if (!(await waitInPage(win, `parseInt(${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent) > ${before}`, 2_000))) return `Zoom in did not zoom (${before}%)`;
+    await js(`${OVERLAY}.querySelector('[data-mermaid-actual]').click()`);
+    if ((await waitInPage(win, `${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent === '100%'`, 2_000)) === false) return 'Actual size did not show 100%';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${OVERLAY} && ${DIALOG}`, 3_000))) return 'Escape did not close the overlay and leave the preview';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    return `ok: a flowchart, a pie chart and a bar chart are drawn as SVG in the preview, a diagram from the cache keeps its drawing while it is drawn again for another colour scheme, a link in a diagram opens in the browser without opening it larger, a hostile diagram can't change the security level, theme or labels and runs and keeps nothing (no handlers, javascript: links or images), a broken diagram shows its source and "Couldn't draw this diagram.", Source and Preview switch, the diagram is drawn again in dark mode, and a click opens it larger with zoom (${before}% to more, then 100%), where Escape closes only the overlay`;
+  } finally {
+    await js('if (window.__mermaidAlert) { window.alert = window.__mermaidAlert; delete window.__mermaidAlert; } if (window.__mermaidOpen) { window.open = window.__mermaidOpen; delete window.__mermaidOpen; } null');
+    updatePreferences({ colorScheme: original });
+    for (let i = 0; i < 3 && (await js(`!!${DIALOG} || !!document.querySelector('[data-mermaid-overlay]')`)); i++) {
+      pressKey(win, 'Escape');
+      await settle(win);
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Maths in a Markdown preview (#348), on a throwaway file: `$x^2$`, a `$$` block and a math fence are drawn by KaTeX (its
+ * fonts load under the window's CSP), in the text's colour; a dollar amount stays text; a formula that doesn't parse shows its
+ * source; a wide formula scrolls inside its block instead of widening the page; a block's Source and Preview switch works.
+ * The folder is removed at the end.
+ */
+async function runMathsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-maths-')));
+  const md = join(dir, 'maths.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  const wide = Array.from({ length: 80 }, (_, i) => `x_{${i + 1}}`).join(' + ');
+  // A drawn formula sits in a shadow root (so a selection copies only its TeX): its KaTeX is in there.
+  const DRAWN = (selector: string, within = PREVIEW) => `[...(${within}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector(${JSON.stringify(selector)}))`;
+  try {
+    writeFileSync(
+      md,
+      `# Maths\n\nA square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.\n\n$$\n\\int_0^1 x\\,dx = \\frac12\n$$\n\n\`\`\`math\n\\sum_{i=1}^n i = \\frac{n(n+1)}{2}\n\`\`\`\n\nBroken: $\\frac{1$ here.\n\nPlaced: before $\\llap{\\kern-60em CLICK}$ after, and $\\rule{1em}{2000em}$ too.\n\n$$\n${wide}\n$$\n`,
+    );
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DRAWN('.katex')}`, 10_000))) return 'the formulas were not drawn in the Markdown preview';
+    const found = (await js(
+      `(() => { const p = ${PREVIEW}; const html = (sel) => p.querySelectorAll(sel).length;
+        const inline = p.querySelector('[data-math="inline"]'); const block = p.querySelector('[data-code-preview-block] [data-math="block"]');
+        const wideBox = [...p.querySelectorAll('[data-math="block"]')].pop();
+        return { inline: html('[data-math="inline"] [data-math-visual]'), blocks: html('[data-code-preview-block] [data-math="block"] [data-math-visual]'), switches: html('[data-code-preview-block] [data-code-view="source"]'),
+          text: p.innerText, broken: p.querySelector('[data-math-error]')?.innerText ?? null,
+          colour: inline && getComputedStyle(inline.querySelector('[data-math-visual]').shadowRoot.querySelector('.katex')).color, drawnInShadow: [...p.querySelectorAll('[data-math-visual]')].every((v) => v.shadowRoot?.querySelector('.katex') && v.children.length === 0), prose: getComputedStyle(p).color,
+          fonts: [...document.fonts].filter((f) => f.family.replace(/["']/g, '').startsWith('KaTeX') && f.status === 'loaded').length,
+          wideScrolls: wideBox.scrollWidth > wideBox.clientWidth, wideFits: wideBox.getBoundingClientRect().right <= p.getBoundingClientRect().right + 1, pageScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          blockInner: !!block,
+          clipped: [...p.querySelectorAll('[data-math="inline"]')].map((m) => getComputedStyle(m).overflowX + '/' + getComputedStyle(m).overflowY + ':' + Math.round(m.getBoundingClientRect().height) + 'x' + Math.round(m.getBoundingClientRect().width)),
+          sources: [...p.querySelectorAll('[data-math-source]')].map((m) => m.dataset.mathSource).filter(Boolean).length,
+          // What Copy, Quote and Remember read: a selection across a line of text, and one that is only a formula.
+          selected: (() => { const sel = getSelection(); const pick = (fn) => { const r = document.createRange(); fn(r); sel.removeAllRanges(); sel.addRange(r); const t = String(sel); sel.removeAllRanges(); return t; };
+            return { line: pick((r) => r.selectNodeContents(p.querySelector('p'))), alone: pick((r) => r.selectNode(p.querySelector('[data-math="inline"]'))), block: pick((r) => r.selectNodeContents(p.querySelector('[data-code-preview] [data-math="block"]'))) }; })()
+        }; })()`,
+    )) as { inline: number; blocks: number; switches: number; text: string; broken: string | null; colour: string | null; prose: string; fonts: number; wideScrolls: boolean; wideFits: boolean; pageScrolls: boolean; blockInner: boolean; clipped: string[]; sources: number; drawnInShadow: boolean; selected: { line: string; alone: string; block: string } };
+    if (found.inline !== 3) return `${found.inline} inline formulas were drawn, not 3`;
+    if (!found.drawnInShadow) return 'a formula is not drawn in its shadow root alone';
+    // One that places itself (a negative kern, a tall rule) is clipped to its own box, and every drawn formula keeps its TeX for a copy.
+    if (!found.clipped.every((box) => box.startsWith('clip/clip'))) return `an inline formula is not clipped to its box (${found.clipped.join(' ')})`;
+    if (found.sources !== 6) return `${found.sources} formulas carry their TeX for a copy, not 6`;
+    if (found.blocks !== 3) return `${found.blocks} blocks were drawn, not 3 (a $$ block, a math fence and a wide one)`;
+    if (found.switches !== 3) return `${found.switches} math blocks have a Source switch, not 3`;
+    if (!found.text.includes('it costs $5 and $10 a month')) return 'the dollar amount did not stay text';
+    if (found.selected.line !== 'A square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.') return `a selection across a line with a formula reads ${JSON.stringify(found.selected.line)}`;
+    if (found.selected.alone !== '$x^2 + y^2 = z^2$') return `a selection of only a formula reads ${JSON.stringify(found.selected.alone)}`;
+    if (found.selected.block.trim() !== '$$\n\\int_0^1 x\\,dx = \\frac12\n$$') return `a selection of a formula block reads ${JSON.stringify(found.selected.block)}`;
+    if (!found.broken?.includes('\\frac{1')) return `a formula that doesn't parse shows ${JSON.stringify(found.broken)}, not its source`;
+    if (found.colour !== found.prose) return `a formula is ${found.colour}, not the text colour ${found.prose}`;
+    if (found.fonts < 1) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
+    if (!found.wideScrolls || !found.wideFits || found.pageScrolls) return `a wide formula does not scroll inside its block (scrolls ${found.wideScrolls}, fits ${found.wideFits}, page scrolls ${found.pageScrolls})`;
+
+    await shot(win, 'maths-preview.png');
+
+    // Source shows the formula as written and Preview draws it again.
+    const FIRST = `${PREVIEW}.querySelector('[data-code-preview-block]')`;
+    await js(`${FIRST}.querySelector('[data-code-view="source"]').click()`);
+    if (!(await waitInPage(win, `!${FIRST}.querySelector('[data-code-preview]') && ${FIRST}.innerText.includes('\\int_0^1')`, 3_000))) return 'Source did not show the formula as written';
+    await js(`${FIRST}.querySelector('[data-code-view="preview"]').click()`);
+    if (!(await waitInPage(win, `${DRAWN('.katex', FIRST)}`, 3_000))) return 'Preview did not draw the formula again';
+    return 'ok: $x^2$, a $$ block and a math fence are drawn by KaTeX in the text colour with its fonts loaded, a dollar amount stays text, a formula that does not parse shows its source, a wide one scrolls inside its block, and Source and Preview switch';
+  } finally {
+    pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click()");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** ⌘⇧F, type a word, open the first hit: the session opens with that message highlighted. */
 /**
  * Find in the session (⌘F), read-only: searches for a word from one of Claude's replies, checks the
@@ -7159,6 +7356,234 @@ async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * A selection in the transcript copies as clean HTML (`useCleanCopy`): the structure of what is selected (a list, inline code,
+ * two table rows, a bold run) with no classes, theme colours, data attributes or buttons, and without what a person could not
+ * select (the speaker's name, the turn line). Read-only: it dispatches `copy` events with a DataTransfer of its own, so the
+ * clipboard is untouched, and the blocks it adds to the transcript for the step are removed again. The HTML is parsed, not
+ * searched: a reply's own words ("in the background") would match a pattern.
+ */
+async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await transcriptAtRest(win);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const report = (await js(`(() => {
+    const area = document.querySelector('${view} [data-transcript]');
+    if (!area) return { none: true };
+    const problems = [];
+    const added = [];
+    const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+    // Every element and attribute the clipboard keeps: no class, data attribute, button or theme colour.
+    const audit = (label, body) => {
+      for (const el of body.querySelectorAll('*')) {
+        if (['BUTTON', 'SVG', 'INPUT', 'TEXTAREA', 'IMG'].includes(el.tagName)) problems.push(label + ': a <' + el.tagName.toLowerCase() + '>');
+        for (const attribute of el.attributes) {
+          if (!['href', 'start', 'style'].includes(attribute.name)) problems.push(label + ': ' + attribute.name + '= on <' + el.tagName.toLowerCase() + '>');
+          else if (attribute.name === 'style' && /color|background/i.test(attribute.value)) problems.push(label + ': style ' + attribute.value);
+        }
+      }
+    };
+    // Selects the range and copies, as ⌘C does: a copy event at 'target' with a DataTransfer to read.
+    const copy = (range, target) => {
+      document.activeElement?.blur();
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const data = new DataTransfer();
+      const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain'), selected: selection.toString() };
+    };
+    const rangeOf = (startNode, startOffset, endNode, endOffset) => {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+      return range;
+    };
+    const add = (el) => (area.appendChild(el), added.push(el), el);
+    try {
+      // 1. A reply on screen with a list and inline code, or a block of that shape.
+      let reply = [...area.querySelectorAll('[data-remember-from="claude"] .markdown')].find((m) => m.querySelector('li') && m.querySelector(':not(pre) > code'));
+      const real = !!reply;
+      if (!reply) {
+        reply = add(document.createElement('div'));
+        reply.className = 'markdown text-body select-text';
+        reply.innerHTML = '<p class="text-text">Steps:</p><ul class="list-disc"><li class="my-0.5" style="color: red">Run <code class="rounded bg-border/60 font-mono">npm test</code></li><li><strong>Bold</strong> and <a href="https://example.com" class="text-link">a link</a></li></ul><button type="button">Copy code</button>';
+      }
+      const whole = document.createRange();
+      whole.selectNodeContents(reply);
+      const first = copy(whole, reply);
+      if (!first.prevented) problems.push('a copy of a reply was left to the browser, with its theme colours');
+      const body = parse(first.html);
+      if (!body.querySelector('li') || !body.querySelector('code')) problems.push('the HTML of a reply has no <li> and <code>');
+      audit('reply', body);
+      if (!first.text) problems.push('the copy of a reply has no plain text');
+
+      // 2. Parts of a block: items 3 and 4 of a list, two table rows, a few words in a bold run, a prompt with line breaks,
+      // and what a person could not select (the speaker's name, a line of numbers) in the middle of it.
+      const block = add(document.createElement('div'));
+      block.className = 'markdown text-body select-text';
+      block.innerHTML = '<h2 class="sr-only">Speaker</h2><ol><li>one</li><li>two</li><li>three</li><li>four</li></ol><table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table><p>Some <strong>bold run</strong> here</p><p class="whitespace-pre-wrap" data-lines></p><p class="select-none">turn line</p><p data-mid>Run <code>npm test</code> and <strong>then</strong> check it</p><ul data-three><li>alpha</li><li>beta</li><li>gamma</li></ul><p data-math>Let <span data-math-source="x^2"><span class="select-none">garbled</span></span> be</p><details><summary>Summary</summary><p>Hidden body</p></details>';
+      block.querySelector('[data-lines]').append('first line' + String.fromCharCode(10) + 'second line');
+      const li = [...block.querySelectorAll('li')];
+      const items = copy(rangeOf(li[2].firstChild, 0, li[3].firstChild, 4), li[2]);
+      const list = parse(items.html).querySelector('ol');
+      if (!list || list.getAttribute('start') !== '3' || list.querySelectorAll('li').length !== 2) problems.push('items 3 and 4 of a list: ' + items.html.slice(0, 120));
+      const cells = [...block.querySelectorAll('td')];
+      const rows = copy(rangeOf(cells[0].firstChild, 0, cells[3].firstChild, 1), cells[0]);
+      const table = parse(rows.html).querySelector('table > tbody');
+      if (!table || table.querySelectorAll('tr').length !== 2 || table.querySelectorAll('td').length !== 4) problems.push('two table rows: ' + rows.html.slice(0, 160));
+      const strong = block.querySelector('strong');
+      const bold = copy(rangeOf(strong.firstChild, 0, strong.firstChild, 4), strong);
+      if (!parse(bold.html).querySelector('strong')) problems.push('words in a bold run lost the bold: ' + bold.html.slice(0, 80));
+      const lines = block.querySelector('[data-lines]');
+      const broken = copy(rangeOf(lines.firstChild, 0, lines.firstChild, lines.firstChild.length), lines);
+      if (!parse(broken.html).querySelector('br')) problems.push('a prompt lost its line break: ' + broken.html.slice(0, 80));
+      // Starting in the middle of a paragraph, after an inline mark: only what the range holds.
+      const mid = block.querySelector('[data-mid]');
+      const midText = mid.childNodes[2];
+      const midEnd = mid.childNodes[4];
+      const middle = copy(rangeOf(midText, 1, midEnd, 6), mid);
+      const middleBody = parse(middle.html);
+      if (middleBody.querySelector('code') || !middleBody.querySelector('strong') || middleBody.textContent.trim() !== 'and then check') problems.push('a selection that starts after an inline mark copies ' + JSON.stringify(middleBody.textContent));
+      // A triple-click on an item ends at the start of the next one: it is not copied.
+      const three = [...block.querySelectorAll('[data-three] li')];
+      const triple = copy(rangeOf(three[1], 0, three[2], 0), three[1]);
+      const tripleBody = parse(triple.html);
+      if (tripleBody.textContent.trim() !== 'beta' || tripleBody.querySelectorAll('li').length !== 1) problems.push('a triple-click on a list item copies ' + JSON.stringify(tripleBody.textContent));
+      if (triple.text.includes('gamma')) problems.push('the text of a triple-click has the next item');
+      // A formula is its source, in the HTML and the text.
+      const math = block.querySelector('[data-math]');
+      const formula = copy(rangeOf(math.firstChild, 0, math.lastChild, 3), math);
+      if (!formula.html.includes('$x^2$') || formula.html.includes('garbled') || !formula.text.includes('$x^2$')) problems.push('a formula copies ' + JSON.stringify(formula.text));
+      const all = document.createRange();
+      all.selectNodeContents(block);
+      const unseen = copy(all, block);
+      const unseenBody = parse(unseen.html);
+      if (unseenBody.querySelector('h2') || unseenBody.textContent.includes('turn line') || unseenBody.textContent.includes('Speaker')) problems.push('text nobody could select is in the HTML: ' + unseen.html.slice(0, 120));
+      if (unseen.text.includes('turn line')) problems.push('the plain text has unselectable text');
+      if (unseenBody.textContent.includes('Hidden body') || !unseenBody.textContent.includes('Summary')) problems.push('a closed details copies its body');
+
+      // 3. Across two messages: no speaker heading and none of the turn line's numbers.
+      const messages = [...area.querySelectorAll('[data-transcript-item]')].filter((m) => !added.includes(m)).slice(0, 2);
+      let across = 0;
+      if (messages.length === 2) {
+        const range = rangeOf(messages[0], 0, messages[1], messages[1].childNodes.length);
+        const unselectable = [...area.querySelectorAll('h2.sr-only, [data-turn-meta], [data-skim-stats]')].filter((e) => !added.includes(e) && range.intersectsNode(e) && e.textContent.trim());
+        const crossed = copy(range, messages[0]);
+        const crossedBody = parse(crossed.html);
+        audit('across messages', crossedBody);
+        for (const e of unselectable) {
+          across++;
+          const text = e.textContent.trim();
+          if (e.matches('h2') ? [...crossedBody.querySelectorAll('h2')].some((h) => h.textContent.trim() === text) : crossedBody.textContent.includes(text)) problems.push('a selection across two messages has "' + text + '"');
+        }
+      }
+
+      // 4. Fields keep their own copy: a text field inside the transcript, and the message box.
+      const field = add(document.createElement('textarea'));
+      field.value = 'typed text';
+      field.focus();
+      field.select();
+      const fieldEvent = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+      field.dispatchEvent(fieldEvent);
+      if (fieldEvent.defaultPrevented) problems.push('a copy in a text field was taken over');
+      const composer = document.querySelector('${view} [data-composer]');
+      if (composer) {
+        const composerEvent = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+        composer.dispatchEvent(composerEvent);
+        if (composerEvent.defaultPrevented) problems.push('a copy in the message box was taken over');
+      }
+      return { problems, real, across, messages: messages.length };
+    } finally {
+      window.getSelection().removeAllRanges();
+      for (const el of added) el.remove();
+    }
+  })()`)) as { none?: boolean; problems: string[]; real: boolean; across: number; messages: number };
+  if (report.none) return 'ok: no transcript on screen';
+  if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+  return `ok: a ${report.real ? "reply's" : 'made-up'} list, table rows, list items, a bold run, a mid-paragraph start, a triple-click, a formula and line breaks copy as clean HTML; ${report.across} unselectable lines stay out across ${report.messages} messages; fields keep their own copy`;
+}
+
+/**
+ * A selection in the file preview with a real formula and a real Mermaid diagram (`useCleanCopy` on the preview's Markdown),
+ * in a throwaway file in a folder of its own: a sentence with `$x^2 + y^2$` copies with the formula as its TeX in `$…$` exactly once
+ * (not KaTeX's pieces, no `.katex`, no `math`) and its text is the sentence; a `$$` block copies as its source in `$$…$$`; a selection
+ * from the line before a diagram to the line after has both lines and no `svg` (the diagram is left out, not copied as its source).
+ * Read-only: `copy` events with a DataTransfer of its own, the clipboard is untouched. The folder is removed at the end.
+ */
+async function runCopyFormulaStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-copy-formula-')));
+  const md = join(dir, 'copy.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  try {
+    writeFileSync(md, '# Copy\n\nThen $x^2 + y^2$ holds.\n\n$$\nE = mc^2\n$$\n\nBefore the diagram.\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Ship]\n```\n\nAfter the diagram.\n');
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && [...(${PREVIEW}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector('.katex')) && !!${PREVIEW}?.querySelector('[data-mermaid-state="drawn"] svg')`, 20_000))) return 'the formula and the diagram were not drawn in the Markdown preview';
+    const report = (await js(`(() => {
+      const preview = ${PREVIEW};
+      const problems = [];
+      const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+      const copy = (range, target) => {
+        document.activeElement?.blur();
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const data = new DataTransfer();
+        const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        const out = { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain') };
+        selection.removeAllRanges();
+        return out;
+      };
+      const times = (text, part) => text.split(part).length - 1;
+      const paragraph = (start) => [...preview.querySelectorAll('p')].find((p) => p.textContent.trim().startsWith(start));
+      // 1. The sentence with an inline formula.
+      const sentence = paragraph('Then');
+      if (!sentence) return { problems: ['the sentence is not in the preview'] };
+      if (!sentence.closest('[data-clean-copy]')) problems.push('the preview is not a clean-copy container');
+      const range = document.createRange();
+      range.selectNodeContents(sentence);
+      const line = copy(range, sentence);
+      const lineBody = parse(line.html);
+      if (!line.prevented) problems.push('the copy was left to the browser');
+      if (times(lineBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the formula is in the HTML ' + times(lineBody.textContent, '$x^2 + y^2$') + ' times: ' + line.html.slice(0, 160));
+      if (lineBody.querySelector('[class*=katex], math, svg, annotation') || [...lineBody.querySelectorAll('*')].some((e) => [...e.attributes].some((a) => a.name === 'class' || a.name.startsWith('data-')))) problems.push('the HTML keeps KaTeX, MathML or attributes: ' + line.html.slice(0, 160));
+      if (line.text !== 'Then $x^2 + y^2$ holds.') problems.push('the text is ' + JSON.stringify(line.text));
+      // 2. From the sentence through the $$ block.
+      const block = preview.querySelector('[data-math="block"]');
+      const through = document.createRange();
+      through.setStart(sentence.firstChild, 0);
+      through.setEnd(block, block.childNodes.length);
+      const blockCopy = copy(through, sentence);
+      const blockBody = parse(blockCopy.html);
+      if (times(blockBody.textContent, 'E = mc^2') !== 1 || !blockBody.textContent.includes('$$') || blockBody.querySelector('[class*=katex], math, svg')) problems.push('a $$ block copies as ' + JSON.stringify(blockBody.textContent.slice(0, 120)));
+      if (times(blockBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the sentence before the block has its formula ' + times(blockBody.textContent, '$x^2 + y^2$') + ' times');
+      // 3. From the line before the diagram to the line after it.
+      const before = paragraph('Before the diagram');
+      const after = paragraph('After the diagram');
+      const around = document.createRange();
+      around.setStart(before.firstChild, 0);
+      around.setEnd(after.firstChild, after.firstChild.length);
+      const diagram = copy(around, before);
+      const diagramBody = parse(diagram.html);
+      if (!diagram.prevented) problems.push('the copy around a diagram was left to the browser');
+      if (!diagramBody.textContent.includes('Before the diagram.') || !diagramBody.textContent.includes('After the diagram.')) problems.push('the copy around a diagram has ' + JSON.stringify(diagramBody.textContent.slice(0, 120)));
+      if (diagramBody.querySelector('svg') || /Start|Ship|flowchart/.test(diagramBody.textContent)) problems.push('the copy around a diagram has the diagram: ' + diagram.html.slice(0, 160));
+      window.getSelection().removeAllRanges();
+      return { problems };
+    })()`)) as { problems: string[] };
+    if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+    return 'ok: a sentence copies its formula once as $…$ with the sentence as text, a $$ block as its source, and a selection around a Mermaid diagram has its lines and no svg (the diagram is left out)';
+  } finally {
+    pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click(); window.getSelection().removeAllRanges(); null");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
  * The actions of Claude's replies sit in a row of their own under the text, so they never cover it;
  * the row is hidden until you hover or tab to it, and showing it doesn't change the reply's height.
  * Your prompt cards keep the toolbar floating over their top edge. Read-only: it focuses a button but
@@ -7254,7 +7679,7 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   const selected = (await js(select)) as string;
   if (!selected) return 'ok: no paragraph of Claude on screen to select';
   const done = async (result: string) => {
-    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } true");
+    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } if (window.__smokeWrite) { navigator.clipboard.write = window.__smokeWrite; delete window.__smokeWrite; } true");
     return result;
   };
   if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar over the selection');
@@ -7271,7 +7696,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
 
   // Keyboard: Tab from the transcript into the toolbar, → to Copy, then Copy.
-  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeCopied = null; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; true");
+  // Copy in the conversation writes the clean HTML and the text together (`copySelection`), elsewhere the text alone.
+  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeWrite = navigator.clipboard.write.bind(navigator.clipboard); window.__smokeCopied = null; window.__smokeCopiedHtml = false; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; navigator.clipboard.write = async (items) => { window.__smokeCopiedHtml = items[0].types.includes('text/html'); window.__smokeCopied = await (await items[0].getType('text/plain')).text(); }; true");
   key('Tab');
   if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-quote-selection')", 2_000))) return done('Tab did not move into the toolbar');
   key('Right');
@@ -7279,7 +7705,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   await js('document.activeElement.click()');
   if (!(await waitInPage(win, "document.querySelector('[data-copy-selection][data-copied]')?.textContent.includes('Copied')", 2_000))) return done('Copy did not say Copied');
   const copied = (await js('window.__smokeCopied')) as string | null;
-  if (copied !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (copied?.trim() !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (!(await js('window.__smokeCopiedHtml'))) return done('Copy in the conversation wrote no clean HTML');
   if (!(await js(`!!${toolbar}`))) return done('the toolbar closed after Copy');
 
   // Esc closes it and keeps the selection.
@@ -14587,6 +15014,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('file preview', () => runFilePreviewStep(win));
+  await step('mermaid diagrams', () => runMermaidStep(win));
+  await step('maths: Markdown preview', () => runMathsStep(win));
   // Pictures of the Files panel in dark and light, in the demo home (CI uploads them with the results).
   const filesPictures = process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_SMOKE_FILES_PICTURES
     ? { shot: (name: string) => shot(win, name), setScheme: (scheme: 'light' | 'dark') => setColorScheme(win, scheme), scheme: () => preferences.get().colorScheme, restoreScheme: (colorScheme: string) => updatePreferences({ colorScheme: colorScheme as 'light' | 'dark' | 'system' }) }
@@ -14601,6 +15030,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
+  await step('copy a selection: clean HTML', () => runCopySelectionStep(win));
+  await step('copy a selection: a formula and a diagram in the file preview', () => runCopyFormulaStep(win), { timeoutMs: 60_000 });
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('conversation view: Skim folds, shows the stats and fades by the keep line, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });

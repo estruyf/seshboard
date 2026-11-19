@@ -192,6 +192,11 @@
       "page": "sessions/file-preview"
     },
     {
+      "id": "feature:maths",
+      "name": "Maths drawn in replies and Markdown previews",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "palette:toggle-files",
       "name": "Toggle Files",
       "page": "sessions/file-preview"
@@ -3119,6 +3124,11 @@
     {
       "id": "feature:file-preview-panel",
       "name": "File preview in the side panel or a dialog, with line numbers and the linked lines marked",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "feature:mermaid-diagrams",
+      "name": "Mermaid diagrams drawn in replies, Markdown previews and Markdown blocks, in the theme's colours, with a larger view that zooms and pans",
       "page": "sessions/file-preview"
     },
     {

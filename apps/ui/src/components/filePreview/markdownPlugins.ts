@@ -2,12 +2,13 @@ import type { PluggableList } from 'unified';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
+import { remarkMaths } from '../transcript/maths.ts';
 import { remarkAlerts } from './remarkAlerts.ts';
 import { fileUrlTransform as linkTransform } from '../transcript/fileRefs.ts';
 import { previewSchema } from './sanitizeSchema.ts';
 
-/** Markdown in a previewed file: GitHub's flavour and alerts, then raw HTML, which is sanitised before anything renders. */
-export const FILE_REMARK_PLUGINS: PluggableList = [remarkGfm, remarkAlerts];
+/** Markdown in a previewed file: GitHub's flavour, alerts and maths, then raw HTML, which is sanitised before anything renders. */
+export const FILE_REMARK_PLUGINS: PluggableList = [remarkGfm, remarkAlerts, remarkMaths];
 export const FILE_REHYPE_PLUGINS: PluggableList = [rehypeRaw, [rehypeSanitize, previewSchema]];
 
 /**

@@ -8,7 +8,7 @@ import { escapeLoneTags } from './escapeLoneTags.ts';
 import { fileUrlTransform } from './fileRefs.ts';
 import { ReplyImage } from './ReplyImage.tsx';
 import { replySentences } from './skimFade.ts';
-import { healMarkdown, splitBlocks, streamingBlocks } from './streamingMarkdown.ts';
+import { healMarkdown, splitBlocks, streamingBlockTexts } from './streamingMarkdown.ts';
 
 // What `Markdown.tsx` renders with: the text through `escapeLoneTags`, read once with the plugins of `chatPlugins.ts`.
 const renderSource = (source: string, keep: readonly number[] | null = null) =>
@@ -275,6 +275,13 @@ describe('text that only looks like a tag', () => {
     expect(after).toContain('data-footnote-ref');
   });
 
+  it('keeps a < inside a formula', () => {
+    expect(render('$x<y$')).toContain('class="language-math math-inline">x&lt;y</code>');
+    expect(render('If $a<b$ then <branch> and x<y')).toMatch(/math-inline">a&lt;b<\/code> then &lt;branch&gt; and x&lt;y/);
+    expect(render('$$\na<b\n$$\n\nAfter')).toContain('a&lt;b');
+    expect(render('$$\na<b\n$$\n\nAfter')).toContain('<p>After</p>');
+  });
+
   it('numbers Skim sentences as it renders them', () => {
     const text = 'It returns Promise<void> when done. The next sentence follows. And one more.';
     expect(replySentences(text)).toHaveLength(3);
@@ -283,7 +290,7 @@ describe('text that only looks like a tag', () => {
 });
 
 describe('a reply still being written', () => {
-  const stream = (text: string) => streamingBlocks(text).map((block) => renderSource(block)).join('');
+  const stream = (text: string) => streamingBlockTexts(text).map((block) => renderSource(block)).join('');
 
   it('leaves half a tag out until it is complete', () => {
     for (const half of ['Line one <br', 'Line one <deta', 'Line one </summ', 'Line one <a href="x', 'Line one <!-', 'Line one <kb']) {
@@ -319,6 +326,17 @@ describe('a reply still being written', () => {
     expect(html).toMatch(/<details>[\s\S]*<summary>More<\/summary>[\s\S]*<strong>so far<\/strong>[\s\S]*<\/details>/);
     expect(html).not.toContain('&lt;');
     expect(stream('<details>\n<summary>Mo')).toContain('<details>');
+  });
+
+  it('does not hide text after a < inside a formula being written', () => {
+    expect(healMarkdown('If $a<b')).toBe('If $a<b');
+    expect(healMarkdown('So $x<y$ and $a<b')).toBe('So $x<y$ and $a<b');
+    expect(healMarkdown('$$\na<b')).toBe('$$\na<b');
+    expect(healMarkdown('Done $x$ and <b')).toBe('Done $x$ and');
+    expect(healMarkdown('Escaped \\$ and <b')).toBe('Escaped \\$ and');
+    const html = streamingBlockTexts('Then If $a<b').map((block) => renderSource(block)).join('');
+    expect(html).toContain('a&lt;b');
+    expect(streamingBlockTexts('$$\nx<y\n\nz').join('')).toBe('$$\nx<y\n\nz');
   });
 
   it('closes each details the last block left open, and none that is a sentence', () => {

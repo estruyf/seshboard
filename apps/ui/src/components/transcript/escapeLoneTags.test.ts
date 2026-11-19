@@ -30,6 +30,16 @@ describe('escapeLoneTags', () => {
     ]) expect(escapeLoneTags(text), text).toBe(text);
   });
 
+  it('does not touch a < inside maths', () => {
+    for (const text of ['$x<y$', 'If $a<b$ then', 'So $a<b$ and $c<d>e$.', '$$\na<b\nc<d>e\n$$\n\nAfter', 'A $$x<y$$ line', '```math\na<b\n```']) {
+      expect(escapeLoneTags(text), text).toBe(text);
+    }
+    // Outside the formula it is still text.
+    expect(escapeLoneTags('If $a<b$ then <branch> and x<y')).toBe('If $a<b$ then &lt;branch> and x<y');
+    // Without a closing $ there is no formula.
+    expect(escapeLoneTags('If $a<b> then')).toBe('If $a&lt;b> then');
+  });
+
   it('leaves code spans, fences and an existing &lt; as they are', () => {
     for (const text of ['Use `<details>` and `Promise<void>` here', '```html\n<script>\n<b>\n```', '    <b>\n    indented code', 'a &lt;b&gt; c &lt;details&gt;']) {
       expect(escapeLoneTags(text), text).toBe(text);
