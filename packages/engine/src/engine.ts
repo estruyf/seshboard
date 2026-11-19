@@ -110,6 +110,7 @@ import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSeshboard } from './git/githubStar.ts';
 import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { diffImages } from './git/diffImages.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { WorktreeFactsRunner } from './git/worktreeFacts.ts';
 import { fetchPullRequests, ignoredFiles, measureSize, readWorktrees, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
@@ -4241,6 +4242,13 @@ export function createEngine(options: EngineOptions): Engine {
     'git.diff': async ({ cwd, base, path }) => {
       try {
         return await fileDiff(cwd, base, path);
+      } catch (error) {
+        throw new RpcError('GIT_FAILED', (error as Error).message);
+      }
+    },
+    'git.diffImages': async ({ cwd, base, path }) => {
+      try {
+        return await diffImages(cwd, base, path);
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
       }

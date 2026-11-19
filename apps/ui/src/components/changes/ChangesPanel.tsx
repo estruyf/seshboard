@@ -2,7 +2,7 @@ import { trashName } from '../../lib/platform.ts';
 import { ChevronRight, ExternalLink, Maximize2, MessageSquareText, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
 import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
-import { joinPath, type ChangedFile, type ChangesBase, type GitChanges } from '@seshboard/protocol/client';
+import { joinPath, sessionFileKind, type ChangedFile, type ChangesBase, type DiffImage, type GitChanges } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { claim, release } from '../../lib/inFlight.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -21,6 +21,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { CHANGES_DEFAULT_WIDTH, CHANGES_MAX_SHARE, CHANGES_MIN_WIDTH, changesWidthForKey, clampChangesWidth } from './changesWidth.ts';
 import { CommentCard, CommentEditor } from './DiffCommentParts.tsx';
+import { DiffImages } from './DiffImages.tsx';
 import { anchorOf, reviewSummary, targetFromRows, type CommentTarget, type DiffComment } from './diffComments.ts';
 import { submitReview } from './submitReview.ts';
 
@@ -96,6 +97,20 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
     // `version` changes whenever git is checked again, so an open diff follows new edits.
   }, [client, cwd, base, path, version]);
   const rows = useMemo(() => (state && 'diff' in state ? parseUnifiedDiff(state.diff) : []), [state]);
+  // git has no lines for an image: it shows as the image before and after instead.
+  const image = rows.length === 1 && rows[0]!.kind === 'note' && rows[0]!.text === 'Binary file' && sessionFileKind(path) === 'image';
+  const [images, setImages] = useState<{ before: DiffImage | null; after: DiffImage | null } | 'failed' | null>(null);
+  useEffect(() => {
+    if (!client || !image) return;
+    let cancelled = false;
+    client.call('git.diffImages', { cwd, base, path }).then(
+      (result) => !cancelled && setImages(result),
+      () => !cancelled && setImages('failed'),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, cwd, base, path, version, image]);
   const wrap = useOverlay((s) => s.diffWrap);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -175,6 +190,15 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
     return (
       <p id={id} role="alert" className="px-3 py-2 text-meta text-error">
         {state.error}
+      </p>
+    );
+  // Failed, or neither side is there: the note says it is a binary file.
+  if (image && images !== 'failed' && (images === null || images.before || images.after))
+    return images ? (
+      <DiffImages id={id} before={images.before} after={images.after} />
+    ) : (
+      <p id={id} className="px-3 py-2 text-meta text-muted">
+        Loading…
       </p>
     );
   if (rows.length === 0)
