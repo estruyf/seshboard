@@ -4,7 +4,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, sess
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
 import { isBrowserPartition, localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
-import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, CANVAS_CSS, needsCanvas, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
 /**
  * Pages whose keys go to their window (`keysToWindow`): the window's document took the focus from them, which Chromium
@@ -400,6 +400,10 @@ function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardD
   guest.once('destroyed', () => sound.dispose());
   guest.on('dom-ready', () => {
     void guest.executeJavaScriptInIsolatedWorld(SESHBOARD_WORLD, [{ code: MOUSE_NAVIGATION }]).catch(() => {});
+    // A text, JSON or XML response in the dark: its canvas in its own scheme, or white text sits on the white page.
+    void guest.executeJavaScriptInIsolatedWorld(SESHBOARD_WORLD, [{ code: 'document.contentType' }])
+      .then((type: unknown) => typeof type === 'string' && needsCanvas(type) && !guest.isDestroyed() ? guest.insertCSS(CANVAS_CSS, { cssOrigin: 'user' }) : undefined)
+      .catch(() => {});
   });
   guest.on('will-navigate', (event, url) => {
     if (previewNavigation(url, deps.browser()) === 'stay') return;
