@@ -2884,6 +2884,7 @@ export function createEngine(options: EngineOptions): Engine {
         await hosts.sendQueuedNow(sessionId, id);
         sessions.wake(sessionId);
       },
+      moveQueued: (sessionId, id, toIndex) => hosts.moveQueued(sessionId, id, toIndex),
       upNext: (sessionId) => upNext.list(sessionId).map(summarise),
       limit: (sessionId) => remoteLimit(limits.state(), sessionId, sessionProfile(sessionId)),
       resumeLimit: (sessionId) => limits.resumeNow(sessionId),

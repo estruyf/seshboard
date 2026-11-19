@@ -211,6 +211,8 @@ export interface RemoteHubOptions {
   dequeue(sessionId: string, id: string): void;
   /** Send now on a message in Up next: Claude's turn stops and it goes, as on the computer. */
   sendQueuedNow(sessionId: string, id: string): Promise<void>;
+  /** Puts a message in Up next at another place, as dragging it on the computer does. */
+  moveQueued(sessionId: string, id: string, toIndex: number): void;
   /** A session's Up next as it is now, for a phone that starts watching it (it may have missed changes while away). */
   upNext(sessionId: string): QueuedMessage[];
   /** How a session stands with its profile's usage limit; null when its profile isn't at one. */
@@ -1048,6 +1050,13 @@ export class RemoteHub {
       'session.queue.sendNow': async ({ sessionId, id }) => {
         this.checkSession(sessionId);
         await this.options.sendQueuedNow(sessionId, id);
+        return {};
+      },
+      'session.queue.move': ({ sessionId, id, toIndex }, phone) => {
+        this.checkSession(sessionId);
+        this.options.moveQueued(sessionId, id, toIndex);
+        // Sent or removed meanwhile: nothing moved, so no update comes; this one sets its list right.
+        phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
         return {};
       },
       'session.interrupt': async ({ sessionId }) => {

@@ -2457,6 +2457,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-up-next-move",
+      "name": "Remote: Move up on a message in Up next, and dragging or ⌥↑ ⌥↓ on another computer's Up next",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-drafts",
       "name": "Remote: each session keeps the message you didn't send, also after a reload",
       "page": "remote-access"

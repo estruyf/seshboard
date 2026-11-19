@@ -68,6 +68,8 @@ export const REMOTE_FEATURE_PIPELINES = 'pipelines';
 
 /** In `hello`'s `features`: `session.queue.sendNow` answers, so a message in Up next can be sent now (Claude stops first). */
 export const REMOTE_FEATURE_QUEUE_SEND_NOW = 'session.queue.sendNow';
+/** In `hello`'s `features`: `session.queue.move` answers, so the messages in Up next can be put in another order. */
+export const REMOTE_FEATURE_QUEUE_MOVE = 'session.queue.move';
 /** In `hello`'s `features`: `session.send` takes images or files without text, as a message on the computer does. */
 export const REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY = 'session.send.attachmentsOnly';
 /** In `hello`'s `features`: `theme.get` answers and `theme.changed` follows, so the phone can look like this computer. */
