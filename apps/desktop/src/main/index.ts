@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, webContents as electronWebContents, type MenuItemConstructorOptions, type NativeImage } from 'electron';
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
@@ -46,7 +46,7 @@ import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { Cancelled, commandFolders, folderFromArgv, installShellCommand, pathCheck, readShellCommand, removeShellCommand, SHELL_COMMAND_NAMES, shellCommandDir, shellCommandPlan, type ShellCommandPlan } from './shellCommand.ts';
 import { ThemeStore } from './themes.ts';
-import { isConfigDir, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
+import { isConfigDir, isTrashableAgySession, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
 import { guarded } from './guarded.ts';
@@ -629,7 +629,7 @@ async function handleEngineRequest(message: unknown): Promise<unknown> {
   if (browserCall?.type === 'browser-tool' && typeof browserCall.id === 'number' && browserCall.request) {
     return { type: 'browser-tool-result', id: browserCall.id, result: await browserAgent.run(browserCall.request) };
   }
-  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; codexHome?: unknown; on?: unknown } | null;
+  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; codexHome?: unknown; agyHome?: unknown; on?: unknown } | null;
   // Keep awake until done: a session with the flag on works, or the last one finished.
   if (request?.type === 'keep-awake') {
     sessionsAwake.apply(request.on === true);
@@ -661,6 +661,7 @@ async function handleEngineRequest(message: unknown): Promise<unknown> {
     if (typeof request.memoryDir === 'string' || typeof request.instructionsRoot === 'string') return await trashMemoryForEngine(request.id, request.paths, request.memoryDir, request.instructionsRoot);
     if (typeof request.copilotHome === 'string') return await trashCopilotForEngine(request.id, request.paths, request.copilotHome);
     if (typeof request.codexHome === 'string') return await trashCodexForEngine(request.id, request.paths, request.codexHome);
+    if (typeof request.agyHome === 'string') return await trashAgyForEngine(request.id, request.paths, request.agyHome);
     return await trashForEngine(request.id, request.paths, request.repoRoot, request.configDir);
   } catch (error) {
     return { type: 'trash-result', id: request.id, error: (error as Error).message };
@@ -700,6 +701,17 @@ async function trashCodexForEngine(id: number, requested: unknown[], codexHome: 
   const refused = paths.filter((p) => !isTrashableCodexSession(p, codexHome));
   if (refused.length > 0 || paths.length !== requested.length) {
     return { type: 'trash-result', id, error: `Refusing to move files outside Codex's sessions folders: ${refused.join(', ')}` };
+  }
+  for (const path of paths) await shell.trashItem(path);
+  return { type: 'trash-result', id };
+}
+
+/** Moves a Google Antigravity conversation's files to the Trash after checking each is one, in the profile's `--gemini-dir`. */
+async function trashAgyForEngine(id: number, requested: unknown[], agyHome: string): Promise<unknown> {
+  const paths = requested.filter((p): p is string => typeof p === 'string');
+  const refused = paths.filter((p) => !isTrashableAgySession(p, agyHome));
+  if (refused.length > 0 || paths.length !== requested.length) {
+    return { type: 'trash-result', id, error: `Refusing to move files outside Antigravity's conversation folders: ${refused.join(', ')}` };
   }
   for (const path of paths) await shell.trashItem(path);
   return { type: 'trash-result', id };
@@ -1146,6 +1158,23 @@ function openSettings(section: 'about' | null = null): void {
   sendToWindow(showWindow(), IpcChannel.openSettings, section, { latestOnly: true });
 }
 
+/**
+ * Edit › Select All. The role would select the whole window, which a copy then takes with the theme's colours. The window's page
+ * decides first (`useSelectAllInText`: the conversation, reading mode or the file preview selects only its text, a field its own);
+ * when it takes none, or the focus is in a browser page of the Browser panel, it is the focused page's own Select all.
+ */
+function selectAllInFocused(from?: unknown): void {
+  // The window the menu item was used in (Electron hands it over), else the focused one.
+  const win = from instanceof BrowserWindow ? from : BrowserWindow.getFocusedWindow();
+  // A native panel (Save, Open) in front of the window has the focus, not a window of ours: its field selects its own text, as the role did.
+  if (!win) return process.platform === 'darwin' ? Menu.sendActionToFirstResponder('selectAll:') : undefined;
+  const focused = electronWebContents.getFocusedWebContents() ?? win.webContents;
+  if (focused !== win.webContents) return focused.selectAll();
+  focused
+    .executeJavaScript("(() => { const detail = { handled: false }; window.dispatchEvent(new CustomEvent('seshboard:select-all', { detail })); return detail.handled; })()")
+    .then((handled: boolean) => !handled && focused.selectAll(), () => focused.selectAll());
+}
+
 /** Seshboard → Check for Updates…: checks, and opens Settings → About where the result shows. */
 function checkForUpdates(): void {
   updater.run('check');
@@ -1185,7 +1214,21 @@ function installMenu(): void {
     : [{ label: 'File', submenu: [settings, { type: 'separator' }, quit] }];
   const template: MenuItemConstructorOptions[] = [
     ...top,
-    { role: 'editMenu' },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        // What the editMenu role has on each platform, with Select All as our own: ⌘A is the same logic as the key.
+        ...(mac ? ([{ role: 'pasteAndMatchStyle' }, { role: 'delete' }] as MenuItemConstructorOptions[]) : ([{ role: 'delete' }, { type: 'separator' }] as MenuItemConstructorOptions[])),
+        { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: (_item, window) => selectAllInFocused(window) },
+        ...(mac ? ([{ type: 'separator' }, { label: 'Speech', submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }] }] as MenuItemConstructorOptions[]) : []),
+      ],
+    },
     {
       label: 'View',
       submenu: [
@@ -3784,6 +3827,151 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box, its 5-hour and weekly windows, Fork and Ask, a ⋯ menu with Compact, Tools and Rename, and Tools lists github and linear without switches and its hook (${hookText})`;
   } finally {
     // Back as it was: the Codex profile removed (its folder and sessions stay on disk), the sidebar's scope, the project.
+    if (profileId) {
+      await openPage('profiles');
+      await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
+      await js(`document.querySelector('[data-profile="${profileId}"] [data-remove-profile]')?.click()`);
+      const confirm = "[...document.querySelectorAll('[role=alertdialog] button, [role=dialog] button')].find((b) => b.textContent.trim() === 'Remove')";
+      if (await waitInPage(win, `!!${confirm}`, 3_000)) await js(`${confirm}.click()`);
+      await waitInPage(win, `!${markedRow}`, 10_000);
+    }
+    if (!scopeWasAll && (await openPage('sidebar'))) {
+      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}?.click()`);
+    }
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    if (addedProject) await removeProjectInProjects(win, addedProject);
+  }
+}
+
+/**
+ * Google Antigravity (#272). Settings › Profiles offers Antigravity CLI found on this computer; Add profile on it uses
+ * `~/.gemini` and, signed in there already, skips the sign in: Antigravity is ready, on its plan. Its session in the
+ * sidebar has Antigravity's mark, its tool calls as steps (its file read as a Read) and a message box. New session on
+ * it has Antigravity's models, thinking levels and modes; Start says what the demo's Antigravity says (it runs nothing).
+ * The demo's Antigravity is made up (SESHBOARD_STUB_AGY): installed, signed in, three models, two sessions in
+ * `~/.gemini`, and an `agy acp` that answers in the engine. Elsewhere the step is skipped: it never reaches a real
+ * Antigravity. The profile and the project it added are removed again.
+ */
+async function runAntigravityStep(win: BrowserWindow): Promise<string> {
+  if (!process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_STUB_AGY !== '1') return 'ok: skipped, only with the demo\'s made-up Antigravity (npm run smoke:demo)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const markedRow = "document.querySelector('[data-session-id]:has([data-provider-mark=\"antigravity\"])')";
+  const scope = "document.querySelector('[data-settings-page=\"sidebar\"] [data-session-scope]')";
+  const page = "document.querySelector('[data-settings-page=\"profiles\"]')";
+  const offer = `${page}?.querySelector('[data-provider-offer="antigravity"]')`;
+  const openPage = async (section: string) => {
+    await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
+  };
+  if (!(await openPage('sidebar'))) return 'no Sidebar page in Settings';
+  if (!(await waitInPage(win, `!!${scope}`, 3_000))) return 'no Show sessions from other apps switch';
+  const scopeWasAll = (await js(`${scope}.getAttribute('aria-checked') === 'true'`)) as boolean;
+  if (!scopeWasAll) await js(`${scope}.click()`);
+  let profileId: string | null = null;
+  let addedProject: string | null = null;
+  const nsv = '[data-new-session-view]';
+  const box = `document.querySelector('${nsv} [data-composer]')`;
+  try {
+    // 1. The offer, and Add profile on its own folder, signed in there already.
+    if (!(await openPage('profiles'))) return 'no Profiles page in Settings';
+    if (!(await waitInPage(win, `!!${offer}`, 15_000))) return 'no offer for Antigravity CLI in Settings › Profiles';
+    const offerText = (await js(`${offer}.textContent`)) as string;
+    if (!/Google Antigravity CLI is on this (Mac|PC)/.test(offerText) || !offerText.includes('see its 2 sessions here')) return `the Antigravity offer reads ${JSON.stringify(offerText)}`;
+    await js(`${offer}.querySelector('[data-provider-offer-add]').click()`);
+    if (!(await waitInPage(win, `${page}.querySelector('[data-new-profile-tool="antigravity"]')?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'Add Antigravity profile did not open Add profile with Antigravity picked';
+    if (!(await waitInPage(win, `!${page}.querySelector('[data-add-profile-next]').disabled`, 10_000))) return 'Next stays off for Antigravity (the demo agy was not found)';
+    await js(`${page}.querySelector('[data-add-profile-next]').click()`);
+    const folderField = `${page}.querySelector('[data-new-profile-folder]')`;
+    if (!(await waitInPage(win, `/^~[\\\\/]\\.gemini$/.test(${folderField}?.value ?? '')`, 3_000))) return `Add profile with Antigravity offers ${String(await js(`${folderField}?.value`))}, not ~/.gemini`;
+    if (!(await waitInPage(win, `!!${page}.querySelector('[data-new-profile-signed-in]')`, 5_000))) return "Add profile with Antigravity doesn't say it is signed in already";
+    await js(`${page}.querySelector('[data-add-profile-submit]').click()`);
+    const ready = `${page}.querySelector('[data-profile-ready]')`;
+    if (!(await waitInPage(win, `${ready}?.textContent.includes('Antigravity is ready')`, 10_000))) return 'adding the profile did not end on Antigravity is ready';
+    profileId = (await js(`${ready}.dataset.profileReady`)) as string;
+    if (!(await waitInPage(win, `${ready}.querySelector('[data-profile-ready-account]')?.textContent.includes('Google AI Pro')`, 10_000))) return "Antigravity is ready doesn't say its plan";
+    await js(`${ready}.querySelector('[data-profile-ready-done]').click()`);
+    await js("document.querySelector('[data-close-settings]')?.click()");
+
+    // 2. Its session: the mark, its steps from the replay (the read of Cart.tsx), and a message box for Antigravity.
+    if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Antigravity session showed in the sidebar after adding the profile';
+    const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
+    const view = `document.querySelector('[data-current-session="${id}"]')`;
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 10_000))) return 'the Antigravity session has no message box';
+    if (await js(`!!${view}.querySelector('[data-read-only-session]')`)) return 'the Antigravity session still says it is read-only';
+    const fold = `${view}.querySelector('[data-activity] > button')`;
+    if (!(await waitInPage(win, `!!${fold}`, 10_000))) return 'the Antigravity transcript shows no tool activity';
+    if ((await js(`${fold}.getAttribute('aria-expanded')`)) !== 'true') await js(`${fold}.click()`);
+    const steps = `[...${view}.querySelectorAll('[data-activity] [data-step]')].map((s) => s.textContent.trim())`;
+    if (!(await waitInPage(win, `${steps}.some((t) => t.includes('Cart.tsx'))`, 5_000))) return `the Antigravity transcript's steps have no read of Cart.tsx (${JSON.stringify(await js(steps))})`;
+    await shot(win, 'antigravity-session.png');
+    // Its ⋯ menu: Tools and Open in Antigravity CLI; no Rename (Antigravity has no way to rename yet).
+    await js(`${view}.querySelector('[data-more-menu]').click()`);
+    const menuOk = await waitInPage(win, "!!document.querySelector('[role=menu] [data-provider-tools]') && !!document.querySelector('[role=menu] [data-open-provider-cli=\"antigravity\"]') && !document.querySelector('[role=menu] [data-rename-session]')", 3_000);
+    pressKey(win, 'Escape');
+    if (!menuOk) return "the Antigravity session's ⋯ menu doesn't have Tools and Open in Antigravity CLI without Rename";
+    if (!(await waitInPage(win, `!!${view}.querySelector('[data-toggle-ask]')`, 5_000))) return 'the Antigravity session has no Ask';
+
+    // 3. New session on the Antigravity profile: its mark, models, thinking levels and modes; Start refused by the demo.
+    await js("document.querySelector('[data-new-session]')?.click()");
+    const chip = `document.querySelector('${nsv} [data-profile-select]')`;
+    if (!(await waitInPage(win, `!!${chip}`, 5_000))) return 'New session has no profile chip';
+    const folderOf = `document.querySelector('${nsv} [data-folder-select]')?.dataset.value`;
+    if (!(await js(`!!${folderOf}`))) {
+      await js(`document.querySelector('${nsv} [data-add-folder]')?.click()`);
+      if (!(await waitInPage(win, "!!document.querySelector('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')", 5_000))) return 'New session has no project to add';
+      addedProject = (await js(
+        "(() => { const all = [...document.querySelectorAll('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')].map((e) => e.dataset.knownProject); return all.find((r) => /acme-store$/.test(r)) ?? all[0]; })()",
+      )) as string;
+      await js(`document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)}).click()`);
+      if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)})?.dataset.added === 'true'`, 3_000))) return 'the project was not added';
+      pressKey(win, 'Escape');
+      await waitInPage(win, "!document.querySelector('[data-add-project-dialog]')", 3_000);
+      if (!(await js(`${folderOf} === ${JSON.stringify(addedProject)}`))) {
+        if (!(await waitInPage(win, `!!document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)})`, 3_000))) return 'the added project is not offered in New session';
+        await js(`document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)}).click()`);
+      }
+      if (!(await waitInPage(win, `${folderOf} === ${JSON.stringify(addedProject)}`, 5_000))) return 'New session did not pick the added project';
+    }
+    await js(`${chip}.click()`);
+    const choice = `document.querySelector('[data-menu="profile"] [data-choice=${JSON.stringify(profileId)}]')`;
+    if (!(await waitInPage(win, `!!${choice}`, 3_000))) return "New session's profile menu has no Antigravity profile";
+    await js(`${choice}.click()`);
+    if (!(await waitInPage(win, `${box}?.placeholder === 'What should Antigravity work on?'`, 5_000))) return `New session with Antigravity asks ${JSON.stringify(await js(`${box}?.placeholder`))}`;
+    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-chip-provider="antigravity"]')`, 3_000))) return 'New session with the Antigravity profile has no Antigravity mark';
+    const menuChoices = async (name: string) => {
+      await js(`document.querySelector('${nsv} [data-${name}-select]')?.click()`);
+      const open = await waitInPage(win, `!!document.querySelector('[data-menu="${name}"]')`, 3_000);
+      const values = open ? ((await js(`[...document.querySelectorAll('[data-menu="${name}"] [data-choice]')].map((b) => b.dataset.choice)`)) as string[]) : [];
+      pressKey(win, 'Escape');
+      await waitInPage(win, `!document.querySelector('[data-menu="${name}"]')`, 2_000);
+      return values;
+    };
+    const models = await menuChoices('model');
+    if (!models.includes('gemini-4-neon') || !models.includes('gemini-3.8-flash')) return `New session's model menu with Antigravity lists ${JSON.stringify(models)}`;
+    await js(`document.querySelector('${nsv} [data-model-select]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-menu="model"] [data-choice="gemini-3.8-flash"]')`, 3_000))) return 'the model menu did not open again';
+    await js(`document.querySelector('[data-menu="model"] [data-choice="gemini-3.8-flash"]').click()`);
+    const efforts = await menuChoices('effort');
+    if (efforts.join(',') !== ',low,medium,high,xhigh') return `New session's effort menu with Antigravity lists ${JSON.stringify(efforts)}`;
+    const modes = await menuChoices('mode');
+    if (modes.join(',') !== 'default,acceptEdits,plan,auto') return `New session's mode menu with Antigravity lists ${JSON.stringify(modes)}`;
+    await shot(win, 'new-session-antigravity.png');
+    const toggle = `document.querySelector('${nsv} [data-worktree-switch]')`;
+    if (await js(`${toggle}?.getAttribute('aria-checked') === 'true'`)) await js(`${toggle}.click()`);
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('Smoke: a prompt for Antigravity');
+    const start = `document.querySelector('${nsv} [data-composer-submit]')`;
+    if (!(await waitInPage(win, `!!${start} && !${start}.disabled`, 5_000))) return "typing in New session with Antigravity didn't make Start usable";
+    await js(`${start}.click()`);
+    const refused = await waitInPage(win, "document.body.innerText.includes('The demo has no Antigravity CLI to run sessions')", 10_000);
+    const said = refused ? '' : String(await js("[...document.querySelectorAll('[role=alert], [role=status], [data-toast]')].map((e) => e.textContent).join(' | ')"));
+    await setFieldValue(win, `${nsv} [data-composer]`, '');
+    if (!refused) return `Start with the demo's Antigravity didn't say it has no Antigravity CLI to run sessions (${said || 'nothing said'})`;
+    return `ok: offered, added without a sign in, Antigravity is ready on Google AI Pro; its session has the mark, its steps, a message box, Ask, Tools and Open in Antigravity CLI; New session on it with its models (${models.filter(Boolean).join(', ')}), thinking levels and modes, and Start said the demo has no Antigravity CLI`;
+  } finally {
     if (profileId) {
       await openPage('profiles');
       await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
@@ -6961,6 +7149,210 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/**
+ * Mermaid diagrams (#255), in a throwaway Markdown file in a folder of its own, opened in the file preview: a flowchart and
+ * a pie chart are drawn as SVG (Mermaid loads on first use, under the window's Content-Security-Policy), a block that does
+ * not parse shows its source with "Couldn't draw this diagram.", Source and Preview switch, the colours follow light and dark
+ * (the diagram is drawn again), and a click opens the flowchart larger, where the buttons zoom and Escape closes only the
+ * overlay. The folder is removed at the end.
+ */
+async function runMermaidStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-mermaid-')));
+  const md = join(dir, 'diagrams.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const BLOCKS = `${DIALOG}.querySelectorAll('[data-mermaid]')`;
+  const original = preferences.get().colorScheme;
+  const open = () => js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+  const drawing = () => js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML ?? ''`) as Promise<string>;
+  try {
+    // A diagram's script must never run: alert() is replaced by a flag, as a real one would block the window.
+    await js('window.__mermaidAlert = window.alert; window.__alerted = false; window.alert = () => { window.__alerted = true; }; null');
+    writeFileSync(md, '# Diagrams\n\n```mermaid\nflowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C[Ship]\n  B -->|no| D[Wait]\n```\n\n```Mermaid\nthis is not a diagram\n```\n\n```mermaid\npie title Pets\n  "Dogs" : 3\n  "Cats" : 2\n```\n\n```mermaid\nxychart-beta\n  title "Sales"\n  x-axis [jan, feb, mar]\n  y-axis "Units" 0 --> 100\n  bar [30, 60, 90]\n```\n\n```mermaid\n%%{init: {"securityLevel":"loose","theme":"dark","themeVariables":{"primaryColor":"#ff0000"},"htmlLabels":true,"flowchart":{"htmlLabels":true}}}%%\nflowchart LR\n  A["<img src=x onerror=alert(1)>"] --> B[Safe]\n  click A call alert()\n  click B href "javascript:alert(1)"\n```\n\n```mermaid\nflowchart LR\n  A[Docs] --> B[Next]\n  click A href "https://example.com/docs"\n```\n');
+    await open();
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DIALOG}.querySelectorAll('[data-mermaid]').length === 6`, 5_000))) return 'the Markdown file did not open with its six diagram blocks';
+    // Mermaid is fetched the first time, so the first one takes longer.
+    if (!(await waitInPage(win, `${BLOCKS}[0].dataset.mermaidState === 'drawn' && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 15_000))) {
+      return `the flowchart was not drawn (it is ${await js(`${BLOCKS}[0]?.dataset.mermaidState ?? 'missing'`)})`;
+    }
+    const flow = (await js(`(() => { const b = ${BLOCKS}[0]; const svg = b.querySelector('[data-mermaid-diagram] svg'); return { text: svg.textContent, scripts: svg.querySelectorAll('script').length, width: svg.getBoundingClientRect().width }; })()`)) as { text: string; scripts: number; width: number };
+    if (!flow.text.includes('Start') || !flow.text.includes('Ready?') || !flow.text.includes('Ship')) return `the flowchart's labels read ${JSON.stringify(flow.text)}`;
+    if (flow.scripts !== 0 || flow.width < 50) return `the flowchart has ${flow.scripts} scripts and is ${flow.width}px wide`;
+
+    // A block that mounts from the cache (the preview closed and opened again) and then gets another theme keeps its drawing
+    // while the new one is made, instead of falling back to its source.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    await open();
+    if (!(await waitInPage(win, `${BLOCKS}[0]?.dataset.mermaidState === 'drawn'`, 3_000))) return 'the flowchart was not drawn at once from the cache when the preview opened again';
+    const wasDark = (await js("matchMedia('(prefers-color-scheme: dark)').matches")) as boolean;
+    const first = await drawing();
+    await js(`window.__mermaidStates = []; window.__mermaidStop = false; (function tick() { window.__mermaidStates.push(${BLOCKS}[0]?.dataset.mermaidState ?? 'gone'); if (!window.__mermaidStop) requestAnimationFrame(tick); })()`);
+    await setColorScheme(win, wasDark ? 'light' : 'dark');
+    const redrawn = await waitInPage(win, `${BLOCKS}[0]?.querySelector('[data-mermaid-diagram] svg')?.innerHTML !== ${JSON.stringify(first)} && ${BLOCKS}[0].dataset.mermaidState === 'drawn'`, 8_000);
+    await js('window.__mermaidStop = true');
+    const states = (await js('[...new Set(window.__mermaidStates)]')) as string[];
+    if (!redrawn) return 'a diagram from the cache was not drawn again for the other colour scheme';
+    if (states.join() !== 'drawn') return `a diagram from the cache showed ${states.join(', ')} while it was drawn again for the other colour scheme, not its old drawing`;
+
+    // A chart type that is not a flowchart comes with Mermaid.
+    if (!(await waitInPage(win, `${BLOCKS}[2].dataset.mermaidState === 'drawn' && ${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Dogs')`, 5_000))) return `the pie chart was not drawn (${await js(`${BLOCKS}[2].dataset.mermaidState + ': ' + (${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent ?? '').slice(0, 200)`)})`;
+
+    if (!(await waitInPage(win, `${BLOCKS}[3].dataset.mermaidState === 'drawn' && ${BLOCKS}[3].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Sales')`, 5_000))) return 'the bar chart (xychart-beta) was not drawn';
+
+    // A diagram that does not parse stays source, with a line under it.
+    if (!(await waitInPage(win, `${BLOCKS}[1].dataset.mermaidState === 'error'`, 5_000))) return 'the broken diagram did not report that it cannot be drawn';
+    const broken = (await js(`(() => { const b = ${BLOCKS}[1]; return { line: b.querySelector('[data-mermaid-error]')?.textContent ?? null, source: b.querySelector('[data-code-language]')?.textContent ?? '', svgs: b.querySelectorAll('[data-mermaid-diagram] svg').length }; })()`)) as { line: string | null; source: string; svgs: number };
+    if (broken.line !== "Couldn't draw this diagram.") return `the broken diagram's line reads ${JSON.stringify(broken.line)}`;
+    if (!broken.source.includes('this is not a diagram') || broken.svgs !== 0) return `the broken diagram shows ${JSON.stringify(broken.source)} and ${broken.svgs} drawings`;
+
+    // Hostile text: the diagram's own settings can't loosen the security level or replace the theme, and nothing it holds runs.
+    if (!(await waitInPage(win, `['drawn', 'error'].includes(${BLOCKS}[4].dataset.mermaidState)`, 5_000))) return 'the hostile diagram neither drew nor failed';
+    const hostile = (await js(`(() => { const b = ${BLOCKS}[4]; const svg = b.querySelector('[data-mermaid-diagram] svg'); const all = svg ? [...svg.querySelectorAll('*')] : []; return { state: b.dataset.mermaidState, source: b.querySelector('[data-code-language]')?.textContent ?? '', handlers: all.flatMap((el) => [...el.attributes].filter((a) => /^on/i.test(a.name)).map((a) => el.tagName + '.' + a.name)), scripts: all.filter((el) => /^(script|img|iframe|object|foreignobject)$/i.test(el.tagName)).map((el) => el.tagName), links: all.flatMap((el) => [...el.attributes].filter((a) => /javascript:/i.test(a.value)).map((a) => el.tagName + '.' + a.name)), red: svg ? /#ff0000|rgb\\(255, ?0, ?0\\)/i.test(svg.outerHTML) : false, text: svg?.textContent ?? '', alerted: window.__alerted }; })()`)) as { state: string; source: string; handlers: string[]; scripts: string[]; links: string[]; red: boolean; text: string; alerted: boolean };
+    if (hostile.state !== 'drawn') return `the hostile diagram is ${hostile.state}, not drawn: its safe parts should still draw`;
+    if (!hostile.text.includes('Safe')) return `the hostile diagram reads ${JSON.stringify(hostile.text)}`;
+    if (hostile.handlers.length || hostile.scripts.length || hostile.links.length) return `the hostile diagram kept ${JSON.stringify({ handlers: hostile.handlers, elements: hostile.scripts, links: hostile.links })}`;
+    if (hostile.red) return 'the diagram replaced the app\'s colours with its own theme variables';
+    if (await js(`${BLOCKS}[4].querySelector('[data-mermaid-diagram] foreignObject') !== null`)) return 'the diagram brought back HTML labels';
+    // Clicking its nodes runs nothing either.
+    await js(`${BLOCKS}[4].querySelectorAll('[data-mermaid-diagram] .node').forEach((n) => n.dispatchEvent(new MouseEvent('click', { bubbles: true })))`);
+    await settle(win);
+    if (await js('window.__alerted === true')) return 'a hostile diagram ran a script (alert was called)';
+    // A click on a node is a click on the diagram, which opens it larger: close that overlay before the next part.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-mermaid-overlay]')", 3_000))) return 'a click on the hostile diagram opened an overlay that Escape did not close';
+
+    // A link in a diagram opens the way a link in the Markdown does (a new window, which main hands to the browser), and
+    // doesn't also open the diagram larger. window.open is a spy here, so nothing leaves the sandbox.
+    if (!(await waitInPage(win, `${BLOCKS}[5].dataset.mermaidState === 'drawn' && ${BLOCKS}[5].querySelector('[data-mermaid-diagram] a')`, 5_000))) return 'the diagram with a link was not drawn with its link';
+    // Mermaid builds each diagram in a hidden element of the page and removes it when done, a failed one too. The diagrams
+    // draw one after the other, so one still being drawn has its element there: look once the last has drawn, and wait for it
+    // to go rather than catch another diagram's (a slower machine is still drawing when the broken one reports).
+    if (!(await waitInPage(win, "!document.querySelector('body > [id^=\"dsb-mermaid-\"]')", 3_000))) return 'a diagram left its hidden element in the page';
+    await js("window.__mermaidOpen = window.open; window.__opened = []; window.open = (...args) => { window.__opened.push(args[0]); return null; }; null");
+    await js(`${BLOCKS}[5].querySelector('[data-mermaid-diagram] a').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))`);
+    const opened = (await js('window.__opened')) as string[];
+    if (opened.join() !== 'https://example.com/docs') return `a click on the diagram's link opened ${JSON.stringify(opened)}`;
+    await settle(win);
+    if (await js("!!document.querySelector('[data-mermaid-overlay]')")) return 'a click on the diagram\'s link also opened the diagram larger';
+
+    // Preview | Source on the flowchart.
+    await js(`${BLOCKS}[0].querySelector('[data-code-view="source"]').click()`);
+    if (!(await waitInPage(win, `!${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg') && ${BLOCKS}[0].innerText.includes('flowchart LR')`, 3_000))) return 'Source did not show the diagram text';
+    await js(`${BLOCKS}[0].querySelector('[data-code-view="preview"]').click()`);
+    if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 3_000))) return 'Preview did not bring the diagram back';
+
+    // Light and dark: drawn again with the theme's colours.
+    await setColorScheme(win, 'light');
+    await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 5_000);
+    await shot(win, 'mermaid-light.png');
+    const light = await drawing();
+    await setColorScheme(win, 'dark');
+    if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML !== ${JSON.stringify(light)} && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 8_000))) return 'the diagram was not drawn again when the colour scheme changed';
+    await shot(win, 'mermaid-dark.png');
+
+    // Larger, with zoom; Escape closes the overlay and leaves the preview.
+    await js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram]').click()`);
+    const OVERLAY = "document.querySelector('[data-mermaid-overlay][role=dialog]')";
+    if (!(await waitInPage(win, `${OVERLAY}?.querySelector('[data-mermaid-viewport] svg') && ${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent.endsWith('%')`, 3_000))) return 'a click on the diagram did not open it larger';
+    const percent = () => js(`parseInt(${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent)`) as Promise<number>;
+    const before = await percent();
+    await js(`${OVERLAY}.querySelector('[data-mermaid-zoom-in]').click()`);
+    if (!(await waitInPage(win, `parseInt(${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent) > ${before}`, 2_000))) return `Zoom in did not zoom (${before}%)`;
+    await js(`${OVERLAY}.querySelector('[data-mermaid-actual]').click()`);
+    if ((await waitInPage(win, `${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent === '100%'`, 2_000)) === false) return 'Actual size did not show 100%';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${OVERLAY} && ${DIALOG}`, 3_000))) return 'Escape did not close the overlay and leave the preview';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    return `ok: a flowchart, a pie chart and a bar chart are drawn as SVG in the preview, a diagram from the cache keeps its drawing while it is drawn again for another colour scheme, a link in a diagram opens in the browser without opening it larger, a hostile diagram can't change the security level, theme or labels and runs and keeps nothing (no handlers, javascript: links or images), a broken diagram shows its source and "Couldn't draw this diagram.", Source and Preview switch, the diagram is drawn again in dark mode, and a click opens it larger with zoom (${before}% to more, then 100%), where Escape closes only the overlay`;
+  } finally {
+    await js('if (window.__mermaidAlert) { window.alert = window.__mermaidAlert; delete window.__mermaidAlert; } if (window.__mermaidOpen) { window.open = window.__mermaidOpen; delete window.__mermaidOpen; } null');
+    updatePreferences({ colorScheme: original });
+    for (let i = 0; i < 3 && (await js(`!!${DIALOG} || !!document.querySelector('[data-mermaid-overlay]')`)); i++) {
+      pressKey(win, 'Escape');
+      await settle(win);
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Maths in a Markdown preview (#348), on a throwaway file: `$x^2$`, a `$$` block and a math fence are drawn by KaTeX (its
+ * fonts load under the window's CSP), in the text's colour; a dollar amount stays text; a formula that doesn't parse shows its
+ * source; a wide formula scrolls inside its block instead of widening the page; a block's Source and Preview switch works.
+ * The folder is removed at the end.
+ */
+async function runMathsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-maths-')));
+  const md = join(dir, 'maths.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  const wide = Array.from({ length: 80 }, (_, i) => `x_{${i + 1}}`).join(' + ');
+  // A drawn formula sits in a shadow root (so a selection copies only its TeX): its KaTeX is in there.
+  const DRAWN = (selector: string, within = PREVIEW) => `[...(${within}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector(${JSON.stringify(selector)}))`;
+  try {
+    writeFileSync(
+      md,
+      `# Maths\n\nA square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.\n\n$$\n\\int_0^1 x\\,dx = \\frac12\n$$\n\n\`\`\`math\n\\sum_{i=1}^n i = \\frac{n(n+1)}{2}\n\`\`\`\n\nBroken: $\\frac{1$ here.\n\nPlaced: before $\\llap{\\kern-60em CLICK}$ after, and $\\rule{1em}{2000em}$ too.\n\n$$\n${wide}\n$$\n`,
+    );
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DRAWN('.katex')}`, 10_000))) return 'the formulas were not drawn in the Markdown preview';
+    // The fonts are requested once the formulas are on screen and arrive a little later (slower on a CI machine): wait for one
+    // to be loaded, and say at once if the window refused them.
+    const KATEX_FONTS = "[...document.fonts].filter((f) => f.family.replace(/[\"']/g, '').startsWith('KaTeX'))";
+    if (!(await waitInPage(win, `${KATEX_FONTS}.some((f) => f.status === 'loaded' || f.status === 'error')`, 10_000))) return "KaTeX's fonts were never requested";
+    if (await js(`${KATEX_FONTS}.some((f) => f.status === 'error') && !${KATEX_FONTS}.some((f) => f.status === 'loaded')`)) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
+    const found = (await js(
+      `(() => { const p = ${PREVIEW}; const html = (sel) => p.querySelectorAll(sel).length;
+        const inline = p.querySelector('[data-math="inline"]'); const block = p.querySelector('[data-code-preview-block] [data-math="block"]');
+        const wideBox = [...p.querySelectorAll('[data-math="block"]')].pop();
+        return { inline: html('[data-math="inline"] [data-math-visual]'), blocks: html('[data-code-preview-block] [data-math="block"] [data-math-visual]'), switches: html('[data-code-preview-block] [data-code-view="source"]'),
+          text: p.innerText, broken: p.querySelector('[data-math-error]')?.innerText ?? null,
+          colour: inline && getComputedStyle(inline.querySelector('[data-math-visual]').shadowRoot.querySelector('.katex')).color, drawnInShadow: [...p.querySelectorAll('[data-math-visual]')].every((v) => v.shadowRoot?.querySelector('.katex') && v.children.length === 0), prose: getComputedStyle(p).color,
+          fonts: [...document.fonts].filter((f) => f.family.replace(/["']/g, '').startsWith('KaTeX') && f.status === 'loaded').length,
+          wideScrolls: wideBox.scrollWidth > wideBox.clientWidth, wideFits: wideBox.getBoundingClientRect().right <= p.getBoundingClientRect().right + 1, pageScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          blockInner: !!block,
+          clipped: [...p.querySelectorAll('[data-math="inline"]')].map((m) => getComputedStyle(m).overflowX + '/' + getComputedStyle(m).overflowY + ':' + Math.round(m.getBoundingClientRect().height) + 'x' + Math.round(m.getBoundingClientRect().width)),
+          sources: [...p.querySelectorAll('[data-math-source]')].map((m) => m.dataset.mathSource).filter(Boolean).length,
+          // What Copy, Quote and Remember read: a selection across a line of text, and one that is only a formula.
+          selected: (() => { const sel = getSelection(); const pick = (fn) => { const r = document.createRange(); fn(r); sel.removeAllRanges(); sel.addRange(r); const t = String(sel); sel.removeAllRanges(); return t; };
+            return { line: pick((r) => r.selectNodeContents(p.querySelector('p'))), alone: pick((r) => r.selectNode(p.querySelector('[data-math="inline"]'))), block: pick((r) => r.selectNodeContents(p.querySelector('[data-code-preview] [data-math="block"]'))) }; })()
+        }; })()`,
+    )) as { inline: number; blocks: number; switches: number; text: string; broken: string | null; colour: string | null; prose: string; fonts: number; wideScrolls: boolean; wideFits: boolean; pageScrolls: boolean; blockInner: boolean; clipped: string[]; sources: number; drawnInShadow: boolean; selected: { line: string; alone: string; block: string } };
+    if (found.inline !== 3) return `${found.inline} inline formulas were drawn, not 3`;
+    if (!found.drawnInShadow) return 'a formula is not drawn in its shadow root alone';
+    // One that places itself (a negative kern, a tall rule) is clipped to its own box, and every drawn formula keeps its TeX for a copy.
+    if (!found.clipped.every((box) => box.startsWith('clip/clip'))) return `an inline formula is not clipped to its box (${found.clipped.join(' ')})`;
+    if (found.sources !== 6) return `${found.sources} formulas carry their TeX for a copy, not 6`;
+    if (found.blocks !== 3) return `${found.blocks} blocks were drawn, not 3 (a $$ block, a math fence and a wide one)`;
+    if (found.switches !== 3) return `${found.switches} math blocks have a Source switch, not 3`;
+    if (!found.text.includes('it costs $5 and $10 a month')) return 'the dollar amount did not stay text';
+    if (found.selected.line !== 'A square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.') return `a selection across a line with a formula reads ${JSON.stringify(found.selected.line)}`;
+    if (found.selected.alone !== '$x^2 + y^2 = z^2$') return `a selection of only a formula reads ${JSON.stringify(found.selected.alone)}`;
+    if (found.selected.block.trim() !== '$$\n\\int_0^1 x\\,dx = \\frac12\n$$') return `a selection of a formula block reads ${JSON.stringify(found.selected.block)}`;
+    if (!found.broken?.includes('\\frac{1')) return `a formula that doesn't parse shows ${JSON.stringify(found.broken)}, not its source`;
+    if (found.colour !== found.prose) return `a formula is ${found.colour}, not the text colour ${found.prose}`;
+    if (found.fonts < 1) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
+    if (!found.wideScrolls || !found.wideFits || found.pageScrolls) return `a wide formula does not scroll inside its block (scrolls ${found.wideScrolls}, fits ${found.wideFits}, page scrolls ${found.pageScrolls})`;
+
+    await shot(win, 'maths-preview.png');
+
+    // Source shows the formula as written and Preview draws it again.
+    const FIRST = `${PREVIEW}.querySelector('[data-code-preview-block]')`;
+    await js(`${FIRST}.querySelector('[data-code-view="source"]').click()`);
+    if (!(await waitInPage(win, `!${FIRST}.querySelector('[data-code-preview]') && ${FIRST}.innerText.includes('\\int_0^1')`, 3_000))) return 'Source did not show the formula as written';
+    await js(`${FIRST}.querySelector('[data-code-view="preview"]').click()`);
+    if (!(await waitInPage(win, `${DRAWN('.katex', FIRST)}`, 3_000))) return 'Preview did not draw the formula again';
+    return 'ok: $x^2$, a $$ block and a math fence are drawn by KaTeX in the text colour with its fonts loaded, a dollar amount stays text, a formula that does not parse shows its source, a wide one scrolls inside its block, and Source and Preview switch';
+  } finally {
+    pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click()");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** ⌘⇧F, type a word, open the first hit: the session opens with that message highlighted. */
 /**
  * Find in the session (⌘F), read-only: searches for a word from one of Claude's replies, checks the
@@ -7159,6 +7551,360 @@ async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * A selection in the transcript copies as clean HTML (`useCleanCopy`): the structure of what is selected (a list, inline code,
+ * two table rows, a bold run) with no classes, theme colours, data attributes or buttons, and without what a person could not
+ * select (the speaker's name, the turn line). Read-only: it dispatches `copy` events with a DataTransfer of its own, so the
+ * clipboard is untouched, and the blocks it adds to the transcript for the step are removed again. The HTML is parsed, not
+ * searched: a reply's own words ("in the background") would match a pattern.
+ */
+async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await transcriptAtRest(win);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const report = (await js(`(() => {
+    const area = document.querySelector('${view} [data-transcript]');
+    if (!area) return { none: true };
+    const problems = [];
+    const added = [];
+    const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+    // Every element and attribute the clipboard keeps: no class, data attribute, button or theme colour.
+    const audit = (label, body) => {
+      for (const el of body.querySelectorAll('*')) {
+        if (['BUTTON', 'SVG', 'INPUT', 'TEXTAREA', 'IMG'].includes(el.tagName)) problems.push(label + ': a <' + el.tagName.toLowerCase() + '>');
+        for (const attribute of el.attributes) {
+          if (!['href', 'start', 'style'].includes(attribute.name)) problems.push(label + ': ' + attribute.name + '= on <' + el.tagName.toLowerCase() + '>');
+          else if (attribute.name === 'style' && /color|background/i.test(attribute.value)) problems.push(label + ': style ' + attribute.value);
+        }
+      }
+    };
+    // Selects the range and copies, as ⌘C does: a copy event at 'target' with a DataTransfer to read.
+    const copy = (range, target) => {
+      document.activeElement?.blur();
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const data = new DataTransfer();
+      const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain'), selected: selection.toString() };
+    };
+    const rangeOf = (startNode, startOffset, endNode, endOffset) => {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+      return range;
+    };
+    const add = (el) => (area.appendChild(el), added.push(el), el);
+    try {
+      // 1. A reply on screen with a list and inline code, or a block of that shape.
+      let reply = [...area.querySelectorAll('[data-remember-from="claude"] .markdown')].find((m) => m.querySelector('li') && m.querySelector(':not(pre) > code'));
+      const real = !!reply;
+      if (!reply) {
+        reply = add(document.createElement('div'));
+        reply.className = 'markdown text-body select-text';
+        reply.innerHTML = '<p class="text-text">Steps:</p><ul class="list-disc"><li class="my-0.5" style="color: red">Run <code class="rounded bg-border/60 font-mono">npm test</code></li><li><strong>Bold</strong> and <a href="https://example.com" class="text-link">a link</a></li></ul><button type="button">Copy code</button>';
+      }
+      const whole = document.createRange();
+      whole.selectNodeContents(reply);
+      const first = copy(whole, reply);
+      if (!first.prevented) problems.push('a copy of a reply was left to the browser, with its theme colours');
+      const body = parse(first.html);
+      if (!body.querySelector('li') || !body.querySelector('code')) problems.push('the HTML of a reply has no <li> and <code>');
+      audit('reply', body);
+      if (!first.text) problems.push('the copy of a reply has no plain text');
+
+      // 2. Parts of a block: items 3 and 4 of a list, two table rows, a few words in a bold run, a prompt with line breaks,
+      // and what a person could not select (the speaker's name, a line of numbers) in the middle of it.
+      const block = add(document.createElement('div'));
+      block.className = 'markdown text-body select-text';
+      block.innerHTML = '<h2 class="sr-only">Speaker</h2><ol><li>one</li><li>two</li><li>three</li><li>four</li></ol><table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table><p>Some <strong>bold run</strong> here</p><p class="whitespace-pre-wrap" data-lines></p><p class="select-none">turn line</p><p data-mid>Run <code>npm test</code> and <strong>then</strong> check it</p><ul data-three><li>alpha</li><li>beta</li><li>gamma</li></ul><p data-math>Let <span data-math-source="x^2"><span class="select-none">garbled</span></span> be</p><details><summary>Summary</summary><p>Hidden body</p></details>';
+      block.querySelector('[data-lines]').append('first line' + String.fromCharCode(10) + 'second line');
+      const li = [...block.querySelectorAll('li')];
+      const items = copy(rangeOf(li[2].firstChild, 0, li[3].firstChild, 4), li[2]);
+      const list = parse(items.html).querySelector('ol');
+      if (!list || list.getAttribute('start') !== '3' || list.querySelectorAll('li').length !== 2) problems.push('items 3 and 4 of a list: ' + items.html.slice(0, 120));
+      const cells = [...block.querySelectorAll('td')];
+      const rows = copy(rangeOf(cells[0].firstChild, 0, cells[3].firstChild, 1), cells[0]);
+      const table = parse(rows.html).querySelector('table > tbody');
+      if (!table || table.querySelectorAll('tr').length !== 2 || table.querySelectorAll('td').length !== 4) problems.push('two table rows: ' + rows.html.slice(0, 160));
+      const strong = block.querySelector('strong');
+      const bold = copy(rangeOf(strong.firstChild, 0, strong.firstChild, 4), strong);
+      if (!parse(bold.html).querySelector('strong')) problems.push('words in a bold run lost the bold: ' + bold.html.slice(0, 80));
+      const lines = block.querySelector('[data-lines]');
+      const broken = copy(rangeOf(lines.firstChild, 0, lines.firstChild, lines.firstChild.length), lines);
+      if (!parse(broken.html).querySelector('br')) problems.push('a prompt lost its line break: ' + broken.html.slice(0, 80));
+      // Starting in the middle of a paragraph, after an inline mark: only what the range holds.
+      const mid = block.querySelector('[data-mid]');
+      const midText = mid.childNodes[2];
+      const midEnd = mid.childNodes[4];
+      const middle = copy(rangeOf(midText, 1, midEnd, 6), mid);
+      const middleBody = parse(middle.html);
+      if (middleBody.querySelector('code') || !middleBody.querySelector('strong') || middleBody.textContent.trim() !== 'and then check') problems.push('a selection that starts after an inline mark copies ' + JSON.stringify(middleBody.textContent));
+      // A triple-click on an item ends at the start of the next one: it is not copied.
+      const three = [...block.querySelectorAll('[data-three] li')];
+      const triple = copy(rangeOf(three[1], 0, three[2], 0), three[1]);
+      const tripleBody = parse(triple.html);
+      if (tripleBody.textContent.trim() !== 'beta' || tripleBody.querySelectorAll('li').length !== 1) problems.push('a triple-click on a list item copies ' + JSON.stringify(tripleBody.textContent));
+      if (triple.text.includes('gamma')) problems.push('the text of a triple-click has the next item');
+      // A formula is its source, in the HTML and the text.
+      const math = block.querySelector('[data-math]');
+      const formula = copy(rangeOf(math.firstChild, 0, math.lastChild, 3), math);
+      if (!formula.html.includes('$x^2$') || formula.html.includes('garbled') || !formula.text.includes('$x^2$')) problems.push('a formula copies ' + JSON.stringify(formula.text));
+      const all = document.createRange();
+      all.selectNodeContents(block);
+      const unseen = copy(all, block);
+      const unseenBody = parse(unseen.html);
+      if (unseenBody.querySelector('h2') || unseenBody.textContent.includes('turn line') || unseenBody.textContent.includes('Speaker')) problems.push('text nobody could select is in the HTML: ' + unseen.html.slice(0, 120));
+      if (unseen.text.includes('turn line')) problems.push('the plain text has unselectable text');
+      if (unseenBody.textContent.includes('Hidden body') || !unseenBody.textContent.includes('Summary')) problems.push('a closed details copies its body');
+
+      // 3. Across two messages: no speaker heading and none of the turn line's numbers.
+      const messages = [...area.querySelectorAll('[data-transcript-item]')].filter((m) => !added.includes(m)).slice(0, 2);
+      let across = 0;
+      if (messages.length === 2) {
+        const range = rangeOf(messages[0], 0, messages[1], messages[1].childNodes.length);
+        const unselectable = [...area.querySelectorAll('h2.sr-only, [data-turn-meta], [data-skim-stats]')].filter((e) => !added.includes(e) && range.intersectsNode(e) && e.textContent.trim());
+        const crossed = copy(range, messages[0]);
+        const crossedBody = parse(crossed.html);
+        audit('across messages', crossedBody);
+        for (const e of unselectable) {
+          across++;
+          const text = e.textContent.trim();
+          if (e.matches('h2') ? [...crossedBody.querySelectorAll('h2')].some((h) => h.textContent.trim() === text) : crossedBody.textContent.includes(text)) problems.push('a selection across two messages has "' + text + '"');
+        }
+      }
+
+      // 4. Fields keep their own copy: a text field inside the transcript, and the message box.
+      const field = add(document.createElement('textarea'));
+      field.value = 'typed text';
+      field.focus();
+      field.select();
+      const fieldEvent = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+      field.dispatchEvent(fieldEvent);
+      if (fieldEvent.defaultPrevented) problems.push('a copy in a text field was taken over');
+      const composer = document.querySelector('${view} [data-composer]');
+      if (composer) {
+        const composerEvent = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+        composer.dispatchEvent(composerEvent);
+        if (composerEvent.defaultPrevented) problems.push('a copy in the message box was taken over');
+      }
+      return { problems, real, across, messages: messages.length };
+    } finally {
+      window.getSelection().removeAllRanges();
+      for (const el of added) el.remove();
+    }
+  })()`)) as { none?: boolean; problems: string[]; real: boolean; across: number; messages: number };
+  if (report.none) return 'ok: no transcript on screen';
+  if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+  return `ok: a ${report.real ? "reply's" : 'made-up'} list, table rows, list items, a bold run, a mid-paragraph start, a triple-click, a formula and line breaks copy as clean HTML; ${report.across} unselectable lines stay out across ${report.messages} messages; fields keep their own copy`;
+}
+
+/**
+ * A selection in the file preview with a real formula and a real Mermaid diagram (`useCleanCopy` on the preview's Markdown),
+ * in a throwaway file in a folder of its own: a sentence with `$x^2 + y^2$` copies with the formula as its TeX in `$…$` exactly once
+ * (not KaTeX's pieces, no `.katex`, no `math`) and its text is the sentence; a `$$` block copies as its source in `$$…$$`; a selection
+ * from the line before a diagram to the line after has both lines and no `svg` (the diagram is left out, not copied as its source).
+ * Read-only: `copy` events with a DataTransfer of its own, the clipboard is untouched. The folder is removed at the end.
+ */
+async function runCopyFormulaStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-copy-formula-')));
+  const md = join(dir, 'copy.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  try {
+    writeFileSync(md, '# Copy\n\nThen $x^2 + y^2$ holds.\n\n$$\nE = mc^2\n$$\n\nBefore the diagram.\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Ship]\n```\n\nAfter the diagram.\n');
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && [...(${PREVIEW}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector('.katex')) && !!${PREVIEW}?.querySelector('[data-mermaid-state="drawn"] svg')`, 20_000))) return 'the formula and the diagram were not drawn in the Markdown preview';
+    const report = (await js(`(() => {
+      const preview = ${PREVIEW};
+      const problems = [];
+      const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+      const copy = (range, target) => {
+        document.activeElement?.blur();
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const data = new DataTransfer();
+        const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        const out = { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain') };
+        selection.removeAllRanges();
+        return out;
+      };
+      const times = (text, part) => text.split(part).length - 1;
+      const paragraph = (start) => [...preview.querySelectorAll('p')].find((p) => p.textContent.trim().startsWith(start));
+      // 1. The sentence with an inline formula.
+      const sentence = paragraph('Then');
+      if (!sentence) return { problems: ['the sentence is not in the preview'] };
+      if (!sentence.closest('[data-clean-copy]')) problems.push('the preview is not a clean-copy container');
+      const range = document.createRange();
+      range.selectNodeContents(sentence);
+      const line = copy(range, sentence);
+      const lineBody = parse(line.html);
+      if (!line.prevented) problems.push('the copy was left to the browser');
+      if (times(lineBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the formula is in the HTML ' + times(lineBody.textContent, '$x^2 + y^2$') + ' times: ' + line.html.slice(0, 160));
+      if (lineBody.querySelector('[class*=katex], math, svg, annotation') || [...lineBody.querySelectorAll('*')].some((e) => [...e.attributes].some((a) => a.name === 'class' || a.name.startsWith('data-')))) problems.push('the HTML keeps KaTeX, MathML or attributes: ' + line.html.slice(0, 160));
+      if (line.text !== 'Then $x^2 + y^2$ holds.') problems.push('the text is ' + JSON.stringify(line.text));
+      // 2. From the sentence through the $$ block.
+      const block = preview.querySelector('[data-math="block"]');
+      const through = document.createRange();
+      through.setStart(sentence.firstChild, 0);
+      through.setEnd(block, block.childNodes.length);
+      const blockCopy = copy(through, sentence);
+      const blockBody = parse(blockCopy.html);
+      if (times(blockBody.textContent, 'E = mc^2') !== 1 || !blockBody.textContent.includes('$$') || blockBody.querySelector('[class*=katex], math, svg')) problems.push('a $$ block copies as ' + JSON.stringify(blockBody.textContent.slice(0, 120)));
+      if (times(blockBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the sentence before the block has its formula ' + times(blockBody.textContent, '$x^2 + y^2$') + ' times');
+      // 3. From the line before the diagram to the line after it.
+      const before = paragraph('Before the diagram');
+      const after = paragraph('After the diagram');
+      const around = document.createRange();
+      around.setStart(before.firstChild, 0);
+      around.setEnd(after.firstChild, after.firstChild.length);
+      const diagram = copy(around, before);
+      const diagramBody = parse(diagram.html);
+      if (!diagram.prevented) problems.push('the copy around a diagram was left to the browser');
+      if (!diagramBody.textContent.includes('Before the diagram.') || !diagramBody.textContent.includes('After the diagram.')) problems.push('the copy around a diagram has ' + JSON.stringify(diagramBody.textContent.slice(0, 120)));
+      if (diagramBody.querySelector('svg') || /Start|Ship|flowchart/.test(diagramBody.textContent)) problems.push('the copy around a diagram has the diagram: ' + diagram.html.slice(0, 160));
+      window.getSelection().removeAllRanges();
+      return { problems };
+    })()`)) as { problems: string[] };
+    if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+    return 'ok: a sentence copies its formula once as $…$ with the sentence as text, a $$ block as its source, and a selection around a Mermaid diagram has its lines and no svg (the diagram is left out)';
+  } finally {
+    pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click(); window.getSelection().removeAllRanges(); null");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * ⌘A (Ctrl+A) in the conversation and in reading mode selects only that text (`useSelectAllInText`), so a copy of it is the clean
+ * HTML: the selection lies inside the area, the HTML (parsed) has no class, data attribute, button or colour and none of the sidebar's or
+ * the reading bar's text. In a text field it still selects only the field's text, and in the message box it leaves the conversation
+ * alone; with words selected in the conversation and focus on a control outside it, the key and Edit › Select All leave the conversation
+ * unselected. The conversation is virtualised: Select all takes the rows drawn. Read-only: the key is pressed in the page, `copy` events carry
+ * a DataTransfer of their own, and what the step adds to the conversation is removed again.
+ */
+async function runSelectAllCopyStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await transcriptAtRest(win);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const AREA = `${view} [data-transcript]`;
+  const READ = '[data-read-mode] [data-read-scroll]';
+  // Selects with the key from a state with no selection and no focus in the area, then copies as ⌘C does, to the focused element.
+  const reset = (pointerIn: string | null) =>
+    js(`(() => { window.getSelection().removeAllRanges(); document.activeElement?.blur(); ${pointerIn ? `document.querySelector(${JSON.stringify(pointerIn)})?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));` : ''} return true; })()`);
+  const copyOf = (selector: string, outside: string) =>
+    js(`(() => {
+      const root = document.querySelector(${JSON.stringify(selector)});
+      const selection = window.getSelection();
+      const problems = [];
+      if (!root || selection.rangeCount === 0) return ['nothing is selected'];
+      const range = selection.getRangeAt(0);
+      if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) problems.push('the selection reaches outside the text');
+      const data = new DataTransfer();
+      const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+      (document.activeElement ?? document.body).dispatchEvent(event);
+      if (!event.defaultPrevented) problems.push('the copy was left to the browser, with its theme colours');
+      const body = new DOMParser().parseFromString(data.getData('text/html'), 'text/html').body;
+      if (!body.textContent.trim()) problems.push('the copy is empty');
+      for (const el of body.querySelectorAll('*')) {
+        if (['BUTTON', 'SVG', 'INPUT', 'TEXTAREA', 'IMG'].includes(el.tagName)) problems.push('a <' + el.tagName.toLowerCase() + '> in the HTML');
+        for (const a of el.attributes) {
+          if (!['href', 'start', 'style'].includes(a.name)) problems.push(a.name + '= on <' + el.tagName.toLowerCase() + '>');
+          else if (a.name === 'style' && /color|background/i.test(a.value)) problems.push('style ' + a.value);
+        }
+      }
+      // Text of the window around the area: the sidebar's rows and the reading bar.
+      for (const text of (${outside}).map((t) => t.trim()).filter((t) => t.length > 8 && !root.textContent.includes(t))) if (body.textContent.includes(text)) problems.push('the HTML has "' + text.slice(0, 30) + '" from outside the text');
+      selection.removeAllRanges();
+      return problems;
+    })()`) as Promise<string[]>;
+  const ROWS = "[...document.querySelectorAll('[data-session-id]')].map((row) => row.textContent)";
+  try {
+    if (!(await js(`!!document.querySelector('${AREA} [data-transcript-item]')`))) return 'ok: no conversation on screen';
+    // 1. The conversation: after a click in it, ⌘A selects its text, not the window.
+    await reset(AREA);
+    pressKey(win, 'A', ['meta']);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`, 3_000))) {
+      const where = await js("(() => { const s = window.getSelection(); return s.rangeCount ? s.getRangeAt(0).startContainer.nodeName + ' > ' + s.getRangeAt(0).endContainer.nodeName : 'none'; })()");
+      return `⌘A in the conversation did not select just its text (${where})`;
+    }
+    const conversation = await copyOf(AREA, ROWS);
+    if (conversation.length > 0) return `⌘A in the conversation: ${conversation.slice(0, 3).join('; ')}`;
+
+    // 2. A text field in the area keeps its own Select all, and so does the message box: the key is not taken (a key event sent to the page
+    // does not run the menu's Select all, so what the browser would do with it is not seen here) and the conversation stays unselected.
+    await js("window.__smokeKeys = []; window.__smokeKeyListener = (e) => window.__smokeKeys.push(e.defaultPrevented); window.addEventListener('keydown', window.__smokeKeyListener); true");
+    await js(`(() => { const field = document.createElement('textarea'); field.value = 'typed text'; field.dataset.smokeSelectAll = ''; document.querySelector('${AREA}').appendChild(field); window.getSelection().removeAllRanges(); field.focus(); return document.activeElement === field; })()`);
+    pressKey(win, 'A', ['meta']);
+    await settle(win);
+    if ((await js('JSON.stringify(window.__smokeKeys)')) !== '[false]') return `⌘A in a text field was taken (${await js('JSON.stringify(window.__smokeKeys)')})`;
+    await js("document.querySelector('[data-smoke-select-all]')?.remove(); window.__smokeKeys = []; true");
+    const composer = `${view} [data-composer]`;
+    if (await js(`!!document.querySelector('${composer}')`)) {
+      await js(`(() => { window.getSelection().removeAllRanges(); document.querySelector('${composer}').focus(); return true; })()`);
+      pressKey(win, 'A', ['meta']);
+      await settle(win);
+      const stayed = (await js(`(() => { const s = window.getSelection(); return { composer: document.activeElement === document.querySelector('${composer}'), keys: window.__smokeKeys, inConversation: s.rangeCount > 0 && document.querySelector('${AREA}').contains(s.anchorNode) && !s.isCollapsed }; })()`)) as { composer: boolean; keys: boolean[]; inConversation: boolean };
+      if (!stayed.composer || stayed.inConversation || stayed.keys.join() !== 'false') return `⌘A in the message box ${stayed.inConversation ? 'selected the conversation' : stayed.composer ? 'was taken' : 'lost the focus'}`;
+    }
+
+    // 3. An old selection does not take ⌘A from where focus is: with words selected in the conversation, a control elsewhere with focus
+    // (a click on a Files row or a pane's button does this) keeps ⌘A for itself, the key and Edit › Select All alike.
+    await js(`(() => {
+      const area = document.querySelector('${AREA}');
+      const p = area.querySelector('p');
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      const button = document.createElement('button');
+      button.dataset.smokeOutside = '';
+      button.textContent = 'outside';
+      document.body.appendChild(button);
+      button.focus();
+      window.__smokeKeys = [];
+      return document.activeElement === button;
+    })()`);
+    pressKey(win, 'A', ['meta']);
+    await settle(win);
+    const keptKeys = (await js('JSON.stringify(window.__smokeKeys)')) as string;
+    const whole = (await js(`(() => { const s = window.getSelection(); return s.rangeCount > 0 && s.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`)) as boolean;
+    if (keptKeys !== '[false]' || whole) return `⌘A with focus on a control outside the conversation ${whole ? 'selected the conversation' : 'was taken'} (${keptKeys})`;
+    const edit = Menu.getApplicationMenu()?.items.find((item) => item.label === 'Edit')?.submenu?.items.find((item) => item.label === 'Select All');
+    if (!edit) return 'the Edit menu has no Select All';
+    edit.click({} as never, win, win.webContents);
+    await settle(win);
+    if ((await js(`(() => { const s = window.getSelection(); return s.rangeCount > 0 && s.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`)) as boolean) return 'Edit › Select All with focus outside the conversation selected the conversation';
+    await js("document.querySelector('[data-smoke-outside]')?.remove(); window.getSelection().removeAllRanges(); document.activeElement?.blur(); true");
+    // Edit › Select All in the conversation selects its text, the same as the key.
+    await reset(AREA);
+    edit.click({} as never, win, win.webContents);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`, 3_000))) return 'Edit › Select All did not select just the conversation text';
+
+    // 3. Reading mode: ⌘A selects its text, with no click in it.
+    await js("window.getSelection().removeAllRanges(); document.activeElement?.blur(); true");
+    const reading = (await js(`(() => { const b = document.querySelector('${view} [data-read-button]'); if (!b) return false; b.click(); return true; })()`)) as boolean;
+    if (!reading) return 'ok: ⌘A in the conversation copies clean HTML and keeps its own in fields; no reply to read on screen';
+    if (!(await waitInPage(win, `!!document.querySelector('${READ}[data-clean-copy]')`, 5_000))) return 'reading mode did not open';
+    await reset(null);
+    pressKey(win, 'A', ['meta']);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${READ}'); })()`, 3_000))) return '⌘A in reading mode did not select just its text';
+    const readBar = "[...document.querySelectorAll('[data-read-mode] [data-read-position], [data-read-mode] header, [data-read-mode] nav')].map((e) => e.textContent).concat(" + ROWS + ')';
+    const read = await copyOf(READ, readBar);
+    pressKey(win, 'Escape');
+    await waitInPage(win, '!document.querySelector("[data-read-mode]")', 3_000);
+    if (read.length > 0) return `⌘A in reading mode: ${read.slice(0, 3).join('; ')}`;
+    return 'ok: ⌘A selects only the conversation, or reading mode, and a copy is clean HTML without the sidebar or the bar; in a text field and the message box the key is left to the browser (the conversation is drawn a screenful at a time: it selects the rows drawn)';
+  } finally {
+    await js("if (window.__smokeKeyListener) { window.removeEventListener('keydown', window.__smokeKeyListener); delete window.__smokeKeyListener; } document.querySelectorAll('[data-smoke-select-all], [data-smoke-outside]').forEach((e) => e.remove()); window.getSelection().removeAllRanges(); document.activeElement?.blur?.(); null");
+    if (await js("!!document.querySelector('[data-read-mode]')")) pressKey(win, 'Escape');
+  }
+}
+
+/**
  * The actions of Claude's replies sit in a row of their own under the text, so they never cover it;
  * the row is hidden until you hover or tab to it, and showing it doesn't change the reply's height.
  * Your prompt cards keep the toolbar floating over their top edge. Read-only: it focuses a button but
@@ -7254,7 +8000,7 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   const selected = (await js(select)) as string;
   if (!selected) return 'ok: no paragraph of Claude on screen to select';
   const done = async (result: string) => {
-    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } true");
+    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } if (window.__smokeWrite) { navigator.clipboard.write = window.__smokeWrite; delete window.__smokeWrite; } true");
     return result;
   };
   if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar over the selection');
@@ -7271,7 +8017,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
 
   // Keyboard: Tab from the transcript into the toolbar, → to Copy, then Copy.
-  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeCopied = null; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; true");
+  // Copy in the conversation writes the clean HTML and the text together (`copySelection`), elsewhere the text alone.
+  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeWrite = navigator.clipboard.write.bind(navigator.clipboard); window.__smokeCopied = null; window.__smokeCopiedHtml = false; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; navigator.clipboard.write = async (items) => { window.__smokeCopiedHtml = items[0].types.includes('text/html'); window.__smokeCopied = await (await items[0].getType('text/plain')).text(); }; true");
   key('Tab');
   if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-quote-selection')", 2_000))) return done('Tab did not move into the toolbar');
   key('Right');
@@ -7279,7 +8026,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   await js('document.activeElement.click()');
   if (!(await waitInPage(win, "document.querySelector('[data-copy-selection][data-copied]')?.textContent.includes('Copied')", 2_000))) return done('Copy did not say Copied');
   const copied = (await js('window.__smokeCopied')) as string | null;
-  if (copied !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (copied?.trim() !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (!(await js('window.__smokeCopiedHtml'))) return done('Copy in the conversation wrote no clean HTML');
   if (!(await js(`!!${toolbar}`))) return done('the toolbar closed after Copy');
 
   // Esc closes it and keeps the selection.
@@ -7657,6 +8405,66 @@ async function runSkimMarksStep(win: BrowserWindow): Promise<string> {
     if (!(await js(`${faded}.some((el) => el.innerText.includes('I kept the hook small'))`))) return 'failed: a sentence the line left out did not fade';
     return `ok: ${await js(`${faded}.length`)} faded by the keep line, the line hidden`;
   } finally {
+    if (back && back !== id) await open(back);
+  }
+}
+
+async function runMarkdownRepliesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const open = (id: string) => js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+  const back = (await js(`document.querySelector('${view}')?.dataset.currentSession ?? null`)) as string | null;
+  const id = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!id) return 'ok: not the demo home, so no reply with a quote';
+  // What the reply must show, read from the page: the quote is not the muted colour of the old one, has a bar, and keeps its list and code.
+  const check = (root: string) => `(() => {
+    const md = document.querySelector('${root} .markdown:has(blockquote:not([data-alert]))');
+    if (!md) return 'no reply with a quote';
+    const quote = md.querySelector('blockquote:not([data-alert])');
+    const text = getComputedStyle(md.querySelector('p')).color;
+    const bar = getComputedStyle(quote);
+    if (parseFloat(bar.borderLeftWidth) < 3 || bar.borderLeftStyle === 'none') return 'the quote has no bar';
+    if (bar.borderLeftColor === bar.backgroundColor || bar.borderLeftColor === 'rgba(0, 0, 0, 0)') return 'the quote bar is invisible';
+    if (getComputedStyle(quote.querySelector('p')).color !== text) return 'the quote is not in the text colour';
+    if (!quote.querySelector('strong') || !quote.querySelector('ol li') || !quote.querySelector('code')) return 'the quote lost its bold text, list or code';
+    if (!md.querySelector('td br')) return 'the break in the table cell is not a break';
+    if (md.innerText.includes('<br>')) return 'the break shows as source';
+    const alert = md.querySelector('blockquote[data-alert=note]');
+    if (!alert || !alert.querySelector('[data-alert-title]') || alert.innerText.includes('[!NOTE]')) return 'the alert is a plain quote';
+    if (parseFloat(getComputedStyle(alert).borderLeftWidth) < 3) return 'the alert has no bar';
+    const boxes = [...md.querySelectorAll('li.task-list-item [data-task-box]')];
+    if (boxes.length !== 2 || boxes.filter((box) => box.dataset.taskBox === 'checked').length !== 1) return 'the task list has ' + boxes.length + ' boxes';
+    if (md.querySelector('input[type=checkbox]')) return 'a native checkbox shows in the task list';
+    if (getComputedStyle(md.querySelector('li.task-list-item')).listStyleType !== 'none') return 'the task list has a bullet';
+    return 'ok';
+  })()`;
+  const scheme = preferences.get().colorScheme;
+  try {
+    await open(id);
+    if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) return 'failed: the session did not open';
+    // The reply is last; the list is virtualised, so go to its end.
+    await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); if (el) el.scrollTop = el.scrollHeight; })()`);
+    if (!(await waitInPage(win, `document.querySelector('${view} blockquote[data-alert=note]')`, 5_000))) return 'failed: the reply with the alert is not in the conversation';
+    for (const mode of ['dark', 'light'] as const) {
+      if (!(await setColorScheme(win, mode))) return `failed: ${mode} did not apply`;
+      const result = (await js(check(view))) as string;
+      if (result !== 'ok') return `failed: in ${mode}, ${result}`;
+      await js(`document.querySelector('${view} blockquote:not([data-alert])')?.scrollIntoView({ block: 'start' })`);
+      await shot(win, `markdown-replies-${mode}.png`);
+    }
+    // The same reply in reading mode, in both schemes (the paper is warm in light and the same as the page in dark).
+    for (const mode of ['dark', 'light'] as const) {
+      if (!(await setColorScheme(win, mode))) return `failed: ${mode} did not apply`;
+      if (!(await js(`(() => { const b = [...document.querySelectorAll('${view} [data-read-button]')].at(-1); if (!b) return false; b.click(); return true; })()`))) return 'failed: no Read button on the reply';
+      if (!(await waitInPage(win, "document.querySelector('[data-read-mode] blockquote[data-alert]')", 4_000))) return `failed: reading mode in ${mode} does not show the alert`;
+      const reading = (await js(check('[data-read-mode]'))) as string;
+      if (reading !== 'ok') return `failed: in reading mode in ${mode}, ${reading}`;
+      pressKey(win, 'Escape');
+      if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'failed: Esc did not close reading mode';
+    }
+    return 'ok: the quote has a bar in the text colour with its list and code, the table cell breaks, the alert and the task list show, in dark, light and reading mode (both)';
+  } finally {
+    updatePreferences({ colorScheme: scheme });
     if (back && back !== id) await open(back);
   }
 }
@@ -14527,6 +15335,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('file preview', () => runFilePreviewStep(win));
+  await step('mermaid diagrams', () => runMermaidStep(win));
+  await step('maths: Markdown preview', () => runMathsStep(win));
   // Pictures of the Files panel in dark and light, in the demo home (CI uploads them with the results).
   const filesPictures = process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_SMOKE_FILES_PICTURES
     ? { shot: (name: string) => shot(win, name), setScheme: (scheme: 'light' | 'dark') => setColorScheme(win, scheme), scheme: () => preferences.get().colorScheme, restoreScheme: (colorScheme: string) => updatePreferences({ colorScheme: colorScheme as 'light' | 'dark' | 'system' }) }
@@ -14541,10 +15351,14 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
+  await step('copy a selection: clean HTML', () => runCopySelectionStep(win));
+  await step('copy a selection: a formula and a diagram in the file preview', () => runCopyFormulaStep(win), { timeoutMs: 60_000 });
+  await step('copy a selection: Select all in the conversation and in reading mode', () => runSelectAllCopyStep(win), { timeoutMs: 60_000 });
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('conversation view: Skim folds, shows the stats and fades by the keep line, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
   await step('skim marks: a reply\'s keep line fades the rest and never shows', () => runSkimMarksStep(win));
+  await step('markdown in replies: a quote, a break in a table cell, an alert and a task list', () => runMarkdownRepliesStep(win), { timeoutMs: 60_000 });
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
   await step('image viewer: arrows go through a reply, right-click copies the image', () => runImageViewerStep(win));
@@ -14718,6 +15532,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   // After the steps that need New session on no folder: picking the project it adds is remembered.
   await step('providers: Copilot CLI offered in Settings › Profiles, added in two screens, Copilot is ready, New session says what switching turned off, set as the project profile, its session and ⋯ menu (never started), removed again', () => runProvidersStep(win), { timeoutMs: 90_000 });
   await step('codex: Codex CLI offered and added without a sign in, Codex is ready, New session with its models, efforts and modes (Start refused by the demo), its session with a message box, removed again', () => runCodexStep(win), { timeoutMs: 90_000 });
+  await step('antigravity: Antigravity CLI offered and added without a sign in, Antigravity is ready, its session with its steps and a message box, New session with its models, thinking levels and modes (Start refused by the demo), removed again', () => runAntigravityStep(win), { timeoutMs: 90_000 });
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
   await step('new session layout: three columns, two and stacked by the width, no page scroll, Add to queue at the focus limit', () => runNewSessionLayoutStep(win), { timeoutMs: 90_000 });
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));

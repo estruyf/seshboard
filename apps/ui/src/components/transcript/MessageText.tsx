@@ -58,7 +58,7 @@ function SkimReply({ item, turn, skim }: { item: Extract<DisplayItem, { kind: 't
   return (
     <>
       {parts.length > 0 && <SkimStats parts={parts} />}
-      <Markdown text={item.text} keep={fades && !showAll && !skim.finding ? keep : null} />
+      <Markdown text={item.text} keep={fades && !showAll && !skim.finding ? keep : null} html />
       {fades && (
         <div className="-ml-1 mt-1 flex min-w-0 flex-wrap items-center gap-x-2" data-skim-fade-row>
           <Button variant="quiet" size="sm" onClick={toggle} data-skim-show-all>
@@ -82,7 +82,7 @@ export function MessageText({ item, className = '' }: { item: Extract<DisplayIte
   return (
     <div className={`group/message relative text-body ${className}`} data-remember-from={item.subagent ? undefined : 'claude'} data-message-key={item.key}>
       <Speaker name={item.subagent ? 'Subagent' : 'Claude'} />
-      {skim && turn ? <SkimReply item={item} turn={turn} skim={skim} /> : <Markdown text={item.text} />}
+      {skim && turn ? <SkimReply item={item} turn={turn} skim={skim} /> : <Markdown text={item.text} html />}
       {/* The actions, then (under a turn's last reply) when the turn ended, how long it took and its tokens: both
           hidden until the reply is hovered or the row has focus, with their space kept. */}
       <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">

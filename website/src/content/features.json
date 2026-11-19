@@ -192,6 +192,11 @@
       "page": "sessions/file-preview"
     },
     {
+      "id": "feature:maths",
+      "name": "Maths drawn in replies and Markdown previews",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "palette:toggle-files",
       "name": "Toggle Files",
       "page": "sessions/file-preview"
@@ -1507,6 +1512,11 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "shortcut:text.select-all",
+      "name": "text.select-all",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "shortcut:read.toggle",
       "name": "read.toggle",
       "page": "sessions/conversation"
@@ -2019,6 +2029,11 @@
     {
       "id": "feature:codex-session-actions",
       "name": "OpenAI Codex session actions: Fork from a reply and Edit and resend on its messages, Ask about this session, Rename (F2, the ⋯ menu and the sidebar's menu), Compact on the context meter and in ⋯, Tools with Codex's MCP servers, skills and hooks (Reconnect, no switches to turn a server on or off), and its 5-hour and weekly limits under the message box, on Home and in Usage",
+      "page": "settings"
+    },
+    {
+      "id": "feature:antigravity-sessions",
+      "name": "Google Antigravity sessions: Settings: Profiles offers Antigravity CLI when it finds it; Add profile with Antigravity as the tool uses its own folder (~/.gemini), skips sign in when it is signed in already, and ends on Antigravity is ready with your Google plan; its sessions show in the sidebar with Antigravity's mark, in search, catch-up and on the phone, with their transcript, tool calls and diffs; New session, the queue, schedules, triggers and pipeline steps start them with Antigravity's models, thinking levels and the four permission modes, and the message box continues them and steers a running turn; Ask about this session, its slash commands (Compact), Tools with its MCP servers, Open in Antigravity CLI, and Delete to the Trash",
       "page": "settings"
     },
     {
@@ -3122,6 +3137,11 @@
       "page": "sessions/file-preview"
     },
     {
+      "id": "feature:mermaid-diagrams",
+      "name": "Mermaid diagrams drawn in replies, Markdown previews and Markdown blocks, in the theme's colours, with a larger view that zooms and pans",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "feature:web-preview",
       "name": "Web preview: your running dev server beside the conversation, with back, forward, reload, an address bar and phone width",
       "page": "sessions/web-preview"
@@ -3319,6 +3339,11 @@
     {
       "id": "feature:markdown-preview",
       "name": "Markdown blocks Preview and Source",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:reply-markdown",
+      "name": "Replies show quotes, HTML, small headings, GitHub alerts and task lists",
       "page": "sessions/conversation"
     },
     {
