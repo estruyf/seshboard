@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, webContents as electronWebContents, type MenuItemConstructorOptions, type NativeImage } from 'electron';
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
@@ -1146,6 +1146,22 @@ function openSettings(section: 'about' | null = null): void {
   sendToWindow(showWindow(), IpcChannel.openSettings, section, { latestOnly: true });
 }
 
+/**
+ * Edit › Select All. The role would select the whole window, which a copy then takes with the theme's colours. The window's page
+ * decides first (`useSelectAllInText`: the conversation, reading mode or the file preview selects only its text, a field its own);
+ * when it takes none, or the focus is in a browser page of the Browser panel, it is the focused page's own Select all.
+ */
+function selectAllInFocused(from?: unknown): void {
+  // The window the menu item was used in (Electron hands it over), else the focused one.
+  const win = from instanceof BrowserWindow ? from : BrowserWindow.getFocusedWindow();
+  const focused = electronWebContents.getFocusedWebContents() ?? win?.webContents;
+  if (!focused) return;
+  if (focused !== win?.webContents) return focused.selectAll();
+  focused
+    .executeJavaScript("(() => { const detail = { handled: false }; window.dispatchEvent(new CustomEvent('seshboard:select-all', { detail })); return detail.handled; })()")
+    .then((handled: boolean) => !handled && focused.selectAll(), () => focused.selectAll());
+}
+
 /** Seshboard → Check for Updates…: checks, and opens Settings → About where the result shows. */
 function checkForUpdates(): void {
   updater.run('check');
@@ -1185,7 +1201,21 @@ function installMenu(): void {
     : [{ label: 'File', submenu: [settings, { type: 'separator' }, quit] }];
   const template: MenuItemConstructorOptions[] = [
     ...top,
-    { role: 'editMenu' },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        // What the editMenu role has on each platform, with Select All as our own: ⌘A is the same logic as the key.
+        ...(mac ? ([{ role: 'pasteAndMatchStyle' }, { role: 'delete' }] as MenuItemConstructorOptions[]) : ([{ role: 'delete' }, { type: 'separator' }] as MenuItemConstructorOptions[])),
+        { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: (_item, window) => selectAllInFocused(window) },
+        ...(mac ? ([{ type: 'separator' }, { label: 'Speech', submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }] }] as MenuItemConstructorOptions[]) : []),
+      ],
+    },
     {
       label: 'View',
       submenu: [
@@ -7311,7 +7341,8 @@ async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
  * ⌘A (Ctrl+A) in the conversation and in reading mode selects only that text (`useSelectAllInText`), so a copy of it is the clean
  * HTML: the selection lies inside the area, the HTML (parsed) has no class, data attribute, button or colour and none of the sidebar's or
  * the reading bar's text. In a text field it still selects only the field's text, and in the message box it leaves the conversation
- * alone. The conversation is virtualised: Select all takes the rows drawn. Read-only: the key is pressed in the page, `copy` events carry
+ * alone; with words selected in the conversation and focus on a control outside it, the key and Edit › Select All leave the conversation
+ * unselected. The conversation is virtualised: Select all takes the rows drawn. Read-only: the key is pressed in the page, `copy` events carry
  * a DataTransfer of their own, and what the step adds to the conversation is removed again.
  */
 async function runSelectAllCopyStep(win: BrowserWindow): Promise<string> {
@@ -7379,6 +7410,39 @@ async function runSelectAllCopyStep(win: BrowserWindow): Promise<string> {
       if (!stayed.composer || stayed.inConversation || stayed.keys.join() !== 'false') return `⌘A in the message box ${stayed.inConversation ? 'selected the conversation' : stayed.composer ? 'was taken' : 'lost the focus'}`;
     }
 
+    // 3. An old selection does not take ⌘A from where focus is: with words selected in the conversation, a control elsewhere with focus
+    // (a click on a Files row or a pane's button does this) keeps ⌘A for itself, the key and Edit › Select All alike.
+    await js(`(() => {
+      const area = document.querySelector('${AREA}');
+      const p = area.querySelector('p');
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      const button = document.createElement('button');
+      button.dataset.smokeOutside = '';
+      button.textContent = 'outside';
+      document.body.appendChild(button);
+      button.focus();
+      window.__smokeKeys = [];
+      return document.activeElement === button;
+    })()`);
+    pressKey(win, 'A', ['meta']);
+    await settle(win);
+    const keptKeys = (await js('JSON.stringify(window.__smokeKeys)')) as string;
+    const whole = (await js(`(() => { const s = window.getSelection(); return s.rangeCount > 0 && s.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`)) as boolean;
+    if (keptKeys !== '[false]' || whole) return `⌘A with focus on a control outside the conversation ${whole ? 'selected the conversation' : 'was taken'} (${keptKeys})`;
+    const edit = Menu.getApplicationMenu()?.items.find((item) => item.label === 'Edit')?.submenu?.items.find((item) => item.label === 'Select All');
+    if (!edit) return 'the Edit menu has no Select All';
+    edit.click({} as never, win, win.webContents);
+    await settle(win);
+    if ((await js(`(() => { const s = window.getSelection(); return s.rangeCount > 0 && s.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`)) as boolean) return 'Edit › Select All with focus outside the conversation selected the conversation';
+    await js("document.querySelector('[data-smoke-outside]')?.remove(); window.getSelection().removeAllRanges(); document.activeElement?.blur(); true");
+    // Edit › Select All in the conversation selects its text, the same as the key.
+    await reset(AREA);
+    edit.click({} as never, win, win.webContents);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`, 3_000))) return 'Edit › Select All did not select just the conversation text';
+
     // 3. Reading mode: ⌘A selects its text, with no click in it.
     await js("window.getSelection().removeAllRanges(); document.activeElement?.blur(); true");
     const reading = (await js(`(() => { const b = document.querySelector('${view} [data-read-button]'); if (!b) return false; b.click(); return true; })()`)) as boolean;
@@ -7394,7 +7458,7 @@ async function runSelectAllCopyStep(win: BrowserWindow): Promise<string> {
     if (read.length > 0) return `⌘A in reading mode: ${read.slice(0, 3).join('; ')}`;
     return 'ok: ⌘A selects only the conversation, or reading mode, and a copy is clean HTML without the sidebar or the bar; in a text field and the message box the key is left to the browser (the conversation is drawn a screenful at a time: it selects the rows drawn)';
   } finally {
-    await js("if (window.__smokeKeyListener) { window.removeEventListener('keydown', window.__smokeKeyListener); delete window.__smokeKeyListener; } document.querySelectorAll('[data-smoke-select-all]').forEach((e) => e.remove()); window.getSelection().removeAllRanges(); document.activeElement?.blur?.(); null");
+    await js("if (window.__smokeKeyListener) { window.removeEventListener('keydown', window.__smokeKeyListener); delete window.__smokeKeyListener; } document.querySelectorAll('[data-smoke-select-all], [data-smoke-outside]').forEach((e) => e.remove()); window.getSelection().removeAllRanges(); document.activeElement?.blur?.(); null");
     if (await js("!!document.querySelector('[data-read-mode]')")) pressKey(win, 'Escape');
   }
 }

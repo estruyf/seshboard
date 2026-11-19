@@ -6,6 +6,8 @@ export interface RootLike {
 export interface SelectAllInput<T extends RootLike> {
   /** Focus (or the key's target) is in a text field, the message box or the terminal, which select their own text. */
   fieldFocused: boolean;
+  /** An element has focus (not just the page): a click on content that cannot be selected moves focus there and leaves the old selection. */
+  focused: boolean;
   /** The clean-copy area that holds the current selection, if any. */
   selection: T | null;
   /** The one the last pointer-down landed in. */
@@ -22,13 +24,17 @@ export interface SelectAllInput<T extends RootLike> {
 export const overlayBlocks = <T extends RootLike>(root: T, overlays: readonly T[]) => overlays.some((overlay) => !root.contains(overlay) && !overlay.contains(root));
 
 /**
- * The area Select all (⌘A) selects, as an editor does: the one that holds the selection, else the one last clicked in, else the one
- * that holds focus, else the area on top. Null leaves ⌘A to the browser: in a field or the terminal, with no such area, or while a
- * dialog, menu or list is open that does not belong to the area (⌘A then belongs to it).
+ * The area Select all (⌘A) selects, as an editor does: the one that holds the selection, else the one last clicked in, else the
+ * one that holds focus, else the area on top. But where focus is on an element outside that area (a row in the Files panel, a button
+ * in another pane, a Settings control), the selection and the click are old news: it is the focused element's area, or none. Null leaves
+ * ⌘A to the browser: in a field or the terminal, with no such area, or while a dialog, menu or list is open that does not belong to the
+ * area (⌘A then belongs to it).
  */
-export function selectAllRoot<T extends RootLike>({ fieldFocused, selection, pointer, focus, fallback = null, overlays }: SelectAllInput<T>): T | null {
+export function selectAllRoot<T extends RootLike>({ fieldFocused, focused, selection, pointer, focus, fallback = null, overlays }: SelectAllInput<T>): T | null {
   if (fieldFocused) return null;
-  const root = selection ?? pointer ?? focus ?? fallback;
+  let root = selection ?? pointer;
+  if (focused && root !== focus) root = null;
+  root = root ?? focus ?? fallback;
   if (!root || overlayBlocks(root, overlays)) return null;
   return root;
 }

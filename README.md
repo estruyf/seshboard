@@ -297,7 +297,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌥↑ or ⌥↓ | Move a message in Up next up or down (on a message in Up next, above the message box) |
 | ⌫ | Remove a message from Up next (on a message in Up next, above the message box; Undo puts it back) |
 | ⌘⌥R | Read the last reply, or close reading mode (in a session) |
-| ⌘A | Select all of the text you are in (in the conversation, reading mode and a file preview; It selects only that text, so a copy has no colours. The conversation is drawn a screenful at a time: it selects the replies drawn.) |
+| ⌘A | Select all of the text you are in (in the conversation, reading mode and a file preview; with this only that text is selected, so a copy has no colours. The conversation is drawn a screenful at a time: it selects the replies drawn.) |
 | ← | Go to the previous reply (in reading mode) |
 | → | Go to the next reply (in reading mode) |
 | K | Go to the previous heading (in reading mode) |

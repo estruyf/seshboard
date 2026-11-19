@@ -865,7 +865,7 @@ export const SHORTCUTS = [
     action: "Select all of the text you are in",
     section: "session",
     context: "In the conversation, reading mode and a file preview",
-    note: "It selects only that text, so a copy has no colours. The conversation is drawn a screenful at a time: it selects the replies drawn.",
+    note: "With this only that text is selected, so a copy has no colours. The conversation is drawn a screenful at a time: it selects the replies drawn.",
     where: "text",
   },
   {

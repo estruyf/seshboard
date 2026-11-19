@@ -18,7 +18,8 @@ const reading = new Node('reading', page);
 const dialog = new Node('dialog', page);
 const previewInDialog = new Node('preview', dialog);
 const menu = new Node('menu', page);
-const none = { fieldFocused: false, selection: null, pointer: null, focus: null, overlays: [] as Node[] };
+const none = { fieldFocused: false, focused: false, selection: null, pointer: null, focus: null, overlays: [] as Node[] };
+const files = new Node('files', page);
 
 describe('selectAllRoot', () => {
   it('takes the area that holds the selection, before the last click and the focus', () => {
@@ -48,6 +49,27 @@ describe('selectAllRoot', () => {
     expect(selectAllRoot({ ...none, pointer: previewInDialog, overlays: [dialog] })).toBe(previewInDialog);
     const inside = new Node('inside', transcript);
     expect(selectAllRoot({ ...none, pointer: transcript, overlays: [inside] })).toBe(transcript);
+  });
+
+  it('ignores an old selection and an old click when an element outside the area has focus', () => {
+    // A click on a Files row or a pane's button moves focus and keeps the selection made in the conversation before.
+    expect(selectAllRoot({ ...none, focused: true, selection: transcript, pointer: transcript })).toBeNull();
+    expect(selectAllRoot({ ...none, focused: true, pointer: transcript })).toBeNull();
+    expect(selectAllRoot({ ...none, focused: true, selection: transcript, focus: null, overlays: [] })).toBeNull();
+    // ...and the focused element's own area takes it instead.
+    expect(selectAllRoot({ ...none, focused: true, selection: transcript, pointer: transcript, focus: reading })).toBe(reading);
+    // Focus inside the area that holds the selection changes nothing.
+    expect(selectAllRoot({ ...none, focused: true, selection: transcript, focus: transcript })).toBe(transcript);
+  });
+
+  it('is not moved by focus on the page alone, which is what a click on text or after Esc leaves', () => {
+    expect(selectAllRoot({ ...none, focused: false, selection: transcript })).toBe(transcript);
+    expect(selectAllRoot({ ...none, focused: false, pointer: transcript })).toBe(transcript);
+  });
+
+  it('still takes the area on top when focus is on a control of it (reading mode\'s bar)', () => {
+    expect(selectAllRoot({ ...none, focused: true, selection: transcript, fallback: reading })).toBe(reading);
+    expect(selectAllRoot({ ...none, focused: true, pointer: files, focus: null })).toBeNull();
   });
 
   it('reads overlays by where they are, one by one', () => {
