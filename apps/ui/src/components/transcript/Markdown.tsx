@@ -107,11 +107,11 @@ const RICH =
   // A list of only tasks loses the room of its bullets; one with plain items keeps it and their bullets. A list inside a task has its indent.
   '[&_li.task-list-item]:list-none [&_:is(ul,ol).contains-task-list:not(:has(>li:not(.task-list-item)))]:pl-0 [&_li.task-list-item_:is(ul,ol)]:pl-5! ' +
   '[&_summary]:cursor-pointer [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-edge [&_kbd]:bg-text/6 [&_kbd]:px-1 [&_kbd]:py-px [&_kbd]:font-mono [&_kbd]:text-[0.85em] ' +
-  `[&_hr]:border-edge ${ALERTS}`;
+  `[&_hr]:border-border ${ALERTS}`;
 
 /** The prose styles of an answer, also for another computer's (`components/computers/RemoteText.tsx`) and a previewed file's (`filePreview/FileMarkdown.tsx`). */
 export const PROSE =
-  'markdown text-body leading-relaxed select-text [&_h1]:mt-3 [&_h1]:mb-1 [&_h1]:text-title [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-[14px] [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_:is(h4,h5,h6)]:mt-2 [&_:is(h4,h5,h6)]:font-semibold [&_h4]:text-[14px] [&_li]:my-0.5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_blockquote]:my-2 [&_blockquote]:border-l-4 [&_blockquote]:border-faint/60 [&_blockquote]:pl-3 [&_details]:my-1.5 [&_hr]:my-4 ' +
+  'markdown text-body leading-relaxed select-text [&_h1]:mt-3 [&_h1]:mb-1 [&_h1]:text-title [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-[14px] [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_:is(h4,h5,h6)]:mt-2 [&_:is(h4,h5,h6)]:font-semibold [&_li]:my-0.5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_blockquote]:my-2 [&_blockquote]:border-l-4 [&_blockquote]:border-faint/60 [&_blockquote]:pl-3 [&_details]:my-1.5 [&_hr]:my-4 ' +
   RICH;
 
 /**
