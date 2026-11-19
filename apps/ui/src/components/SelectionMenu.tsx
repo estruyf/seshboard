@@ -2,6 +2,7 @@ import { Copy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { contextMenuPoint, type ContextMenuPoint } from '../lib/contextMenu.ts';
 import { SELECTABLE } from '../lib/selectable.ts';
+import { copySelection, currentClip, type Clip } from './transcript/selectionClip.ts';
 import { Menu } from './Menu.tsx';
 
 /**
@@ -12,6 +13,8 @@ import { Menu } from './Menu.tsx';
 export function SelectionMenu() {
   const [at, setAt] = useState<ContextMenuPoint | null>(null);
   const [text, setText] = useState('');
+  // Worked out when the menu opens, while the selection is still there.
+  const [clip, setClip] = useState<Clip | null>(null);
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
@@ -20,6 +23,7 @@ export function SelectionMenu() {
       if (!selected.trim() || !(event.target instanceof Element) || !event.target.closest(SELECTABLE)) return;
       event.preventDefault();
       setText(selected);
+      setClip(currentClip());
       setAt(contextMenuPoint({ x: event.clientX, y: event.clientY }, event.target.getBoundingClientRect(), window.innerHeight));
     };
     window.addEventListener('contextmenu', onContextMenu);
@@ -35,7 +39,7 @@ export function SelectionMenu() {
       width={160}
       label="Selected text"
       onClose={() => setAt(null)}
-      entries={[{ label: 'Copy', icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(text).catch(() => {}), data: { 'data-selection-copy': true } }]}
+      entries={[{ label: 'Copy', icon: <Copy size={13} />, onSelect: () => void copySelection(text, clip), data: { 'data-selection-copy': true } }]}
     />
   );
 }

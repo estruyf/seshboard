@@ -65,7 +65,7 @@ export const ORCHESTRATOR_TOOL_SPECS: ReadonlyArray<{ name: OrchestratorTool; ti
       properties: {
         title: text('A short name for the task, shown in the sidebar, such as "Fix login redirect"', MAX_WORKER_TITLE),
         prompt: text('Everything the session needs to do the task: what, where, how to check it, and what to report'),
-        agent: text('Which agent runs it, by its profile’s name from list_sessions. Leave out for the project’s own.'),
+        agent: text('Which agent runs it, by its profile’s name from list_sessions. Leave out for this orchestrator’s own.'),
         model: text('A model for this task. Leave out for the project’s default.'),
         workspace: { type: 'string', enum: ['worktree', 'current'], description: 'Its own worktree (the default in a git repository), or the project’s folder as it is' },
       },
@@ -261,7 +261,7 @@ export function writeWorkerList(workers: readonly WorkerLine[], agents: readonly
       out.push(`- ${w.sessionId ?? '(no id yet)'} "${w.title}"${facts ? `: ${facts}` : ''}`);
     }
   }
-  if (agents.length) out.push(`Agents for start_session's "agent": ${agents.join(', ')}. Leave it out for the project's own.`);
+  if (agents.length) out.push(`Agents for start_session's "agent": ${agents.join(', ')}. Leave it out for this orchestrator's own.`);
   return out.join('\n');
 }
 

@@ -1,5 +1,6 @@
 import { QuickOpenHost } from './components/files/QuickOpen.tsx';
 import { useEffect } from 'react';
+import { useSelectAllInText } from './components/transcript/useSelectAllInText.ts';
 import { NewSessionView } from './components/newSession/NewSessionView.tsx';
 import { HomeView } from './components/home/HomeView.tsx';
 import { TooltipLayer } from './components/ui/Tooltip.tsx';
@@ -282,6 +283,7 @@ export function App() {
   useLinksSync();
   useReadyReport();
   useShortcuts();
+  useSelectAllInText();
   useWindowFocus();
   const view = useSessions((s) => s.view);
   const settingsFrom = useSessions((s) => s.settingsFrom);

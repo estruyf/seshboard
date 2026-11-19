@@ -1086,6 +1086,8 @@ export function createEngine(options: EngineOptions): Engine {
   let resumeAtLimit: ResumeAtLimit = 'ask';
   let globalPermissionMode: PermissionMode = 'default';
   let globalModel: GlobalModel = NO_GLOBAL_MODEL;
+  // Auto, while it is off in Settings, starts on Claude Code's default, as in New session.
+  const currentGlobalModel = (): GlobalModel => ({ ...globalModel, model: globalModel.model === AUTO_MODEL && !autoModel.enabled ? null : globalModel.model });
   /** Settings › General › Global fallback model, from main: null is off. */
   let globalFallbackModel: string | null = null;
   const limits = new UsageLimits({
@@ -1304,6 +1306,8 @@ export function createEngine(options: EngineOptions): Engine {
     store: orchestratorStore,
     session: (id) => sessions.get(id) ?? null,
     defaults: (root) => projects.defaultsOf(root),
+    profileDefaults: (profileId) => profiles.defaultsOf(profileId),
+    globals: () => currentGlobalModel(),
     inRepo: (folder) => !!resolver.resolve(folder).gitDir,
     agents: orchestratorAgents,
     hold: (draft) => scheduleHold(draft),
@@ -2936,8 +2940,7 @@ export function createEngine(options: EngineOptions): Engine {
       models: () => hosts.listModels(),
       autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
       globalPermissionMode: () => globalPermissionMode,
-      // Auto, while it is off in Settings, starts on Claude Code's default, as in New session.
-      globalModel: () => ({ ...globalModel, model: globalModel.model === AUTO_MODEL && !autoModel.enabled ? null : globalModel.model }),
+      globalModel: currentGlobalModel,
       usage: (profileId, refresh) => planUsage(profileId, refresh),
       tokens: (account, params) => {
         const match = profileOfAccount(account);
