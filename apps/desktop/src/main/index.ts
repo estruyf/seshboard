@@ -7017,8 +7017,6 @@ async function runMermaidStep(win: BrowserWindow): Promise<string> {
     const broken = (await js(`(() => { const b = ${BLOCKS}[1]; return { line: b.querySelector('[data-mermaid-error]')?.textContent ?? null, source: b.querySelector('[data-code-language]')?.textContent ?? '', svgs: b.querySelectorAll('[data-mermaid-diagram] svg').length }; })()`)) as { line: string | null; source: string; svgs: number };
     if (broken.line !== "Couldn't draw this diagram.") return `the broken diagram's line reads ${JSON.stringify(broken.line)}`;
     if (!broken.source.includes('this is not a diagram') || broken.svgs !== 0) return `the broken diagram shows ${JSON.stringify(broken.source)} and ${broken.svgs} drawings`;
-    // Mermaid builds a diagram in a hidden element: a failed one must not leave it in the page.
-    if (await js("!!document.querySelector('body > [id^=\"dsb-mermaid-\"]')")) return 'a failed diagram left its hidden element in the page';
 
     // Hostile text: the diagram's own settings can't loosen the security level or replace the theme, and nothing it holds runs.
     if (!(await waitInPage(win, `['drawn', 'error'].includes(${BLOCKS}[4].dataset.mermaidState)`, 5_000))) return 'the hostile diagram neither drew nor failed';
@@ -7039,6 +7037,10 @@ async function runMermaidStep(win: BrowserWindow): Promise<string> {
     // A link in a diagram opens the way a link in the Markdown does (a new window, which main hands to the browser), and
     // doesn't also open the diagram larger. window.open is a spy here, so nothing leaves the sandbox.
     if (!(await waitInPage(win, `${BLOCKS}[5].dataset.mermaidState === 'drawn' && ${BLOCKS}[5].querySelector('[data-mermaid-diagram] a')`, 5_000))) return 'the diagram with a link was not drawn with its link';
+    // Mermaid builds each diagram in a hidden element of the page and removes it when done, a failed one too. The diagrams
+    // draw one after the other, so one still being drawn has its element there: look once the last has drawn, and wait for it
+    // to go rather than catch another diagram's (a slower machine is still drawing when the broken one reports).
+    if (!(await waitInPage(win, "!document.querySelector('body > [id^=\"dsb-mermaid-\"]')", 3_000))) return 'a diagram left its hidden element in the page';
     await js("window.__mermaidOpen = window.open; window.__opened = []; window.open = (...args) => { window.__opened.push(args[0]); return null; }; null");
     await js(`${BLOCKS}[5].querySelector('[data-mermaid-diagram] a').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))`);
     const opened = (await js('window.__opened')) as string[];
@@ -7109,6 +7111,11 @@ async function runMathsStep(win: BrowserWindow): Promise<string> {
     );
     await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
     if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DRAWN('.katex')}`, 10_000))) return 'the formulas were not drawn in the Markdown preview';
+    // The fonts are requested once the formulas are on screen and arrive a little later (slower on a CI machine): wait for one
+    // to be loaded, and say at once if the window refused them.
+    const KATEX_FONTS = "[...document.fonts].filter((f) => f.family.replace(/[\"']/g, '').startsWith('KaTeX'))";
+    if (!(await waitInPage(win, `${KATEX_FONTS}.some((f) => f.status === 'loaded' || f.status === 'error')`, 10_000))) return "KaTeX's fonts were never requested";
+    if (await js(`${KATEX_FONTS}.some((f) => f.status === 'error') && !${KATEX_FONTS}.some((f) => f.status === 'loaded')`)) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
     const found = (await js(
       `(() => { const p = ${PREVIEW}; const html = (sel) => p.querySelectorAll(sel).length;
         const inline = p.querySelector('[data-math="inline"]'); const block = p.querySelector('[data-code-preview-block] [data-math="block"]');
