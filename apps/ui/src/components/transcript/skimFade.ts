@@ -1,8 +1,7 @@
 import type { Paragraph, PhrasingContent, Root, RootContent } from 'mdast';
-import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
-import { remarkMaths } from './maths.ts';
+import { escapeLoneTags, MARKDOWN_SYNTAX } from './escapeLoneTags.ts';
 
 /**
  * Which sentences of a reply Skim fades. The agent names the ones to keep in a hidden last line (Skim's marks, see
@@ -90,7 +89,8 @@ function paragraphsOf(nodes: readonly RootContent[]): Paragraph[] {
   });
 }
 
-const parse = (markdown: string) => unified().use(remarkParse).use(remarkGfm).use(remarkMaths).parse(markdown);
+// As the reply's own pipeline reads it (the pre-pass, then the syntax), so the sentences are the ones the renderer numbers.
+const parse = (markdown: string) => unified().use(remarkParse).use(MARKDOWN_SYNTAX).parse(escapeLoneTags(markdown));
 
 /** A reply's sentences in paragraphs and lists, in the order `fadeTree` numbers them (sentence 1 first). */
 export function replySentences(markdown: string): string[] {

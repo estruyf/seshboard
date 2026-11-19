@@ -324,7 +324,7 @@ function Item({ item, onRetry, onQuote }: { item: AskEntry; onRetry(): void; onQ
         ) : item.status === 'answering' ? (
           <>
             <div className="stream-caret" aria-busy="true">
-              {item.answer && <StreamingMarkdown text={item.answer} />}
+              {item.answer && <StreamingMarkdown text={item.answer} html />}
             </div>
             <p className="mt-1.5 flex items-center gap-1.5 text-meta text-link" role="status" data-ask-answering>
               <span className="size-3 animate-spin rounded-full border-[1.5px] border-link/25 border-t-link" aria-hidden />
@@ -333,7 +333,7 @@ function Item({ item, onRetry, onQuote }: { item: AskEntry; onRetry(): void; onQ
           </>
         ) : (
           <>
-            <Markdown text={skimMarks(item.answer).text} />
+            <Markdown text={skimMarks(item.answer).text} html />
             <div className="mt-1 -ml-1.5 flex items-center gap-0.5">
               <Button
                 variant="quiet"

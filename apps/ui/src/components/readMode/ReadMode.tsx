@@ -231,7 +231,7 @@ export function ReadMode({ sessionId, title, live, cwd, reply, remote }: { sessi
               {reply.blocks.map((block) =>
                 block.kind === 'text' ? (
                   <div key={block.key} data-read-text data-block={block.key}>
-                    {remote ? <RemoteText text={block.text} variant="reading" /> : block.key === STREAMING_BLOCK ? <StreamingMarkdown text={block.text} variant="reading" /> : <Markdown text={block.text} variant="reading" />}
+                    {remote ? <RemoteText text={block.text} variant="reading" /> : block.key === STREAMING_BLOCK ? <StreamingMarkdown text={block.text} variant="reading" html /> : <Markdown text={block.text} variant="reading" html />}
                   </div>
                 ) : toolsShown && remote ? (
                   <div key={block.key} className="my-4 font-sans leading-normal" data-read-tool-block>

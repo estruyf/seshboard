@@ -1,13 +1,8 @@
-import { createContext, memo, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { BlockWritingContext } from './blockWriting.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { drawMath, katexNow, katexSheet, loadKatex, type Katex } from './katex.ts';
 import { mathCopyText, mathSourceText, type MathKind } from './maths.ts';
-
-/**
- * Whether formulas are drawn. False for the block Claude is still writing: an unclosed `$$` would draw half a formula, so
- * until the block is complete the maths shows as it was written. Drawn by default.
- */
-export const MathDrawnContext = createContext(true);
 
 /** KaTeX once it is loaded: at once when it is, else after the chunk arrives (and null until then, or if it can't load). */
 function useKatex(): Katex | null {
@@ -71,7 +66,8 @@ function Drawn({ source, display, block, html }: { source: string; display: bool
 
 /** `$x$`, or `$$x$$` inside a line of text, drawn in the line (`display`: on a line of its own). Not drawn: as it was written. */
 const InlineMath = memo(function InlineMath({ source, display }: { source: string; display: boolean }) {
-  const drawnAllowed = useContext(MathDrawnContext);
+  // The block Claude is still writing shows its maths as written: an unclosed `$$` would draw half a formula.
+  const drawnAllowed = !useContext(BlockWritingContext);
   const katex = useKatex();
   const written = mathSourceText(display ? 'display' : 'inline', source);
   const html = drawnAllowed && katex ? drawMath(katex, source, display) : null;
@@ -103,9 +99,9 @@ export function streamingBlocks(blocks: readonly string[], render: (text: string
   return blocks.map((block, i) => {
     const last = i === blocks.length - 1;
     return (
-      <MathDrawnContext key={i} value={!last}>
+      <BlockWritingContext key={i} value={last}>
         {render(block, last)}
-      </MathDrawnContext>
+      </BlockWritingContext>
     );
   });
 }
@@ -116,7 +112,8 @@ export function streamingBlocks(blocks: readonly string[], render: (text: string
  * KaTeX is loaded the first time one shows.
  */
 export function MathCode({ kind, source }: { kind: MathKind; source: string }) {
-  const drawnAllowed = useContext(MathDrawnContext);
+  // The block Claude is still writing shows its maths as written: an unclosed `$$` would draw half a formula.
+  const drawnAllowed = !useContext(BlockWritingContext);
   if (kind !== 'block') return <InlineMath source={source} display={kind === 'display'} />;
   return <CodeBlock code={source} language="math" preview={drawnAllowed ? <BlockMath source={source} /> : undefined} copyLabel="Copy formula" />;
 }

@@ -7,7 +7,8 @@ import { unified } from 'unified';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { FILE_REHYPE_PLUGINS, FILE_REMARK_PLUGINS } from '../filePreview/markdownPlugins.ts';
 import { drawMath, katexNow, loadKatex, MAX_FORMULA } from './katex.ts';
-import { MathCode, MathDrawnContext, streamingBlocks } from './Maths.tsx';
+import { BlockWritingContext } from './blockWriting.ts';
+import { MathCode, streamingBlocks } from './Maths.tsx';
 import { mathKind, mathSourceText, remarkMaths } from './maths.ts';
 import { fadeCountOf, keepFromMarks, replySentences } from './skimFade.ts';
 import { opensMath, splitBlocks } from './streamingMarkdown.ts';
@@ -33,7 +34,7 @@ const components: Components = {
 
 /** An answer's Markdown, as the chat renders it (its plugins). */
 const chat = (text: string, drawn = true) =>
-  renderToStaticMarkup(createElement(MathDrawnContext, { value: drawn }, createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMaths], components }, text)));
+  renderToStaticMarkup(createElement(BlockWritingContext, { value: !drawn }, createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMaths], components }, text)));
 
 /** The text of rendered HTML: tags dropped, entities decoded. */
 const textOf = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
