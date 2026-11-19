@@ -1507,6 +1507,11 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "shortcut:text.select-all",
+      "name": "text.select-all",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "shortcut:read.toggle",
       "name": "read.toggle",
       "page": "sessions/conversation"

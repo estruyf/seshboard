@@ -61,6 +61,7 @@ import { LargeContextNotice } from '../session/LargeContextNotice.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
 import { useHeight } from '../ui/useHeight.ts';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
+import { useCleanCopy } from './useCleanCopy.ts';
 import { anchorAt, recallScroll, rememberScroll } from './scrollMemory.ts';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { useWidth } from '../ui/useWidth.ts';
@@ -846,6 +847,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const scrollRef = useRef<HTMLDivElement>(null);
   // The header's hairline shows only while the conversation scrolls under it.
   const transcriptEdge = useScrollEdge(scrollRef);
+  // ⌘C on a selection copies clean HTML, not the theme's colours.
+  useCleanCopy(scrollRef);
   // Coming back to a session opens it where you were reading (scrollMemory.ts), unless search opens it at a message.
   const [returnTo] = useState(() => (useOverlay.getState().focusMessage?.sessionId === sessionId ? null : recallScroll(sessionId)));
   const restoreTo = useRef(returnTo);
