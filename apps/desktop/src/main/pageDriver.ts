@@ -3,7 +3,7 @@ import type { BrowserWindow } from 'electron';
 // Drives the renderer like a user would, for the smoke test and the README screenshots.
 
 /** Polls a condition in the renderer. Often: most conditions hold within a frame or two, and every poll is one cheap IPC. */
-export async function waitInPage(win: BrowserWindow, expression: string, timeoutMs = 10_000): Promise<boolean> {
+export async function waitInPage(win: Pick<BrowserWindow, 'webContents'>, expression: string, timeoutMs = 10_000): Promise<boolean> {
   const started = performance.now();
   while (performance.now() - started < timeoutMs) {
     if (await win.webContents.executeJavaScript(`Boolean(${expression})`)) return true;

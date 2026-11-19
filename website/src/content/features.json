@@ -3282,6 +3282,11 @@
       "page": "terminal-changes-git/changes"
     },
     {
+      "id": "feature:image-diffs",
+      "name": "Images in Changes: the image before and after, side by side",
+      "page": "terminal-changes-git/changes"
+    },
+    {
       "id": "feature:inline-visuals",
       "name": "Claude's visuals in the conversation: diagrams and widgets from the Claude desktop app, drawn between the text",
       "page": "sessions/conversation"

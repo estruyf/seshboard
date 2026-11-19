@@ -1,4 +1,4 @@
-import { previewKind, REMOTE_FILE_TEXT_BYTES, sessionFileKind, type SessionFileKind } from '@seshboard/protocol/client';
+import { REMOTE_FILE_TEXT_BYTES, sessionFileKind, type SessionFileKind } from '@seshboard/protocol/client';
 import { Check, Code, Copy, Folder, RotateCw, WrapText } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -71,12 +71,12 @@ export interface FilePreviewContent {
 }
 
 /**
- * A Markdown, HTML or code file, read by the engine: rendered, or as its source with line numbers. It reads the file again
- * on Reload and when the window comes back to the front, so an edit by Claude shows without reopening. HTML runs in a
- * sandboxed frame: no scripts, no network. A link that named a line opens on the source, at that line.
+ * A Markdown, HTML or code file, read by the engine: rendered, or as its source with line numbers; an image as itself.
+ * It reads the file again on Reload and when the window comes back to the front, so an edit by Claude shows without
+ * reopening. HTML runs in a sandboxed frame: no scripts, no network. A link that named a line opens on the source, at that line.
  *
  * A file of a session on another computer (`target.computerId`) is read by that computer, which only gives files the
- * session made, and can be an image. Open in editor and Show in the file manager are left out: they act on this computer.
+ * session made. Open in editor and Show in the file manager are left out: they act on this computer.
  */
 export function useFilePreviewContent(target: PreviewTarget, options: FilePreviewOptions = {}): FilePreviewContent {
   const { marks, reloadKey, renderedLabel = 'Preview' } = options;
@@ -105,11 +105,13 @@ export function useFilePreviewContent(target: PreviewTarget, options: FilePrevie
   const load = useCallback(() => {
     if (!client) return;
     let cancelled = false;
-    const read: Promise<Loaded> = !remote
-      ? client.call('files.read', { path })
-      : sessionFileKind(path) === 'image'
-        ? callComputer(client, remote.computerId, 'files.image', { sessionId: remote.sessionId, path }).then(({ mediaType, data }) => ({ kind: 'image', size: data.length, content: null, modified: 0, image: `data:${mediaType};base64,${data}` }))
-        : callComputer(client, remote.computerId, 'files.read', { sessionId: remote.sessionId, path });
+    // An image has no text to read: it comes as its bytes, from this computer or the session's.
+    const read: Promise<Loaded> =
+      sessionFileKind(path) === 'image'
+        ? (remote ? callComputer(client, remote.computerId, 'files.image', { sessionId: remote.sessionId, path }) : client.call('files.image', { path })).then(({ mediaType, data }) => ({ kind: 'image', size: data.length, content: null, modified: 0, image: `data:${mediaType};base64,${data}` }))
+        : remote
+          ? callComputer(client, remote.computerId, 'files.read', { sessionId: remote.sessionId, path })
+          : client.call('files.read', { path });
     read.then(
       (file) =>
         !cancelled &&
@@ -132,7 +134,7 @@ export function useFilePreviewContent(target: PreviewTarget, options: FilePrevie
     return () => window.removeEventListener('focus', onFocus);
   }, [load]);
 
-  const kind: SessionFileKind = read.state === 'ready' ? read.file.kind : ((remote ? sessionFileKind(path) : previewKind(path)) ?? 'code');
+  const kind: SessionFileKind = read.state === 'ready' ? read.file.kind : (sessionFileKind(path) ?? 'code');
   // Code and plain text have no rendered form: they are always their source. An image has no source.
   const view: PreviewView = kind === 'image' ? 'preview' : kind === 'code' || kind === 'text' || atLine ? 'source' : views[kind];
   const showsSource = view === 'source';

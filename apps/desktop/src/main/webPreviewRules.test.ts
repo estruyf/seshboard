@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
-import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, partitionClearing, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
+import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, partitionClearing, faviconCap, FAVICON_MAX_SIDE, iconTooLarge, isAltGrCharacter, isEditingKey, keyForWindow, needsCanvas, pageMenuEntries, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed, type PreviewKeyInput } from './webPreviewRules.ts';
 
 const key = (k: string, mods: Partial<PreviewKeyInput> = {}): PreviewKeyInput => ({ type: 'keyDown', key: k, meta: false, control: false, alt: false, shift: false, ...mods });
 
@@ -325,5 +325,24 @@ describe('audibleHold', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('needsCanvas', () => {
+  it('draws the canvas under text, JSON and XML Chromium shows itself', () => {
+    expect(needsCanvas('text/plain')).toBe(true);
+    expect(needsCanvas('application/json; charset=utf-8')).toBe(true);
+    expect(needsCanvas('application/atom+xml;type=feed;charset=utf-8')).toBe(true);
+    expect(needsCanvas('text/xml')).toBe(true);
+    expect(needsCanvas('application/ld+json')).toBe(true);
+  });
+
+  it('leaves pages and media that draw their own background', () => {
+    expect(needsCanvas('text/html')).toBe(false);
+    expect(needsCanvas('application/xhtml+xml')).toBe(false);
+    expect(needsCanvas('image/svg+xml')).toBe(false);
+    expect(needsCanvas('image/png')).toBe(false);
+    expect(needsCanvas('video/mp4')).toBe(false);
+    expect(needsCanvas('application/pdf')).toBe(false);
   });
 });
