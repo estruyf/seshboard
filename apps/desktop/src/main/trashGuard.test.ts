@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
-import { isConfigDir, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
+import { isConfigDir, isTrashableAgySession, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
 
 // In this platform's form (C:Usersme.claude on Windows): the guard only takes normalised absolute paths.
 const config = resolve('/Users/me/.claude');
@@ -46,6 +46,33 @@ describe('isTrashableCopilotSession', () => {
         symlinkSync(join(home, 'other'), join(sessions, link));
         expect(isTrashableCopilotSession(join(sessions, link), home)).toBe(false);
       }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isTrashableAgySession', () => {
+  it("allows a conversation's history, annotations and folder, and nothing else", () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'trash-agy-')));
+    try {
+      const data = join(home, 'antigravity-cli');
+      for (const dir of ['conversations', 'annotations', join('brain', id), 'other']) mkdirSync(join(data, dir), { recursive: true });
+      writeFileSync(join(data, 'conversations', `${id}.db`), '');
+      writeFileSync(join(data, 'annotations', `${id}.pbtxt`), '');
+      writeFileSync(join(data, 'conversation_summaries.db'), '');
+      writeFileSync(join(data, 'other', `${id}.db`), '');
+      expect(isTrashableAgySession(join(data, 'conversations', `${id}.db`), home)).toBe(true);
+      expect(isTrashableAgySession(join(data, 'annotations', `${id}.pbtxt`), home)).toBe(true);
+      expect(isTrashableAgySession(join(data, 'brain', id), home)).toBe(true);
+      // Not Antigravity's own list, a file elsewhere, a folder in place of a file, or the folders themselves.
+      expect(isTrashableAgySession(join(data, 'conversation_summaries.db'), home)).toBe(false);
+      expect(isTrashableAgySession(join(data, 'other', `${id}.db`), home)).toBe(false);
+      expect(isTrashableAgySession(join(data, 'brain'), home)).toBe(false);
+      expect(isTrashableAgySession(join(data, 'brain', id, 'scratch'), home)).toBe(false);
+      mkdirSync(join(data, 'conversations', `${id.replace('1', '9')}.db`));
+      expect(isTrashableAgySession(join(data, 'conversations', `${id.replace('1', '9')}.db`), home)).toBe(false);
+      expect(isTrashableAgySession(join(data, 'conversations', `${id}.db`), join(home, '..'))).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

@@ -12,6 +12,8 @@ import { delimiter, dirname, join } from 'node:path';
 // Straight from the source file: Node runs these scripts as they are, and the package's index has TypeScript it can't strip.
 import { BUILT_IN_PIPELINES, changesMessage, fillStepPrompt } from '../../../packages/protocol/src/pipelines.ts';
 import { CODEX_DEMO_THREADS, codexDemoRollout } from '../../../packages/engine/src/providers/codex/codexDemo.ts';
+import { AGY_DEMO_SESSIONS, agyDemoLog } from '../../../packages/engine/src/providers/antigravity/agyDemo.ts';
+import { agyLogFile } from '../../../packages/engine/src/providers/antigravity/agyFiles.ts';
 import type { PipelineClaudeStep, StepActionResult } from '../../../packages/protocol/src/pipelineSchema.ts';
 
 const VERSION = '2.1.287';
@@ -23,7 +25,7 @@ const DAY = 24 * HOUR;
 export interface DemoWorld {
   home: string;
   /** Session ids the screenshot tour opens. */
-  sessions: { hero: string; working: string; needsYou: string; copilot: string; codex: string[] };
+  sessions: { hero: string; working: string; needsYou: string; copilot: string; codex: string[]; antigravity: string[] };
   /** The older sessions by title, with the config folder each was written to (the website's Auto model pictures). */
   history: Record<string, { id: string; configDir: string }>;
   /** Processes that stand in for Claude Code running in a terminal; stop them when done. */
@@ -715,10 +717,11 @@ export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdi
   written['Speed up the checkout page'] = { id: reading.id, configDir };
   const copilot = writeCopilotDemo(home, acme, now - 3 * HOUR);
   const codex = writeCodexDemo(home, acme, now - 2 * HOUR);
+  const antigravity = writeAgyDemo(home, acme, now - 4 * HOUR);
 
   return {
     home,
-    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot, codex },
+    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot, codex, antigravity },
     history: written,
     stop: () => sleepers.forEach((child) => child.kill()),
   };
@@ -779,6 +782,22 @@ function writeCodexDemo(home: string, cwd: string, at: number): string[] {
     writeFileSync(file, codexDemoRollout(thread, cwd, time));
     utimesSync(file, time, time);
     return thread.id;
+  });
+}
+
+/**
+ * Google Antigravity CLI sessions on acme-store (#272), as step logs in `~/.gemini/antigravity-cli/brain/<id>/`: shown
+ * once an Antigravity profile is added. The demo's Antigravity (SESHBOARD_STUB_AGY) lists the conversations that have a
+ * log here and replays them itself. Returns their ids, newest first.
+ */
+function writeAgyDemo(home: string, cwd: string, at: number): string[] {
+  return AGY_DEMO_SESSIONS.map((session, i) => {
+    const time = new Date(at - i * 6 * HOUR);
+    const file = agyLogFile(join(home, '.gemini'), session.id);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, agyDemoLog(session, cwd, time));
+    utimesSync(file, time, time);
+    return session.id;
   });
 }
 

@@ -76,7 +76,7 @@ export function settingsIndex(): SettingEntry[] {
       page: 'general',
       label: 'Visuals in replies',
       detail: VISUALS_DETAIL,
-      keywords: 'visual diagram chart widget draw mcp app show_widget visualize codex copilot',
+      keywords: 'visual diagram chart widget draw mcp app show_widget visualize codex copilot antigravity',
       target: '[data-agent-visuals-setting]',
     },
     {
@@ -410,7 +410,7 @@ export function settingsIndex(): SettingEntry[] {
       page: 'profiles',
       label: 'Claude profiles',
       detail: 'Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login.',
-      keywords: 'accounts login work personal config folder',
+      keywords: 'accounts login work personal config folder copilot codex antigravity gemini',
       target: '[data-profiles]',
     },
     {

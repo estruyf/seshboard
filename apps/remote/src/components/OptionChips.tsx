@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ClaudeIcon } from './ClaudeIcon.tsx';
 import { CodexIcon } from './CodexIcon.tsx';
+import { AntigravityIcon } from './AntigravityIcon.tsx';
 import { CopilotIcon } from './CopilotIcon.tsx';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
@@ -20,7 +21,7 @@ type Look = 'chip' | 'row';
 const DEFAULT = '__default__';
 
 /** Each other provider's mark, by its id. */
-const PROVIDER_ICONS: Record<NonNullable<RemoteProfile['provider']>['id'], typeof CopilotIcon> = { copilot: CopilotIcon, codex: CodexIcon };
+const PROVIDER_ICONS: Record<NonNullable<RemoteProfile['provider']>['id'], typeof CopilotIcon> = { copilot: CopilotIcon, codex: CodexIcon, antigravity: AntigravityIcon };
 
 /** Another provider's mark (GitHub Copilot's, OpenAI Codex's). */
 function ProviderIcon({ id, ...rest }: { id: keyof typeof PROVIDER_ICONS } & Parameters<typeof CopilotIcon>[0]) {

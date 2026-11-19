@@ -13,6 +13,10 @@ import { CODEX_INSTALL, CODEX_RESUME, codexHome, codexProvider } from './codex/c
 import { findCodex } from './codex/codexBinary.ts';
 import { codexUpdater, type CodexLatestVersion } from './codex/codexUpdate.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
+import { AGY_MODES } from './antigravity/agyModes.ts';
+import { AGY_RESUME, agyHome, agyInstall, agyProvider } from './antigravity/agyProvider.ts';
+import type { AgyBinary } from './antigravity/agyBinary.ts';
+import type { AcpConnection, AcpConnectionOptions } from './acp/acpConnection.ts';
 import type { ForkRecord } from './providerForks.ts';
 
 export interface ProviderOptions {
@@ -25,6 +29,10 @@ export interface ProviderOptions {
   copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>; version?: CopilotVersionCommand };
   /** A fake `codex` and `codex app-server` (tests and the demo), and the newest version its update check finds (the demo). */
   codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer; latestVersion?: CodexLatestVersion };
+  /** A fake `agy` and `agy acp` (tests and the demo). */
+  antigravity?: { binary?: () => Promise<AgyBinary | null>; createConnection?: (options: AcpConnectionOptions) => AcpConnection };
+  /** Moves a provider's own throwaway files to the Trash (Antigravity's Ask session), checked by main with its folder. */
+  discard?: (provider: OptionalProvider, home: string, paths: string[]) => Promise<void>;
   /** Where a provider says what went wrong while it reads (a Codex that won't start). */
   log?: (level: LogLevel, message: string) => void;
   /** Where each profile's forks made here are kept (`provider_forks`); in memory when left out. */
@@ -54,6 +62,9 @@ export function createProviderUpdater(provider: OptionalProvider, { env, home, s
         env: stringEnv,
         ...(codex.latestVersion ? { latest: codex.latestVersion } : {}),
       });
+    case 'antigravity':
+      // `agy` updates itself.
+      return null;
   }
 }
 
@@ -90,6 +101,20 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       // does, in a worktree or on a branch Seshboard makes. Rewind is Phase 3.
       supports: ['fork', 'rename', 'delete', 'effort', 'ask', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
     },
+    {
+      id: 'antigravity',
+      name: PROVIDER_NAMES.antigravity,
+      defaultFolder: agyHome(home),
+      resumeCommand: AGY_RESUME,
+      // Read and run through the profile's `agy acp` (#272).
+      canStart: true,
+      modes: AGY_MODES,
+      installCommand: agyInstall(),
+      // Its folder to the Trash for delete; the thinking level as effort; Ask in a session of its own that reads the
+      // conversation; the queue, schedules and triggers start it like New session does, in a worktree or on a branch
+      // Seshboard makes. `agy acp` has no fork, rename or rewind yet.
+      supports: ['delete', 'effort', 'ask', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+    },
   ];
 }
 
@@ -118,12 +143,23 @@ export async function detectProvider(info: ProviderInfo, options: ProviderOption
 }
 
 /** The adapter for one provider profile: its folder, its runtime and its login. */
-export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, log, forks, onSessionChanged }: ProviderOptions): ProviderAdapter {
+export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, antigravity = {}, log, forks, onSessionChanged, discard }: ProviderOptions): ProviderAdapter {
   const kind: OptionalProvider = profile.provider;
   switch (kind) {
     case 'copilot':
       return copilotProvider({ profileId: profile.id, copilotHome: profile.home, userHome: home, shellEnv, ...copilot });
     case 'codex':
       return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex, ...(log ? { log } : {}), ...(forks ? { forks: forks(profile.id) } : {}), ...(onSessionChanged ? { onSessionChanged } : {}) });
+    case 'antigravity':
+      return agyProvider({
+        profileId: profile.id,
+        geminiDir: profile.home,
+        userHome: home,
+        shellEnv,
+        ...antigravity,
+        ...(log ? { log } : {}),
+        ...(onSessionChanged ? { onSessionChanged } : {}),
+        ...(discard ? { discard: (paths: string[]) => discard('antigravity', profile.home, paths) } : {}),
+      });
   }
 }
