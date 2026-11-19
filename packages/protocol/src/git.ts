@@ -15,6 +15,13 @@ export const ChangedFile = z.object({
 });
 export type ChangedFile = z.infer<typeof ChangedFile>;
 
+/**
+ * One side of an image's diff (`git.diffImages`): its size in bytes, and the image as base64 with its type, both null
+ * when it is too large to show or isn't a PNG, JPEG, GIF, WebP or SVG image.
+ */
+export const DiffImage = z.object({ size: z.number(), mediaType: z.string().nullable(), data: z.string().nullable() });
+export type DiffImage = z.infer<typeof DiffImage>;
+
 export const GitChanges = z.object({
   root: z.string(),
   branch: z.string().nullable(),
