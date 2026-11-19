@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ReactMarkdown from 'react-markdown';
 import { describe, expect, it } from 'vitest';
 import { previewSchema } from '../filePreview/sanitizeSchema.ts';
-import { REHYPE_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
+import { PLAIN_REHYPE_PLUGINS, REHYPE_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
 import { escapeLoneTags } from './escapeLoneTags.ts';
 import { fileUrlTransform } from './fileRefs.ts';
 import { ReplyImage } from './ReplyImage.tsx';
@@ -20,6 +20,33 @@ const renderSource = (source: string, keep: readonly number[] | null = null) =>
     ),
   );
 const render = (text: string, keep: readonly number[] | null = null) => renderSource(escapeLoneTags(text), keep);
+
+describe('Markdown that is not a reply (a prompt, a plan, a mod)', () => {
+  const plain = (text: string) =>
+    renderToStaticMarkup(
+      createElement(ReactMarkdown, { remarkPlugins: remarkPluginsFor(null), rehypePlugins: PLAIN_REHYPE_PLUGINS, remarkRehypeOptions: REMARK_REHYPE_OPTIONS, urlTransform: fileUrlTransform }, text),
+    );
+
+  it('shows raw HTML as the text it is, so a plan cannot hide a step', () => {
+    const html = plain('1. Edit a.ts\n\n<!-- also delete ~/.ssh -->\n\n<details><summary>tidy up</summary>\n\nrm -rf ~\n\n</details>\n\n2. Run tests');
+    expect(html).toContain('&lt;!-- also delete ~/.ssh --&gt;');
+    expect(html).toContain('&lt;details&gt;');
+    expect(html).not.toContain('<details');
+    expect(html).toContain('rm -rf ~');
+  });
+
+  it('keeps every word of a prompt with placeholders and JSX', () => {
+    const html = plain('Fix the <Button> so <Modal open> closes on <branch>.');
+    expect(html).toContain('Fix the &lt;Button&gt; so &lt;Modal open&gt; closes on &lt;branch&gt;.');
+  });
+
+  it('still renders its Markdown and alerts', () => {
+    const html = plain('#### Small\n\n> [!NOTE]\n> Read this.\n\n- [x] done');
+    expect(html).toContain('<h4>Small</h4>');
+    expect(html).toContain('data-alert="note"');
+    expect(html).toContain('type="checkbox"');
+  });
+});
 
 describe('Markdown in a reply', () => {
   it('renders the plain Markdown it did before', () => {

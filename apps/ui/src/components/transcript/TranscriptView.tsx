@@ -258,7 +258,7 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   if (block?.kind === 'text' && !compacting) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
-        <StreamingMarkdown text={block.text} />
+        <StreamingMarkdown text={block.text} html />
         <span className="mt-0.5 block h-3.5 w-1.5 animate-pulse bg-accent-ink" aria-hidden />
       </div>
     );

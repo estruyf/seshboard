@@ -54,3 +54,9 @@ function rehypeLowerSchemes() {
  * added after it.
  */
 export const REHYPE_PLUGINS: PluggableList = [rehypeRaw, rehypeLowerSchemes, [rehypeSanitize, chatSchema], rehypeUnseal];
+
+/**
+ * Everything else that renders as Markdown (your prompts, plans, agent reports, mods) shows raw HTML as the text it is, as
+ * before replies got it: a plan can't hide a step in a closed `<details>` or a comment. The seal's marks still need unsealing.
+ */
+export const PLAIN_REHYPE_PLUGINS: PluggableList = [rehypeUnseal];

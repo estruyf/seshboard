@@ -1,8 +1,8 @@
-import { memo, useMemo, useRef, type ReactNode } from 'react';
+import { Component, createContext, memo, useContext, useMemo, useRef, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { withoutSkimMarks } from '@seshboard/protocol/client';
 import { CheckMark } from '../ui/Checkbox.tsx';
-import { REHYPE_PLUGINS, REMARK_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
+import { PLAIN_REHYPE_PLUGINS, REHYPE_PLUGINS, REMARK_PLUGINS, REMARK_REHYPE_OPTIONS, remarkPluginsFor } from './chatPlugins.ts';
 import { CodeBlock } from './CodeBlock.tsx';
 import { escapeLoneTags } from './escapeLoneTags.ts';
 import { FileLink } from './FileLink.tsx';
@@ -133,32 +133,65 @@ const proseOf = (variant: MarkdownVariant) => (variant === 'reading' ? READING_P
  */
 const previewComponents: Components = { ...markdownComponents, code: (props) => renderCode(props, false) };
 
+/** Whether the Markdown around it renders raw HTML (`Block`'s `html`), so a Markdown block's preview in a plan doesn't either. */
+const RawHtml = createContext(false);
+
 const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
-  const source = useMemo(() => escapeLoneTags(text), [text]);
+  const html = useContext(RawHtml);
+  const source = useMemo(() => (html ? escapeLoneTags(text) : text), [text, html]);
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} remarkRehypeOptions={REMARK_REHYPE_OPTIONS} urlTransform={fileUrlTransform} components={previewComponents}>
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={html ? REHYPE_PLUGINS : PLAIN_REHYPE_PLUGINS} remarkRehypeOptions={REMARK_REHYPE_OPTIONS} urlTransform={fileUrlTransform} components={previewComponents}>
       {source}
     </ReactMarkdown>
   );
 });
 
 
-/** One block of Markdown. Its `text` has been through `escapeLoneTags` already, as a whole reply (not block by block: a tag and its end tag can be in different ones). */
-const Block = memo(function Block({ text, keep = null }: { text: string; keep?: readonly number[] | null }) {
+/**
+ * Text that breaks the renderer (thousands of nested `<sub>` overflow the stack) shows as plain text instead of taking the
+ * window down with it. A new text tries the renderer again.
+ */
+class BlockBoundary extends Component<{ text: string; children: ReactNode }, { failed: string | null }> {
+  override state: { failed: string | null } = { failed: null };
+  static getDerivedStateFromError() {
+    return { failed: '' };
+  }
+  override componentDidCatch() {
+    this.setState({ failed: this.props.text });
+  }
+  override render() {
+    const { failed } = this.state;
+    if (failed === '' || failed === this.props.text) return <p className="whitespace-pre-wrap">{this.props.text}</p>;
+    return this.props.children;
+  }
+}
+
+/**
+ * One block of Markdown. Its `text` has been through `escapeLoneTags` already, as a whole reply (not block by block: a tag and its end tag can be in different ones).
+ * `html`: raw HTML renders (sanitised); without it, it shows as text.
+ */
+const Block = memo(function Block({ text, keep = null, html }: { text: string; keep?: readonly number[] | null; html: boolean }) {
   const plugins = useMemo(() => (keep ? remarkPluginsFor(keep) : REMARK_PLUGINS), [keep]);
   return (
-    <ReactMarkdown remarkPlugins={plugins} rehypePlugins={REHYPE_PLUGINS} remarkRehypeOptions={REMARK_REHYPE_OPTIONS} urlTransform={fileUrlTransform} components={markdownComponents}>
-      {text}
-    </ReactMarkdown>
+    <BlockBoundary text={text}>
+      <RawHtml.Provider value={html}>
+        <ReactMarkdown remarkPlugins={plugins} rehypePlugins={html ? REHYPE_PLUGINS : PLAIN_REHYPE_PLUGINS} remarkRehypeOptions={REMARK_REHYPE_OPTIONS} urlTransform={fileUrlTransform} components={markdownComponents}>
+          {text}
+        </ReactMarkdown>
+      </RawHtml.Provider>
+    </BlockBoundary>
   );
 });
 
-/** Assistant prose. Memoised: finished messages never change, so they render once. `keep`: the sentences Skim keeps; the rest fade. */
-export const Markdown = memo(function Markdown({ text, variant = 'chat', keep = null }: { text: string; variant?: MarkdownVariant; keep?: readonly number[] | null }) {
-  const source = useMemo(() => escapeLoneTags(text), [text]);
+/**
+ * Prose. Memoised: finished messages never change, so they render once. `keep`: the sentences Skim keeps; the rest fade.
+ * `html`: render the raw HTML a reply may hold (details, kbd, br); only Claude's replies and answers set it.
+ */
+export const Markdown = memo(function Markdown({ text, variant = 'chat', keep = null, html = false }: { text: string; variant?: MarkdownVariant; keep?: readonly number[] | null; html?: boolean }) {
+  const source = useMemo(() => (html ? escapeLoneTags(text) : text), [text, html]);
   return (
     <div className={proseOf(variant)}>
-      <Block text={source} keep={keep} />
+      <Block text={source} keep={keep} html={html} />
     </div>
   );
 });
@@ -168,7 +201,7 @@ export const Markdown = memo(function Markdown({ text, variant = 'chat', keep = 
  * split into blocks so only the last one re-renders per delta, and that block has its
  * unclosed markers (`**bold`, `` `code ``, half a link) closed so they never show raw.
  */
-export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant = 'chat' }: { text: string; variant?: MarkdownVariant }) {
+export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant = 'chat', html = false }: { text: string; variant?: MarkdownVariant; html?: boolean }) {
   // Skim's keep line, while it is written, never shows.
   // What is final of the text so far is escaped once and kept: only the last block changes as the text grows.
   const cache = useRef(newStreamingCache());
@@ -177,7 +210,7 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant
     <div className={proseOf(variant)}>
       {/* Blocks only ever grow at the end, so the index is a stable key. */}
       {streamingBlocks(blocks, (block) => (
-        <Block text={block} />
+        <Block text={block} html={html} />
       ))}
     </div>
   );

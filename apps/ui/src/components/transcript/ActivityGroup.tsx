@@ -53,7 +53,7 @@ function Step({ item, cwd, sessionId }: { item: DisplayItem; cwd: string | null;
             <p className="text-ui whitespace-pre-wrap text-muted italic select-text">{item.text}</p>
           ) : item.kind === 'text' || item.kind === 'user' || item.kind === 'agent-report' ? (
             <div className="text-body">
-              <Markdown text={item.text} />
+              <Markdown text={item.text} html={item.kind === 'text'} />
             </div>
           ) : null}
         </div>
