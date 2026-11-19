@@ -12,18 +12,8 @@ import { FILE_REHYPE_PLUGINS, FILE_REMARK_PLUGINS, fileUrlTransform } from './ma
 import { RemoteFileContext, type RemoteFileSession } from './remotePreview.ts';
 import { resolveRelative } from './resolveRelative.ts';
 
-/** GitHub's alerts: a coloured bar and a title line, in the theme's tones. */
-const ALERTS =
-  '[&_blockquote[data-alert]]:rounded-r-md [&_blockquote[data-alert]]:border-l-4 [&_blockquote[data-alert]]:py-1 [&_blockquote[data-alert]]:pr-3 [&_blockquote[data-alert]]:text-text ' +
-  '[&_[data-alert-title]]:font-semibold ' +
-  '[&_blockquote[data-alert=note]]:border-link [&_blockquote[data-alert=note]]:bg-link/8 [&_blockquote[data-alert=note]_[data-alert-title]]:text-link ' +
-  '[&_blockquote[data-alert=tip]]:border-ok [&_blockquote[data-alert=tip]]:bg-ok/8 [&_blockquote[data-alert=tip]_[data-alert-title]]:text-ok ' +
-  '[&_blockquote[data-alert=important]]:border-caution [&_blockquote[data-alert=important]]:bg-caution/8 [&_blockquote[data-alert=important]_[data-alert-title]]:text-caution ' +
-  '[&_blockquote[data-alert=warning]]:border-warn [&_blockquote[data-alert=warning]]:bg-warn/8 [&_blockquote[data-alert=warning]_[data-alert-title]]:text-warn ' +
-  '[&_blockquote[data-alert=caution]]:border-error [&_blockquote[data-alert=caution]]:bg-error/8 [&_blockquote[data-alert=caution]_[data-alert-title]]:text-error';
-
-/** The prose of a previewed file: the conversation's styles, plus what a README has (images, details, tables, alerts). */
-const FILE_PROSE = `select-text ${PROSE} ${ALERTS} [&_img]:inline-block [&_img]:max-w-full [&_details]:my-1.5 [&_summary]:cursor-pointer [&_hr]:my-4 [&_hr]:border-edge [&_pre]:my-2`;
+/** The prose of a previewed file: the conversation's styles (raw HTML, alerts, task lists and all), plus images and code blocks. */
+const FILE_PROSE = `select-text ${PROSE} [&_img]:inline-block [&_img]:max-w-full [&_pre]:my-2`;
 
 /** Images already read, by path (and computer), so Reload and scrolling back don't fetch them again; a small LRU. */
 const images = new Map<string, Promise<string>>();

@@ -3337,6 +3337,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:reply-markdown",
+      "name": "Replies show quotes, HTML, small headings, GitHub alerts and task lists",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:memories-from-this-session",
       "name": "Memories from this session in a session's menu",
       "page": "memory/adding-memory"

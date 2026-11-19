@@ -7543,6 +7543,85 @@ async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * A selection in the file preview with a real formula and a real Mermaid diagram (`useCleanCopy` on the preview's Markdown),
+ * in a throwaway file in a folder of its own: a sentence with `$x^2 + y^2$` copies with the formula as its TeX in `$…$` exactly once
+ * (not KaTeX's pieces, no `.katex`, no `math`) and its text is the sentence; a `$$` block copies as its source in `$$…$$`; a selection
+ * from the line before a diagram to the line after has both lines and no `svg` (the diagram is left out, not copied as its source).
+ * Read-only: `copy` events with a DataTransfer of its own, the clipboard is untouched. The folder is removed at the end.
+ */
+async function runCopyFormulaStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-copy-formula-')));
+  const md = join(dir, 'copy.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  try {
+    writeFileSync(md, '# Copy\n\nThen $x^2 + y^2$ holds.\n\n$$\nE = mc^2\n$$\n\nBefore the diagram.\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Ship]\n```\n\nAfter the diagram.\n');
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && [...(${PREVIEW}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector('.katex')) && !!${PREVIEW}?.querySelector('[data-mermaid-state="drawn"] svg')`, 20_000))) return 'the formula and the diagram were not drawn in the Markdown preview';
+    const report = (await js(`(() => {
+      const preview = ${PREVIEW};
+      const problems = [];
+      const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+      const copy = (range, target) => {
+        document.activeElement?.blur();
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const data = new DataTransfer();
+        const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        const out = { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain') };
+        selection.removeAllRanges();
+        return out;
+      };
+      const times = (text, part) => text.split(part).length - 1;
+      const paragraph = (start) => [...preview.querySelectorAll('p')].find((p) => p.textContent.trim().startsWith(start));
+      // 1. The sentence with an inline formula.
+      const sentence = paragraph('Then');
+      if (!sentence) return { problems: ['the sentence is not in the preview'] };
+      if (!sentence.closest('[data-clean-copy]')) problems.push('the preview is not a clean-copy container');
+      const range = document.createRange();
+      range.selectNodeContents(sentence);
+      const line = copy(range, sentence);
+      const lineBody = parse(line.html);
+      if (!line.prevented) problems.push('the copy was left to the browser');
+      if (times(lineBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the formula is in the HTML ' + times(lineBody.textContent, '$x^2 + y^2$') + ' times: ' + line.html.slice(0, 160));
+      if (lineBody.querySelector('[class*=katex], math, svg, annotation') || [...lineBody.querySelectorAll('*')].some((e) => [...e.attributes].some((a) => a.name === 'class' || a.name.startsWith('data-')))) problems.push('the HTML keeps KaTeX, MathML or attributes: ' + line.html.slice(0, 160));
+      if (line.text !== 'Then $x^2 + y^2$ holds.') problems.push('the text is ' + JSON.stringify(line.text));
+      // 2. From the sentence through the $$ block.
+      const block = preview.querySelector('[data-math="block"]');
+      const through = document.createRange();
+      through.setStart(sentence.firstChild, 0);
+      through.setEnd(block, block.childNodes.length);
+      const blockCopy = copy(through, sentence);
+      const blockBody = parse(blockCopy.html);
+      if (times(blockBody.textContent, 'E = mc^2') !== 1 || !blockBody.textContent.includes('$$') || blockBody.querySelector('[class*=katex], math, svg')) problems.push('a $$ block copies as ' + JSON.stringify(blockBody.textContent.slice(0, 120)));
+      if (times(blockBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the sentence before the block has its formula ' + times(blockBody.textContent, '$x^2 + y^2$') + ' times');
+      // 3. From the line before the diagram to the line after it.
+      const before = paragraph('Before the diagram');
+      const after = paragraph('After the diagram');
+      const around = document.createRange();
+      around.setStart(before.firstChild, 0);
+      around.setEnd(after.firstChild, after.firstChild.length);
+      const diagram = copy(around, before);
+      const diagramBody = parse(diagram.html);
+      if (!diagram.prevented) problems.push('the copy around a diagram was left to the browser');
+      if (!diagramBody.textContent.includes('Before the diagram.') || !diagramBody.textContent.includes('After the diagram.')) problems.push('the copy around a diagram has ' + JSON.stringify(diagramBody.textContent.slice(0, 120)));
+      if (diagramBody.querySelector('svg') || /Start|Ship|flowchart/.test(diagramBody.textContent)) problems.push('the copy around a diagram has the diagram: ' + diagram.html.slice(0, 160));
+      window.getSelection().removeAllRanges();
+      return { problems };
+    })()`)) as { problems: string[] };
+    if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+    return 'ok: a sentence copies its formula once as $…$ with the sentence as text, a $$ block as its source, and a selection around a Mermaid diagram has its lines and no svg (the diagram is left out)';
+  } finally {
+    pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click(); window.getSelection().removeAllRanges(); null");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
  * ⌘A (Ctrl+A) in the conversation and in reading mode selects only that text (`useSelectAllInText`), so a copy of it is the clean
  * HTML: the selection lies inside the area, the HTML (parsed) has no class, data attribute, button or colour and none of the sidebar's or
  * the reading bar's text. In a text field it still selects only the field's text, and in the message box it leaves the conversation
@@ -8169,6 +8248,66 @@ async function runSkimMarksStep(win: BrowserWindow): Promise<string> {
     if (!(await js(`${faded}.some((el) => el.innerText.includes('I kept the hook small'))`))) return 'failed: a sentence the line left out did not fade';
     return `ok: ${await js(`${faded}.length`)} faded by the keep line, the line hidden`;
   } finally {
+    if (back && back !== id) await open(back);
+  }
+}
+
+async function runMarkdownRepliesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const open = (id: string) => js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+  const back = (await js(`document.querySelector('${view}')?.dataset.currentSession ?? null`)) as string | null;
+  const id = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!id) return 'ok: not the demo home, so no reply with a quote';
+  // What the reply must show, read from the page: the quote is not the muted colour of the old one, has a bar, and keeps its list and code.
+  const check = (root: string) => `(() => {
+    const md = document.querySelector('${root} .markdown:has(blockquote:not([data-alert]))');
+    if (!md) return 'no reply with a quote';
+    const quote = md.querySelector('blockquote:not([data-alert])');
+    const text = getComputedStyle(md.querySelector('p')).color;
+    const bar = getComputedStyle(quote);
+    if (parseFloat(bar.borderLeftWidth) < 3 || bar.borderLeftStyle === 'none') return 'the quote has no bar';
+    if (bar.borderLeftColor === bar.backgroundColor || bar.borderLeftColor === 'rgba(0, 0, 0, 0)') return 'the quote bar is invisible';
+    if (getComputedStyle(quote.querySelector('p')).color !== text) return 'the quote is not in the text colour';
+    if (!quote.querySelector('strong') || !quote.querySelector('ol li') || !quote.querySelector('code')) return 'the quote lost its bold text, list or code';
+    if (!md.querySelector('td br')) return 'the break in the table cell is not a break';
+    if (md.innerText.includes('<br>')) return 'the break shows as source';
+    const alert = md.querySelector('blockquote[data-alert=note]');
+    if (!alert || !alert.querySelector('[data-alert-title]') || alert.innerText.includes('[!NOTE]')) return 'the alert is a plain quote';
+    if (parseFloat(getComputedStyle(alert).borderLeftWidth) < 3) return 'the alert has no bar';
+    const boxes = [...md.querySelectorAll('li.task-list-item [data-task-box]')];
+    if (boxes.length !== 2 || boxes.filter((box) => box.dataset.taskBox === 'checked').length !== 1) return 'the task list has ' + boxes.length + ' boxes';
+    if (md.querySelector('input[type=checkbox]')) return 'a native checkbox shows in the task list';
+    if (getComputedStyle(md.querySelector('li.task-list-item')).listStyleType !== 'none') return 'the task list has a bullet';
+    return 'ok';
+  })()`;
+  const scheme = preferences.get().colorScheme;
+  try {
+    await open(id);
+    if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) return 'failed: the session did not open';
+    // The reply is last; the list is virtualised, so go to its end.
+    await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); if (el) el.scrollTop = el.scrollHeight; })()`);
+    if (!(await waitInPage(win, `document.querySelector('${view} blockquote[data-alert=note]')`, 5_000))) return 'failed: the reply with the alert is not in the conversation';
+    for (const mode of ['dark', 'light'] as const) {
+      if (!(await setColorScheme(win, mode))) return `failed: ${mode} did not apply`;
+      const result = (await js(check(view))) as string;
+      if (result !== 'ok') return `failed: in ${mode}, ${result}`;
+      await js(`document.querySelector('${view} blockquote:not([data-alert])')?.scrollIntoView({ block: 'start' })`);
+      await shot(win, `markdown-replies-${mode}.png`);
+    }
+    // The same reply in reading mode, in both schemes (the paper is warm in light and the same as the page in dark).
+    for (const mode of ['dark', 'light'] as const) {
+      if (!(await setColorScheme(win, mode))) return `failed: ${mode} did not apply`;
+      if (!(await js(`(() => { const b = [...document.querySelectorAll('${view} [data-read-button]')].at(-1); if (!b) return false; b.click(); return true; })()`))) return 'failed: no Read button on the reply';
+      if (!(await waitInPage(win, "document.querySelector('[data-read-mode] blockquote[data-alert]')", 4_000))) return `failed: reading mode in ${mode} does not show the alert`;
+      const reading = (await js(check('[data-read-mode]'))) as string;
+      if (reading !== 'ok') return `failed: in reading mode in ${mode}, ${reading}`;
+      pressKey(win, 'Escape');
+      if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'failed: Esc did not close reading mode';
+    }
+    return 'ok: the quote has a bar in the text colour with its list and code, the table cell breaks, the alert and the task list show, in dark, light and reading mode (both)';
+  } finally {
+    updatePreferences({ colorScheme: scheme });
     if (back && back !== id) await open(back);
   }
 }
@@ -15056,11 +15195,13 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
   await step('copy a selection: clean HTML', () => runCopySelectionStep(win));
+  await step('copy a selection: a formula and a diagram in the file preview', () => runCopyFormulaStep(win), { timeoutMs: 60_000 });
   await step('copy a selection: Select all in the conversation and in reading mode', () => runSelectAllCopyStep(win), { timeoutMs: 60_000 });
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('conversation view: Skim folds, shows the stats and fades by the keep line, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
   await step('skim marks: a reply\'s keep line fades the rest and never shows', () => runSkimMarksStep(win));
+  await step('markdown in replies: a quote, a break in a table cell, an alert and a task list', () => runMarkdownRepliesStep(win), { timeoutMs: 60_000 });
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
   await step('image viewer: arrows go through a reply, right-click copies the image', () => runImageViewerStep(win));
