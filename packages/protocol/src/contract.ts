@@ -42,7 +42,7 @@ import { LimitsState } from './usageLimit.ts';
 import { SignInState } from './signIn.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
-import { ChangesBase, CheckLog, ChecksFinished, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
+import { ChangesBase, CheckLog, ChecksFinished, DiffImage, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
 import { WorktreeFacts, WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
@@ -1010,6 +1010,14 @@ export const contract = {
     'git.diff': {
       params: z.object({ cwd: AbsolutePath, base: ChangesBase, path: z.string().max(4096) }),
       result: z.object({ diff: z.string(), truncated: z.boolean() }),
+    },
+    /**
+     * An image file's two sides in a diff, for the mode the list was made in: `before` from git, `after` from the
+     * working tree, each null when the file isn't there (see DiffImage). Up to `MAX_PREVIEW_IMAGE_BYTES` a side.
+     */
+    'git.diffImages': {
+      params: z.object({ cwd: AbsolutePath, base: ChangesBase, path: z.string().max(4096) }),
+      result: z.object({ before: DiffImage.nullable(), after: DiffImage.nullable() }),
     },
     /**
      * Local branches of the repository at `cwd`, and the one checked out (null when detached or not a repo).

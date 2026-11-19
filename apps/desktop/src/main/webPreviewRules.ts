@@ -195,6 +195,20 @@ export function acceptsLocalCertificate(hostname: string): boolean {
 }
 
 /**
+ * Whether a page needs the canvas drawn under it: a document Chromium shows itself (plain text, JSON, XML) takes the
+ * light or dark scheme, so its text turns white in the dark, but the `<webview>` under it stays white. A browser paints
+ * the canvas in the page's scheme; the preview does it with `CANVAS_CSS`. An HTML page, an image or a video draws its own.
+ */
+export function needsCanvas(contentType: string): boolean {
+  const type = contentType.toLowerCase().split(';')[0]!.trim();
+  if (type === 'text/html' || type === 'application/xhtml+xml' || type.startsWith('image/')) return false;
+  return type.startsWith('text/') || /[/+](json|xml)$/.test(type);
+}
+
+/** The canvas in the page's own scheme, as a user style so any background of the page's own wins. */
+export const CANVAS_CSS = ':root { background-color: Canvas; }';
+
+/**
  * Where a navigation in the page goes: it stays in the page, opens in the browser (the system's), opens with the
  * system (an app's own link, with the browser on), or goes nowhere. Off, only local addresses stay; on, any web address.
  */
