@@ -258,7 +258,7 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   if (block?.kind === 'text' && !compacting) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
-        <StreamingMarkdown text={block.text} />
+        <StreamingMarkdown text={block.text} html />
         <span className="mt-0.5 block h-3.5 w-1.5 animate-pulse bg-accent-ink" aria-hidden />
       </div>
     );
@@ -1180,6 +1180,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     setFindHighlights(findOwner, all, current);
     if (revealCurrent.current && current) {
       revealCurrent.current = false;
+      // A match in a closed `<details>` of a reply has no box: open it first, as a long prompt is.
+      for (let details = current.startContainer.parentElement?.closest<HTMLDetailsElement>('details:not([open])'); details; details = details.parentElement?.closest<HTMLDetailsElement>('details:not([open])')) {
+        // A match in its summary line shows while it is closed.
+        if (!details.querySelector(':scope > summary')?.contains(current.startContainer)) details.open = true;
+      }
       // A long message is taller than the view: centre the match itself, not its row.
       const box = root.getBoundingClientRect();
       const rect = current.getBoundingClientRect();
