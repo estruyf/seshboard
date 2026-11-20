@@ -6,6 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **Seshboard uses about 100 MB less when you don't use Quick start.** Its panel loads at launch only if you opened it in the last 14 days. Otherwise it loads on the first press of its shortcut, which then takes about 0.2 seconds. The menu bar panel closes after an hour out of sight and opens again on the next click.
 - **The Dock animation is lighter.** Settings › Theme › App icon › Show when Claude is working now has Off, Light and Smooth. Light is the new default: the same motion at about 3 frames a second, using about 2% of a CPU core while Claude works instead of 20%. Smooth keeps the old 13 frames a second. If you had it on, you get Light, and if you had it off, it stays off.
 - **Busy sessions use far less CPU.** While Claude works, Seshboard reads only what was added to the transcript instead of the whole file, shows a session it runs from the live messages, and sends the sidebar a busy session's new time about every 15 seconds. Switching back to a session you just looked at is quicker. Search adds a session's new messages when its turn ends, or once it has been quiet for 30 seconds.
 - **Seshboard checks your plan usage less often.** At most once a minute per profile while you work, and the check no longer runs your hooks or starts your MCP servers.

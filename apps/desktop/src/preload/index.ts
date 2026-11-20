@@ -166,6 +166,7 @@ const bridge: SeshboardBridge = {
   quickStart: new URLSearchParams(window.location.search).has(QUICK_START_QUERY),
   quickStartClose: () => ipcRenderer.send(IpcChannel.quickStartCommand, 'close'),
   quickStartPassClicks: (pass) => ipcRenderer.send(IpcChannel.quickStartPassClicks, pass),
+  quickStartReady: () => ipcRenderer.send(IpcChannel.quickStartReady),
   onQuickStartShown(listener) {
     const handler = (_event: unknown, keepDraft: boolean) => listener(keepDraft === true);
     ipcRenderer.on(IpcChannel.quickStartShown, handler);

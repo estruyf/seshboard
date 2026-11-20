@@ -51,6 +51,9 @@ import { isConfigDir, isTrashableAgySession, isTrashableCodexSession, isTrashabl
 import { Updater } from './updater.ts';
 import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
 import { guarded } from './guarded.ts';
+import { IdlePanel, PANEL_IDLE_MS } from './idlePanel.ts';
+import { QuickStartPress } from './quickStartPress.ts';
+import { QuickStartUse, shouldPrewarm } from './quickStartUse.ts';
 import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
@@ -861,8 +864,17 @@ function requestQuit(): void {
   else quitApp();
 }
 
-/** The panel a click on the icon opens: made once, hidden on blur and Esc, and kept for the next click. */
+/**
+ * The panel a click on the icon opens: made the first time it is asked for, hidden on blur and Esc, and kept for the next
+ * click; one nobody opened for `PANEL_IDLE_MS` is destroyed (a whole renderer), and made again by the next click.
+ */
 let menuBarPanel: BrowserWindow | null = null;
+const menuBarIdle = new IdlePanel({
+  afterMs: PANEL_IDLE_MS,
+  destroy: () => {
+    if (menuBarPanel && !menuBarPanel.isDestroyed() && !menuBarPanel.isVisible() && !menuBarPinned) menuBarPanel.destroy();
+  },
+});
 /** How tall the panel's content is (it reports it), and when the panel last hid. */
 let menuBarContentHeight = 420;
 let menuBarHiddenAt = 0;
@@ -887,6 +899,7 @@ function toggleMenuBarPanel(): void {
 
 function showMenuBarPanel(): BrowserWindow {
   const panel = menuBarPanel && !menuBarPanel.isDestroyed() ? menuBarPanel : createMenuBarPanel();
+  menuBarIdle.shown();
   placeMenuBarPanel(panel);
   panel.show();
   panel.focus();
@@ -931,7 +944,10 @@ function createMenuBarPanel(): BrowserWindow {
     if (menuBarPinned || panel.isDestroyed()) return;
     panel.hide();
   });
-  panel.on('hide', () => void (menuBarHiddenAt = Date.now()));
+  panel.on('hide', () => {
+    menuBarHiddenAt = Date.now();
+    menuBarIdle.hidden();
+  });
   // The app menu would take these first (⌘0 is Actual size there): Open Seshboard, Settings… and Quit, as the panel shows them.
   panel.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' || !(process.platform === 'darwin' ? input.meta : input.control) || input.alt || input.shift) return;
@@ -943,6 +959,7 @@ function createMenuBarPanel(): BrowserWindow {
     run();
   });
   panel.on('closed', () => {
+    menuBarIdle.cancel();
     if (menuBarPanel === panel) menuBarPanel = null;
   });
   loadRenderer(panel, undefined, 'menubar');
@@ -963,8 +980,60 @@ ipcMain.on(IpcChannel.menuBarResize, (event, height: unknown) => {
 
 // --- Quick start: a global shortcut opens a panel over any app -------------------------------------------------------
 
-/** The quick start panel: loaded once, hidden after startup, and kept for the next shortcut so it opens at once. */
+/**
+ * The quick start panel, kept for the rest of the session once it exists, so the next shortcut opens it at once. It is made at
+ * startup only for someone who used it in the last 14 days (`shouldPrewarm`), else on the first press, which then waits for
+ * the page to be ready before it shows the window, so keys typed in between go to the app in front and not into a blank panel.
+ */
 let quickStartPanel: BrowserWindow | null = null;
+/** When it was last opened: the prewarm's rule. The smoke test and the screenshots read it from the environment, not the file. */
+const quickStartUse = new QuickStartUse(
+  scripted ? null : join(app.getPath('userData'), 'quick-start-use.json'),
+  scripted ? Number(process.env.SESHBOARD_QUICK_START_USED) || null : undefined,
+);
+/** The quick start pages that said their field is mounted (`IpcChannel.quickStartReady`), by webContents id. */
+const quickStartPageReady = new Set<number>();
+/**
+ * What a press of the shortcut does with the panel: shows it at once when its page is ready, else waits for the page (see
+ * `quickStartPress.ts`). On Windows and Linux the window is shown and focused at the press, invisibly, and made visible when
+ * the page is ready: a window that only shows later can be refused the foreground there (Windows' foreground lock, X11's
+ * focus-stealing prevention) and would never get the keys. On macOS the panel never takes the app's focus, so it shows at the
+ * reveal.
+ */
+const quickStartPress = new QuickStartPress<BrowserWindow, Electron.Rectangle>({
+  isReady: (panel) => quickStartPageReady.has(panel.webContents.id),
+  isLoading: (panel) => panel.webContents.isLoading(),
+  isVisible: (panel) => !panel.isDestroyed() && panel.isVisible(),
+  prepare: (panel, press) => {
+    panel.setBounds(press.bounds);
+    // Clicks land on the panel until the page says the pointer is over its see-through part.
+    panel.setIgnoreMouseEvents(false);
+    if (process.platform !== 'darwin') {
+      panel.setOpacity(0);
+      panel.show();
+      panel.focus();
+    }
+  },
+  reveal: (panel) => {
+    if (process.platform === 'darwin') {
+      // Never `show()` or `app.focus()`: they activate the app, which brings its main window forward. A panel takes the
+      // keys without that.
+      panel.showInactive();
+      panel.focus();
+    } else panel.setOpacity(1);
+  },
+  sendShown: (panel, keepDraft) => {
+    if (quickStartPageReady.has(panel.webContents.id)) panel.webContents.send(IpcChannel.quickStartShown, keepDraft);
+  },
+  abandon: (panel) => {
+    if (panel.isDestroyed()) return;
+    panel.hide();
+    if (process.platform !== 'darwin') panel.setOpacity(1);
+  },
+  log: (message) => console.warn(message),
+  setTimer: (run, ms) => setTimeout(guarded('quick start panel', run), ms),
+  clearTimer: (timer) => clearTimeout(timer as NodeJS.Timeout),
+});
 /** The smoke test keeps the panel open while it looks at it, whatever has focus. */
 let quickStartPinned = false;
 
@@ -978,9 +1047,13 @@ const quickStart = new QuickStart({
   platform: process.platform,
   register: (accelerator, onPress) => globalShortcut.register(accelerator, guarded('quick start shortcut', onPress)),
   unregister: (accelerator) => globalShortcut.unregister(accelerator),
-  visible: () => !!quickStartPanel && !quickStartPanel.isDestroyed() && quickStartPanel.isVisible(),
+  // A press waiting for the page counts as open: pressing again takes it back.
+  visible: () => quickStartPress.pending || (!!quickStartPanel && !quickStartPanel.isDestroyed() && quickStartPanel.isVisible()),
   show: (keepDraft) => void showQuickStartPanel(keepDraft),
-  hide: () => quickStartPanel?.hide(),
+  hide: () => {
+    quickStartPress.takeBack();
+    quickStartPanel?.hide();
+  },
   log: (message) => console.warn(message),
   status: (status) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.quickStartStatus, status);
@@ -990,20 +1063,11 @@ const quickStart = new QuickStart({
 
 function showQuickStartPanel(keepDraft: boolean): BrowserWindow {
   const panel = quickStartPanel && !quickStartPanel.isDestroyed() ? quickStartPanel : createQuickStartPanel();
-  // On the screen with the cursor, whichever app is in front.
-  panel.setBounds(quickStartBounds(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea));
-  // Clicks land on the panel until the page says the pointer is over its see-through part.
-  panel.setIgnoreMouseEvents(false);
-  if (process.platform === 'darwin') {
-    // Never `show()` or `app.focus()`: they activate the app, which brings its main window forward. A panel takes the
-    // keys without that.
-    panel.showInactive();
-    panel.focus();
-  } else {
-    panel.show();
-    panel.focus();
-  }
-  if (readyRenderers.has(panel.webContents.id)) panel.webContents.send(IpcChannel.quickStartShown, keepDraft);
+  // On the screen with the cursor now, whichever app is in front, and not where it has moved to by the time the page is up.
+  const bounds = quickStartBounds(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea);
+  quickStartPress.press(panel, { keepDraft, bounds });
+  // The last use is written after the window is on its way, not before.
+  setImmediate(guarded('quick start use', () => quickStartUse.markUsed(Date.now())));
   return panel;
 }
 
@@ -1050,7 +1114,11 @@ function createQuickStartPanel(): BrowserWindow {
     event.preventDefault();
     panel.webContents.send(IpcChannel.quickStartKey, { key, shift: input.shift });
   });
+  // Read now: a closed window has no webContents to ask.
+  const contentsId = panel.webContents.id;
   panel.on('closed', () => {
+    quickStartPress.closed(panel);
+    quickStartPageReady.delete(contentsId);
     if (quickStartPanel === panel) quickStartPanel = null;
   });
   loadRenderer(panel, undefined, 'quickstart');
@@ -1063,6 +1131,11 @@ ipcMain.on(IpcChannel.quickStartCommand, (event, command: unknown) => {
 });
 // Under the panel the window is see-through: clicks there go to the app under it (and so close the panel), while the
 // pointer still reports its moves, so the page can say when it is back over the panel or a menu.
+ipcMain.on(IpcChannel.quickStartReady, (event) => {
+  if (!quickStartPanel || quickStartPanel.isDestroyed() || event.sender.id !== quickStartPanel.webContents.id) return;
+  quickStartPageReady.add(event.sender.id);
+  quickStartPress.ready(quickStartPanel);
+});
 ipcMain.on(IpcChannel.quickStartPassClicks, (event, pass: unknown) => {
   if (typeof pass !== 'boolean' || !quickStartPanel || event.sender.id !== quickStartPanel.webContents.id) return;
   quickStartPanel.setIgnoreMouseEvents(pass, { forward: true });
@@ -1378,12 +1451,16 @@ function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' 
   // Only a new page in the window itself: `did-start-loading` also fires for frames inside it (a previewed HTML file),
   // and the page says it is ready only once, so it would never count as ready again.
   win.webContents.on('did-start-navigation', (details) => {
-    if (details.isMainFrame && !details.isSameDocument) readyRenderers.delete(contentsId);
+    if (details.isMainFrame && !details.isSameDocument) {
+      readyRenderers.delete(contentsId);
+      quickStartPageReady.delete(contentsId);
+    }
   });
   // A crashed page leaves the window blank: reload it, unless it keeps crashing.
   const reloads = new ReloadLimiter();
   win.webContents.on('render-process-gone', (_event, details) => {
     readyRenderers.delete(contentsId);
+    quickStartPageReady.delete(contentsId);
     if (win.isDestroyed()) return;
     if (reloads.shouldReload(details.reason)) {
       console.error(`[main] renderer gone (${details.reason}); reloading`);
@@ -11423,6 +11500,31 @@ async function runQuickStartPanelStep(): Promise<string> {
   }
 }
 
+/**
+ * A panel made by the press, as for someone who never used Quick start (the smoke run says it was used yesterday, so the
+ * others get a panel made at launch): the window shows once the page says its field is ready, with the focus in it.
+ */
+async function runQuickStartColdStep(): Promise<string> {
+  quickStartPinned = true;
+  try {
+    quickStartPanel?.destroy();
+    if (!(await until(() => quickStartPanel === null, 3_000))) return 'failed: the panel did not go';
+    const at = performance.now();
+    const panel = showQuickStartPanel(false);
+    // On macOS the window shows only when the page is ready; elsewhere it is taken at the press, invisibly.
+    if (process.platform === 'darwin' && panel.isVisible()) return 'failed: the window showed before its page was ready';
+    if (process.platform === 'win32' && panel.getOpacity() !== 0) return `failed: the window is visible (opacity ${panel.getOpacity()}) before its page is ready`;
+    if (!(await until(() => panel.isVisible() && quickStartPageReady.has(panel.webContents.id), 15_000))) return 'failed: the window never showed once its page was ready';
+    const ms = Math.round(performance.now() - at);
+    if (process.platform === 'win32' && !(await until(() => panel.getOpacity() === 1, 2_000))) return 'failed: the window stayed invisible';
+    if (!(await waitInPage(panel, "document.activeElement?.hasAttribute('data-quick-start-field')", 5_000))) return 'failed: the field has no focus';
+    return `ok: made by the press, shown with the focus in its field ${ms}ms after it`;
+  } finally {
+    quickStartPinned = false;
+    quickStart.hide();
+  }
+}
+
 /** Typing a project's name and ↩ makes it a token; ⌫ at the start takes it away again. */
 function runQuickStartTokenStep(): Promise<string> {
   return withQuickStart(async (panel, js, project) => {
@@ -15461,6 +15563,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('menu bar: Allow on a waiting session moves it to Working', () => runMenuBarAllowStep());
   await step('menu bar: new work starts in the background, the main window stays where it was', () => runMenuBarNewWorkStep(win));
   await step('menu bar: turning off Show in the menu bar takes the icon away', () => runMenuBarSettingStep(win));
+  await step('quick start: a panel made by the press shows once its field is ready, with the focus in it', () => runQuickStartColdStep());
   await step('quick start: the panel lists what needs you and the projects', () => runQuickStartPanelStep());
   await step('quick start: a project name and Enter make the token, Backspace goes back', () => runQuickStartTokenStep());
   await step('quick start: Enter starts a session in the background, the main window keeps focus off', () => runQuickStartStartStep(win));
@@ -15700,7 +15803,11 @@ app.whenReady().then(() => {
   const first = createWindow();
   // The global shortcut, and the quick start panel loaded (hidden) once the main window is up, so it opens at once.
   quickStart.setShortcut(preferences.get().quickStartShortcut);
-  first.once('ready-to-show', () => setTimeout(guarded('quick start panel', () => void (quickStartPanel ?? createQuickStartPanel())), 1_500));
+  // The Quick start panel is loaded (hidden) once the main window is up, so it opens at once, for someone who used it lately and has
+  // a shortcut that works. Anyone else gets it on the first press, and about 100 MB less memory until then.
+  if (shouldPrewarm({ lastUsedAt: quickStartUse.lastUsedAt, now: Date.now(), registered: quickStart.status.registered })) {
+    first.once('ready-to-show', () => setTimeout(guarded('quick start panel', () => void (quickStartPanel ?? createQuickStartPanel())), 1_500));
+  }
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.
   // Development and smoke builds leave the system's link handlers alone.
