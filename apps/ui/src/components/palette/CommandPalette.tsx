@@ -29,7 +29,8 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { markKept, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { goToTab, openFavoriteHere } from '../../state/browserActions.ts';
 import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
 import { useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
@@ -179,7 +180,7 @@ export function CommandPalette() {
 
   // What the rows are made of.
   const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
+  const baseRows = useRows((s) => s.rows);
   const hosts = useHosts((s) => s.hosts);
   const models = useHosts((s) => s.models);
   const projects = useProjects((s) => s.projects);
@@ -211,7 +212,7 @@ export function CommandPalette() {
   const remoteNames = useMemo(() => new Map(remoteRows.flatMap((row) => (row.remote ? [[row.projectRoot, `${row.remote.projectName} · ${row.remote.computerName}`] as const] : []))), [remoteRows]);
   const nameOf = (root: string) => remoteNames.get(root) ?? projects.get(root)?.name ?? basename(root);
   const kept = useKeptSessions();
-  const localRows = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
+  const localRows = useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
   const sessionRows = useMemo(() => [...localRows, ...remoteRows], [localRows, remoteRows]);
   const activity = useMemo(() => activityByProject(localRows), [localRows]);
   const branches = useMemo(() => latestBranches(sessions.values()), [sessions]);

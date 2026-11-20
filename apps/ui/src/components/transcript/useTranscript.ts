@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TranscriptMessage } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { applyTranscriptUpdate } from './applyUpdate.ts';
 
 export interface TranscriptState {
   status: 'loading' | 'ready' | 'error';
@@ -25,7 +26,7 @@ export function useTranscript(sessionId: string): TranscriptState {
       setState((prev) =>
         update.error !== undefined
           ? { status: 'error', messages: [], error: update.error }
-          : { status: 'ready', error: null, messages: update.mode === 'replace' ? update.messages : [...prev.messages, ...update.messages] },
+          : { status: 'ready', error: null, messages: applyTranscriptUpdate(prev.messages, update) },
       );
     });
     void client.call('transcript.watch', { sessionId });

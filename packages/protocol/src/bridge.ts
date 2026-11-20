@@ -338,6 +338,10 @@ const NEW_SESSION_MODEL_MAX = 200;
 export type WhileWorking = "queue" | "steer";
 /** After a usage limit stops a session: offer to resume when it resets (`ask`), or arm that straight away (`always`). */
 export type ResumeAtLimit = "ask" | "always";
+
+/** Settings › Theme › App icon › Show when Claude is working: not at all, a few frames a second, or smooth. */
+export const DOCK_ACTIVITY_MODES = ["off", "light", "smooth"] as const;
+export type DockActivityMode = (typeof DOCK_ACTIVITY_MODES)[number];
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
 /** How the sidebar groups its sessions: by state (Needs you, Working, To review, Open) or by project. */
@@ -553,10 +557,11 @@ export interface Preferences {
   /** Settings › Theme › App icon: "Use it on your phone too", the remote app's icon and its browser tab. Off is Graphite there. */
   appIconOnRemote: boolean;
   /**
-   * Settings › Theme › App icon: "Show when Claude is working" (macOS). On, the empty jacks of the Dock's icon light
-   * up in turn while a session works. On by default.
+   * Settings › Theme › App icon: "Show when Claude is working" (macOS). The empty jacks of the Dock's icon light up in
+   * turn while a session works: Light about three frames a second (the default), Smooth thirteen, which costs far
+   * more CPU. Older versions saved a boolean: on is Light, off is Off.
    */
-  dockActivity: boolean;
+  dockActivity: DockActivityMode;
   /**
    * Settings › General › Browser: "Allow browser". On (the default), any web page opens in tabs, beside a session and
    * in a Browser view of its own, with pinned tabs. Off, a session's preview shows only this computer's dev servers.
@@ -719,7 +724,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   themeId: DEFAULT_THEME_ID,
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
-  dockActivity: true,
+  dockActivity: "light",
   browserEnabled: true,
   webPreview: true,
   browserIntro: "ask",
@@ -931,7 +936,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
-  if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
+  if (oneOf(DOCK_ACTIVITY_MODES, raw.dockActivity)) out.dockActivity = raw.dockActivity;
+  // Older versions saved a switch: on is Light, off is Off.
+  else if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity ? "light" : "off";
   if (typeof raw.browserEnabled === "boolean") out.browserEnabled = raw.browserEnabled;
   if (typeof raw.webPreview === "boolean") out.webPreview = raw.webPreview;
   if (oneOf(["ask", "done"] as const, raw.browserIntro)) out.browserIntro = raw.browserIntro;

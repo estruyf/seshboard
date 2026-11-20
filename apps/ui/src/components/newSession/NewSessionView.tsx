@@ -43,7 +43,8 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { markKept, useSessions } from '../../state/sessionsStore.ts';
 import { inScope } from '../../state/sidebarRows.ts';
 import { PromptChips } from '../savedPrompts/PromptChips.tsx';
 import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
@@ -89,7 +90,7 @@ import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
+import { carriedPicks, DEFAULTS_KEY, globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
 /**
@@ -115,11 +116,11 @@ function LocalNewSession() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const sessions = useSessions((s) => s.sessions);
+  const baseRows = useRows((s) => s.rows);
   const select = useSessions((s) => s.select);
   const models = useHosts((s) => s.models);
   const commandsVersion = useHosts((s) => s.commandsVersion);
   const focusRequest = useSessions((s) => s.newSessionRequest);
-  const hosts = useHosts((s) => s.hosts);
   const live = useSessions((s) => s.live);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
@@ -166,8 +167,8 @@ function LocalNewSession() {
   /** The project whose profile was just set from the hint's link: the hint says it now comes from its defaults. */
   const [profileSavedFor, setProfileSavedFor] = useState<string | null>(null);
   /**
-   * A profile asked for when New session opened (Copilot is ready's Start): picking a project or a draft loading after
-   * it doesn't undo it, until another profile is picked.
+   * A profile picked by hand, or asked for when New session opened (Copilot is ready's Start): picking a project or a
+   * draft loading after it doesn't undo it, until another profile is picked.
    */
   const pinnedProfile = useRef<string | null>(null);
   // A provider profile's (GitHub Copilot's) own model and mode, picked here for this session. Null until picked: the
@@ -204,6 +205,16 @@ function LocalNewSession() {
    * `undefined` while nothing was changed, so changes made before a folder is picked (`null`) count too.
    */
   const touchedFor = useRef<string | null | undefined>(undefined);
+  /** The choices set by hand in this visit (see `carriedPicks`): picking another project keeps them over its defaults. */
+  const picked = useRef<Partial<Choices>>({});
+  /** Another provider's model, effort or mode was picked by hand: picking another project keeps them too. */
+  const providerPicked = useRef(false);
+  /** Something else chose the folder and the choices (a link, a queued item, a schedule): earlier picks no longer apply. */
+  const forgetPicks = () => {
+    picked.current = {};
+    providerPicked.current = false;
+    pinnedProfile.current = null;
+  };
   /** A `seshboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
   const folderFromLink = useRef(useClone.getState().form !== null);
   const linkRequest = useLinks((s) => s.newSession);
@@ -339,7 +350,7 @@ function LocalNewSession() {
   // The sessions the sidebar lists (sessions from other apps only when the scope shows them): the
   // tiles' status lines and "Pick up in" come from these.
   const kept = useKeptSessions();
-  const rows = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
+  const rows = useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
   const activity = useMemo(() => activityByProject(rows), [rows]);
   const ordered = useMemo(
     () => orderProjects(folders, projectOrder, (root) => Math.max(projects.get(root)?.lastActivity ?? 0, activity.get(root)?.lastActivity ?? 0) || null),
@@ -394,6 +405,7 @@ function LocalNewSession() {
     setPreset(undefined);
     setDraftPrompt('');
     touchedFor.current = undefined;
+    forgetPicks();
     forgetProviderChoices();
     setProfileOverride(null);
     setD(firstChoices());
@@ -457,6 +469,7 @@ function LocalNewSession() {
     // The store has already turned a project name into its folder.
     folderFromLink.current = true;
     touchedFor.current = undefined;
+    forgetPicks();
     forgetProviderChoices();
     setProfileOverride(null);
     setAddAsProject(true);
@@ -501,6 +514,7 @@ function LocalNewSession() {
     if (fromLater || fromSchedule) leaveQueued();
     folderFromLink.current = true;
     touchedFor.current = undefined;
+    forgetPicks();
     forgetProviderChoices();
     setProfileOverride(null);
     setPendingStart(null);
@@ -567,6 +581,7 @@ function LocalNewSession() {
     folderFromLink.current = true;
     touchedFor.current = item.cwd;
     worktreeFor.current = null;
+    forgetPicks();
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
@@ -594,6 +609,7 @@ function LocalNewSession() {
     folderFromLink.current = true;
     touchedFor.current = draft.cwd;
     worktreeFor.current = null;
+    forgetPicks();
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
@@ -622,6 +638,7 @@ function LocalNewSession() {
     folderFromLink.current = true;
     touchedFor.current = item.root;
     worktreeFor.current = null;
+    forgetPicks();
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
@@ -739,7 +756,8 @@ function LocalNewSession() {
     setRestored(draft.seeded ? null : draft);
     if (!draft.form) return;
     touchedFor.current = cwd;
-    setD(draft.form.choices);
+    // Choices set by hand before picking this project are newer than the ones kept with its prompt.
+    setD(question ? draft.form.choices : { ...draft.form.choices, ...picked.current });
     if (pinnedProfile.current === null) setProfileOverride(draft.form.profileId);
     setRunAsId(draft.form.runAs ?? null);
   };
@@ -754,8 +772,9 @@ function LocalNewSession() {
   // A new folder starts from its project's defaults (again when they arrive or change, until the user changes something).
   useEffect(() => {
     if (!loaded || touchedFor.current === cwd) return;
-    forgetProviderChoices();
-    const choices = firstChoices();
+    if (!providerPicked.current) forgetProviderChoices();
+    // What was set by hand goes over the defaults (a quick question keeps its own choices).
+    const choices = question ? firstChoices() : { ...firstChoices(), ...picked.current };
     setD(worktreeFor.current === cwd && !question ? { ...choices, workspace: 'worktree' } : choices);
   }, [loaded, cwd, defaultsKey, newSessionMode, newSessionModel, newSessionEffort, lastMode, autostarting, question, questionChoices]);
 
@@ -816,11 +835,13 @@ function LocalNewSession() {
   /** A choice made in another provider's chips: it stays when the project's defaults change, as `update`'s. */
   const pickForProvider = () => {
     touchedFor.current = cwd;
+    providerPicked.current = true;
     setSavedNote(null);
     setSwitched(null);
   };
   const update = (patch: Partial<Choices>) => {
     touchedFor.current = cwd;
+    if (!question) picked.current = { ...picked.current, ...carriedPicks(patch) };
     setSavedNote(null);
     setSwitched(null);
     setD((current) => ({ ...current, ...patch }));
@@ -843,12 +864,12 @@ function LocalNewSession() {
   };
   const changeFolder = (folder: string) => {
     touchedFor.current = undefined;
-    forgetProviderChoices();
+    if (!providerPicked.current) forgetProviderChoices();
     if (folder !== fromGithub?.request.root) setFromGithub(null);
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
-    // A profile asked for when New session opened (Start a Copilot session) stays through picking the project.
+    // A profile picked by hand, or asked for when New session opened (Start a Copilot session), stays through picking the project.
     if (pinnedProfile.current === null) setProfileOverride(null);
     setSwitched(null);
     setProfileSavedFor(null);
@@ -1196,7 +1217,7 @@ function LocalNewSession() {
    * its own model and mode, and says what it turned off that was on (a worktree, a pipeline), with the way back.
    */
   const pickProfile = (id: string) => {
-    pinnedProfile.current = null;
+    pinnedProfile.current = id;
     const to = profiles.find((p) => p.id === id)?.provider ?? 'claude';
     const supports = to === 'claude' ? [] : (catalog.find((p) => p.id === to)?.supports ?? []);
     setSwitched(
@@ -1801,6 +1822,7 @@ function LocalNewSession() {
                         type="button"
                         className="shrink-0 text-link hover:underline"
                         onClick={() => {
+                          pinnedProfile.current = switched.back;
                           setProfileOverride(switched.back);
                           setSwitched(null);
                         }}

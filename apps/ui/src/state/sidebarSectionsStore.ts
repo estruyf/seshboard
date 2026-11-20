@@ -5,7 +5,8 @@ import { useHosts } from './hostsStore.ts';
 import { keptSessionsNow } from './keptSessions.ts';
 import { usePipelineTree } from './pipelineTreeStore.ts';
 import { usePreferences } from './preferencesStore.ts';
-import { toRows, useSessions } from './sessionsStore.ts';
+import { currentRows } from './rowsStore.ts';
+import { markKept, useSessions } from './sessionsStore.ts';
 import { useSidebar } from './sidebarStore.ts';
 import { sectionOfSession } from './sidebarRows.ts';
 import { DEFAULT_SECTIONS, isSectionKey, parseSections, toggleAllSections, type SectionKey, type SectionsOpen } from './sidebarSections.ts';
@@ -71,7 +72,7 @@ export function useSidebarSectionsSync(): void {
       useSessions.subscribe((state, previous) => {
         const id = state.selectedId;
         if (!id || id === previous.selectedId) return;
-        const rows = toRows(state.sessions, state.live, useHosts.getState().hosts, keptSessionsNow());
+        const rows = markKept(currentRows(), keptSessionsNow());
         const section = sectionOfSession(rows, id, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
         if (isSectionKey(section)) useSidebarSections.getState().setOpen(section, true);
         // A pipeline's sub-session opens its parent in the tree, so its row is in sight.

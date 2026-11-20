@@ -3,7 +3,8 @@ import { PanelLeft } from 'lucide-react';
 import { useMemo } from 'react';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
 import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
 import { needsYouPill } from '../../state/sidebarOrder.ts';
 import { inScope } from '../../state/sidebarRows.ts';
@@ -48,9 +49,7 @@ export function SidebarToggle() {
 }
 
 function NeedsYouPill() {
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
+  const baseRows = useRows((s) => s.rows);
   const permissions = useHosts((s) => s.permissions);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   // Sessions on other computers that need you count too, with their open prompts.
@@ -58,8 +57,8 @@ function NeedsYouPill() {
   const lists = useComputers((s) => s.lists);
   const pill = useMemo(() => {
     const remoteRequests = [...lists].flatMap(([computerId, list]) => list.prompts.map((p) => ({ ...p, sessionId: remoteRowId({ computerId, sessionId: p.sessionId }) })));
-    return needsYouPill([...toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), ...remoteRows], [...permissions.values(), ...remoteRequests]);
-  }, [sessions, live, hosts, permissions, scope, remoteRows, lists]);
+    return needsYouPill([...baseRows.filter((row) => inScope(row, scope)), ...remoteRows], [...permissions.values(), ...remoteRequests]);
+  }, [baseRows, permissions, scope, remoteRows, lists]);
   if (!pill) return null;
   return (
     <Pill

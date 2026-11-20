@@ -105,6 +105,7 @@ import {
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
+import { TranscriptCache } from './claude/transcriptCache.ts';
 import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
@@ -531,6 +532,8 @@ export function createEngine(options: EngineOptions): Engine {
   let sidebarScope: 'switchboard' | 'all' = 'switchboard';
   /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
   let scanCompleteHook: () => void = () => {};
+  /** Set once reminders exist: a session's state changed, so a snoozed one that works or needs you drops its reminder. */
+  let breakThroughHook: () => void = () => {};
   /** Set once memory search exists: every memory change (Seshboard's or a watcher's) re-indexes the files that changed. */
   let memoryChangedHook: () => void = () => {};
   let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -578,12 +581,16 @@ export function createEngine(options: EngineOptions): Engine {
   });
   // The SDK's transcript readers take the folder from process.env.CLAUDE_CONFIG_DIR: one folder at a time.
   const lane = new ConfigDirLane();
+  /** Parsed transcripts, shared by every reader (the open transcript, search, catch-up, the phone, links). */
+  const transcriptCache = new TranscriptCache();
+  /** A session's transcript file, from the session index once it exists. */
+  let transcriptPath: (sessionId: string) => string | null = () => null;
   const sdkSources = new Map<string, SessionSource>();
   const sourceFor = (profile: ProfileRuntime): SessionSource => {
     if (options.sessionSource && profile.id === BUILTIN_PROFILE_ID) return options.sessionSource;
     const key = `${profile.id}\0${profile.configDir}`;
     let found = sdkSources.get(key);
-    if (!found) sdkSources.set(key, (found = sdkSessionSource((fn) => lane.run(profile.envDir, fn))));
+    if (!found) sdkSources.set(key, (found = sdkSessionSource((fn) => lane.run(profile.envDir, fn), { cache: transcriptCache, pathOf: (id) => transcriptPath(id) })));
     return found;
   };
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
@@ -751,11 +758,17 @@ export function createEngine(options: EngineOptions): Engine {
     },
     onTranscriptChanged: (id) => transcripts.changed(id),
   });
+  transcriptPath = (id) => sessions.transcriptFile(id);
   // Full-text search: indexed in the background, a little after anything changes.
   const search = new SearchIndex(
     cache.db,
     source,
-    () => sessions.snapshot().sessions.map((s) => ({ id: s.id, version: `${s.updatedAt}:${s.fileSize ?? ''}` })),
+    () =>
+      sessions.snapshot().sessions.map((s) => {
+        // The latest, also while the sidebar waits for it: a turn's end is indexed at once.
+        const latest = sessions.latestActivity(s.id) ?? s;
+        return { id: s.id, version: `${latest.updatedAt}:${latest.fileSize ?? ''}`, writtenAt: sessions.writtenAt(s.id) };
+      }),
     log,
     (id, messages) => links.transcriptRead(id, messages),
   );
@@ -834,6 +847,7 @@ export function createEngine(options: EngineOptions): Engine {
         onChange: () => {
           recordHostProcesses?.();
           broadcast('sessions.live', { live: liveList() });
+          breakThroughHook();
           void autoStarter?.check();
           runner?.check();
         },
@@ -1003,8 +1017,8 @@ export function createEngine(options: EngineOptions): Engine {
    */
   /** The last plan usage a provider's driver reported (Codex's windows), for the cost of its windows. */
   const providerSnapshots = new Map<string, UsageSnapshot | null>();
-  const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
-    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh);
+  const planUsage = async (profileId: string, refresh: boolean, maxAgeMs?: number): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
+    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh, maxAgeMs);
     const driver = providerProfiles.adapter(profileId)?.driver;
     if (!driver?.planUsage) return null;
     if (providerUsageWatch.get(profileId)?.driver !== driver) {
@@ -1156,9 +1170,17 @@ export function createEngine(options: EngineOptions): Engine {
    */
   const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onNotice' | 'onRetract' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
     onInfo: (info) => {
-      if (info.state === 'idle') transcripts.settled(info.sessionId);
+      // While this app runs a turn, the live messages show it: the file is read once the turn ends or waits for you.
+      transcripts.running(info.sessionId, info.state === 'running' || info.state === 'starting');
+      if (info.state === 'idle') {
+        transcripts.settled(info.sessionId);
+        // The turn's messages are searchable now, not once the session has been quiet for a while.
+        search.settled(info.sessionId);
+        scheduleSearchSync();
+      }
       awake.update(info.sessionId, info);
       broadcast('session.host', withAwake(info));
+      breakThroughHook();
       catchUpOnInfo(info);
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
@@ -1516,6 +1538,7 @@ export function createEngine(options: EngineOptions): Engine {
     if (JSON.stringify(next) === JSON.stringify(providerLive)) return;
     providerLive = next;
     broadcast('sessions.live', { live: liveList() });
+    breakThroughHook();
     void autoStarter?.check();
     runner?.check();
   };
@@ -3114,6 +3137,10 @@ export function createEngine(options: EngineOptions): Engine {
     broadcast('sessions.remindersDue', { reminders });
     remote?.pushReminders(reminders);
   };
+  // Working, needing you or failing for less than a minute drops a reminder too (the timer alone could miss it).
+  breakThroughHook = () => {
+    if (sessions.snoozed().length) checkReminders();
+  };
   const reminderTimer = setInterval(checkReminders, 60_000);
   reminderTimer.unref?.();
 
@@ -3291,6 +3318,9 @@ export function createEngine(options: EngineOptions): Engine {
     cleanupInBackground();
   };
   scanCompleteHook = () => {
+    // Once, at the first full scan: every later change says `complete` too. Reminders are checked every minute after,
+    // and a snoozed session's reminder drops as soon as it works or needs you (`breakThroughHook`).
+    scanCompleteHook = () => {};
     // Pinned tabs of sessions this computer no longer knows go once, at the first full scan of a run.
     if (!scanned) {
       const gone = pinnedTabs.prune((id) => sessions.get(id) !== undefined);
@@ -3893,10 +3923,10 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),
-    'usage.get': async ({ refresh, profileId }) => {
+    'usage.get': async ({ refresh, profileId, maxAgeMs }) => {
       // Plan usage is Claude Code's, and a provider's whose driver reports windows of its own (Codex's rate limits).
       // Copilot's premium requests are `providers.quota`.
-      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh);
+      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh, maxAgeMs);
       if (!usage) throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId!)]} has premium requests, not plan usage`);
       return usage;
     },
@@ -5008,6 +5038,8 @@ export function createEngine(options: EngineOptions): Engine {
     wake: () => {
       scheduler.wake();
       checkReminders();
+      // Plan usage moved on while it slept (the 5-hour window may have reset).
+      for (const monitor of usageMonitors.values()) monitor.nudge();
     },
     advanceScheduleClock: (ms) => {
       if (!options.stubQueueStarts) return;
@@ -5075,6 +5107,7 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      search.stop();
       browserBridge.close();
       orchestratorBridge.close();
       clearInterval(providerLiveTimer);

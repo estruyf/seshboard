@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UsageSnapshot } from '@seshboard/protocol';
 import type { SdkRuntime } from './hostManager.ts';
 import { toUsageSnapshot, UsageMonitor } from './usageMonitor.ts';
@@ -62,6 +62,8 @@ describe('UsageMonitor', () => {
     expect(error).toBeNull();
     expect(usage?.limits[0]).toMatchObject({ kind: 'session', percent: 18 });
     expect(calls[0]).toMatchObject({ persistSession: false, sessionId: hidden[0] });
+    // The user's settings stay (env, proxy, apiKeyHelper), the hooks (SessionStart and the rest) don't run.
+    expect(calls[0]).toMatchObject({ settingSources: ['user'], settings: { disableAllHooks: true } });
     expect(changes).toHaveLength(1);
     // Cached for a minute: no second process.
     await monitor.get(false);
@@ -179,6 +181,160 @@ describe('UsageMonitor retries', () => {
     expect(usage).toBeNull();
     expect(error).toMatch(/in time/);
     expect(counters.closed).toBeGreaterThan(0);
+    monitor.stop();
+  });
+});
+
+describe('UsageMonitor nudges', () => {
+  afterEach(() => vi.useRealTimers());
+  const fakeSdk = (counters: { fetches: number; miss?: boolean }): SdkRuntime => ({
+    query: ({ prompt }) =>
+      ({
+        async *[Symbol.asyncIterator]() {
+          for await (const _ of prompt) {
+            counters.fetches++;
+            yield { type: 'assistant', message: { content: [] }, usage_report: counters.miss ? undefined : REPORT };
+            yield { type: 'result', subtype: 'success' };
+            return;
+          }
+        },
+        close: () => {},
+      }) as never,
+    startup: async () => ({}) as never,
+  });
+  const start = async () => {
+    vi.useFakeTimers();
+    const counters: { fetches: number; miss?: boolean } = { fetches: 0 };
+    const monitor = new UsageMonitor({
+      sdk: async () => fakeSdk(counters),
+      env: async () => ({}),
+      claudePath: async () => '/bin/claude',
+      onChange: () => {},
+      log: () => {},
+      ephemeral: { add: () => {}, delete: () => {} },
+    });
+    await monitor.get(false);
+    return { monitor, counters, wait: (ms: number) => vi.advanceTimersByTimeAsync(ms) };
+  };
+
+  it('starts at most one helper a minute for nudges, however often a turn ends', async () => {
+    const { monitor, counters, wait } = await start();
+    expect(counters.fetches).toBe(1);
+    // A turn ends every 20 s for three minutes.
+    for (let t = 0; t < 180; t += 20) {
+      monitor.nudge();
+      await wait(20_000);
+    }
+    // The first at the start, then one a minute (60 s, 120 s, 180 s), not one after each turn.
+    expect(counters.fetches).toBe(4);
+    monitor.stop();
+  });
+
+  it('waits the floor out after the first nudge, not just 15 s', async () => {
+    const { monitor, counters, wait } = await start();
+    await wait(10_000);
+    monitor.nudge();
+    await wait(30_000);
+    expect(counters.fetches).toBe(1);
+    await wait(21_000);
+    expect(counters.fetches).toBe(2);
+    monitor.stop();
+  });
+
+  it('keeps the 15 s wait when the last fetch is old, and lets a fetch from elsewhere push the nudge back', async () => {
+    const { monitor, counters, wait } = await start();
+    await wait(100_000);
+    monitor.nudge();
+    await wait(16_000);
+    expect(counters.fetches).toBe(2);
+
+    // A nudge, then the Usage view's Refresh 10 s later: the nudge waits out the floor after that.
+    monitor.nudge();
+    await wait(10_000);
+    await monitor.get(true);
+    expect(counters.fetches).toBe(3);
+    await wait(40_000);
+    expect(counters.fetches).toBe(3);
+    await wait(25_000);
+    expect(counters.fetches).toBe(4);
+    monitor.stop();
+  });
+
+  it('stop() cancels a pending nudge and one that was pushed back by another fetch', async () => {
+    const { monitor, counters, wait } = await start();
+    monitor.nudge();
+    monitor.stop();
+    await wait(120_000);
+    expect(counters.fetches).toBe(1);
+
+    const again = await start();
+    again.monitor.nudge();
+    await again.wait(10_000);
+    await again.monitor.get(true);
+    expect(again.counters.fetches).toBe(2);
+    // The nudge fires at 15 s, finds the floor not over (the Refresh started at 10 s) and arms itself again: stop that too.
+    await again.wait(10_000);
+    again.monitor.stop();
+    await again.wait(120_000);
+    expect(again.counters.fetches).toBe(2);
+  });
+
+  it('a nudge while a miss waits for its retry waits out the floor after the retry', async () => {
+    vi.useFakeTimers();
+    const counters: { fetches: number; miss?: boolean } = { fetches: 0, miss: true };
+    const monitor = new UsageMonitor({
+      sdk: async () => fakeSdk(counters),
+      env: async () => ({}),
+      claudePath: async () => '/bin/claude',
+      onChange: () => {},
+      log: () => {},
+      ephemeral: { add: () => {}, delete: () => {} },
+    });
+    await monitor.get(false);
+    // The first miss retries in 30 s. The nudge is held to 60 s by the floor, finds the retry at 30 s, and waits until 90 s.
+    monitor.nudge();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(counters.fetches).toBe(2);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(counters.fetches).toBe(2);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(counters.fetches).toBe(3);
+    monitor.stop();
+  });
+
+  it('the regular check skips its turn when a fetch just ran', async () => {
+    const { monitor, counters, wait } = await start();
+    // The interval fires at 5 minutes; a Refresh at 4 min 30 s is fresh enough.
+    await wait(270_000);
+    await monitor.get(true);
+    expect(counters.fetches).toBe(2);
+    await wait(31_000);
+    expect(counters.fetches).toBe(2);
+    // The next tick, 5 minutes after the first, finds the Refresh older than the floor.
+    await wait(300_000);
+    expect(counters.fetches).toBe(3);
+    monitor.stop();
+  });
+
+  it('does not wait longer than the floor when the clock jumps back', async () => {
+    const { monitor, counters, wait } = await start();
+    vi.setSystemTime(Date.now() - 3_600_000);
+    monitor.nudge();
+    await wait(16_000);
+    expect(counters.fetches).toBe(2);
+    monitor.stop();
+  });
+
+  it('fetches again when the numbers are older than the age asked for, not the default minute', async () => {
+    const { monitor, counters, wait } = await start();
+    await wait(90_000);
+    await monitor.get(false, 120_000);
+    expect(counters.fetches).toBe(1);
+    await monitor.get(false);
+    expect(counters.fetches).toBe(2);
+    await wait(130_000);
+    await monitor.get(false, 120_000);
+    expect(counters.fetches).toBe(3);
     monitor.stop();
   });
 });
