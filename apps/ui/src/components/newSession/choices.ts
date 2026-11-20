@@ -99,6 +99,16 @@ export function startingChoices(globals: GlobalChoices, project: ProjectDefaults
   };
 }
 
+/**
+ * The part of a change in New session that stays when another project is picked: what the user set by hand outlives
+ * the folder, over the next project's defaults. A branch belongs to one repository, so it never goes along, and
+ * neither does a worktree base that is a branch.
+ */
+export function carriedPicks(patch: Partial<Choices>): Partial<Choices> {
+  const { branch: _branch, baseRef, ...rest } = patch;
+  return baseRef === 'fresh' || baseRef === 'head' ? { ...rest, baseRef } : rest;
+}
+
 /** Another provider's (GitHub Copilot's) model, effort and mode for a new session. '' is its own default model, or the model's own effort. */
 export interface ProviderStart {
   model: string;

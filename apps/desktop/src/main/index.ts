@@ -9155,7 +9155,7 @@ function openFolderFilter(win: BrowserWindow): Promise<unknown> {
  * nine rows, a name too long for its row cut in the middle; with the sidebar open and the window narrower, two columns and eight, and a long name cut in the middle;
  * narrower still, one column and six. The window's minimum width is lowered for these sizes, as a side panel would
  * narrow the view instead. ⌘F opens Find, ⌘2 picks the second row, and ⌘7
- * does nothing with six. Ten empty folders in a new temporary folder are added as projects through Find… (a typed path
+ * does nothing with six. An effort picked by hand stays when ⌘2 and a click pick other projects. Ten empty folders in a new temporary folder are added as projects through Find… (a typed path
  * and ↩) so there are more than nine; they are removed again, and the window gets its size back.
  */
 async function runProjectListStep(win: BrowserWindow): Promise<string> {
@@ -9225,6 +9225,10 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     if (now.firstLine !== 1) return `one column put ${now.firstLine} rows on the first line`;
     for (const cut of now.cut) if (!/^.+….+$/.test(cut)) return `a name was cut at its end: ${cut}`;
     if (!(await js(`${one('[data-new-session-view] [data-all-projects]')}?.innerText.startsWith('All ')`))) return 'no All N projects… under the list';
+    // A choice made by hand stays when another project is picked, over that project's defaults.
+    const effortChip = one('[data-new-session-view] [data-effort-select]');
+    const effort = (await js(`${effortChip}?.dataset.value ?? ''`)) === 'max' ? 'low' : 'max';
+    if (!(await chooseChoice(win, 'effort', effort, '[data-new-session-view]'))) return `could not pick ${effort} as the effort`;
     // ⌘2 picks the second row, and the focus stays in the message box.
     const second = now.folders[1]!;
     await js(`${one('[data-new-session-view] [data-composer]')}.focus()`);
@@ -9237,6 +9241,9 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     await clickLikeAUser(win, `[data-new-session-view] [data-folder-option=${JSON.stringify(third)}]`);
     if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(third)}`, 3_000))) return 'a click did not pick the row';
     if (!(await waitInPage(win, "document.activeElement?.matches('[data-composer]')", 1_000))) return 'a click on a row took the focus out of the message box';
+    await settle(win);
+    const kept = (await js(`${effortChip}?.dataset.value ?? ''`)) as string;
+    if (kept !== effort) return `picking another project put the effort back to ${kept || 'the default'}, not the ${effort} picked`;
 
     // A shorter window lists as many as fit, and ⌘ only reaches those.
     win.setContentSize(1280, 620);
@@ -15540,7 +15547,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
   await step('clone from GitHub: the setting with its folder, a URL in the folder field, the clone of a local repository, the trust question (no session)', () => runCloneStep(win), { timeoutMs: 60_000 });
   // After projects: it adds ten projects (removed again), which the Projects view's first step must not see.
-  await step('new session project list: one column of nine, as many as fit, two and eight stacked, one and six, ⌘F finds, ⌘2 picks the second row', () => runProjectListStep(win), { timeoutMs: 90_000 });
+  await step('new session project list: one column of nine, as many as fit, two and eight stacked, one and six, ⌘F finds, ⌘2 picks the second row, a picked effort stays', () => runProjectListStep(win), { timeoutMs: 90_000 });
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
