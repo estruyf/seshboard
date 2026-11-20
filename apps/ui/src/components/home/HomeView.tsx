@@ -6,7 +6,8 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
 import { inScope } from '../../state/sidebarRows.ts';
 import { YesterdayCard } from '../activity/YesterdayCard.tsx';
 import { useMinute } from '../focus/useMinute.ts';
@@ -43,15 +44,13 @@ function Onboarding() {
 export function HomeView() {
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
+  const baseRows = useRows((s) => s.rows);
   const projects = useProjects((s) => s.projects);
   const loaded = useProjects((s) => s.loaded);
   const quick = useQuickProjects('');
   const now = useMinute();
 
-  const rows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const rows = useMemo(() => baseRows.filter((row) => inScope(row, scope)), [baseRows, scope]);
   const { needs, working } = useMemo(() => homeSessions(rows), [rows]);
   const review = useMemo(() => reviewSessions(rows, { now, archiveAfterDays }), [rows, now, archiveAfterDays]);
   const nameOf = (root: string) => projects.get(root)?.name ?? basename(root);

@@ -5,7 +5,7 @@ import { usePreferences } from '../state/preferencesStore.ts';
 import { useTerminals } from '../state/terminalsStore.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { openUnsentList } from './drafts/UnsentList.tsx';
-import { useUnsent } from './drafts/useUnsent.ts';
+import { useUnsentCount } from './drafts/useUnsent.ts';
 import { quitSummary } from '../state/drafts.ts';
 import { Kbd } from './ui/Kbd.tsx';
 import { Checkbox } from './ui/Checkbox.tsx';
@@ -50,7 +50,7 @@ export function QuitPrompt() {
   const [open, setOpen] = useState(false);
   const answered = useRef(false);
   const impact = useQuitImpact();
-  const unsent = useUnsent().length;
+  const unsent = useUnsentCount();
   const summary = quitSummary(impact, unsent);
   const large = useQuitLargeContext();
   // What the prompt said when it opened: ticking the tip's box doesn't make the paragraph go away.

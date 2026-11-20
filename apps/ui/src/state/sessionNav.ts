@@ -4,7 +4,8 @@ import { useHosts } from './hostsStore.ts';
 import { keptSessionsNow } from './keptSessions.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useProjects } from './projectsStore.ts';
-import { toRows, useSessions } from './sessionsStore.ts';
+import { currentRows } from './rowsStore.ts';
+import { markKept, useSessions } from './sessionsStore.ts';
 import { useSidebar } from './sidebarStore.ts';
 import { nextNeedsYou, sidebarGroups, sidebarOrder, stepSession } from './sidebarOrder.ts';
 import { inScope } from './sidebarRows.ts';
@@ -36,10 +37,10 @@ export const useHud = create<HudState>()((set) => ({
  * the rail shows them.
  */
 export function currentOrder() {
-  const { sessions, live, filter } = useSessions.getState();
+  const { filter } = useSessions.getState();
   const { sessionScope: scope, archiveAfterDays, sidebarSort: sort } = usePreferences.getState().prefs;
   const kept = keptSessionsNow();
-  const local = toRows(sessions, live, useHosts.getState().hosts, kept).filter((row) => inScope(row, scope));
+  const local = markKept(currentRows(), kept).filter((row) => inScope(row, scope));
   const rows = filterBySource([...local, ...currentRemoteRows()], useComputers.getState().hidden);
   const open = useSidebar.getState().state === 'open';
   const quick = quickInfoOf(useCatchUp.getState().cards);

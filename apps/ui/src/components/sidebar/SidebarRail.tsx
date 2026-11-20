@@ -15,7 +15,8 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useRowProfile } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { markKept, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { sidebarGroups, statusLine, waitingDetail, type WaitingRequest } from '../../state/sidebarOrder.ts';
 import { GROUP_LABEL, inScope, rowStatus, type RowStatus, type SessionGroup } from '../../state/sidebarRows.ts';
@@ -31,7 +32,7 @@ import { filterBySource, offlineLine } from '../../state/remoteRows.ts';
 import { openRow, useRemoteRows, useRemoteTreeRuns, useShownRowId } from '../../state/useRemoteRows.ts';
 import { Button } from '../ui/Button.tsx';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
-import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
+import { openDraft, useDraftPreview, useNewSessionDraft, useRemoteNewSessionDraft } from '../drafts/useUnsent.ts';
 import { STATUS_LABEL } from './rowLabel.ts';
 import { useSessionMenu } from './useSessionMenu.tsx';
 import { RailStarButton } from './StarOnGithub.tsx';
@@ -171,7 +172,6 @@ const RailRow = memo(function RailRow({
   tabbable,
   now,
   request,
-  draft,
   outside,
   onClick,
   onMenu,
@@ -185,8 +185,6 @@ const RailRow = memo(function RailRow({
   now: number;
   /** The oldest permission or question it waits on, for the tooltip's status line. */
   request: WaitingRequest | null;
-  /** The start of an unsent message typed here, or null. */
-  draft: string | null;
   /** Its last turn changed files outside the plan: a warning badge. */
   outside: boolean;
   onClick(event: MouseEvent, data: SessionRowData): void;
@@ -194,6 +192,8 @@ const RailRow = memo(function RailRow({
   onMiddleClick(data: SessionRowData): void;
 }) {
   const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
+  // The start of an unsent message typed here, or null: selected by the row, so typing re-renders this row only.
+  const draft = useDraftPreview(data.id);
   const remote = data.remote ?? null;
   const tint = useComputerTint(remote?.computerId);
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
@@ -277,9 +277,7 @@ const RailRow = memo(function RailRow({
  */
 export function SidebarRail() {
   const deviceNotice = useDeviceAnnouncement();
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
+  const baseRows = useRows((s) => s.rows);
   const permissions = useHosts((s) => s.permissions);
   const selectedId = useSessions((s) => s.selectedId);
   const paneIds = useSessions((s) => s.paneIds);
@@ -292,13 +290,11 @@ export function SidebarRail() {
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const now = useNow();
-  const unsent = useUnsent();
-  const draftPreviews = useMemo(() => new Map(unsent.flatMap((e) => (e.item.kind === 'session' ? [[e.item.sessionId, e.item.preview] as const] : []))), [unsent]);
   const newDraft = useNewSessionDraft();
   const remoteNewDraft = useRemoteNewSessionDraft();
 
   const kept = useKeptSessions();
-  const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
+  const all = useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
   // Other computers' sessions too, in the same groups, with the Computers filter applied: the same list as the open sidebar.
   const remoteRows = useRemoteRows();
   const remoteRuns = useRemoteTreeRuns();
@@ -489,7 +485,6 @@ export function SidebarRail() {
                     tabbable={item.data.id === tabStopId}
                     now={now}
                     request={requests.get(item.data.id) ?? null}
-                    draft={draftPreviews.get(item.data.id) ?? null}
                     outside={(catchUps.get(item.data.id)?.signals.outOfScope.length ?? 0) > 0}
                     onClick={rowClick}
                     onMenu={railMenu}

@@ -1,5 +1,4 @@
 import { currentPlatform } from '../../lib/platform.ts';
-import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, runOfParent as protocolRunOfParent, type CatchUp, type RunView } from '@seshboard/protocol/client';
@@ -7,7 +6,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { basename, shortAge } from '../../lib/format.ts';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
-import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
+import { openDraft, useDraftPreview, useNewSessionDraft, useRemoteNewSessionDraft, useUnsentCount } from '../drafts/useUnsent.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
@@ -35,7 +34,10 @@ import { useLater } from '../../state/laterStore.ts';
 import { closedSections, isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { markKept, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { useStableCallback } from '../../lib/useStableCallback.ts';
+import { VirtualRows, type VirtualRowsHandle } from './VirtualRows.tsx';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -289,7 +291,7 @@ export const SessionRow = memo(function SessionRow({
   now,
   tabbable,
   waitingFor,
-  draft,
+  draft: shownDraft,
   review = null,
   outside = false,
   inProject = false,
@@ -318,8 +320,8 @@ export const SessionRow = memo(function SessionRow({
   tabbable: boolean;
   /** For a session waiting for you: what it asks for ("Permission: Bash", "Question"). */
   waitingFor: string | null;
-  /** The start of an unsent message typed here (one that counts), or null. */
-  draft: string | null;
+  /** The start of an unsent message typed here, when the list says so (null: none shown there). Left out, the row selects its own, so typing in one session re-renders that row only. */
+  draft?: string | null;
   /** Minutes its catch-up says a review takes, or null without one (or when it needs nothing from you). */
   review?: number | null;
   /** Its last turn changed files outside the plan (or what you asked for). */
@@ -340,6 +342,9 @@ export const SessionRow = memo(function SessionRow({
   onQuickAction?(method: QuickActionMethod, data: SessionRowData): void;
 }) {
   const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
+  // The start of an unsent message typed here (one that counts), or null: selected by the row, so typing in one session re-renders that row only.
+  const ownDraft = useDraftPreview(data.id);
+  const draft = shownDraft === undefined ? ownDraft : shownDraft;
   const style = usePreferences((s) => s.prefs.sidebarStyle);
   const remote = data.remote ?? null;
   // Another computer's row takes its colour: the chip, the badge on the project's icon.
@@ -723,9 +728,8 @@ function useWaitingAnnouncement(rows: SessionRowData[], loaded: boolean): string
 }
 
 export function Sidebar() {
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
+  const baseRows = useRows((s) => s.rows);
+  const anySessions = useSessions((s) => s.sessions.size > 0);
   const waiting = useHosts((s) => s.permissions.size);
   const search = useSessions((s) => s.filter);
   const selectedId = useSessions((s) => s.selectedId);
@@ -763,13 +767,13 @@ export function Sidebar() {
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   const width = useSidebar((s) => s.width);
   // Unsent messages: a pen (and the draft's start) on their rows, the count in the footer, a pen on + for New session's.
-  const unsent = useUnsent();
-  const draftPreviews = useMemo(() => new Map(unsent.flatMap((e) => (e.item.kind === 'session' ? [[e.item.sessionId, e.item.preview] as const] : []))), [unsent]);
+  // Only the count: each row selects the start of its own draft (`useDraftPreview`), so a keystroke re-renders one row.
+  const unsentCount = useUnsentCount();
   const newDraft = useNewSessionDraft();
   const remoteNewDraft = useRemoteNewSessionDraft();
 
   const kept = useKeptSessions();
-  const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
+  const all = useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
   // Other computers' sessions sit in the same groups; the Computers filter can leave out any computer, this one too.
   // A computer set to Mine leaves out the others' sessions there (its chip's menu counts them); a search still finds
   // them, marked as theirs.
@@ -923,7 +927,7 @@ export function Sidebar() {
   const headerSessions = useMemo(() => sessionsByHeader(rows), [rows]);
   const menus = useSessionMenu(order, () => setPicks(NO_PICKS));
   const { showMenu: setMenu, requestDelete: setDeleting, requestRename: setRenaming, flagAll } = menus;
-  const togglePicked = (id: string) => setPicks((p) => togglePick(p, id, selectedId, order));
+  const togglePicked = useStableCallback((id: string) => setPicks((p) => togglePick(p, id, selectedId, order)));
   /** "Select all" for a header while picking (Archived only while it's open, when its sessions are listed). */
   const selectAll = (group: HeaderKey) => {
     const ids = headerSessions.get(group) ?? [];
@@ -936,43 +940,10 @@ export function Sidebar() {
   // The bottom block's hairline shows only while sessions scroll under it.
   const listEdge = useScrollEdge(scrollRef);
   const archivedIndex = rows.findIndex((row) => row.kind === 'archived');
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => rowHeight(rows[i]!, sidebarStyle),
-    // Keyed by row, not index: archiving or unarchiving moves the headers without changing the count,
-    // and the virtualiser only recomputes positions when the count or this function changes.
-    getItemKey: useCallback((i: number) => {
-      const row = rows[i]!;
-      return row.kind === 'session'
-        ? row.data.id
-        : row.kind === 'group'
-          ? `group-${row.group}`
-          : row.kind === 'hidden'
-            ? `hidden-${row.group}`
-            : row.kind === 'queue'
-              ? `queue-${row.entry.item.id}`
-              : row.kind === 'queue-header'
-                ? 'queue-header'
-                : row.kind === 'project' || row.kind === 'project-summary' || row.kind === 'queue-label'
-                  ? `${row.kind}-${row.key}`
-                  : 'archived-header';
-    }, [rows]),
-    // The Archived header is always rendered, even far below the fold: it slides in from the dock and keeps focus.
-    rangeExtractor: useCallback(
-      (range: Range) => {
-        const indexes = defaultRangeExtractor(range);
-        return archivedIndex === -1 || indexes.includes(archivedIndex) ? indexes : [...indexes, archivedIndex].sort((a, b) => a - b);
-      },
-      [archivedIndex],
-    ),
-    overscan: 10,
-  });
-  // Row heights change with the sidebar style: the sizes are estimates, which the virtualiser only reads again when
-  // asked. New rows (and a header's height with its place: the first has less room above) need no call, because
-  // getItemKey changes with `rows` and that recomputes every position. Measuring on every change of `rows` too
-  // queued one more render per change, and a burst of new sessions ran into React's limit on nested updates.
-  useEffect(() => virtualizer.measure(), [sidebarStyle, virtualizer]);
+  // The virtualised list is its own component (`VirtualRows`): scrolling re-renders it, not the sidebar. The sidebar scrolls it through this.
+  const listHandle = useRef<VirtualRowsHandle>(null);
+  const virtualizer = useMemo(() => ({ scrollToIndex: (index: number, options?: { align?: 'start' | 'center' | 'end' | 'auto' }) => listHandle.current?.scrollToIndex(index, options) }), []);
+  const estimateRow = useCallback((row: SidebarListRow) => rowHeight(row, sidebarStyle), [sidebarStyle]);
 
   // Archived moves between the dock under the list and its place in the list, right under the last active row.
   // Opening, the header slides up from the dock (FLIP) while the list scrolls it near the top when it would land
@@ -1064,15 +1035,6 @@ export function Sidebar() {
     );
   }, [rows]);
 
-  // One Tab stop for the whole list: the selected row while it's rendered, else the first rendered one.
-  const virtualItems = virtualizer.getVirtualItems();
-  const renderedIds = virtualItems.flatMap((item) => {
-    const row = rows[item.index];
-    return row?.kind === 'session' ? [row.data.id] : [];
-  });
-  const tabStopId = listSelected && renderedIds.includes(listSelected) ? listSelected : (renderedIds[0] ?? null);
-  // With every project folded and no session on screen, the first project's header is the Tab stop.
-  const projectTabStop = tabStopId === null ? (virtualItems.map((item) => rows[item.index]).find((row) => row?.kind === 'project') as Extract<SidebarListRow, { kind: 'project' }> | undefined)?.key ?? null : null;
   // The queue has its own Tab stop: its first item.
   const firstQueued = queueEntries[0]?.item.id ?? null;
 
@@ -1095,7 +1057,7 @@ export function Sidebar() {
   };
 
   // ⌘-click adds a row to the selection, ⇧-click selects a range, ⌥-click opens it in the other pane.
-  const rowClick = (event: MouseEvent, data: SessionRowData) => {
+  const rowClick = useStableCallback((event: MouseEvent, data: SessionRowData) => {
     if (data.remote) {
       setPicks(NO_PICKS);
       // In Done there, it can't be read: a click reopens it, then opens it.
@@ -1109,7 +1071,7 @@ export function Sidebar() {
       if (event.altKey) useSessions.getState().openBeside(data.id);
       else select(data.id);
     }
-  };
+  });
 
   // ↑/↓ moves through visible sessions, like a native source list (⇧ extends the selection); ⌘A picks the
   // focused row's group; ⌘⌫ deletes the picked sessions, or the focused (else the selected) one; F2 renames it.
@@ -1181,7 +1143,7 @@ export function Sidebar() {
         scrollRef.current?.querySelector<HTMLElement>('[data-row-wrap]:hover > [data-session-id]')?.dataset.sessionId;
       const listed = rows.find((r) => r.kind === 'session' && r.data.id === id);
       if (listed?.kind !== 'session') return;
-      const action = quickActionForKey(quickKey, quickRowOf(listed.data, listed.archived, { hosted: isActiveHost(hosts.get(listed.data.id)), runs: runs.values() }));
+      const action = quickActionForKey(quickKey, quickRowOf(listed.data, listed.archived, { hosted: isActiveHost(useHosts.getState().hosts.get(listed.data.id)), runs: runs.values() }));
       if (!action) return;
       event.preventDefault();
       menus.quickAction(action.method, listed.data);
@@ -1323,16 +1285,16 @@ export function Sidebar() {
     setMenu({ ...at, label: `${picked.size} selected sessions`, entries });
   };
 
-  const sessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
+  const sessionMenu = useStableCallback((at: { x: number; y: number }, data: SessionRowData) => {
     if (multi && picked.has(data.id)) return pickedMenu(at);
     setPicks(NO_PICKS);
     menus.openSessionMenu(at, data);
-  };
+  });
 
   // Only open sessions the main list shows: a process idling elsewhere sits under Archived and
   // would make the count disagree with what's visible.
-  const middleClick = (data: SessionRowData) => menus.middleClick(data);
-  const quickAction = (method: QuickActionMethod, data: SessionRowData) => menus.quickAction(method, data);
+  const middleClick = useStableCallback((data: SessionRowData) => menus.middleClick(data));
+  const quickAction = useStableCallback((method: QuickActionMethod, data: SessionRowData) => menus.quickAction(method, data));
 
   // ⌘Z undoes the last quick action: in the sidebar, or with focus nowhere (the row a button archived has left the
   // list, taking focus with it). Never in a text field, where ⌘Z is the field's own.
@@ -1447,19 +1409,22 @@ export function Sidebar() {
                 Clear search
               </button>
             )}
-            {scope === 'switchboard' && sessions.size > 0 && (
+            {scope === 'switchboard' && anySessions && (
               <button type="button" onClick={() => updatePrefs({ sessionScope: 'all' })} className="text-link hover:underline">
                 Show sessions from other apps
               </button>
             )}
           </div>
         ) : (
-          // Virtualised: only rows near the viewport exist, so each item says where it sits in the whole list.
-          // A tree (#179): sessions are treeitems, a pipeline's parent opens to its sub-sessions. Being virtualised, the
-          // levels are told with aria-level rather than nested groups.
-          <div role="tree" aria-label="Sessions" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-            {virtualItems.map((item) => {
-              const row = rows[item.index]!;
+          <VirtualRows
+            rows={rows}
+            scrollRef={scrollRef}
+            handle={listHandle}
+            estimateSize={estimateRow}
+            measureKey={sidebarStyle}
+            archivedIndex={archivedIndex}
+            selectedId={listSelected}
+            renderRow={(item, row, { sessionId: tabStopId, projectKey: projectTabStop }) => {
               const isPicked = (r: SidebarListRow | undefined) => multi && r?.kind === 'session' && picked.has(r.data.id);
               // A run of picked rows shares one tinted block: rounded where the run starts and ends.
               const block = isPicked(row) && { top: !isPicked(rows[item.index - 1]), bottom: !isPicked(rows[item.index + 1]) };
@@ -1535,7 +1500,6 @@ export function Sidebar() {
                       now={now}
                       tabbable={row.data.id === tabStopId}
                       waitingFor={waitingFor(row.data)}
-                      draft={draftPreviews.get(row.data.id) ?? null}
                       review={reviewOf(catchUps.get(row.data.id))}
                       outside={(catchUps.get(row.data.id)?.signals.outOfScope.length ?? 0) > 0}
                       inProject={row.project !== undefined}
@@ -1557,8 +1521,8 @@ export function Sidebar() {
                   )}
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
         )}
       </div>
       {multi && (
@@ -1652,16 +1616,16 @@ export function Sidebar() {
             {openCount} open
           </Pill>
         )}
-        {unsent.length > 0 && (
+        {unsentCount > 0 && (
           <Pill
             icon={<PencilLine size={11} className="shrink-0" aria-hidden />}
             onClick={() => (useDrafts.getState().list ? useDrafts.getState().closeList() : openUnsentList())}
             aria-haspopup="dialog"
-            aria-label={`${unsent.length} unsent ${unsent.length === 1 ? 'message' : 'messages'}. Show them`}
-            data-drafts-count={unsent.length}
+            aria-label={`${unsentCount} unsent ${unsentCount === 1 ? 'message' : 'messages'}. Show them`}
+            data-drafts-count={unsentCount}
             className="shrink-0"
           >
-            {unsent.length} unsent
+            {unsentCount} unsent
           </Pill>
         )}
         <Button

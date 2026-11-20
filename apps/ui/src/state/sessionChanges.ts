@@ -11,11 +11,26 @@ export function mergeSessionChanges(
 ): { sessions: Map<string, SessionSummary>; complete: boolean } {
   if (changes.length === 0) return current;
   const sessions = new Map(current.sessions);
+  let changed = false;
   for (const change of changes) {
-    for (const s of change.upserted) sessions.set(s.id, s);
-    for (const id of change.removed) sessions.delete(id);
+    for (const s of change.upserted) {
+      // The engine sends a summary again whenever its file was written: one that came out the same keeps the object
+      // it had, so the rows built from it (and the sidebar's memoised rows) stay as they were.
+      const had = sessions.get(s.id);
+      if (had && sameSummary(had, s)) continue;
+      sessions.set(s.id, s);
+      changed = true;
+    }
+    for (const id of change.removed) changed = sessions.delete(id) || changed;
   }
-  return { sessions, complete: changes.at(-1)!.complete };
+  const complete = changes.at(-1)!.complete;
+  // Nothing different at all: the same state, so nobody re-renders.
+  return changed || complete !== current.complete ? { sessions: changed ? sessions : current.sessions, complete } : current;
+}
+
+/** Two summaries that say the same (they are plain data). */
+export function sameSummary(a: SessionSummary, b: SessionSummary): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Runs `run` later; returns a function that cancels it. */

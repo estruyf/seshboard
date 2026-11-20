@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   changedDrafts,
+  countedPreview,
+  countUnsent,
+  isListedDraft,
   DRAFT_SETTLE_MS,
+  draftKeysSignature,
+  newDraftListSignature,
   draftList,
   draftPreview,
   draftRoot,
@@ -256,5 +261,55 @@ describe('a saved prompt in a draft', () => {
     const draft = nextDraft(undefined, { text: 'Keep the tests.', attachments: [], fill }, 1)!;
     expect(draftList({ s1: { ...draft, counted: true } })[0]?.preview).toBe('Fix #142 on [Branch]');
     expect(draftMessage(draft)).toBe('Fix #142 on\n\nKeep the tests.');
+  });
+});
+
+describe('what a row and a count read of the drafts', () => {
+  const draft = (over: Partial<Draft> = {}): Draft => ({ text: 'hello world', attachments: [], updatedAt: 1, counted: true, lostImages: 0, ...over });
+
+  it('gives a counted draft its preview, and nothing for a draft that does not count or is empty', () => {
+    expect(countedPreview(draft())).toBe('hello world');
+    expect(countedPreview(draft({ counted: false }))).toBeNull();
+    expect(countedPreview(draft({ text: '  ' }))).toBeNull();
+    expect(countedPreview(undefined)).toBeNull();
+    // The same as the Unsent list shows.
+    expect(draftList({ s: draft() })[0]!.preview).toBe(countedPreview(draft()));
+  });
+
+  it('lists the keys that count, whatever the text says', () => {
+    const drafts = { a: draft(), b: draft({ counted: false }), c: draft({ text: '' }), 'new:': draft() };
+    expect(draftKeysSignature(drafts)).toBe(draftKeysSignature({ ...drafts, a: draft({ text: 'another keystroke' }) }));
+    expect(draftKeysSignature(drafts).split('\u0001').filter(Boolean).sort()).toEqual(['a', 'new:']);
+  });
+});
+
+describe('newDraftListSignature', () => {
+  const draft = (text: string, over: Partial<Draft> = {}): Draft => ({ text, attachments: [], updatedAt: 1, counted: true, lostImages: 0, ...over });
+  it('does not change when a session draft does, and changes when a New session prompt does', () => {
+    const base = { s1: draft('typing here'), 'new:/p/a': draft('a new prompt') };
+    expect(newDraftListSignature({ ...base, s1: draft('typing here, and more') })).toBe(newDraftListSignature(base));
+    expect(newDraftListSignature({ ...base, 'new:/p/a': draft('a new prompt, edited') })).not.toBe(newDraftListSignature(base));
+  });
+});
+
+describe('countUnsent', () => {
+  const draft = (text: string, over: Partial<Draft> = {}): Draft => ({ text, attachments: [], updatedAt: 1, counted: true, lostImages: 0, ...over });
+  const drafts = { known: draft('a'), gone: draft('b'), 'new:/p/a': draft('c'), 'new:': draft('d'), idle: draft('e', { counted: false }), empty: draft('') };
+  const known = new Set(['known']);
+  const keys = (d: Record<string, Draft>) => draftKeysSignature(d).split('\u0001');
+
+  it('counts what the Unsent list lists: New session prompts and the drafts of sessions the app knows', () => {
+    // The list, filtered the way useUnsent filters it.
+    const listed = draftList(drafts).filter((item) => isListedDraft(item.key, known, true));
+    expect(countUnsent(keys(drafts), known, true)).toBe(listed.length);
+    expect(listed.map((item) => item.key).sort()).toEqual(['known', 'new:', 'new:/p/a']);
+  });
+
+  it('counts every draft that counts before the first list of sessions has come in', () => {
+    expect(countUnsent(keys(drafts), new Set(), false)).toBe(draftList(drafts).length);
+  });
+
+  it('is zero without drafts', () => {
+    expect(countUnsent(keys({}), known, true)).toBe(0);
   });
 });
