@@ -102,6 +102,12 @@ class FakeQuery {
         state('idle');
         continue;
       }
+      if (text.startsWith('silent')) {
+        // A turn Claude Code ends well without asking the API (a background task's notification while at a usage limit).
+        this.out.push({ type: 'result', subtype: 'success', is_error: false, result: '', total_cost_usd: 0, session_id: sessionId });
+        state('idle');
+        continue;
+      }
       if (text.startsWith('signed out')) {
         // The login expired: Claude Code says so as an error message, and the turn ends as an error.
         const said = 'OAuth token has expired · Please run /login';
@@ -484,9 +490,14 @@ describe('HostManager', () => {
     // Not the error hold: the queue moves on by itself once the limit is cleared.
     expect(t.infos.at(-1)!.queueHold).toBeNull();
 
+    // A turn that ends well without the API answering says nothing about the limit: it stays, with this session on it.
+    await t.manager.send({ sessionId: id, text: 'silent', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(limit).toMatchObject({ sessionIds: [id] });
+
     // A message sent while the limit holds still goes (it is yours); when it gets through, the limit is cleared.
     await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
-    await until(() => t.turns.length === 2);
+    await until(() => t.turns.length === 3);
     expect(limit).toBeNull();
     await until(() => t.infos.at(-1)!.usageLimit === null);
     t.manager.closeAll();

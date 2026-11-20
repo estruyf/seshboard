@@ -7,6 +7,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 ### Fixed
 
 - **Copilot sessions on GPT models answer again.** A Copilot session on a GPT model failed every message with "Function 'browser.browser-click' is not allowed in reserved namespace 'browser'". Seshboard's browser tools now go by another name for these agents, and still show as browser tools in the transcript.
+- **Resume buttons stay on a session a usage limit stopped.** When a background task finished in such a session, the limit's notice lost Resume now and Resume when it resets, and showed only when the limit resets. The buttons now stay until Claude really answers again.
 
 ## [1.4.0] - 2026-11-20
 

@@ -68,7 +68,7 @@ export interface HostEvents {
   turnEnded?(sessionId: string, outcome: TurnOutcome): void;
   /** A usage limit stopped Claude's turn (called before the session goes idle, so the queue already waits). */
   limitHit?(sessionId: string, stop: LimitStop): void;
-  /** A turn finished without an error: whatever limit the profile was at no longer holds. */
+  /** A turn the API answered finished without an error: whatever limit the profile was at no longer holds. */
   turnOk?(sessionId: string): void;
   /** Claude Code's login stopped working (signed out, expired) and failed the turn, with Claude Code's message. */
   signedOut?(sessionId: string, message: string | null): void;
@@ -516,6 +516,11 @@ export class SessionHost {
   private assistantError: string | null = null;
   /** The SDK's error code on this turn's failed assistant message (`authentication_failed`, `rate_limit`…). */
   private assistantErrorCode: string | null = null;
+  /**
+   * Whether the API answered this turn (tokens or a reply, from Claude or a subagent). A turn can end well without
+   * it: Claude Code ends one that a background task's notification started while at a usage limit without asking.
+   */
+  private replied = false;
 
   /**
    * Holds a message until Claude's turn ends, then sends it, one message per turn. The transcript doesn't show
@@ -807,12 +812,14 @@ export class SessionHost {
       case 'stream_event':
         // Tokens are coming (from Claude or a subagent: `api_retry` doesn't say which one retried): it got through.
         this.clearApiRetry();
+        this.replied = true;
         if (message.parent_tool_use_id === null) this.handleStreamEvent(message.event as { type: string; [key: string]: unknown });
         return;
       // Subagent messages live in their own transcript file (shown inside the Task card),
       // so only the main conversation is pushed live.
       case 'assistant':
         this.clearApiRetry();
+        if (!message.error && (message.message as { model?: unknown } | undefined)?.model !== '<synthetic>') this.replied = true;
         if (message.parent_tool_use_id !== null) return;
         // A reply that replaces what a refusal took back.
         this.retract(supersededBy(message));
@@ -843,6 +850,8 @@ export class SessionHost {
           : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
         const signedOut = !outcome.ok && !stop && isSignInError(this.assistantErrorCode, this.assistantError ?? outcome.error);
         const signInMessage = this.assistantError ?? outcome.error;
+        const replied = this.replied;
+        this.replied = false;
         this.rejected = null;
         this.assistantError = null;
         this.assistantErrorCode = null;
@@ -851,7 +860,8 @@ export class SessionHost {
         if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold && !this.stopRequested) this.holdQueue('error');
         if (stop) this.events.limitHit?.(this.sessionId, stop);
         else if (signedOut) this.events.signedOut?.(this.sessionId, signInMessage);
-        else if (outcome.ok) this.events.turnOk?.(this.sessionId);
+        // Only a turn the API answered clears a limit or a sign-in: one that ended without asking says nothing about it.
+        else if (outcome.ok && replied) this.events.turnOk?.(this.sessionId);
         const speed = (message.usage as { speed?: unknown } | undefined)?.speed;
         this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache(), ...(this.info.compacting ? { compacting: false } : {}), ...fastModeReport(message, speed === 'fast' ? null : this.info.fastModeBlocked) });
         void this.refreshContext();
