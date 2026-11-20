@@ -65,6 +65,8 @@ export function RadioGroup({ label, children, className = '' }: { label: string;
     if (current === -1) return;
     event.preventDefault();
     const next = radios[(current + step + radios.length) % radios.length]!;
+    // With one option there is nowhere to go, and clicking it again could clear it.
+    if (next === radios[current]) return;
     next.focus();
     next.click();
   };
