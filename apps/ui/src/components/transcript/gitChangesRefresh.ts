@@ -1,8 +1,5 @@
 import type { GitChanges } from '@seshboard/protocol/client';
 
-/** How often the changed files are checked again while the window is visible. */
-export const GIT_POLL_MS = 5000;
-
 /**
  * The same files with the same status and counts. A check that finds nothing new keeps the list it had, so the
  * session view doesn't render again every few seconds for nothing (the Changes panel reloads open diffs on a new list).
