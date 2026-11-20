@@ -11,7 +11,9 @@ export const SNAPSHOT_MAX_CHARS = 20_000;
 
 /**
  * Lists the page as lines: headings, text, and each element you can act on with its role, name, state and ref. Hidden
- * elements are left out; open shadow roots are read too (web components, Fluent UI). Returns `{ title, url, lines, truncated }`.
+ * elements are left out; open shadow roots are read too (web components, Fluent UI). An element hidden only by
+ * `visibility` or by having no size is still searched: a child can be visible inside it (Fluent UI's layers, which hold
+ * SharePoint's dialogs, are `visibility: hidden` around content that is visible). Returns `{ title, url, lines, truncated }`.
  */
 export const SNAPSHOT_SCRIPT = `(() => {
   const MAX = ${SNAPSHOT_MAX_CHARS};
@@ -61,22 +63,35 @@ export const SNAPSHOT_SCRIPT = `(() => {
     const rect = el.getBoundingClientRect();
     return rect.width > 0 || rect.height > 0;
   };
+  // Whether what is inside an element that can't be seen may still be: not under display: none, and not clipped to no size.
+  const mayShow = (el) => {
+    if (el.checkVisibility && !el.checkVisibility()) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 || rect.height > 0 || getComputedStyle(el).overflow === 'visible';
+  };
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'HEAD', 'META', 'LINK']);
   const BLOCK = /^(P|LI|TD|TH|DT|DD|LABEL|CAPTION|FIGCAPTION|BLOCKQUOTE|PRE|LEGEND|SPAN|DIV|STRONG|EM|SMALL|CODE)$/;
   let next = 0;
-  const walk = (node, depth) => {
+  // quiet: the node itself can't be seen, so its own text is left out (its children may still be seen).
+  const walk = (node, depth, quiet = false) => {
     for (const child of node.childNodes) {
       if (truncated) return;
       if (child.nodeType === 3) {
         const parent = child.parentElement;
-        if (!parent || !BLOCK.test(parent.tagName)) continue;
+        if (quiet || !parent || !BLOCK.test(parent.tagName)) continue;
         const text = clip(child.textContent, 300);
         if (text) push(depth, 'text: ' + text);
         continue;
       }
       if (child.nodeType !== 1) continue;
       const el = child;
-      if (SKIP.has(el.tagName.toUpperCase()) || el.getAttribute('aria-hidden') === 'true' || !visible(el)) continue;
+      if (SKIP.has(el.tagName.toUpperCase()) || el.getAttribute('aria-hidden') === 'true') continue;
+      if (!visible(el)) {
+        if (!mayShow(el)) continue;
+        walk(el, depth, true);
+        if (el.shadowRoot) walk(el.shadowRoot, depth, true);
+        continue;
+      }
       const role = roleOf(el);
       if (/^H[1-6]$/.test(el.tagName)) {
         push(depth, 'heading ' + el.tagName[1] + ': ' + clip(el.textContent, 200));

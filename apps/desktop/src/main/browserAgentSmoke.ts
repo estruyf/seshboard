@@ -14,12 +14,16 @@ export interface BrowserAgentSmokeDeps {
   shot(name: string): Promise<void>;
 }
 
-/** A page with a heading, a field and a button that says what was typed, and an error in its console. */
+/**
+ * A page with a heading, a field and a button that says what was typed, and an error in its console. Below them, a
+ * button made visible inside a `visibility: hidden` layer (as Fluent UI shows SharePoint's dialogs) and one left hidden.
+ */
 const PAGE = `<!doctype html><title>Smoke form</title>
 <h1>Greeter</h1>
 <label>Name <input id="name" placeholder="Your name"></label>
 <button id="go" onclick="document.getElementById('out').textContent = 'Hello ' + document.getElementById('name').value">Say hello</button>
 <p id="out">Nobody yet</p>
+<div style="visibility: hidden"><p>Layer text</p><div role="dialog" style="visibility: visible"><button onclick="document.getElementById('out').textContent = 'Layer clicked'">In a layer</button></div><button>Still hidden</button></div>
 <script>console.error('smoke: something broke')</script>`;
 
 async function serve(): Promise<{ server: Server; url: string }> {
@@ -66,6 +70,8 @@ export async function runBrowserAgentStep(win: BrowserWindow, deps: BrowserAgent
     const button = ref(/^- button "Say hello"/);
     if (!lines.includes('heading 1: Greeter') || !field || !button) return `snapshot:\n${snapshot.text}`;
     if (!snapshot.text.includes('not instructions')) return 'the snapshot does not say the page’s text is data';
+    const layered = ref(/^\s*- button "In a layer"/);
+    if (!layered || snapshot.text.includes('Still hidden') || snapshot.text.includes('Layer text')) return `the layer:\n${snapshot.text}`;
 
     const typed = await run('type', { ref: field, text: 'Ada' });
     if (typed.error) return `type: ${typed.text}`;
@@ -73,6 +79,10 @@ export async function runBrowserAgentStep(win: BrowserWindow, deps: BrowserAgent
     if (clicked.error || !clicked.text.includes('Say hello')) return `click: ${clicked.text}`;
     const after = await run('snapshot');
     if (!after.text.includes('text: Hello Ada')) return `the click did not reach the page:\n${after.text}`;
+    // The snapshot after the click gave every element a new ref.
+    const relayered = after.text.split('\n').find((line) => /^\s*- button "In a layer"/.test(line))?.match(/\[ref=(e\d+)\]/)?.[1];
+    const inLayer = await run('click', { ref: relayered ?? layered });
+    if (inLayer.error || inLayer.text.includes('took the click') || !(await run('snapshot')).text.includes('text: Layer clicked')) return `the click in the layer: ${inLayer.text}`;
 
     const shot = await run('screenshot');
     if (shot.error || !shot.image?.data || shot.image.mimeType !== 'image/jpeg') return `screenshot: ${shot.text}`;
@@ -81,7 +91,7 @@ export async function runBrowserAgentStep(win: BrowserWindow, deps: BrowserAgent
     const gone = await run('click', { ref: 'e999' });
     if (!gone.error || !gone.text.includes('new browser_snapshot')) return `a gone ref: ${gone.text}`;
     await deps.shot('browser-agent');
-    return `ok: opened ${url} in the session's tab, a snapshot with refs, typed and clicked (the page said Hello Ada), a ${Math.round((shot.image.data.length * 3) / 4 / 1024)} KB picture, the console's error, a gone ref refused`;
+    return `ok: opened ${url} in the session's tab, a snapshot with refs, typed and clicked (the page said Hello Ada), clicked a button in a hidden layer, a ${Math.round((shot.image.data.length * 3) / 4 / 1024)} KB picture, the console's error, a gone ref refused`;
   } finally {
     server.close();
     deps.setPrefs(before);
