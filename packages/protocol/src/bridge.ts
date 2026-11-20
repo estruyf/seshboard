@@ -105,6 +105,9 @@ export const IpcChannel = {
   showInMain: "seshboard:show-in-main",
   mainRequested: "seshboard:main-requested",
   popoutsChanged: "seshboard:popouts-changed",
+  /** Main to a window: it moved to or from the foreground (shown, not minimised, focused). */
+  windowActive: "seshboard:window-active",
+  getWindowActive: "seshboard:get-window-active",
   relayDrafts: "seshboard:relay-drafts",
   draftsRelayed: "seshboard:drafts-relayed",
   requestDrafts: "seshboard:request-drafts",
@@ -1278,6 +1281,13 @@ export interface SeshboardBridge {
   keepAwakeStatus(): Promise<boolean>;
   /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
   readonly popout: string | null;
+  /**
+   * Whether this window is in the foreground (shown, not minimised, focused), read once when the page loads; then follow
+   * `onWindowActive`. Main knows it for sure, also while the keys are in a browser page of the window. The page pauses
+   * the animations that never end while it is not.
+   */
+  readonly windowActive: boolean;
+  onWindowActive(listener: (active: boolean) => void): () => void;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
   readonly popouts: readonly string[];
   /** Fires in every window when a pop-out opens or closes. */

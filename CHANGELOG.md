@@ -4,6 +4,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
+### Changed
+
+- **Animations rest while Seshboard is in the background.** The spinners, pulses and the working animation pause while the window has no focus, so a window you aren't using costs next to nothing. The working animation also uses about a third of the CPU it used to.
+
 ### Fixed
 
 - **Copilot sessions on GPT models answer again.** A Copilot session on a GPT model failed every message with "Function 'browser.browser-click' is not allowed in reserved namespace 'browser'". Seshboard's browser tools now go by another name for these agents, and still show as browser tools in the transcript.

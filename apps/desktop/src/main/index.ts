@@ -14,6 +14,7 @@ import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
 import { DockActivity } from './dockActivity.ts';
+import { trackWindowActivity, windowIsActive } from './windowActivity.ts';
 import { MenuBar, PANEL_WIDTH, panelHeight, panelPosition, quitsWhenAllClosed, trayMenu, type MenuBarCounts } from './menuBar.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { QuickStart, quickStartBounds } from './quickStart.ts';
@@ -1482,6 +1483,18 @@ function returnView(sessionId: string, create: boolean): void {
   if (!win || win.isDestroyed()) return;
   sendToWindow(win, IpcChannel.viewReturned, { sessionId, view });
 }
+
+// Every window (main, pop-outs, the menu bar panel, Quick start) hears when it moves to or from the foreground, so its page
+// can pause the animations that never end while nobody looks.
+app.on('browser-window-created', (_event, win) => {
+  trackWindowActivity(win, (active) => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(IpcChannel.windowActive, active);
+  });
+});
+ipcMain.on(IpcChannel.getWindowActive, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  event.returnValue = win ? windowIsActive(win) : true;
+});
 
 ipcMain.on(IpcChannel.getPopouts, (event) => {
   event.returnValue = [...popouts.keys()];

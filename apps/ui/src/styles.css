@@ -618,12 +618,28 @@ html[data-quick-start-window] body {
 .working-panel .jack-hole {
   fill: var(--sb-working-hole);
 }
+/*
+ * The lights over the free jacks are HTML, not SVG: only opacity and transform animate, so Chromium runs them on the
+ * compositor. .jack-light is the glow's square, centred on its jack; the lit dot is the middle share of it (its inset is set by the component, from JACK / GLOW).
+ */
+/* The glow of a jack on the panel's edge is clipped to the panel, as the SVG it replaced clipped it. */
+.working-panel {
+  overflow: hidden;
+}
+.working-panel .jack-light {
+  position: absolute;
+  opacity: 0;
+}
 .working-panel .jack-lit {
-  fill: var(--sb-working-lit);
+  position: absolute;
+  border-radius: 50%;
+  background: var(--sb-working-lit);
 }
 .working-panel .jack-glow {
-  fill: var(--sb-working-glow);
-  transform-box: fill-box;
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--sb-working-glow);
   transform-origin: center;
 }
 .working-panel .jack-plug-a {
@@ -637,9 +653,6 @@ html[data-quick-start-window] body {
 }
 .working-panel .jack-plug-d {
   fill: var(--sb-working-plug-d);
-}
-.working-panel .jack-light {
-  opacity: 0;
 }
 .working-panel[data-working-state='working'] :is(.jack-light, .jack-glow) {
   animation-duration: var(--working-round);
@@ -675,7 +688,7 @@ html[data-quick-start-window] body {
   opacity: 1;
 }
 .working-panel[data-working-state='waiting'] .jack-lit {
-  fill: var(--sb-warn);
+  background: var(--sb-warn);
 }
 .working-panel:not([data-working-state='working']) .jack-glow {
   visibility: hidden;
@@ -702,6 +715,20 @@ html[data-quick-start-window] body {
   100% {
     transform: scale(0.427);
   }
+}
+/*
+ * A window in the background (data-blurred on <html>, lib/windowActivity.ts) stops what never ends: every frame of it
+ * costs the renderer and the GPU, for something nobody is looking at. The one-shot animations finish as usual.
+ */
+html[data-blurred] :is(.working-panel .jack-light, .working-panel .jack-glow, .animate-spin, .animate-pulse, [class*='_infinite]']),
+html[data-blurred] .stream-caret > :last-child > :last-child::after,
+html[data-blurred] .stream-caret:empty::after,
+html[data-blurred] .page-progress::before {
+  animation-play-state: paused;
+}
+/* The needs-you ring grows and fades away: stopped, it would sit at its biggest, so it rests at the dot's size. */
+html[data-blurred] .animate-ping {
+  animation: none;
 }
 /* The message box after Quote put text in it: its frame lights up in the accent once, then fades back. */
 @keyframes composer-flash {

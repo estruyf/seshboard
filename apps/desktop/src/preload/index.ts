@@ -106,6 +106,12 @@ const bridge: SeshboardBridge = {
   keepAwakeStatus: () => ipcRenderer.invoke(IpcChannel.keepAwakeStatus) as Promise<boolean>,
   openLoginItemsSettings: () => ipcRenderer.send(IpcChannel.openLoginItemsSettings),
   shellCommand: (action) => ipcRenderer.invoke(IpcChannel.shellCommand, action) as Promise<ShellCommandResult>,
+  windowActive: ipcRenderer.sendSync(IpcChannel.getWindowActive) as boolean,
+  onWindowActive(listener) {
+    const handler = (_event: unknown, active: boolean) => listener(active);
+    ipcRenderer.on(IpcChannel.windowActive, handler);
+    return () => ipcRenderer.off(IpcChannel.windowActive, handler);
+  },
   popout: new URLSearchParams(window.location.search).get(POPOUT_QUERY),
   popouts: ipcRenderer.sendSync(IpcChannel.getPopouts) as string[],
   onPopoutsChanged(listener) {
