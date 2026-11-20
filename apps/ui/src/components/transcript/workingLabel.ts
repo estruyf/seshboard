@@ -1,5 +1,5 @@
 import { toolStepLabel, VISUAL_GUIDE_TOOL, VISUAL_TOOL } from '@seshboard/protocol/client';
-import type { StreamingBlock } from '../../state/hostsStore.ts';
+import type { StreamingBlock } from '../../state/streamingStore.ts';
 
 /** The tool Claude is starting, as the working line says it: a visual by what it does, others by name. */
 export const usingLabel = (tool: string): string => (tool === VISUAL_TOOL || tool === VISUAL_GUIDE_TOOL ? toolStepLabel(tool, {}, null).present : `Using ${tool}`);

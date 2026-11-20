@@ -23,6 +23,7 @@ import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
+import { runChangesReloadStep } from './changesReloadSmoke.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
 import { runFilesFromLinkStep, runFilesQuickOpenStep, runFilesSearchStep, runFilesToMessageStep, runFilesTreeStep } from './filesSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
@@ -15362,6 +15363,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     return activity.steps ? `ok: ${summary}` : `failed: ${summary}`;
   });
   await step('changes panel', () => runChangesStep(win));
+  await step('changes reload: an open diff shows an edit that keeps its counts', () => runChangesReloadStep(win));
   await step('diff comments: comment on lines in Changes, edit, keep after closing, submit to the message box', () => runDiffCommentsStep(win, (name) => shot(win, name)));
   await step('fewer lines: the header line only while scrolled, Changes on the sidebar surface, a fade over the composer', () => runFewerLinesStep(win));
   await step('branch button', () => runBranchStep(win));
