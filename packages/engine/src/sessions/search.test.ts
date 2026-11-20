@@ -36,7 +36,7 @@ function setup(transcripts: Record<string, RawSessionMessage[]>, versions: Recor
     () => Object.entries(versions).map(([id, version]) => ({ id, version, writtenAt: extra.writtenAt?.[id] ?? null })),
     () => {},
     undefined,
-    { quietMs: 30_000, ...(extra.now ? { now: extra.now } : {}) },
+    { quietMs: 30_000, maxWaitMs: 300_000, ...(extra.now ? { now: extra.now } : {}) },
   );
   caches.push({ close: () => index.stop() });
   const all = (id: string) => cache.db.prepare('SELECT rowid, uuid FROM transcript_fts WHERE session_id = ? ORDER BY rowid').all(id) as Array<{ rowid: number; uuid: string }>;
@@ -177,5 +177,27 @@ describe('SearchIndex', () => {
     now += 31_000;
     await index.sync();
     expect(reads()).toBe(3);
+  });
+
+  it('indexes a session that is never quiet at least every five minutes', async () => {
+    let now = 1_000_000;
+    const writtenAt: Record<string, number> = { busy: now };
+    const versions: Record<string, string> = { busy: '1' };
+    const { index, reads } = setup({ busy: [user('x1', 'always busy')] }, versions, { writtenAt, now: () => now });
+    await index.sync();
+    expect(reads()).toBe(0);
+    // Written every few seconds for four minutes: still waiting.
+    for (let i = 0; i < 4; i++) {
+      now += 60_000;
+      writtenAt.busy = now - 2_000;
+      versions.busy = String(i + 2);
+      await index.sync();
+    }
+    expect(reads()).toBe(0);
+    now += 61_000;
+    writtenAt.busy = now - 2_000;
+    await index.sync();
+    expect(reads()).toBe(1);
+    expect(index.search('busy', 5)).toHaveLength(1);
   });
 });

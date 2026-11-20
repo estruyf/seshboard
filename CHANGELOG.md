@@ -4,13 +4,13 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
-### Fixed
-
-- **Copilot sessions on GPT models answer again.** A Copilot session on a GPT model failed every message with "Function 'browser.browser-click' is not allowed in reserved namespace 'browser'". Seshboard's browser tools now go by another name for these agents, and still show as browser tools in the transcript.
-
 ### Changed
 
 - **Busy sessions use far less CPU.** While Claude works, Seshboard reads only what was added to the transcript instead of the whole file, shows a session it runs from the live messages, and sends the sidebar a busy session's new time about every 15 seconds. Switching back to a session you just looked at is quicker. Search adds a session's new messages when its turn ends, or once it has been quiet for 30 seconds.
+
+### Fixed
+
+- **Copilot sessions on GPT models answer again.** A Copilot session on a GPT model failed every message with "Function 'browser.browser-click' is not allowed in reserved namespace 'browser'". Seshboard's browser tools now go by another name for these agents, and still show as browser tools in the transcript.
 
 ## [1.4.0] - 2026-11-20
 

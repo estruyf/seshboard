@@ -532,6 +532,8 @@ export function createEngine(options: EngineOptions): Engine {
   let sidebarScope: 'switchboard' | 'all' = 'switchboard';
   /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
   let scanCompleteHook: () => void = () => {};
+  /** Set once reminders exist: a session's state changed, so a snoozed one that works or needs you drops its reminder. */
+  let breakThroughHook: () => void = () => {};
   /** Set once memory search exists: every memory change (Seshboard's or a watcher's) re-indexes the files that changed. */
   let memoryChangedHook: () => void = () => {};
   let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -756,12 +758,17 @@ export function createEngine(options: EngineOptions): Engine {
     },
     onTranscriptChanged: (id) => transcripts.changed(id),
   });
-  transcriptPath = (id) => sessions.pathFor(id);
+  transcriptPath = (id) => sessions.transcriptFile(id);
   // Full-text search: indexed in the background, a little after anything changes.
   const search = new SearchIndex(
     cache.db,
     source,
-    () => sessions.snapshot().sessions.map((s) => ({ id: s.id, version: `${s.updatedAt}:${s.fileSize ?? ''}`, writtenAt: sessions.writtenAt(s.id) })),
+    () =>
+      sessions.snapshot().sessions.map((s) => {
+        // The latest, also while the sidebar waits for it: a turn's end is indexed at once.
+        const latest = sessions.latestActivity(s.id) ?? s;
+        return { id: s.id, version: `${latest.updatedAt}:${latest.fileSize ?? ''}`, writtenAt: sessions.writtenAt(s.id) };
+      }),
     log,
     (id, messages) => links.transcriptRead(id, messages),
   );
@@ -840,6 +847,7 @@ export function createEngine(options: EngineOptions): Engine {
         onChange: () => {
           recordHostProcesses?.();
           broadcast('sessions.live', { live: liveList() });
+          breakThroughHook();
           void autoStarter?.check();
           runner?.check();
         },
@@ -1172,6 +1180,7 @@ export function createEngine(options: EngineOptions): Engine {
       }
       awake.update(info.sessionId, info);
       broadcast('session.host', withAwake(info));
+      breakThroughHook();
       catchUpOnInfo(info);
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
@@ -1529,6 +1538,7 @@ export function createEngine(options: EngineOptions): Engine {
     if (JSON.stringify(next) === JSON.stringify(providerLive)) return;
     providerLive = next;
     broadcast('sessions.live', { live: liveList() });
+    breakThroughHook();
     void autoStarter?.check();
     runner?.check();
   };
@@ -3127,6 +3137,10 @@ export function createEngine(options: EngineOptions): Engine {
     broadcast('sessions.remindersDue', { reminders });
     remote?.pushReminders(reminders);
   };
+  // Working, needing you or failing for less than a minute drops a reminder too (the timer alone could miss it).
+  breakThroughHook = () => {
+    if (sessions.snoozed().length) checkReminders();
+  };
   const reminderTimer = setInterval(checkReminders, 60_000);
   reminderTimer.unref?.();
 
@@ -3304,7 +3318,8 @@ export function createEngine(options: EngineOptions): Engine {
     cleanupInBackground();
   };
   scanCompleteHook = () => {
-    // Once, at the first full scan: every later change says `complete` too. Reminders are checked every minute after.
+    // Once, at the first full scan: every later change says `complete` too. Reminders are checked every minute after,
+    // and a snoozed session's reminder drops as soon as it works or needs you (`breakThroughHook`).
     scanCompleteHook = () => {};
     // Pinned tabs of sessions this computer no longer knows go once, at the first full scan of a run.
     if (!scanned) {

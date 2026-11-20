@@ -124,6 +124,8 @@ export class SessionIndex {
   private readonly deferred = new Map<string, { entry: Entry; timer: ReturnType<typeof setTimeout> }>();
   /** When each session's transcript was last written, as the file watcher saw it. */
   private readonly written = new Map<string, number>();
+  /** Sessions with a transcript in more than one folder, at the last full scan or since. */
+  private duplicates = new Set<string>();
   private readonly statements;
 
   constructor(private readonly options: SessionIndexOptions) {
@@ -216,6 +218,23 @@ export class SessionIndex {
   /** The transcript file behind a session, when known. */
   pathFor(sessionId: string): string | null {
     return this.entries.get(sessionId)?.path ?? null;
+  }
+
+  /**
+   * The one transcript file of a session, for reading it directly; null when unknown or when the session has files in
+   * more than one folder (the SDK's reader then picks one itself).
+   */
+  transcriptFile(sessionId: string): string | null {
+    return this.duplicates.has(sessionId) ? null : this.pathFor(sessionId);
+  }
+
+  /**
+   * The session's latest time and size, including a change still held back (`ACTIVITY_DELAY_MS`): what search compares
+   * against, so a turn's end is indexed without waiting for it to be sent.
+   */
+  latestActivity(sessionId: string): { updatedAt: number; fileSize: number | null } | null {
+    const summary = (this.deferred.get(sessionId)?.entry ?? this.entries.get(sessionId))?.summary;
+    return summary ? { updatedAt: summary.updatedAt, fileSize: summary.fileSize } : null;
   }
 
   /** When the file watcher last saw the session's transcript written (this run), or null. */
@@ -478,6 +497,7 @@ export class SessionIndex {
   /** Maps session id → transcript file for every top-level transcript under each profile's projects/. */
   private scanFiles(): Map<string, TranscriptFile> {
     const files = new Map<string, TranscriptFile>();
+    const duplicates = new Set<string>();
     for (const { dir: root, profileId, provider } of this.options.projectsDirs()) {
       if (provider) {
         for (const [id, path] of provider.files()) {
@@ -504,10 +524,14 @@ export class SessionIndex {
           if (!match) continue;
           const path = join(root, dir, name);
           const stat = statSync(path, { throwIfNoEntry: false });
-          if (stat?.isFile()) files.set(match[2]!, { path, mtime: Math.round(stat.mtimeMs), profileId });
+          if (!stat?.isFile()) continue;
+          // The same session in two folders (a moved project): the first, as the SDK's reader finds it.
+          if (files.has(match[2]!)) duplicates.add(match[2]!);
+          else files.set(match[2]!, { path, mtime: Math.round(stat.mtimeMs), profileId });
         }
       }
     }
+    this.duplicates = duplicates;
     return files;
   }
 
@@ -575,6 +599,9 @@ export class SessionIndex {
   }
 
   private fileChanged(sessionId: string, path: string, profileId: string): void {
+    // A second file for a known session, while the first is still there.
+    const known = this.entries.get(sessionId)?.path;
+    if (known && known !== path && existsSync(known) && existsSync(path)) this.duplicates.add(sessionId);
     this.changed.set(sessionId, { path, profileId });
     this.written.set(sessionId, Date.now());
     let runner = this.perFile.get(sessionId);
@@ -595,12 +622,18 @@ export class SessionIndex {
   private mayWait(previous: Entry, next: Entry): boolean {
     if (previous.path !== next.path || !onlyActivity(previous.summary, next.summary)) return false;
     if (this.hidden(previous.summary) !== this.hidden(next.summary)) return false;
+    // Done until new activity, or back in the list until then: the new time can move the session between lists.
+    const flags = this.flags.get(next.summary.id) ?? NO_FLAGS;
+    const crosses = (at: number | null) => at !== null && at >= previous.summary.updatedAt !== at >= next.summary.updatedAt;
+    if (crosses(flags.archivedAt) || crosses(flags.restoredAt)) return false;
     return this.decorate(previous.summary).unread === this.decorate(next.summary).unread;
   }
 
   /** Keeps the newest summary that may wait, and sends it once the delay since the first one runs out. */
   private defer(entry: Entry): void {
     const id = entry.summary.id;
+    // A full scan in flight read the session before this change: it must not undo it.
+    this.touchedDuringScan?.add(id);
     const waiting = this.deferred.get(id);
     if (waiting) {
       waiting.entry = entry;

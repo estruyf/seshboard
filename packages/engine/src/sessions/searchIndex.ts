@@ -65,11 +65,15 @@ interface Indexed {
 export interface SearchIndexOptions {
   /** How long a transcript must go unwritten before it is indexed, unless its turn ended (`settled`). */
   quietMs?: number;
+  /** How long a session that is never quiet waits at most. */
+  maxWaitMs?: number;
   now?: () => number;
 }
 
 /** Writes in a busy session come about every second: it is indexed once it is quiet this long, or when its turn ends. */
 const QUIET_MS = 30_000;
+/** A session written to all the time (a long turn in a terminal) is indexed this often all the same. */
+const MAX_WAIT_MS = 5 * 60_000;
 
 /** The hash of the first `count` uuids, and of all of them. */
 function prefixHashes(messages: readonly TranscriptMessage[], count: number): { prefix: string | null; all: string } {
@@ -94,8 +98,11 @@ export class SearchIndex {
   private pending: IndexedSession[] = [];
   /** Sessions whose turn ended: indexed at the next pass, written just now or not. */
   private readonly ended = new Set<string>();
-  private retry: ReturnType<typeof setTimeout> | undefined;
+  private retry: { timer: ReturnType<typeof setTimeout>; at: number } | undefined;
+  /** When each busy session was first left waiting, so one that is never quiet waits at most `maxWaitMs`. */
+  private readonly waiting = new Map<string, number>();
   private readonly quietMs: number;
+  private readonly maxWaitMs: number;
   private readonly now: () => number;
   progress = { indexed: 0, total: 0 };
 
@@ -109,6 +116,7 @@ export class SearchIndex {
     options: SearchIndexOptions = {},
   ) {
     this.quietMs = options.quietMs ?? QUIET_MS;
+    this.maxWaitMs = options.maxWaitMs ?? MAX_WAIT_MS;
     this.now = options.now ?? Date.now;
     this.statements = {
       versions: db.prepare('SELECT session_id, version, messages, prefix, last_rowid FROM transcript_indexed'),
@@ -162,7 +170,7 @@ export class SearchIndex {
   }
 
   stop(): void {
-    clearTimeout(this.retry);
+    clearTimeout(this.retry?.timer);
     this.retry = undefined;
   }
 
@@ -181,15 +189,23 @@ export class SearchIndex {
       this.statements.forget.run(id);
     }
     for (const id of this.ended) if (!live.has(id)) this.ended.delete(id);
-    // Newest first, so recent conversations are searchable soonest. One written just now waits until it is quiet.
+    for (const id of this.waiting.keys()) if (!live.has(id)) this.waiting.delete(id);
+    // Newest first, so recent conversations are searchable soonest. One written just now waits until it is quiet (or
+    // its turn ends, or it has waited `maxWaitMs`).
     const now = this.now();
     const changed = current.filter((s) => indexed.get(s.id)?.version !== s.version);
-    const busy = changed.filter((s) => !this.ended.has(s.id) && s.writtenAt != null && now - s.writtenAt < this.quietMs);
+    const busy = changed.filter((s) => {
+      if (this.ended.has(s.id) || s.writtenAt == null || now - s.writtenAt >= this.quietMs) return false;
+      const since = this.waiting.get(s.id) ?? now;
+      this.waiting.set(s.id, since);
+      return now - since < this.maxWaitMs;
+    });
     this.pending = changed.filter((s) => !busy.includes(s));
     this.progress = { indexed: current.length - this.pending.length, total: current.length };
-    if (busy.length) this.later(Math.min(...busy.map((s) => s.writtenAt! + this.quietMs)) - now);
+    if (busy.length) this.later(Math.min(...busy.map((s) => Math.min(s.writtenAt! + this.quietMs, this.waiting.get(s.id)! + this.maxWaitMs))) - now);
     for (const session of this.pending) {
       this.ended.delete(session.id);
+      this.waiting.delete(session.id);
       await this.indexSession(session, indexed.get(session.id));
       this.progress.indexed++;
       // Let other work (RPC calls, file watching) run between sessions.
@@ -198,14 +214,17 @@ export class SearchIndex {
     this.pending = [];
   }
 
-  /** Another pass once the busy sessions are quiet; the earliest wins. */
+  /** Another pass once the first busy session is quiet: an earlier time replaces a later one. */
   private later(delayMs: number): void {
-    if (this.retry) return;
-    this.retry = setTimeout(() => {
+    const at = this.now() + Math.max(0, delayMs) + 50;
+    if (this.retry && this.retry.at <= at) return;
+    clearTimeout(this.retry?.timer);
+    const timer = setTimeout(() => {
       this.retry = undefined;
       void this.sync();
-    }, Math.max(0, delayMs) + 50);
-    this.retry.unref?.();
+    }, at - this.now());
+    timer.unref?.();
+    this.retry = { timer, at };
   }
 
   private async indexSession(session: IndexedSession, known: Indexed | undefined): Promise<void> {

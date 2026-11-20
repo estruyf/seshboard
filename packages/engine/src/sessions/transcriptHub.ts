@@ -7,8 +7,10 @@ import { ImageStore } from './imageStore.ts';
 interface Watcher {
   /** UUIDs this watcher has already been sent, in order; null until the initial load is sent. */
   uuids: string[] | null;
-  /** A change arrived while the initial load was in flight. */
+  /** A file change arrived while the initial load was in flight. */
   dirty: boolean;
+  /** Messages streamed live while the initial load was in flight: added after it, where the file doesn't have them yet. */
+  early: TranscriptMessage[];
   /** Sent from the live stream but not yet seen in the file. */
   live: Set<string>;
   emit: (update: TranscriptUpdate) => void;
@@ -17,18 +19,31 @@ interface Watcher {
 /**
  * Works out the smallest update that brings a watcher from `sent` to `next`
  * (the file's current content). When the file is merely behind what was
- * already streamed live, nothing is sent: it will catch up.
+ * already streamed live, nothing is sent: it will catch up. When the two part
+ * after a common start (a line only the file has, among messages that came
+ * live), only what follows it is sent again (`splice`), with the messages that
+ * came live and the file doesn't have yet (`liveMessage` finds them). Nothing
+ * in common (a rewind to the start, a compaction, another file) is a `replace`.
  */
 export function diffTranscript(
   sent: readonly string[],
   next: readonly TranscriptMessage[],
   live: ReadonlySet<string> = new Set(),
-): Pick<TranscriptUpdate, 'mode' | 'messages'> | null {
+  liveMessage: (uuid: string) => TranscriptMessage | undefined = () => undefined,
+): Pick<TranscriptUpdate, 'mode' | 'messages' | 'at'> | null {
   const sentIsPrefix = next.length >= sent.length && sent.every((uuid, i) => next[i]!.uuid === uuid);
   if (sentIsPrefix) return next.length === sent.length ? null : { mode: 'append', messages: next.slice(sent.length) };
   const fileIsBehind = next.every((m, i) => sent[i] === m.uuid) && sent.slice(next.length).every((uuid) => live.has(uuid));
   if (fileIsBehind) return null;
-  return { mode: 'replace', messages: [...next] };
+  let at = 0;
+  while (at < sent.length && at < next.length && sent[at] === next[at]!.uuid) at++;
+  if (at === 0) return { mode: 'replace', messages: [...next] };
+  const inFile = new Set(next.map((m) => m.uuid));
+  const stillLive = sent.slice(at).flatMap((uuid) => {
+    const message = live.has(uuid) && !inFile.has(uuid) ? liveMessage(uuid) : undefined;
+    return message ? [message] : [];
+  });
+  return { mode: 'splice', at, messages: [...next.slice(at), ...stillLive] };
 }
 
 /**
@@ -131,7 +146,7 @@ export class TranscriptHub {
 
   /** Starts sending `transcript.updated` for a session; the first update is a full `replace`. */
   watch(sessionId: string, emit: Watcher['emit']): () => void {
-    const watcher: Watcher = { uuids: null, dirty: false, live: new Set(), emit };
+    const watcher: Watcher = { uuids: null, dirty: false, early: [], live: new Set(), emit };
     let set = this.watchers.get(sessionId);
     if (!set) this.watchers.set(sessionId, (set = new Set()));
     set.add(watcher);
@@ -177,7 +192,7 @@ export class TranscriptHub {
     this.remember(sessionId, messages);
     for (const watcher of set) {
       if (watcher.uuids === null) {
-        watcher.dirty = true;
+        watcher.early.push(...messages);
         continue;
       }
       const known = new Set(watcher.uuids);
@@ -313,6 +328,7 @@ export class TranscriptHub {
         if (watcher.uuids !== null) continue;
         watcher.uuids = [];
         watcher.emit({ sessionId, mode: 'replace', messages: [], error: message });
+        this.sendEarly(sessionId, watcher);
       }
       return;
     }
@@ -337,22 +353,42 @@ export class TranscriptHub {
         watcher.dirty = true;
         continue;
       }
-      const diff = initial ? { mode: 'replace' as const, messages } : rebuild ? { mode: 'replace' as const, messages: whole } : diffTranscript(watcher.uuids!, messages, watcher.live);
+      const liveMessage = (uuid: string) => tail?.get(uuid) ?? kept?.get(uuid);
+      const diff = initial ? { mode: 'replace' as const, messages } : rebuild ? { mode: 'replace' as const, messages: whole } : diffTranscript(watcher.uuids!, messages, watcher.live, liveMessage);
       for (const m of file) watcher.live.delete(m.uuid);
       if (diff) {
-        watcher.uuids = (rebuild ? whole : messages).map((m) => m.uuid);
+        watcher.uuids = diff.mode === 'splice' ? [...watcher.uuids!.slice(0, diff.at), ...diff.messages.map((m) => m.uuid)] : (rebuild ? whole : messages).map((m) => m.uuid);
         if (diff.mode === 'replace') watcher.live.clear();
+        else if (diff.mode === 'splice') {
+          const shown = new Set(watcher.uuids);
+          for (const uuid of watcher.live) if (!shown.has(uuid)) watcher.live.delete(uuid);
+        }
       }
       for (const m of held) watcher.live.add(m.uuid);
       for (const m of pending) watcher.live.add(m.uuid);
       if (!diff) continue;
       watcher.emit({ sessionId, ...diff });
+      if (initial) this.sendEarly(sessionId, watcher);
       if (initial && watcher.dirty) {
         // What came live while the first load was read: from the file now, also during a turn.
         watcher.dirty = false;
         this.reload(sessionId).trigger();
       }
     }
+  }
+
+  /** After a watcher's first update: what came live meanwhile and the file didn't have, as an append. */
+  private sendEarly(sessionId: string, watcher: Watcher): void {
+    const early = watcher.early;
+    watcher.early = [];
+    const known = new Set(watcher.uuids);
+    const fresh = early.filter((m) => !known.has(m.uuid) && known.add(m.uuid));
+    if (fresh.length === 0) return;
+    for (const m of fresh) {
+      watcher.uuids!.push(m.uuid);
+      watcher.live.add(m.uuid);
+    }
+    watcher.emit({ sessionId, mode: 'append', messages: fresh });
   }
 
   stop(): void {

@@ -303,9 +303,14 @@ export type SessionsChanged = z.infer<typeof SessionsChanged>;
 
 export const TranscriptUpdate = z.object({
   sessionId: z.string(),
-  /** `append` when the new messages extend what was sent before; `replace` after rewinds or compaction. */
-  mode: z.enum(['append', 'replace']),
+  /**
+   * `append` when the new messages extend what was sent before; `splice` when they take the place of everything from
+   * `at` on (a line only the transcript file has, among messages that came live); `replace` after rewinds or compaction.
+   */
+  mode: z.enum(['append', 'replace', 'splice']),
   messages: z.array(TranscriptMessage),
+  /** With `splice`: how many of the messages sent before stay; the new ones follow them. */
+  at: z.number().int().nonnegative().optional(),
   /** Set (with an empty `replace`) when the first read of the transcript failed; `transcript.diagnose` says more. */
   error: z.string().optional(),
 });
