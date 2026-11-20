@@ -1,3 +1,4 @@
+import { claudeServerName } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../../claude/transcript.ts';
 
 /**
@@ -59,7 +60,7 @@ export function claudeTool(name: string, args: unknown, mcp?: { mcpServerName?: 
   // An MCP server's tool takes Claude Code's name for it, so it reads the same (and a visual draws, `mcp__visualize__…`).
   const server = str(mcp?.mcpServerName);
   const tool = str(mcp?.mcpToolName);
-  if (server && tool) return { name: `mcp__${server}__${tool}`, input: a };
+  if (server && tool) return { name: `mcp__${claudeServerName(server)}__${tool}`, input: a };
   const path = str(a.path);
   switch (name) {
     case 'bash':

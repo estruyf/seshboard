@@ -18,6 +18,13 @@ export const isScriptTool = (tool: string): boolean => (BROWSER_SCRIPT_TOOLS as 
 export const browserToolsFor = (scripts: boolean): BrowserTool[] => BROWSER_TOOLS.filter((tool) => scripts || !isScriptTool(tool));
 export const BROWSER_SERVER = 'browser';
 export const BROWSER_TOOL_PREFIX = `mcp__${BROWSER_SERVER}__`;
+/**
+ * The server's name for other agents (Copilot, Codex): OpenAI's API reserves the `browser` namespace for its own tool
+ * and refuses every request that lists tools in it, so a session on a GPT model could not send a single message.
+ */
+export const PROVIDER_BROWSER_SERVER = 'seshboard-browser';
+/** Claude Code's name for a server another agent started under its own: `browser` for the browser tools. */
+export const claudeServerName = (server: string): string => (server === PROVIDER_BROWSER_SERVER ? BROWSER_SERVER : server);
 
 /** What an agent reads about the tools once, as the server's instructions; `scripts`: evaluate and network are offered. */
 export function browserInstructions(scripts: boolean): string {

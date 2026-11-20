@@ -18,6 +18,7 @@ import {
   type SlashCommand,
   type StreamDelta,
   ORCHESTRATOR_SERVER,
+  PROVIDER_BROWSER_SERVER,
   PROVIDER_NAMES,
   browserAnswerOf,
   browserPromptText,
@@ -333,7 +334,7 @@ export class ProviderHosts {
     if (host.readOnly) return {};
     const browser = (await this.deps.browserServer?.(() => host.info.sessionId || null)) ?? null;
     const orchestrator = host.orchestrator ? ((await this.deps.orchestratorServer?.(() => host.info.sessionId || null)) ?? null) : null;
-    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { browser } : {}), ...(orchestrator ? { [ORCHESTRATOR_SERVER]: orchestrator } : {}) };
+    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { [PROVIDER_BROWSER_SERVER]: browser } : {}), ...(orchestrator ? { [ORCHESTRATOR_SERVER]: orchestrator } : {}) };
     return Object.keys(servers).length ? { mcpServers: servers } : {};
   }
 

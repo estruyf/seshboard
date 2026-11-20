@@ -1,4 +1,4 @@
-import type { PermissionDecision, PermissionRequest } from '@seshboard/protocol';
+import { claudeServerName, type PermissionDecision, type PermissionRequest } from '@seshboard/protocol';
 import { clipJson, LIMITS } from '../../claude/transcript.ts';
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
@@ -31,7 +31,7 @@ export function toPermissionRequest(requestId: string, request: Record<string, u
       input = { url: str(request.url) ?? '' };
       break;
     case 'mcp':
-      toolName = `mcp__${str(request.serverName) ?? 'server'}__${str(request.toolName) ?? 'tool'}`;
+      toolName = `mcp__${claudeServerName(str(request.serverName) ?? 'server')}__${str(request.toolName) ?? 'tool'}`;
       input = (request.args && typeof request.args === 'object' ? request.args : {}) as Record<string, unknown>;
       break;
     default:

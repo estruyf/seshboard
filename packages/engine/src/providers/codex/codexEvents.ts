@@ -1,4 +1,4 @@
-import { isAbsolutePath, joinPath } from '@seshboard/protocol';
+import { claudeServerName, isAbsolutePath, joinPath } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../../claude/transcript.ts';
 import type { Turn } from './protocol.ts';
 
@@ -466,7 +466,7 @@ function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext,
       const page = str(obj(item.mcpAppUi).resourceUri) ?? str(item.mcpAppResourceUri);
       const server = str(item.server) ?? 'unknown';
       const app = page?.startsWith('ui://') ? { server, resourceUri: page, callId: str(item.id), result: item.result ?? null } : undefined;
-      tool({ name: `mcp__${server}__${str(item.tool) ?? 'unknown'}`, input, ...(app ? { app } : {}) }, result);
+      tool({ name: `mcp__${claudeServerName(server)}__${str(item.tool) ?? 'unknown'}`, input, ...(app ? { app } : {}) }, result);
       break;
     }
     case 'webSearch': {

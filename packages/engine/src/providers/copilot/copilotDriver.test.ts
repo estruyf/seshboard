@@ -441,6 +441,7 @@ describe('copilot permissions', () => {
   it('maps requests onto the permission card and answers back', () => {
     expect(toPermissionRequest('p', { kind: 'write', fileName: '/a.ts', diff: '-a\n+b', intention: 'Edit a.ts' }, 5)).toMatchObject({ toolName: 'Edit', input: { file_path: '/a.ts', diff: '-a\n+b' }, title: 'Edit a.ts', alwaysLabel: null, createdAt: 5 });
     expect(toPermissionRequest('p', { kind: 'mcp', serverName: 'github', toolName: 'get_issue', args: { n: 1 } }).toolName).toBe('mcp__github__get_issue');
+    expect(toPermissionRequest('p', { kind: 'mcp', serverName: 'seshboard-browser', toolName: 'open', args: {} }).toolName).toBe('mcp__browser__open');
     expect(toCopilotDecision({ behavior: 'allow', always: false })).toEqual({ kind: 'approve-once' });
     expect(toCopilotDecision({ behavior: 'deny', message: 'No' })).toEqual({ kind: 'reject', feedback: 'No' });
   });
