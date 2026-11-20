@@ -12,8 +12,9 @@ const links = [
 const splash = Astro.locals.starlightRoute.entry.data.template === 'splash';
 /** The README's visitorbadge.io badge, with a slug per page: `website` for the homepage, `website/sessions/sidebar` for the others. */
 const pageId = Astro.locals.starlightRoute.id.replace(/^\/|\/$/g, '');
+// The badge counts by this path: it keeps the repository's old name, so the count goes on from before the rename.
 const badgeQuery = new URLSearchParams({
-  path: 'https://github.com/estruyf/seshboard',
+  path: 'https://github.com/estruyf/switchboard',
   slug: pageId ? `website/${pageId}` : 'website',
 });
 const badge = {
