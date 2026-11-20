@@ -1,0 +1,92 @@
+---
+title: Agents in the browser
+description: Let Claude Code, Copilot and Codex open, read and click pages in the session's browser, and choose which sites they may use.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+The agent in a session can check its own work in the session's [Browser panel](/browser/in-a-session/): open your dev server, read the page, type and click as you would, take a picture and read the console. It works for every agent Seshboard runs: Claude Code, Copilot and Codex. You see what it does, in the same panel.
+
+## Turn it on or off
+
+It is on with the browser. Turn it off in **Settings › Browser** with **Allow Seshboard to control the browser**. A change applies to sessions you start or resume after it: a running session keeps what it started with until you stop and resume it.
+
+A read-only pipeline step never gets the browser.
+
+<Aside>
+This is Seshboard's own browser. **Use Claude in Chrome** in [Settings › General](/settings/#new-sessions) is something else: it gives Claude Code the tools of the Claude in Chrome extension, in your own Chrome.
+</Aside>
+
+## What the agent can do
+
+- **Open** a page. The agent works in a tab of its own in the session's Browser panel, so your tabs keep their pages, and the panel shows.
+- **Read** the page: its headings, text and the elements it can act on. For the full text, it reads the page as it is, in parts: a long page, or a REST response opened in the browser (JSON or XML).
+- **Click**, **type** and **press** keys, as a person would.
+- **Take a picture** of the page, and **read the console**, errors first.
+
+With **Allow scripts in pages** on, it can also run scripts in the page and read its requests (see [Scripts in pages](#scripts-in-pages)).
+
+Text from a page reaches the agent as data, not as instructions.
+
+## Which sites it may use
+
+- **Pages on this computer** (`localhost`, names that end in `.localhost`, `127.0.0.1`) need no approval.
+- **Sites the project allows**, in its Browser sites, need none either.
+- **Any other site asks first**, on the session's permission card: "Claude Code wants to use github.com in the browser". The card says the agent clicks and types there as you, with your login on that site. The session shows as needing you until you answer.
+
+The card has these buttons:
+
+| Button | What it does |
+|---|---|
+| **Allow** | Allows this one step. The agent asks again next time. |
+| **Allow for this session** | The agent can keep using the site until the session ends or Seshboard restarts, without asking at every step. |
+| **Always allow: … in this project** | Adds the site to the project's Browser sites. Only for a session in an added project. |
+| **Deny** | Says no. Type in the field under the buttons to tell the agent what to do instead. |
+
+A site is matched by its full address: allowing `app.example.com` doesn't allow `admin.example.com`.
+
+## Browser sites
+
+A project's **Settings** tab lists its **Browser sites**: the sites the agent can use there without asking. See [Project settings](/projects/settings/).
+
+- Type a site, such as `app.example.com`, and click **Allow**. The × next to a site removes it.
+- `*.example.com` covers every subdomain of example.com, such as `app.example.com` and `beta.example.com`, but not `example.com` itself.
+- Check **Any site** to let the agent use every site without asking. The list stays, hidden, for when you uncheck it.
+
+**Always allow** on a card adds the site here.
+
+## Scripts in pages
+
+Some checks need more than the page shows, such as a call to the site's API with your login, or the response of a request the page made. Turn on **Settings › Browser › Allow scripts in pages** (off by default, and only with **Allow Seshboard to control the browser** on). Sessions you start or resume after that can:
+
+- **Run a script in the page**, with the page's own login and data.
+- **List the page's requests** from then on, and read their responses.
+
+A script can read what the page and its requests hold, such as tokens, and change data with your login. So:
+
+- Pages on this computer need no approval.
+- Any other site asks on a card of its own, such as **Claude Code wants to run scripts on contoso.sharepoint.com as you**, even when the site itself is allowed.
+- **Always allow** on that card keeps the site in the project's **Scripts in pages**, in its Settings tab. That list takes wildcards too, such as `*.sharepoint.com`, but has no Any site.
+
+Turning the setting off counts at once, also for sessions that are running.
+
+## Browser profiles
+
+The agent can open a page in one of your [browser profiles](/browser/profiles/) by its name, such as "Admin", each profile in a tab of its own. That lets it drive two accounts side by side. It can use the profiles of the session's project and the ones for everywhere. The permission card names the profile when it isn't Default.
+
+## Settings › Browser
+
+**Settings › Browser** shows while the browser is on. It has:
+
+- **Agents**: **Allow Seshboard to control the browser** (on by default) and **Allow scripts in pages** (off by default).
+- **Browser profiles**: the Default profile and yours, with **New profile**. See [Browser profiles](/browser/profiles/).
+
+The browser itself is turned on and off in **Settings › General › Browser › Allow browser**. See [Settings](/settings/#browser).
+
+## Related
+
+<Related pages={['browser/in-a-session', 'browser/profiles', 'permissions', 'projects/settings']} />

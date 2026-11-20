@@ -37,19 +37,25 @@ export const sidebar = [
   {
     label: 'Stay on top',
     collapsed: true,
-    items: ['sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/upcoming', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
+    items: ['sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/upcoming', 'sessions/activity', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
   },
   {
     label: 'Inside a session',
     collapsed: true,
     items: [
       'sessions/conversation',
+      'sessions/tool-rail',
+      'sessions/replies',
+      'sessions/skim',
+      'sessions/visuals',
+      'sessions/files',
       'sessions/file-preview',
       'sessions/web-preview',
       'permissions',
       'sessions/ask',
       'sessions/linking',
       'sessions/pipelines',
+      'sessions/orchestrator',
       'sessions/github-issues',
       'sessions/agents',
       'sessions/commands',
@@ -58,6 +64,11 @@ export const sidebar = [
       'terminal-changes-git/git',
       'terminal-changes-git/terminal',
     ],
+  },
+  {
+    label: 'Browser',
+    collapsed: true,
+    items: ['browser/overview', 'browser/tabs-and-pages', 'browser/favourites-and-bookmarks', 'browser/in-a-session', 'browser/profiles', 'browser/agents'],
   },
   {
     label: 'Arrange your sessions',
@@ -77,7 +88,7 @@ export const sidebar = [
   {
     label: 'Accounts and usage',
     collapsed: true,
-    items: ['settings/claude-profiles', 'usage'],
+    items: ['settings/claude-profiles', 'settings/other-agents', 'usage'],
   },
   {
     label: 'Work from anywhere',

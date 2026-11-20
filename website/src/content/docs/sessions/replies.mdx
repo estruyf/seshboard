@@ -1,0 +1,73 @@
+---
+title: What replies show
+description: Formatting, Mermaid diagrams, maths, links and images in Claude's replies, and copying from them.
+sidebar:
+  label: Replies
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
+
+Claude writes its replies in Markdown. Seshboard shows them the way you would read them: headings, lists, tables and code, but also diagrams, formulas, links to your files and the images Claude made. Most of this works in a [Markdown file's preview](/sessions/file-preview/) too.
+
+## Formatting
+
+- **Quotes.** A quote, such as a message Claude drafted for you to send, has a clear bar on its left and the normal text colour, so it reads as text to copy. Also in [reading mode](/sessions/conversation/#reading-mode).
+- **Alerts.** GitHub's alerts show as coloured blocks with a title: `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` and `> [!CAUTION]`.
+- **Task lists.** `- [ ]` and `- [x]` show a box in place of the bullet, empty or ticked.
+- **HTML.** The usual tags show as they would on a page instead of as their source: `<br>` in a table cell, `<details>` and `<summary>`, `<kbd>`, `<sub>` and `<sup>`. Scripts, styles and frames never run.
+- **Headings and lines.** Small headings (`####` and below) are bold, and `---` has space around it.
+
+## Mermaid diagrams
+
+A ` ```mermaid ` block is drawn as a diagram, in your theme's colours, light or dark: flowcharts, sequence diagrams, pie charts, bar and line charts (`xychart-beta`) and the other kinds Mermaid knows.
+
+- **Preview | Source** above the diagram switches between the drawing and its text. The copy button copies the text.
+- While Claude is still writing the block, you see its text. The diagram is drawn once the block is done.
+- Click the diagram, or **Open larger**, to see it over the window. The wheel (or <Kbd keys="plus" /> and <Kbd keys="-" />) zooms, dragging (or the arrow keys) moves it, and the buttons **Zoom out**, **Zoom in**, **Fit to window** and **Actual size** do the rest.
+- A diagram that can't be drawn shows its text, with **Couldn't draw this diagram.**
+
+Mermaid diagrams are drawn in replies, in a Markdown block's preview and in Markdown files. On your phone, through [Remote access](/remote-access/), you see the text.
+
+## Maths
+
+Formulas are drawn instead of shown as source:
+
+- `$x^2$` inside a line;
+- `$$ … $$` on lines of their own, and ` ```math ` blocks.
+
+A block has the **Preview | Source** switch, and a wide formula scrolls sideways. A formula that doesn't parse shows its source. A price such as `$5 and $10` stays text. While a reply is still being written, its maths shows as source.
+
+## Links
+
+- **Web addresses** are links, also without `https://`, such as `github.com/org/repo/pull/12`. This works in your own prompts too.
+- **Files.** A path to a file is a link: in code (`src/app.ts:69`), as a Markdown link, as a `file:///` link, and written as plain or bold text, such as `/tmp/notes/plan.md` or `~/report.md`. A path in plain text becomes a link once Seshboard finds the file. On Windows, a path such as `E:/repos/notes.md` works too.
+
+A click on a file link does what **Clicking a file link** in [Settings › Conversation](/settings/#conversation) says: by default a Markdown, HTML or code file opens in [Files](/sessions/files/), and any other file shows in <Os mac="Finder" windows="File Explorer" />. <Kbd shortcut="transcript.file-link-other" /> opens it in your editor instead. Right-click it for every way to open it.
+
+## Images
+
+Images Claude reads or makes, such as screenshots from a browser tool, show in the reply. Click one to see it full size.
+
+- <Kbd keys="arrowleft|arrowright" /> and the strip at the bottom go through every image Claude returned in the reply, not only those of one tool call.
+- **Copy** (or <Kbd keys="mod+c" />) copies the image you see. In the conversation, right-click an image for **Copy image** and **Save image…**.
+
+## Copy from a reply
+
+Select part of a reply and press <Kbd keys="mod+c" />, or use **Copy** in the selection's toolbar or right-click menu. What you paste in an email, a document or Word keeps its headings, bold, lists, links, code and tables, without your theme's colours, so it reads well on a white page.
+
+- Only the words you selected are copied, and a few table rows or list items keep their table or list.
+- Text you can't select, such as the line under a turn, is left out.
+- A formula copies as its source (`$x^2$`). A Mermaid diagram is left out.
+- Links to files in your project paste as their text.
+- Your own prompts keep their line breaks and spaces.
+
+<Kbd keys="mod+a" /> in the conversation, in reading mode or in a file's preview selects only that text, as an editor does. The conversation is drawn a screenful at a time, so it selects the replies drawn.
+
+To copy a whole reply, use **Copy as Markdown** or **Copy as rich text** in its [hover toolbar](/sessions/conversation/#the-hover-toolbar).
+
+## Related
+
+<Related pages={['sessions/conversation', 'sessions/visuals', 'sessions/file-preview', 'sessions/files']} />

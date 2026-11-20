@@ -1,0 +1,65 @@
+---
+title: The browser
+description: Open any web page beside a session or in a Browser view of its own, with tabs, favourites, bookmarks and your sign-ins.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+The ticket, the pull request and the running app sit next to the session that works on them. Seshboard has a browser of its own: open any page beside a session or in the **Browser** view, keep several tabs, and pin the ones you want back after a restart. Your sign-ins stay, so it works like the browser you already use. The agent in a session can use it too, to check its work.
+
+## Turn it on
+
+The browser is on from the start. The first time, a card in the sidebar tells about it, with **Open browser** and **Got it**.
+
+To turn it off, open [Settings › General](/settings/#general) and turn off **Allow browser** under **Browser**. With the browser off, a session still shows its running dev server in a [Web preview](/sessions/web-preview/), and **Settings › Browser** is gone.
+
+## Where it shows
+
+The browser has two places, each with its own tabs:
+
+- **A session's Browser panel**, on the right of the conversation. Click **Browser** on the session's rail, press <Kbd shortcut="web.toggle" />, or run *Open browser* in the [command palette](/command-palette/). The session keeps its tabs, and its dev server opens there. See [The browser in a session](/browser/in-a-session/).
+- **The Browser view**, for pages that belong to no session, such as your mail or the team's board. Click **Browser** in the tray at the top of the sidebar, press <Kbd shortcut="browser.view" /> outside a session, or run *Go to Browser* in the palette. The sidebar then lists its tabs, and the page fills the main area. Its icon says how many tabs are open, such as "Browser · 3 tabs".
+
+The pages keep running while another session or view is in front, with their scroll and what you typed. A session row in the sidebar shows a small globe while its browser is open.
+
+With no tab in front, the Browser view says **No page selected**, with **Open tab** and the same lists as a new tab: your favourites, your bookmarks and the tabs you closed lately.
+
+## Links that open here
+
+With the browser on, links open in Seshboard's browser instead of your usual one:
+
+- **Links in Claude's replies** open in the session's browser. A tab already on that address comes to the front.
+- **A web address in a terminal** opens in the session's browser. In the window's own terminal, it opens in the Browser view.
+- **Links the app offers**: **Open in › GitHub**, the GitHub app on the rail, pull request and issue links, and links in a reply's apps. In a session they open in its browser, elsewhere in the Browser view.
+
+<Kbd keys="mod+click" /> on a link in a reply or a terminal opens it in your usual browser. Install guides always open there. **Open in browser** in the toolbar and in a tab's menu sends the page in front to your usual browser too.
+
+## Keys
+
+| Key | What it does |
+|---|---|
+| <Kbd shortcut="web.toggle" /> | In a session: show or hide its Browser panel. Outside a session: go to the Browser view. |
+| <Kbd shortcut="browser.new-tab" /> | New tab. |
+| <Kbd shortcut="browser.address" /> | Go to the address bar. |
+| <Kbd shortcut="browser.find" /> | Find in the page, while a page or its address bar has the focus, or in the Browser view. |
+| <Kbd shortcut="browser.bookmark" /> | Bookmark the page, or edit its bookmark. |
+| <Kbd shortcut="browser.close-tab" /> | Close the tab, while a page or its address bar has the focus. |
+| <Kbd shortcut="browser.reopen-tab" /> | Reopen the tab you closed, in the Browser view or while a page has the focus. |
+| <Kbd shortcut="browser.back" /> and <Kbd shortcut="browser.forward" /> | Back and forward in the page. The back and forward buttons on your mouse work too. |
+| <Kbd shortcut="browser.move-tab" /> | Move the tab you are on, in the Browser view's list or a session's tab strip. |
+
+The app's own shortcuts work while a page has the focus: <Kbd shortcut="palette.commands" first /> opens the palette, for example. Copy, cut, paste, select all, undo and redo stay the page's.
+
+Every browser action is in the [command palette](/command-palette/) too, such as *Go to tab…*, *Open favourite…*, *Open bookmark…*, *Find in the page*, *Mute tab* and *Clear data for this site…*.
+
+<Aside>
+Seshboard's browser is not your usual browser. It keeps its own sign-ins, which last between runs, apart from the ones in your usual browser. To keep two accounts on one site, use [browser profiles](/browser/profiles/).
+</Aside>
+
+## Related
+
+<Related pages={['browser/tabs-and-pages', 'browser/favourites-and-bookmarks', 'browser/in-a-session', 'browser/agents', 'browser/profiles', 'sessions/web-preview']} />

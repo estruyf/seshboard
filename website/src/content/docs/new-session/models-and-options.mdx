@@ -34,6 +34,24 @@ The model chip lists **Default model** (what Claude Code would pick) and the mod
 
 **Auto** comes first in the menu: Haiku reads your prompt when the session starts and picks the model for you. See [Auto model](/new-session/auto-model/).
 
+A session of another agent, such as GitHub Copilot or Codex, lists that agent's own models. See [Other agents](/settings/other-agents/).
+
+## Fallback model
+
+When your main model is overloaded or unavailable, Claude Code can switch to a fallback model instead of making you wait, so a busy Opus doesn't stop your work. It is off by default.
+
+Set it where you set the model for new sessions:
+
+- **Global fallback model** in [Settings › General](/settings/#new-sessions), for every Claude Code session.
+- **Fallback model** in a [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions) New session defaults.
+- **Fallback model** on a project's [Settings tab](/projects/settings/#defaults-for-new-sessions).
+
+The project's choice comes first, then the profile's, then the global one. It covers every Claude Code session Seshboard starts: from New session, the queue, schedules, triggers, pipeline steps and the [orchestrator's](/sessions/orchestrator/) sessions.
+
+Claude Code tries the main model again on each turn. When a turn ran on the fallback, the model chip shows both, such as **Opus → Sonnet**.
+
+When Claude refuses and Claude Code moves the session to the fallback model, the conversation says so: "Claude switched this session to Sonnet after a refusal". The refused reply is taken back, and the model chip shows the model in use now. Without a fallback model, the line reads "Claude refused and no fallback model was available".
+
 ## Effort
 
 How much Claude thinks before it answers. The chip shows three bars that fill with the level:
@@ -48,6 +66,14 @@ How much Claude thinks before it answers. The chip shows three bars that fill wi
 | **Max** | three, in the accent colour |
 
 In a session the effort chip shows only when the model has an effort setting.
+
+### Ultrathink
+
+The word `ultrathink` in a message to Claude Code runs that one turn at extra high effort, without changing the session's effort. The message box colours the word, so you see it took.
+
+To add it without typing, choose **Ultrathink this turn** in the effort chip's menu. The chip then says **Ultrathink**, and the word goes with your next message only. Choose it again to take it back before you send. If the message has the word already, it isn't added twice.
+
+Ultrathink is Claude Code's. Sessions of other agents don't have it.
 
 ## Fast mode
 
@@ -117,4 +143,4 @@ The defaults live on each project's [Settings tab](/projects/settings/). Profile
 
 ## Related
 
-<Related pages={['new-session/auto-model', 'permissions', 'settings/claude-profiles', 'usage']} />
+<Related pages={['new-session/auto-model', 'permissions', 'settings/claude-profiles', 'settings/other-agents']} />

@@ -17,7 +17,7 @@ Open the **Changes** panel to review what Claude changed before you commit it. I
 ## Open it
 
 - Press <Kbd shortcut="changes.toggle" /> to show or hide it.
-- Click **Changes** in the session header, next to **Terminal**. Its badge shows how many files have changed.
+- Click **Changes** on the session's [tool rail](/sessions/tool-rail/). Its badge shows how many files have changed.
 - Run *Toggle changes* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />).
 
 With [Ask about this session](/sessions/ask/) open too, the two share the right side as tabs, **Changes** and **Ask**. Opening Changes brings it to the front and leaves Ask open behind it.
@@ -49,6 +49,27 @@ Each file shows its status, its path and how many lines were added and removed:
 | **!** | Conflict |
 
 Click a file to open its diff inline, and again to close it. Hover a file, or focus it with the keyboard, for **Open in editor** and, in Uncommitted, **Revert this file…**.
+
+### Images
+
+A changed PNG, JPEG, GIF or WebP image shows as the image before and after, side by side, or one above the other in a narrow panel. Each side has its type, its size and its size in pixels. A new or deleted image shows on its own, as **Added** or **Deleted**.
+
+### Comment on lines
+
+Read the diff like a pull request and tell Claude what should change, line by line.
+
+<Steps>
+
+1. Click a line number in a diff. Drag over the numbers, or Shift-click another one, for more lines. Or select lines in the diff and press <Kbd shortcut="changes.comment" />.
+2. Write what should change in **What should change here?** and click **Comment** (<Kbd keys="mod+enter" />). **Cancel** (<Kbd keys="escape" />) leaves it out.
+3. Add more comments, in this file or others. The file list shows how many each file has, and a bar at the bottom counts them all, such as **3 comments on 2 files**.
+4. Click **Submit**, or choose *Submit review comments* in the [command palette](/command-palette/).
+
+</Steps>
+
+Submit puts all the comments in the message box as one item, each with its file, its lines and the code, under a short prompt. Nothing is sent yet: you read it and send it. While Claude works, it goes to [Up next](/sessions/conversation/#up-next) like any message.
+
+A comment shows under its lines. When Claude's edits move those lines, the comment moves with them. When the lines are gone, the comment says **changed since** and shows the lines it was written on. Use the pencil to edit a comment and the bin to remove it. **Clear** removes them all.
 
 ### Stage and unstage
 

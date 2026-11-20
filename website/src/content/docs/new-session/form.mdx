@@ -23,12 +23,23 @@ New session is where every Claude Code session starts. You pick a project, choos
 
 When you left a prompt unsent in New session, the **+** button carries a small pen and opens New session on that prompt's project. See [Unsent messages](/sessions/unsent-drafts/).
 
+## The layout
+
+New session uses the width of the window, without scrolling: your projects on the left, the message box in the middle, and on the right what is around the project you picked:
+
+- **In &lt;project&gt;**: the project's sessions, with their state (Needs you, Working, To review, Open, Done). Click one to pick it up instead of starting another.
+- **Queued in &lt;project&gt;**: the prompts you [queued](/new-session/queue/) there.
+- **Going now**: with the [focus limit](/focus-limit/) on, the sessions that count, such as "2 of 3".
+- **Defaults for &lt;project&gt;**: the profile, model and mode a session starts with, and where it works. **Edit in project settings** opens the project's [Settings tab](/projects/settings/).
+
+In a narrower window the right column moves under the message box, and in a narrow one everything is one column.
+
 ## Pick a project
 
-The view opens with the heading *Where do we start?* and your projects in rows. Each row shows the project's icon, its whole name, and under it what is going on there: <Pill tone="needs-you">1 needs you</Pill>, <Pill tone="working">2 working</Pill>, or how long it has been idle, with its branch. The rows sit in one to three columns, as the space allows, so the list shows 6, 8 or 9 projects. A name too long for its row is cut in the middle; hover it for the whole name and its folder.
+The column on the left lists your projects in rows. Each row shows the project's icon, its whole name, and under it what is going on there: <Pill tone="needs-you">1 needs you</Pill>, <Pill tone="working">2 working</Pill>, or how long it has been idle, with its branch. The column shows as many projects as fit, up to 9. When everything is one column, the rows sit in two columns of 8 (one column of 6 on a small screen). A name too long for its row is cut in the middle; hover it for the whole name and its folder.
 
 - Press <Kbd shortcut="new-session.pick" /> to pick a row by its number, shown faint on the right of each row. This works wherever focus is, also while you type the prompt. The arrow keys move through the rows.
-- **All N projects…**, under the list when some don't show, opens all of them with a filter field. **Find…** (<Kbd shortcut="new-session.find" />), at the right of the *Project* heading, does the same with the filter ready. Type a few letters of a name; the field shows how many match, such as "2 of 9". Typing a letter while a row has focus opens the list filtered by it. <Kbd keys="enter" /> picks the highlighted project, the arrow keys move.
+- **Find a project** (<Kbd shortcut="new-session.find" />), above the rows, opens all of them with a filter field in its place. **All N projects…**, under the list when some don't show, does the same, and **Show fewer** goes back. Type a few letters of a name; the field shows how many match, such as "2 of 9". Typing a letter while a row has focus opens the list filtered by it. <Kbd keys="enter" /> picks the highlighted project, the arrow keys move. While you search, the rest stays right under the list.
 - **Quick question**, under the list, starts without a project. See [Quick questions](/new-session/quick-questions/).
 
 The order of the projects follows *Project order* in [Settings → Projects](/settings/#projects): *Recent* (the ones you used last first) or *Your order*. New session remembers the last project you picked and opens on it next time. A project you filtered the sidebar to is picked first.
@@ -37,7 +48,7 @@ The order of the projects follows *Project order* in [Settings → Projects](/se
 
 Adding a folder takes one step. The folder becomes a project and is picked right away. A folder that already is a project is only picked.
 
-- **Add project…**, at the right of the *Project* heading, opens the same **Add project** dialog as [Projects](/projects/projects-view/#add-a-project): the folders you have used Claude Code in, and **Choose folder…** for any other. The project you add is picked here, and you stay in New session. With the list open, the button sits next to the filter field. In the command palette, *Add project…* does the same while New session is open.
+- **Add project…**, under the list, opens the same **Add project** dialog as [Projects](/projects/projects-view/#add-a-project): the folders you have used Claude Code in, and **Choose folder…** for any other. The project you add is picked here, and you stay in New session. In the command palette, *Add project…* does the same while New session is open.
 - Type a path in the filter field: one that starts with <Os mac="~/ or /" windows="~\ or a drive, such as C:\" />. The field turns into a path field and lists the folders in it, with the branch of the ones that are git repositories. The rest of the first folder shows faintly after what you typed: <Kbd keys="tab" /> takes it, and <Kbd keys="tab" /> on a whole folder name goes into it. <Kbd keys="enter" /> on a folder (its row says **Add and start here**) adds it and picks it. Hidden folders show when you type a dot.
 - When a name matches none of your projects, the list shows the folders Claude Code already has sessions for that aren't projects yet. <Kbd keys="enter" /> adds the highlighted one. The last row, **Choose a folder…**, opens the folder dialog.
 - Drag a folder from <Os mac="Finder" windows="File Explorer" /> onto the projects and drop it. Files, or several items at once, are not added.
@@ -46,11 +57,11 @@ Without any projects yet, one wide row, **Add project…**, opens the same dialo
 
 ### Clone from GitHub
 
-With [Clone from GitHub](/projects/clone-from-github/) on in Settings › Projects, **Clone from GitHub…** sits next to **Add project…**. It replaces the project list with a form: paste a repository's URL, check the folder it goes in, and press <Kbd keys="enter" /> to clone. A GitHub URL pasted in the filter field offers **Clone owner/name** too. Type the prompt while it clones: Start waits for the clone, then starts the session in it. **Pick a project instead** goes back to the list.
+With [Clone from GitHub](/projects/clone-from-github/) on in Settings › Projects, **Clone from GitHub…** sits next to **Add project…**, under the list. It replaces the project list with a form: paste a repository's URL, check the folder it goes in, and press <Kbd keys="enter" /> to clone. A GitHub URL pasted in the filter field offers **Clone owner/name** too. Type the prompt while it clones: Start waits for the clone, then starts the session in it. **Pick a project instead** goes back to the list.
 
 When you pick a folder that isn't one of your projects yet, a checkbox under the message box, **Add &lt;folder&gt; to your projects**, adds it when the session starts. Leave it ticked to find the folder in New session next time.
 
-Under the message box, **Pick up in &lt;project&gt;** lists the project's recent sessions with their state, so you can continue one instead of starting another. **Queued in &lt;project&gt;** lists the prompts you queued there.
+**In &lt;project&gt;**, on the right, lists the project's recent sessions with their state, so you can continue one instead of starting another. **Queued in &lt;project&gt;** lists the prompts you queued there.
 
 ## Choose where Claude works
 
@@ -61,7 +72,7 @@ The strip on top of the message box says where the session runs. It shows the pr
 
 ### Work on another branch
 
-On the current checkout, the branch button lists your local branches, with a search field. Pick one to check it out before the session starts. The current branch is marked `current`, with `↓3` when its upstream has commits you don't have.
+On the current checkout, the branch button lists your local branches, with a search field. The branches that are only on the remote follow, with the remote's name (`origin`) next to them, so a project you just cloned lists every branch on GitHub too. Pick one to check it out before the session starts; a remote branch becomes a local branch that follows it. The current branch is marked `current`, with `↓3` when its upstream has commits you don't have.
 
 Switching uses git's own checkout: uncommitted changes that don't conflict come along, and git refuses when they would be overwritten. Nothing is stashed or thrown away.
 
@@ -109,7 +120,7 @@ The session opens as soon as it starts. Claude Code was already warmed up in the
 
 ## GitHub Copilot
 
-With a [GitHub Copilot profile](/settings/claude-profiles/#github-copilot-profiles), pick it in New session to start a Copilot session, with Copilot's own models. New session says what it turned off when you switch to it.
+With a [GitHub Copilot profile](/settings/other-agents/), pick it in New session to start a Copilot session, with Copilot's own models. New session says what it turned off when you switch to it.
 
 ## Project defaults
 
@@ -131,7 +142,8 @@ With [another computer paired](/other-computers/), **Run on** sits under the hea
 
 - The list holds that computer's projects. Their icons show two letters of the name, since **Run on** already says where they are. <Kbd shortcut="new-session.pick" /> still picks one, and **All N projects…** shows the rest. Folders on another computer can't be picked from here, so there is no **Other folder** or **Add project…**.
 - The strip above the message box starts with the computer's name, then the project. **Where** (the current checkout or a new worktree) and the chips under the message box show when the other computer's Seshboard offers them. An older version only takes the project and the prompt.
-- On the current checkout, the strip ends with the branch checked out on that computer. Click it to pick another local branch, with a search field, as in [Work on another branch](#work-on-another-branch): it is checked out there before the session starts. A branch checked out in another worktree can't be picked. This needs this version of Seshboard on the other computer.
+- On the current checkout, the strip ends with the branch checked out on that computer. Click it to pick another local branch, or one on that computer's remote, with a search field, as in [Work on another branch](#work-on-another-branch): it is checked out there before the session starts. A branch checked out in another worktree can't be picked. This needs this version of Seshboard on the other computer.
+- With **New worktree**, **Branch from** picks the branch the worktree starts from: the remote's default branch, the branch checked out there, and the other local and remote branches. It starts from the project's default until you pick another. Both computers need this version of Seshboard.
 - The chips start from the project's defaults on that computer. With more than one Claude profile there, the first chip is the profile: the project's own, else that computer's default, marked "(project)" or "(default)" in the menu. Pick another for this session only, and the other chips show that profile's defaults where the project sets none. With [Auto model](/new-session/auto-model/) on there, the model list starts with **Auto**. The effort chip only shows for a model that takes an effort.
 - **Start on mystic** (<Kbd shortcut="new-session.start" />) starts the session there and opens it here.
 - Attach images and files with the paperclip button, or paste or drop them on the message box, as for [a session there](/other-computers/#send-images-and-files). They go to the other computer with the prompt. Your [saved prompts](/sessions/saved-prompts/) for every project work there too: type `/` or click a chip above the message box. Quick question, **Add to queue** and the focus limit are for this computer only.
@@ -141,10 +153,12 @@ An offline computer stays in the switch, greyed out, with when it was last seen.
 
 ## At the focus limit
 
-With the [focus limit](/focus-limit/) on and reached, a note above the message box lists the sessions that count, each with **Open**, and **Change limit** opens Settings. Its **Add to queue** keeps the idea for later.
+With the [focus limit](/focus-limit/) on and reached, one line above the message box says so, such as "3 of 3 sessions going. Your focus limit. Start puts this in the queue." **Change limit** opens Settings › Focus. The sessions that count are under **Going now** on the right; when everything is one column, **Show** on the line lists them.
 
-- **Nudge**: Start asks first, and the note also has **Start anyway**.
-- **Strict**: Start waits until you finish, read or mark a session done. **Add to queue** stays in Start's menu.
+Start then reads **Add to queue** (<Kbd shortcut="new-session.start" />): the prompt waits in the [queue](/new-session/queue/) for **A free slot**, and starts when one frees, or waits for you to start it.
+
+- **Nudge**: **Start anyway** is in Start's ▾ menu, to start the session over the limit.
+- **Strict**: there is no Start anyway. Finish, read or mark a session done first.
 
 ## Quick start, from any app
 

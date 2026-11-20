@@ -1,0 +1,88 @@
+---
+title: Activity
+description: "Look back at what you did per day, per week or over any range: your sessions, turns, time, commits and pull requests, per project, ready for your standup."
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+[Upcoming](/sessions/upcoming/) looks ahead; Activity looks back. It shows what you did on a day, in a week or over a range of days: your sessions, your turns, how long Claude worked, your commits and pull requests, and what you did per project. Use it to write your standup, fill in a timesheet or see where a week went.
+
+## Open it
+
+- Click the clock in the row of icons at the top of the sidebar, next to Home and Upcoming. Its tooltip says how many sessions you had today, such as "Activity · 4 today". In the minimal sidebar, it is under Upcoming.
+- Press <Kbd shortcut="activity" />. In the Browser view, the same key reopens the tab you closed.
+- In the command palette, choose *Go to Activity*.
+- On [Home](/sessions/home/), click **See the day** on the **Yesterday** card.
+
+## A day
+
+Activity opens on today. A strip at the top has the days from Monday to Sunday, each with its number and a bar for how much you did. Click a day to see it. The arrows next to the strip go to the earlier or later week, on the same weekday, so you can compare a day with last week's.
+
+For the day you picked, you see:
+
+- **The day in short**: a few lines by Haiku on what you did, from the catch-ups of the day's sessions. **Regenerate** writes it again, and **Try again** shows when it couldn't be written.
+- The numbers: sessions, turns, **Claude working** (the time Claude worked), commits, pull requests and, with costs shown, what it would [cost at API prices](/usage/#estimated-cost).
+- **When**: the 24 hours of the day, darker for the hours you worked most. Point at an hour for its time.
+- **Projects**: the time per project, as bars. See [One project](#one-project).
+- **What you did**: your sessions, per project. See [Your sessions](#your-sessions).
+
+A day without sessions says so, with how many the days before and after it had.
+
+## Week and range
+
+**Day**, **Week** and **Range** at the top pick what the page covers.
+
+- **Week** shows Monday to Sunday: the same numbers and lists for the whole week, with each session once. Its title is **This week**, or the dates of another week.
+- **Range** shows the days from one date till another, or till today, for up to 62 days. Click the date after **From** or after **till** to pick a day in a calendar. **Today** in the second calendar keeps the range going till today. A bar per day takes the place of the strip; click one to see that day.
+
+As you scroll, the title and the buttons stay at the top, and a bar under them keeps the days and the numbers in view.
+
+## The bars
+
+Each day's bar shows how much you did, not how many sessions you had. It is a score against your typical day: the median of your days with sessions in the 4 weeks before. It stacks three parts, each in its own colour:
+
+- **Time**: how long Claude worked;
+- **Turns**: the messages you sent;
+- **Shipped**: your commits and pull requests.
+
+A dashed line marks **Typical day**, and the label under a bar is the time worked. Point at a day for its score and what went into it: **Claude working**, **Turns**, **Commits**, **Pull requests**, and **Sessions** with their cost. With fewer than 5 days of work in the 4 weeks before, the bars are compared with the days shown, and the tooltip says so.
+
+## One project
+
+Click a project under **Projects** to see only its sessions: the numbers, the hours and the list follow, and **Only &lt;project&gt;** shows at the top. Click that, or the project again, to see every project. The bars then show the project's share of a normal day. The day in short stays the whole day's, so it hides while a project is picked.
+
+## Your sessions
+
+**What you did** lists your sessions by project, each with its title and, where there are any, its commits, the files it changed, its pull requests and **needs you**. Click a session for what it did, taken from its [catch-up](/sessions/catch-up/), with **Open session** and a button for each pull request. A session without a catch-up says so, and one whose transcript is gone can't be opened.
+
+Sessions from your [other computers](/other-computers/) count too, with the computer's chip. **Open session** opens one on the computer it ran on.
+
+## Copy for standup
+
+**Copy for standup** gives you your sessions as text, one line per session. Pick which days: the last day you worked (such as **Yesterday**), **Today**, **This week**, or **This range** while Range is on. With a project picked, it holds only that project. The button next to **Copy** switches between **Markdown** and **Plain text**.
+
+## Export
+
+**Export…** saves your sessions to a file: **This day** or **The week** (or the range you picked), as **CSV** or **Markdown**.
+
+## On Home
+
+Home has a **Yesterday** card (or the weekday of the last day you worked): your sessions and time that day, the day in short, and **See the day**, which opens Activity on it.
+
+## Settings
+
+The day in short is written by Haiku. It reads your session titles, the catch-ups and your prompts, never your files, and nothing else leaves your computer. Each summary uses a few thousand Haiku tokens, which count toward your plan and show in [Usage](/usage/) as Catch-up summaries.
+
+To turn it off, switch off **Write the day in short with Haiku** in [Settings › Conversation](/settings/#conversation). Activity and Home then show the numbers and the list only.
+
+<Aside>
+While Seshboard is still reading your transcripts, Activity says so, and the days fill up as it goes.
+</Aside>
+
+## Related
+
+<Related pages={['sessions/upcoming', 'sessions/home', 'sessions/catch-up', 'usage', 'other-computers']} />

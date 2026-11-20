@@ -1,0 +1,74 @@
+---
+title: The tool rail
+description: A session's tools and your apps in one column at its right edge, with what is in each as a badge.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
+
+Every session has a narrow column of buttons at its right edge: the rail. It holds the session's tools, such as Changes, the terminal and the browser, and the apps you pin to it, such as your editor. A badge on a button says what is in it, so you see at a glance that 3 files changed or 2 agents run, without opening anything.
+
+Each pane in [split view](/sessions/split-view/) and each session in [its own window](/sessions/own-window/) has its own rail. Home, Upcoming, Activity, New session and the other views have none.
+
+## What's on it
+
+From top to bottom, in groups with a line between them:
+
+| Group | Buttons |
+|---|---|
+| What the session made | [Files](/sessions/files/), [Changes](/terminal-changes-git/changes/), [Terminal](/terminal-changes-git/terminal/) and [Browser](/browser/in-a-session/) |
+| Questions about it | [Ask](/sessions/ask/), [Agents](/sessions/agents/), [Commands](/sessions/commands/) and **Note** |
+| [Mods](/sessions/mods/) | A letter tile for each pane a mod draws |
+| Apps | The apps you pinned, each with its own icon. See [Apps on the rail](#apps-on-the-rail). |
+
+**Hide panel** at the bottom closes whatever the right side shows.
+
+A tool shows only when it applies to the session, so the rail never has greyed-out buttons:
+
+- **Files** needs the session's folder on this computer, and **Changes** a git repository.
+- **Browser** shows while a dev server runs in the session, or always with [the browser](/browser/overview/) on. With the browser off it is the [Web preview](/sessions/web-preview/), called **Web**.
+- **Agents** shows once Claude started an agent, **Commands** once it ran a command in the background, and **Note** once the session has a [note](/sessions/sidebar/#whats-left-a-note).
+
+Point at a button for its name, what is in it and its key, such as "Changes · 3 files". The badges count the changed files, the terminals and agents and commands that run, and the session's browser tabs. A dot on **Ask** means an answer is ready, and a dot on **Browser** that a server is running to show.
+
+## Open a tool
+
+Click a button to open its panel on the right of the conversation. Several panels can be open at once, and the rail shows which:
+
+- The one in front has a filled button with a mark on its left edge. Click it to close it.
+- One open behind another has a small dot under its icon. Click it to bring it to the front.
+- Click a closed one to open it in front.
+
+The keys do the same: <Kbd shortcut="files.toggle" /> for Files, <Kbd shortcut="changes.toggle" /> for Changes, <Kbd shortcut="terminal.toggle" /> for the terminal, <Kbd shortcut="web.toggle" /> for the browser, <Kbd shortcut="agents.toggle" /> for Agents and <Kbd shortcut="commands.toggle" /> for Commands. The terminal keeps its place: docked below the conversation, its button shows and hides it there.
+
+In a narrow session, a panel opens over the conversation instead of beside it.
+
+With the keyboard, <Kbd keys="arrowup|arrowdown" /> move between the buttons on the rail.
+
+## Show or hide tools
+
+Right-click the rail (or press <Kbd shortcut="context-menu" /> on one of its buttons) for its menu:
+
+- **Tools**: check or uncheck **Files**, **Changes**, **Terminal**, **Browser**, **Ask**, **Agents**, **Commands**, **Note** and **Mods**. A tool you hide keeps its key and its command in the palette.
+- **Open in**: the apps to pin. See below.
+- **Panels at half width**: every panel on the right takes half of the session. Drag a panel's edge to give it its own width again.
+- **Reset** shows every tool again, unpins the apps and puts the buttons back in their first order.
+
+## Apps on the rail
+
+Under **Open in** in the rail's menu, check an app, such as VS Code, <Os mac="Finder" windows="File Explorer" />, a terminal or **GitHub**. It shows on the rail with its own icon, and a click opens the session's folder in it. Your default editor stays as it was.
+
+**GitHub** opens the folder's page on GitHub. It shows only where the folder has a GitHub remote. With the browser on, it opens in Seshboard's browser.
+
+The **Open in** menus elsewhere show each app's own icon too.
+
+## Move a button
+
+Drag a tool or an app to another place on the rail, or press <Kbd shortcut="rail.move" /> on it. A button moves only within its group: the tools of one group among themselves, the apps among the apps. A mod's tile doesn't move. Seshboard keeps the order for every session.
+
+## Related
+
+<Related pages={['sessions/conversation', 'sessions/files', 'terminal-changes-git/changes', 'browser/in-a-session', 'sessions/ask', 'sessions/mods']} />

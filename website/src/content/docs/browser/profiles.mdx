@@ -1,0 +1,66 @@
+---
+title: Browser profiles
+description: Use one site with several accounts side by side, each profile with its own logins, site data, cache and history.
+sidebar:
+  badge: New
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+Sign in as an admin in one tab and as a customer in the next. A browser profile keeps its own logins, site data, cache and history, so one web app can be used under several accounts at the same time, in the same [browser](/browser/overview/).
+
+Browser profiles are not [Claude profiles](/settings/claude-profiles/): those are your Claude Code logins, under Settings › Profiles.
+
+## The Default profile
+
+Every tab uses the **Default** profile unless you pick another. Your logins from before profiles existed are there. You can reset it, but not delete or rename it.
+
+## Make a profile
+
+Open **Settings › Browser** (or **Browser profiles…** in a profile menu of the browser, **New browser profile…** while you have none) and click **New profile**:
+
+1. Give it a name, such as Admin.
+2. Pick a colour. Its tabs show it.
+3. Choose where it is offered: **Everywhere**, or one project. A project's profile is offered only in that project's sessions. The Browser view offers every profile.
+4. Click **Create profile**.
+
+Each profile in the list has its name (edit it in place), its colour, where it is offered, **Reset…** and a delete button. Names are unique: two profiles offered in the same place can't share one, and "Default" is taken.
+
+## Open a tab in a profile
+
+- Click the **⌄** next to the **+** new tab button (or right-click **+**), and pick a profile under **New tab in**.
+- Choose **Open in other profile** in a tab's menu: the same address opens in a new tab, in the profile you pick.
+
+A tab in a profile shows the profile's colour, and keeps its profile for as long as it's open.
+
+## Move a tab to another profile
+
+The profile switcher sits right after the address bar. It shows the tab's profile: a person icon for Default, the profile's colour and name for the others (only the colour in a narrow toolbar). Its menu, **Browser profile**, lists the profiles you can use there. Pick one and the tab moves to it, in the same place, with its address, name, pin and zoom. The page loads again, signed in as that profile.
+
+## Reset or delete a profile
+
+**Reset profile…** (in a tab's menu, the profile switcher, or **Reset…** in Settings › Browser) asks what to forget, all ticked:
+
+- **Logins and cookies**: signs you out of every site in this profile.
+- **Site data**: local storage, IndexedDB, service workers and other data sites keep.
+- **Cache**: copies of pages and files kept to load them faster.
+- **History**: the pages the address bar suggests.
+
+Click **Reset**. The profile's pages load again, without what you forgot.
+
+The delete button in Settings › Browser asks first, then **Delete profile** closes the profile's tabs and forgets its logins, site data, cache and history.
+
+**Clear data for this site…** in the toolbar's **⋯** works in the tab's profile. **Clear all browsing data…** clears every profile. See [Developer tools and site data](/browser/tabs-and-pages/#developer-tools-and-site-data).
+
+## Agents and profiles
+
+The agent in a session can open a page in a profile by its name, each profile in a tab of its own, so it can drive two accounts at once. The permission card names the profile when it isn't Default. See [Agents in the browser](/browser/agents/).
+
+<Aside>
+A pinned tab keeps its profile after a restart, and each profile has its own history for the address bar's suggestions.
+</Aside>
+
+## Related
+
+<Related pages={['browser/overview', 'browser/tabs-and-pages', 'browser/agents', 'settings/claude-profiles']} />

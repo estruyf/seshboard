@@ -174,72 +174,72 @@
     {
       "id": "feature:files-panel",
       "name": "Files panel: the project's tree and a viewer for any text file",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "feature:files-quick-open",
       "name": "Quick open a file by name",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "feature:files-search",
       "name": "Search in files",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "feature:files-lines-to-message",
       "name": "Selected lines of a file into the message",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "feature:maths",
       "name": "Maths drawn in replies and Markdown previews",
-      "page": "sessions/file-preview"
+      "page": "sessions/replies"
     },
     {
       "id": "palette:toggle-files",
       "name": "Toggle Files",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "palette:go-to-file",
       "name": "Go to file…",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "palette:search-in-files",
       "name": "Search in files",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "shortcut:files.toggle",
       "name": "Show or hide Files",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "shortcut:files.quick-open",
       "name": "Quick open a file",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "shortcut:files.search",
       "name": "Search in files",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "shortcut:files.add-lines",
       "name": "Add the selected lines, or the file, to the message",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "shortcut:files.go-to-line",
       "name": "Go to line",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "shortcut:files.find",
       "name": "Find in the file",
-      "page": "sessions/file-preview"
+      "page": "sessions/files"
     },
     {
       "id": "palette:copy-session-id",
@@ -769,7 +769,7 @@
     {
       "id": "palette:conversation-skim",
       "name": "conversation-skim",
-      "page": "sessions/conversation"
+      "page": "sessions/skim"
     },
     {
       "id": "palette:sidebar-compact",
@@ -874,317 +874,317 @@
     {
       "id": "feature:browser",
       "name": "The browser: any web page beside a session or in a Browser view of its own, in tabs, with pinned tabs that come back after a restart",
-      "page": "sessions/web-preview"
+      "page": "browser/overview"
     },
     {
       "id": "palette:open-session-browser",
       "name": "Open browser",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "palette:open-browser-in-new-window",
       "name": "Open browser in new window",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "feature:browser-own-window",
       "name": "A session's browser in a window of its own, with all its tabs, and Move back to the session",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "palette:reload-browser-page",
       "name": "Reload page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-new-tab",
       "name": "New tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-view",
       "name": "Go to Browser",
-      "page": "sessions/web-preview"
+      "page": "browser/overview"
     },
     {
       "id": "feature:browser-favorites",
       "name": "Browser favourites: icon tiles at the top of the Browser view that keep their page, in place of pinned tabs there",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "feature:browser-bookmarks",
       "name": "Browser bookmarks: ⌘D or the star saves a page for this project or everywhere, in folders, listed on every new tab",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "palette:browser-bookmark",
       "name": "Bookmark this page",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "palette:browser-bookmark-edit",
       "name": "Edit bookmark",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "palette:browser-open-bookmark",
       "name": "Open bookmark…",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "feature:browser-downloads",
       "name": "Browser downloads: a file a page downloads goes to the Downloads folder, with a toast while it runs and Show in Finder once done",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "feature:toast-show-all",
       "name": "A toast whose text is cut has Show all, which shows the whole text",
-      "page": "sessions/web-preview"
+      "page": "settings/notifications"
     },
     {
       "id": "feature:panel-half",
       "name": "Panels at half width: Side, Half or Full, the panel and the conversation sharing the session 50/50",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "feature:browser-profiles",
       "name": "Browser profiles: separate logins, site data and cache per profile (for a project or everywhere), a coloured mark on their tabs, the profile switcher after the address bar, New tab in a profile, Open in other profile, Reset profile… with what to forget, and agents' open with a profile",
-      "page": "sessions/web-preview"
+      "page": "browser/profiles"
     },
     {
       "id": "settings:browser",
       "name": "Settings › Browser: Allow Seshboard to control the browser, Allow scripts in pages, and browser profiles (shown while the browser is on)",
-      "page": "sessions/web-preview"
+      "page": "browser/agents"
     },
     {
       "id": "palette:settings-browser",
       "name": "settings-browser",
-      "page": "sessions/web-preview"
+      "page": "browser/agents"
     },
     {
       "id": "feature:browser-terminal-links",
       "name": "Terminal links open in Seshboard's browser: the session's, or the Browser view from the window's terminal",
-      "page": "sessions/web-preview"
+      "page": "browser/overview"
     },
     {
       "id": "feature:browser-app-links",
       "name": "App links open in Seshboard's browser: Open in › GitHub, pull requests and issues, in the session's browser or the Browser view",
-      "page": "sessions/web-preview"
+      "page": "browser/overview"
     },
     {
       "id": "feature:browser-copy-address",
       "name": "Copy address: the link icon in the browser's address bar copies the page's address",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "feature:browser-favorite-edit",
       "name": "Edit a favourite's name and address, or give it the address its tile's tab is on now, from its menu",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "feature:browser-address-suggestions",
       "name": "Address bar suggestions: open tabs, favourites and pages you opened before, as you type",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-favorite-add",
       "name": "Add page to favourites",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "palette:browser-favorite-remove",
       "name": "Remove page from favourites",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "palette:browser-go-to-tab",
       "name": "Go to tab…",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-open-favorite",
       "name": "Open favourite…",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "palette:browser-address",
       "name": "Go to address",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-find",
       "name": "Find in the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-back",
       "name": "Back in the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-forward",
       "name": "Forward in the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-stop",
       "name": "Stop loading the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-close-tab",
       "name": "Close tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-reopen-tab",
       "name": "Reopen closed tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-pin-tab",
       "name": "Pin tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-unpin-tab",
       "name": "Unpin tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-rename-tab",
       "name": "Rename tab…",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-copy-address",
       "name": "Copy page address",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-open-external",
       "name": "Open page in browser",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-pick-element",
       "name": "Pick an element for the message",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "palette:browser-full",
       "name": "Show browser full size",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "palette:browser-side",
       "name": "Show browser beside the conversation",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "palette:browser-close-panel",
       "name": "Close browser",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "palette:browser-zoom-in",
       "name": "Zoom in on the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-zoom-out",
       "name": "Zoom out of the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-zoom-reset",
       "name": "Page at actual size",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-mute-tab",
       "name": "Mute tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-unmute-tab",
       "name": "Unmute tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-devtools",
       "name": "Page developer tools",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-clear-site",
       "name": "Clear data for this site…",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:browser-clear-all",
       "name": "Clear all browsing data…",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "feature:browser-page-tools",
       "name": "The browser's page menu: developer tools, zoom, and clearing a site's data or all of it to sign out",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "shortcut:browser.find",
       "name": "Browser: find in the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "shortcut:browser.bookmark",
       "name": "Browser: bookmark the page, or edit its bookmark",
-      "page": "sessions/web-preview"
+      "page": "browser/favourites-and-bookmarks"
     },
     {
       "id": "shortcut:browser.view",
       "name": "Browser: your tabs outside a session",
-      "page": "sessions/web-preview"
+      "page": "browser/overview"
     },
     {
       "id": "shortcut:browser.new-tab",
       "name": "New tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "shortcut:browser.address",
       "name": "Go to the address bar",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "shortcut:browser.reopen-tab",
       "name": "Reopen the closed tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "feature:browser-tab-order",
       "name": "Drag browser tabs to reorder them, in the Browser view's list and a session's tab strip",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "shortcut:browser.move-tab",
       "name": "Move the tab up or down, or left or right",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "shortcut:browser.close-tab",
       "name": "Close the tab",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "shortcut:browser.back",
       "name": "Back in the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "shortcut:browser.forward",
       "name": "Forward in the page",
-      "page": "sessions/web-preview"
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "palette:toggle-changes",
@@ -1299,7 +1299,7 @@
     {
       "id": "shortcut:web.toggle",
       "name": "web.toggle",
-      "page": "sessions/web-preview"
+      "page": "browser/in-a-session"
     },
     {
       "id": "shortcut:ask.open",
@@ -2019,22 +2019,22 @@
     {
       "id": "feature:copilot-sessions",
       "name": "GitHub Copilot sessions: Settings: Profiles offers Copilot CLI when it finds it (Add Copilot profile, Not now); Add profile asks which tool runs its sessions, uses Copilot CLI's own folder and skips sign in when it is signed in already, and ends on Copilot is ready (Start a Copilot session, Use Copilot for a project, Make it the default); New session groups profiles by tool, says what switching to Copilot turned off (Back to), offers Use Copilot for the project from now on and shows its premium requests; a Copilot session's ⋯ menu (Compact, Tools, Copy the last reply, Open in Copilot CLI, Done); its models, with Copilot Fusion's tiers (Standard, High, Max) after Auto; the same permission modes as Claude, Auto mode without asking; signed in with Copilot CLI's own login",
-      "page": "settings"
+      "page": "settings/other-agents"
     },
     {
       "id": "feature:codex-sessions",
       "name": "OpenAI Codex sessions: Settings: Profiles offers Codex CLI when it finds it (Add Codex profile, Not now); Add profile with Codex as the tool uses Codex CLI's own folder ($CODEX_HOME or ~/.codex), skips sign in when it is signed in already (else codex login in Seshboard's terminal), and ends on Codex is ready (Start a Codex session, Use Codex for a project, Make it the default); its sessions show in the sidebar with Codex's mark, in search, catch-up and on the phone, with their transcript, tool calls and diffs; New session, the queue, schedules, triggers and pipeline steps start them with Codex's models, effort and the four permission modes (Ask before edits, Accept edits, Plan mode, Auto mode), and the message box continues them; Delete moves its file to the Trash",
-      "page": "settings"
+      "page": "settings/other-agents"
     },
     {
       "id": "feature:codex-session-actions",
       "name": "OpenAI Codex session actions: Fork from a reply and Edit and resend on its messages, Ask about this session, Rename (F2, the ⋯ menu and the sidebar's menu), Compact on the context meter and in ⋯, Tools with Codex's MCP servers, skills and hooks (Reconnect, no switches to turn a server on or off), and its 5-hour and weekly limits under the message box, on Home and in Usage",
-      "page": "settings"
+      "page": "settings/other-agents"
     },
     {
       "id": "feature:antigravity-sessions",
       "name": "Google Antigravity sessions: Settings: Profiles offers Antigravity CLI when it finds it; Add profile with Antigravity as the tool uses its own folder (~/.gemini), skips sign in when it is signed in already, and ends on Antigravity is ready with your Google plan; its sessions show in the sidebar with Antigravity's mark, in search, catch-up and on the phone, with their transcript, tool calls and diffs; New session, the queue, schedules, triggers and pipeline steps start them with Antigravity's models, thinking levels and the four permission modes, and the message box continues them and steers a running turn; Ask about this session, its slash commands (Compact), Tools with its MCP servers, Open in Antigravity CLI, and Delete to the Trash",
-      "page": "settings"
+      "page": "settings/other-agents"
     },
     {
       "id": "settings:vscode",
@@ -2919,7 +2919,7 @@
     {
       "id": "feature:ultrathink",
       "name": "Ultrathink: the word is coloured in the message box, and Ultrathink this turn on the effort chip adds it to the next message only",
-      "page": "sessions/conversation"
+      "page": "new-session/models-and-options"
     },
     {
       "id": "feature:composer-tray",
@@ -3144,7 +3144,7 @@
     {
       "id": "feature:mermaid-diagrams",
       "name": "Mermaid diagrams drawn in replies, Markdown previews and Markdown blocks, in the theme's colours, with a larger view that zooms and pans",
-      "page": "sessions/file-preview"
+      "page": "sessions/replies"
     },
     {
       "id": "feature:web-preview",
@@ -3164,7 +3164,7 @@
     {
       "id": "feature:file-links-in-text",
       "name": "File links for paths written as text in a reply, such as a file Claude saved",
-      "page": "sessions/conversation"
+      "page": "sessions/replies"
     },
     {
       "id": "feature:file-mentions",
@@ -3309,17 +3309,17 @@
     {
       "id": "feature:inline-visuals",
       "name": "Claude's visuals in the conversation: diagrams and widgets from the Claude desktop app, drawn between the text",
-      "page": "sessions/conversation"
+      "page": "sessions/visuals"
     },
     {
       "id": "feature:agent-visuals",
       "name": "Visuals in replies: Claude Code, Codex and Copilot sessions can draw diagrams and small tools (Settings › General)",
-      "page": "settings"
+      "page": "sessions/visuals"
     },
     {
       "id": "feature:mcp-apps",
       "name": "MCP Apps in Codex sessions: a tool's page drawn in the conversation, with its buttons and your theme",
-      "page": "sessions/conversation"
+      "page": "sessions/visuals"
     },
     {
       "id": "feature:install-dmg",
@@ -3354,7 +3354,7 @@
     {
       "id": "feature:reply-markdown",
       "name": "Replies show quotes, HTML, small headings, GitHub alerts and task lists",
-      "page": "sessions/conversation"
+      "page": "sessions/replies"
     },
     {
       "id": "feature:memories-from-this-session",
@@ -3744,7 +3744,7 @@
     {
       "id": "feature:copilot-defaults",
       "name": "GitHub Copilot defaults for new sessions: a Copilot profile's model, effort, permission mode and workspace in Settings › Profiles, and a project's on a Copilot profile in its Settings, with Copilot's own models and no global model or effort",
-      "page": "settings/claude-profiles"
+      "page": "settings/other-agents"
     },
     {
       "id": "feature:new-session-permission-mode",
@@ -3759,7 +3759,7 @@
     {
       "id": "feature:fallback-model",
       "name": "Fallback model: Claude Code switches to it when the main model is overloaded or unavailable. Global in Settings › General, per profile and per project, off by default; the model chip shows when a turn ran on it",
-      "page": "settings"
+      "page": "new-session/models-and-options"
     },
     {
       "id": "feature:project-permission-default",
@@ -4359,27 +4359,27 @@
     {
       "id": "feature:browser-control",
       "name": "Browser control: the session's agent (Claude Code, Copilot, Codex) opens, reads, types and clicks in its Browser panel, takes a picture and reads the console",
-      "page": "sessions/web-preview"
+      "page": "browser/agents"
     },
     {
       "id": "feature:browser-control-read",
       "name": "The agent reads a page's full text as it is with read, in parts: a long page, or a REST response opened as a page (XML or JSON)",
-      "page": "sessions/web-preview"
+      "page": "browser/agents"
     },
     {
       "id": "feature:browser-control-sites",
       "name": "Browser sites: pages on this computer need no approval, other sites ask first, Allow for this session stops asking until the session ends, Always allow keeps a site for the project (its settings list them)",
-      "page": "sessions/web-preview"
+      "page": "browser/agents"
     },
     {
       "id": "feature:browser-sites-wildcards",
       "name": "Browser sites take wildcards (*.example.com covers every subdomain), and Any site lets the agent use every site without asking",
-      "page": "sessions/web-preview"
+      "page": "browser/agents"
     },
     {
       "id": "feature:browser-scripts",
       "name": "Allow scripts in pages (Settings › Browser, off by default): the agent runs scripts in its page with evaluate and reads the page's requests and responses with network. Other sites ask on a card of their own; Always allow keeps them in the project's Scripts in pages",
-      "page": "sessions/web-preview"
+      "page": "browser/agents"
     },
     {
       "id": "feature:sidebar-view",
@@ -4394,17 +4394,17 @@
     {
       "id": "feature:tool-rail",
       "name": "The rail at a session's right edge: Changes, Terminal, Browser, Preview, Ask, Agents, Commands and mods, with what is in them as badges; right-click to hide a tool, drag one to move it in its group",
-      "page": "sessions/conversation"
+      "page": "sessions/tool-rail"
     },
     {
       "id": "feature:tool-rail-apps",
       "name": "Apps on the rail: right-click it and check VS Code, Finder, a terminal or GitHub under Open in, and a click on its icon opens the session's folder there (GitHub: its page)",
-      "page": "sessions/conversation"
+      "page": "sessions/tool-rail"
     },
     {
       "id": "shortcut:rail.move",
       "name": "Move a tool or an app on the rail up or down",
-      "page": "sessions/conversation"
+      "page": "sessions/tool-rail"
     },
     {
       "id": "palette:sidebar-group-project",
@@ -4639,12 +4639,12 @@
     {
       "id": "feature:conversation-view",
       "name": "Conversation view: Skim folds a finished turn's messages between tool calls and adds a stats line above the reply; Full shows everything",
-      "page": "sessions/conversation"
+      "page": "sessions/skim"
     },
     {
       "id": "feature:skim-marks",
       "name": "Skim marks: the agent ends a long reply with a hidden line naming its key sentences, and Skim fades the rest",
-      "page": "sessions/conversation"
+      "page": "sessions/skim"
     },
     {
       "id": "feature:tool-activity",
@@ -5159,57 +5159,57 @@
     {
       "id": "shortcut:activity",
       "name": "Activity: what you did per day",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "palette:activity",
       "name": "Go to Activity",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity",
       "name": "Activity: what you did per day, with a week strip, the numbers, the hours and your sessions per project",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity-score",
       "name": "Activity: each day's bar is an activity score against your typical day, stacked by time, turns and shipped, with a typical-day line and a tooltip per day",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity-summary",
       "name": "Activity: the day in short, a few lines by Haiku, kept per day, with Regenerate and a setting to turn it off",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity-standup",
       "name": "Activity: Copy for standup, the last day you worked, today, this week or your range, as Markdown or plain text, only for the project you picked",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity-export",
       "name": "Activity: Export the day, the week or the range as CSV or Markdown",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity-week",
       "name": "Activity: Projects, the time per project of the day or the week as bars, a click filters the page",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity-day-week",
       "name": "Activity: Day, Week (Monday to Sunday) or Range (from a date till a date or today), what the numbers, the hours, the projects and the sessions cover",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity-pinned",
       "name": "Activity: the title and actions stay when you scroll, and a bar keeps the days and the numbers",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:activity-home",
       "name": "Home: the Yesterday card with the day in short and See the day",
-      "page": "sessions/upcoming"
+      "page": "sessions/activity"
     },
     {
       "id": "feature:upcoming",
@@ -5529,12 +5529,12 @@
     {
       "id": "feature:orchestrator",
       "name": "Orchestrator: Run as › Orchestrator in New session starts a session that hands your tasks to sessions it starts, each in its own worktree, with Claude Code, Copilot or Codex; its sessions show under it in the sidebar and in an overview above its conversation (Waiting on you, Working, Queued, Ready for review, Idle); it hears when a session finishes, fails or waits for you; starts wait in the queue at the focus limit or a usage limit",
-      "page": "sessions/pipelines"
+      "page": "sessions/orchestrator"
     },
     {
       "id": "feature:orchestrator-instructions",
       "name": "Orchestrator instructions: a project's Settings tab keeps what its orchestrator and every session it starts read first",
-      "page": "sessions/pipelines"
+      "page": "sessions/orchestrator"
     },
     {
       "id": "feature:plan-mode-instructions",
@@ -5544,7 +5544,7 @@
     {
       "id": "palette:go-to-orchestrator",
       "name": "Go to orchestrator",
-      "page": "sessions/pipelines"
+      "page": "sessions/orchestrator"
     }
   ]
 }

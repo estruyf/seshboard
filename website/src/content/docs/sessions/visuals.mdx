@@ -1,0 +1,51 @@
+---
+title: Visuals in replies
+description: Diagrams, charts and small tools that Claude, Codex and Copilot draw in their replies, and the pages of MCP Apps.
+sidebar:
+  label: Visuals
+  badge: New
+---
+
+import Related from '../../../components/Related.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+Some answers are easier to see than to read: how parts of a system fit together, a chart of numbers, a mockup, or a small calculator with a slider to try values. The agent can draw these in its reply, and Seshboard shows them in the conversation, between the text, where the agent made them.
+
+## Where visuals come from
+
+- **Sessions Seshboard runs.** Claude Code, Codex and GitHub Copilot sessions that Seshboard starts or resumes get two extra tools, so the agent can draw a diagram, a chart or a small tool, the way Claude does in the Claude desktop app. You can ask for one ("show this as a diagram"), or the agent draws one when it helps.
+- **The Claude desktop app.** A session you had in the Claude desktop app, with a diagram, a mockup or a widget in it, shows those visuals too when you open it in Seshboard.
+- **MCP Apps in Codex sessions.** When a tool of an MCP server has an app, a page the server draws for that tool, the page shows where Codex called the tool. See [MCP Apps](#mcp-apps).
+
+The visuals Seshboard's tools draw also show in other apps that show MCP Apps.
+
+## What a visual looks like
+
+A visual has a header with its name, a **Preview | Source** switch and a copy button.
+
+- **Preview** draws it, in your theme's colours, light or dark. It changes with the theme.
+- Its sliders, buttons and fields work. A button that asks the agent something puts the question in the message box. You read it and send it yourself.
+- **Source** shows its code, and the copy button copies the code.
+
+While it draws, a short line says what the agent is making. If it can't be drawn, it says **Couldn't draw this visual. Its code is under Source.**
+
+<Aside title="Kept apart from the app">
+A visual runs on its own, apart from Seshboard, so it can't read your sessions or files. It can load scripts only from the usual code CDNs (cdnjs, jsDelivr, unpkg and esm.sh), and fonts from Google Fonts.
+</Aside>
+
+## MCP Apps
+
+An MCP server can give one of its tools an app: a page that shows the tool's result, such as a list to pick from or a form. In a Codex session, the page shows in the conversation where Codex called the tool, in your theme.
+
+- **App** shows the page, and **Details** shows the tool call itself: what Codex sent and what came back.
+- A button on the page can send a message. The message goes in the message box for you to send.
+- While the session runs in Seshboard, the page can call its own server's tools. A tool that can change things asks you first: **Run** lets it, **Cancel** doesn't.
+- The page can only reach the sites its server declared.
+
+## Turn it off
+
+The two tools add a few tokens to each turn. To leave them out, turn off **Visuals in replies** in [Settings › General](/settings/#new-sessions). It applies to sessions you start or resume after you change it. Visuals already in a conversation, and those from the Claude desktop app, still show.
+
+## Related
+
+<Related pages={['sessions/conversation', 'sessions/replies', 'settings']} />

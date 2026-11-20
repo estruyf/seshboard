@@ -1,0 +1,70 @@
+---
+title: The browser in a session
+description: A session's Browser panel beside the conversation, its sizes, sending part of a page to the message, and the browser in a window of its own.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+Each session has its own Browser panel on the right of the conversation, with its own tabs. Read the pull request while you answer Claude, watch the dev server as Claude changes the app, or send a piece of the page to the message box.
+
+## Open and hide the panel
+
+- Click **Browser** on the session's rail. Its badge says how many tabs it has, such as "Browser · 2 tabs".
+- Press <Kbd shortcut="web.toggle" />, or run *Open browser* in the [command palette](/command-palette/).
+- Click a link in Claude's reply, or a web address in the session's terminal.
+
+The same button or key hides the panel, and shows it again with its tabs as you left them. <Kbd keys="escape" /> hides it too. **Close browser** (the **×**), or *Close browser* in the palette, closes the panel's tabs. Pinned tabs come back after a restart; the others don't.
+
+The pages keep running while another panel is in front, or another session is open.
+
+## Your dev server
+
+When a project action, a terminal tab or a background command starts a dev server, **Open preview** opens its page in the session's browser. An empty tab lists the servers under **Running in this session:**. See [Web preview](/sessions/web-preview/#open-it) for where Open preview shows.
+
+## Panel sizes
+
+The **Panel size** control in the toolbar has three sizes:
+
+- **Side**: the panel beside the conversation. Drag its edge to change its width, or focus the edge and press <Kbd keys="arrowleft|arrowright" />.
+- **Half**: the panel and the conversation share the session 50/50, and keep doing so as the window resizes.
+- **Full**: the browser takes the whole session. **Conversation** on the left of the toolbar, or <Kbd keys="escape" />, goes back.
+
+*Show browser full size* and *Show browser beside the conversation* in the palette switch between Full and Side. In a narrow toolbar, the sizes sit behind one button.
+
+**Panels at half width**, in the menu you get when you right-click the session's rail, keeps every panel on the right at half the session (Changes, the terminal and the rest too). Dragging a panel's edge goes back to Side.
+
+## Send a page to the message
+
+Show Claude exactly which part of the page you mean.
+
+- **Pick an element.** Click **Pick an element** in the toolbar, or run *Pick an element for the message* in the palette. As you move the pointer, the element under it is outlined. Click one to add it to the message, with its HTML, where it is on the page and a picture of it, so Claude can change it. The page doesn't get the click. <Kbd keys="escape" /> stops.
+- **Add element to message.** Right-click an element in the page and choose **Add element to message**.
+- **Quote in message.** Select text in the page, right-click and choose **Quote in message**. The text goes into the message box as a quote, under the page's address.
+
+Pages in the Browser view don't have these: they belong to no session.
+
+## The browser in its own window
+
+Put a session's browser on another display while the session stays where it is. Click **Open in new window** in the Browser panel's toolbar (in **⋯** when the toolbar is narrow), or run *Open browser in new window* in the palette.
+
+All its tabs move to the new window, with their pins, names, profiles and zoom, and their pages load again there. While the browser is out:
+
+- The session's **Browser** button keeps its tab count and brings the window to the front, and so do <Kbd shortcut="web.toggle" />, *Open browser* and links in the conversation.
+- **Quote in message** and **Add element to message** in the window still go to the session's message box.
+- The agent drives its pages in that window.
+
+**Move back to the session** puts the tabs back in the session's Browser panel and opens it. **Close window** puts them back too, with the panel closed. Closing the last tab in the window puts none back. A browser window closes with the main window, and doesn't come back after a restart.
+
+A session in [its own window](/sessions/own-window/) takes its Browser panel along.
+
+<Aside>
+The agent in the session can use the same panel to check its work: open the dev server, read the page, type and click. It works in a tab of its own, so your tabs keep their pages. See [Agents in the browser](/browser/agents/).
+</Aside>
+
+## Related
+
+<Related pages={['browser/overview', 'browser/tabs-and-pages', 'browser/agents', 'sessions/web-preview', 'sessions/own-window']} />

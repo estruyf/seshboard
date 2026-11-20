@@ -1,0 +1,106 @@
+---
+title: Orchestrator
+description: Send one session a list of tasks. It starts a session for each, in its own worktree, and tells you which ones need you.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+An orchestrator is a session that hands work to other sessions instead of doing it. Send it a list of tasks, such as six bugs from this morning. It starts one session per task, each in its own worktree, and keeps track of them: which ones work, which ones wait for you, and which ones have a pull request ready.
+
+You don't have to start each session, repeat the same background in each, or keep checking which finished. A [pipeline](/sessions/pipelines/) runs steps you set up front, one after the other. An orchestrator picks the sessions itself, as your messages come in, and runs them side by side.
+
+## Start one
+
+<Steps>
+
+1. Open [New session](/new-session/form/) (<Kbd shortcut="session.new" />) and pick the project.
+2. Click **Run as**, next to Start, and choose **Orchestrator**. Start becomes **Start orchestrator**.
+3. Write the tasks, one per line or as you would tell a colleague, and press <Kbd shortcut="new-session.start" />.
+
+</Steps>
+
+An orchestrator always starts now: its Start has no queue, schedule or trigger.
+
+It works with Claude Code, GitHub Copilot and OpenAI Codex. Pick the profile in the profile chip as for any session. See [Other agents](/settings/other-agents/).
+
+## What it does
+
+For each task, the orchestrator starts a session and gives it a title. The session works in its own worktree, so sessions side by side never touch each other's files. Outside git, or with an agent that can't use worktrees, it works in the project's folder.
+
+While they run, you can keep talking to the orchestrator:
+
+- Ask how things stand. It answers from its sessions, with their branch, pull request and what each did or asks.
+- Have it send a message to one of its sessions. If that session is working, the message waits in its Up next until its turn ends.
+- Give it more tasks. Each one becomes another session.
+
+When one of its sessions finishes, fails or waits for you, the orchestrator hears about it and tells you what matters in a line or two. These reports show in its conversation as quiet dashed rows, not as your messages. A turn you stopped yourself isn't reported.
+
+### Which agent runs a task
+
+A task runs with the orchestrator's own profile, unless you name another. Tell it "use Copilot for the lint config", and that session runs with your Copilot profile. It can name a profile by its name, or the agent by its name, such as "GitHub Copilot".
+
+### How each session starts
+
+Each session takes what [New session](/new-session/form/) would give it:
+
+- **Mode:** the project's default permission mode, else the profile's. Without either, **Accept edits**, so a session doesn't stop on every file. The orchestrator can't pick a mode, so a session only skips permission prompts when your defaults say so.
+- **Model and effort:** the project's defaults, else the profile's, else the global ones in [Settings › General](/settings/#new-sessions). The orchestrator can name a model for one task.
+- **Its first instructions:** to get on with the work, make any call it can undo itself, and say later which calls it made, so it doesn't stop for small decisions. Then the project's [orchestrator instructions](#orchestrator-instructions).
+
+Each session asks for what its own mode asks for, in its own [permission card](/permissions/). The orchestrator's own tools never ask.
+
+## Follow its sessions
+
+### The overview
+
+Above the orchestrator's conversation, a card lists its sessions, grouped by what needs you first:
+
+| Group | What it means |
+|---|---|
+| **Waiting on you** | A permission, a question or a plan to approve. |
+| **Working** | Running a turn now. |
+| **Queued** | Waiting for a free slot or a usage limit to reset. |
+| **Ready for review** | Has an open pull request and isn't working. |
+| **Idle** | Done with its turn, nothing to review. |
+
+Each row has the session's title, its branch, its pull request, one line from its [catch-up](/sessions/catch-up/) and **Open**. Click the card's header to fold it to one line, such as "1 waiting on you · 2 working".
+
+### In the sidebar
+
+The orchestrator's row says "Orchestrator · 3 sessions", and its sessions sit under it, as a pipeline's steps do. When one of them needs you, the orchestrator's row shows **Needs you** too.
+
+A session the orchestrator started has its orchestrator's name at the start of its header. Click it to go back.
+
+### Go to orchestrator
+
+Run *Go to orchestrator* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" />). It opens the orchestrator of the open session's project, or the newest one.
+
+## Limits
+
+- **Your focus limit and usage limits.** At your [focus limit](/focus-limit/) or a usage limit, a new session waits in the [queue](/new-session/queue/) and starts by itself once a slot frees or the limit resets. It still goes under its orchestrator then.
+- **Six working sessions** per orchestrator. It starts the next one when one finishes, so an orchestrator with the focus limit off can't start twenty at once.
+- **Only its own sessions.** An orchestrator can read and message only the sessions it started. A session that isn't an orchestrator has none of its tools.
+
+## Orchestrator instructions
+
+A project's [Settings tab](/projects/settings/#instructions) has **Orchestrator instructions**: what the project's orchestrator and every session it starts read first. Use it for how you work in this project, such as:
+
+```text
+Branch from dev and open one draft pull request per session.
+Run the tests before you call work done.
+Ask me before you change CI.
+```
+
+Rules about the code itself belong in the repository's own instructions file, such as `CLAUDE.md`. The instructions can be up to 16,000 characters, and sessions started from then on read them.
+
+<Aside>
+On your phone and on [another computer](/other-computers/), an orchestrator and its sessions show as sessions. The overview and **Run as › Orchestrator** are only on the computer that runs it, for now.
+</Aside>
+
+## Related
+
+<Related pages={['sessions/pipelines', 'new-session/worktrees', 'projects/settings', 'settings/other-agents']} />

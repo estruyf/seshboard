@@ -413,8 +413,10 @@ class Tour {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       // The throwaway app profile lives in a temporary folder; show where a real install keeps its data.
       const appData = /(\/private)?\/var\/folders\/\S*?\/T\/seshboard-smoke-[A-Za-z0-9]+/g;
+      const otherComputer = /(\/private)?\/var\/folders\/\S*?\/T\/seshboard-shots-computer-[A-Za-z0-9]+/g;
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        let text = (node.nodeValue ?? '').replace(appData, '~/Library/Application Support/Seshboard');
+        // The demo computer's own folder is temporary too: show it as a session's scratchpad.
+        let text = (node.nodeValue ?? '').replace(appData, '~/Library/Application Support/Seshboard').replace(otherComputer, '/tmp/scratchpad');
         for (const home of homes) text = text.split(home).join('~');
         if (text !== node.nodeValue) node.nodeValue = text;
       }
@@ -798,13 +800,11 @@ const screens: Screen[] = [
           ({ path, sessionId }) => window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path, sessionId } })),
           { path: file, sessionId: id },
         );
-        // Moved to the dialog in an earlier run of this profile, it would open there: dock it first.
-        const dock = t.page.locator('[data-file-preview][role=dialog] [data-file-preview-dock]');
-        if (await dock.count()) await dock.click();
-        await t.need(`[data-current-session="${id}"] [data-file-preview-place="panel"] [data-file-preview-markdown] h1`, 'the plan did not open in the side panel');
+        // A file link opens in the Files panel, as a tab of its viewer, rendered.
+        await t.need('[data-files-panel] [data-files-viewer-body] h1', 'the plan did not open in Files');
         await t.shot('file-preview');
-        await t.click('[data-file-preview-close]');
-        await t.gone('[data-file-preview]', 'the preview did not close');
+        await t.click('[data-files-close]');
+        await t.gone('[data-files-panel]', 'Files did not close');
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -907,10 +907,13 @@ const screens: Screen[] = [
     name: 'sidebar-quickest',
     async take(t) {
       await t.home();
-      await t.click('[data-sort-quick]');
+      // The sort is in the View menu beside the project filter.
+      await t.click('[data-sidebar-view]');
+      await t.click('[data-sidebar-view-option="sort-quickest"]');
       await t.need('[data-session-group="review"]', 'Quickest to unblock did not group the sessions');
       await t.shot('sidebar-quickest', { clip: '[data-sidebar-state]' });
-      await t.click('[data-sort-recent]');
+      await t.click('[data-sidebar-view]');
+      await t.click('[data-sidebar-view-option="sort-recent"]');
     },
   },
   {
@@ -1126,10 +1129,11 @@ const screens: Screen[] = [
     name: 'new-session-options',
     async take(t) {
       await openNewSession(t, 'acme-store');
-      await t.click('[data-new-session-view] [data-model-select]');
-      await t.need('[data-menu="model"], [role="menu"], [role="listbox"]', 'the model menu did not open');
+      await openModelMenu(t);
       await t.shot('new-session-options', { keepFocus: true });
       await t.escape();
+      // The folded chip's menu goes back to its rows on the first Escape and closes on the second.
+      if (await t.page.locator('[data-menu="folded"]').count()) await t.escape();
     },
   },
   {
@@ -1137,16 +1141,13 @@ const screens: Screen[] = [
     async take(t) {
       await openNewSession(t, 'acme-store');
       await t.page.locator('[data-new-session-view] [data-composer]').first().fill('Make the update check frequency a setting in General, default once a day.');
-      await t.click('[data-new-session-view] [data-model-select]');
-      await t.click('[data-menu="model"] [data-choice="auto"]');
+      await t.click(`${await openModelMenu(t)} [data-choice="auto"]`);
       await t.need('[data-new-session-view] [data-model-chip="auto"]', 'picking Auto did not change the chip');
-      await t.click('[data-new-session-view] [data-model-select]');
-      await t.need('[data-menu="model"] [data-choice="auto"]', 'the model menu has no Auto');
+      const menu = await openModelMenu(t);
+      await t.need(`${menu} [data-choice="auto"]`, 'the model menu has no Auto');
       await t.shot('auto-model-menu', { keepFocus: true });
-      await t.escape();
       // Back to the default model, so the other pictures show what they did before.
-      await t.click('[data-new-session-view] [data-model-select]');
-      await t.click('[data-menu="model"] [data-choice=""]');
+      await t.click(`${await openModelMenu(t)} [data-choice=""]`);
       await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
     },
   },
@@ -1961,6 +1962,25 @@ async function typeHashInHero(t: Tour): Promise<void> {
   await t.page.keyboard.type('can you look at #');
   await t.need('[data-current-session] [data-github-list] [data-github-option="pr:61"]', 'the # list did not list acme-store\'s pull requests', 15_000);
   await t.settle();
+}
+
+/**
+ * Opens New session's model menu and returns the selector of the menu its choices are in. In New session's three
+ * columns the message box is narrow, so the model, effort and mode chips fold into one: open it, then its Model row.
+ */
+async function openModelMenu(t: Tour): Promise<string> {
+  const view = '[data-new-session-view]';
+  if (await t.page.locator(`${view} [data-folded-chip]`).count()) {
+    // Escape in one of its sections goes back to the rows and leaves the menu open: a click on the chip would close it.
+    if (!(await t.page.locator('[data-menu="folded"]').count())) await t.click(`${view} [data-folded-chip]`);
+    if (await t.page.locator('[data-menu="folded"] [data-folded-back]').count()) await t.click('[data-menu="folded"] [data-folded-back]');
+    await t.click('[data-menu="folded"] [data-model-select]');
+    await t.need('[data-menu="folded"][data-folded-view="model"] [data-choice]', 'the folded chip did not show the models');
+    return '[data-menu="folded"]';
+  }
+  await t.click(`${view} [data-model-select]`);
+  await t.need('[data-menu="model"] [data-choice]', 'the model menu did not open');
+  return '[data-menu="model"]';
 }
 
 async function openNewSession(t: Tour, project: string): Promise<void> {

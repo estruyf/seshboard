@@ -20,14 +20,19 @@ The sidebar is always on the left of the window. Press <Kbd shortcut="sidebar.to
 
 ## What's in it
 
-At the top:
+At the top, a row of icons opens the views. Point at one to see what it holds:
+
+- **Home** opens [Home](/sessions/home/) (<Kbd shortcut="home" />). It has a dot while a session needs you.
+- **Upcoming** opens [Upcoming](/sessions/upcoming/) (<Kbd shortcut="upcoming" />): your queue and scheduled runs. Its count is your queued items plus your active schedules, in green when a queued item is ready. The tooltip says what comes next, such as "Upcoming · 1 ready" or "Upcoming · next 08:00".
+- **Activity** opens [Activity](/sessions/activity/) (<Kbd shortcut="activity" />): what you did per day. The tooltip says how many sessions you had today.
+- **Browser** opens the [Browser view](/sessions/web-preview/) (<Kbd shortcut="browser.view" />), when the browser is on.
+
+Under them:
 
 - **Search sessions** filters the list by title, project or branch. To search inside conversations, use [Search](/sessions/search/) (<Kbd shortcut="search" />).
 - The yellow **+** button starts a [new session](/new-session/form/) (<Kbd shortcut="session.new" />).
-- **Home** opens [Home](/sessions/home/) (<Kbd shortcut="home" />).
-- **Upcoming** opens [Upcoming](/sessions/upcoming/) (<Kbd shortcut="upcoming" />): your queue and scheduled runs. It shows how many items are queued plus your active schedules, and what comes next, such as "1 ready" or "next 08:00".
-- **Recent** and **Quickest to unblock** set the order. Recent groups sessions as below; Quickest to unblock puts what needs you or a review first, the quickest at the top. See [Catch-up](/sessions/catch-up/#quickest-to-unblock).
-- **All projects** filters the list to one project. Its menu lists your projects with their session count, plus **Add project…** and **Manage projects…**. The ⋯ next to a project (or → on it) opens its options: icon, rename, open the project's page, Worktrees, Branches and more.
+- **All projects** filters the list to one project. Its menu lists your projects with their session count, plus **Manage projects…** and **Add a project folder…**. The ⋯ next to a project (or → on it) opens its options: icon, rename, open the project's page, Worktrees, Branches and more.
+- The **View** button beside it, on the same row, says how the list is grouped: **State** or **Project**. See [View](#view).
 
 A session you ran a [pipeline](/sessions/pipelines/) from shows where the run is, such as *Validate · 3 of 4*, with the pipeline icon. Its steps sit under it, closed at first: open them with the arrow. A run you started from New session has a row of its own with the pipeline icon instead of a project icon.
 
@@ -41,9 +46,32 @@ Once you have a few sessions, a **Star on GitHub** button shows above the footer
 
 The button shows only until you star Seshboard or click it. Click **×** (right-click the star in the rail and choose **Don't show again**) to hide it for good.
 
+## View
+
+The **View** button holds how the list looks:
+
+- **Group by**: **State** (the default) puts sessions in the [sections](#sections) below, such as Needs you and Working. **Project** puts them under their project. See [Group by project](#group-by-project).
+- **Sort**: **Recent** or **Quickest to unblock**. Recent lists sessions as below; Quickest to unblock puts what needs you or a review first, the quickest at the top. See [Catch-up](/sessions/catch-up/#quickest-to-unblock).
+- **Show**: **Done** shows the [Done](#close-a-section) section. Off, Done is gone from the list, but a search still finds what is in it. **Compact rows** shows one line per session, as the Compact style in [Settings](#settings).
+
+The command palette has *Group sessions by project*, *Group sessions by state* and *Compact rows*.
+
+### Group by project
+
+Grouped by project, each project has a header with its icon, its name and how many sessions it holds. Under it, its sessions: what needs you first, then what is working, its queued prompts, what to review, and what is open. The projects with a session that needs you come first, then the others in the order you picked under **Sort**. Done comes after the projects.
+
+- Click a project's header, or its chevron, to fold it. A folded project keeps its header and one line that says what is in it, such as "1 needs you · 2 working". The session you have open stays visible under it.
+- <Kbd keys="alt+click" /> on a header folds or unfolds every project. **Collapse all projects** in the View menu, or <Kbd shortcut="sidebar.fold-projects" />, does the same.
+- Point at a header for **New session in** the project (**+**) and its menu (**⋯**). Right-click the header for the menu too.
+- With the keyboard, <Kbd keys="arrowleft" /> folds a project and <Kbd keys="arrowright" /> unfolds it. <Kbd keys="enter" /> or <Kbd keys="space" /> on its header does either.
+
+A project on [another computer](/other-computers/) has its own header, with the computer's chip.
+
+Grouping by project works with **All projects**. With one project picked in the filter, the list is grouped by state, and the View button says so in a paler colour.
+
 ## Sections
 
-The list is split into sections. Empty sections don't show.
+When the list is grouped by state, it is split into sections. Empty sections don't show.
 
 | Section | What's in it |
 |---|---|
@@ -66,6 +94,8 @@ Each row shows the project's icon, the title, its age, and a second line with th
 
 Give a session one line, such as "push after review" or "waiting on Jan". Press <Kbd shortcut="sidebar.note" /> on its row or <Kbd shortcut="catchup.note" /> in its catch-up, or choose **Note…** in its menu or the command palette. The note shows under the title (in the tooltip with the compact style), and search finds it. A catch-up that needs something from you offers **Use as note**, which puts that there in one click. Done keeps the note but doesn't show it.
 
+The note also shows in the session's header, after the branch. Click it to open the **Note** panel on the right, with the whole note: change it and click **Save** (<Kbd keys="enter" />), or **Clear** it. While the session has a note, **Note** is on the [tool rail](/sessions/tool-rail/) too. A row whose note has no line of its own, with compact rows or while the session needs you, shows a note icon instead, with the note in its tooltip.
+
 ### Loose ends
 
 A session that left something behind has a small marker on its row: files not committed, commits not pushed, a pull request with failing checks, one closed without merging, or a queued prompt. Hover the marker to see what.
@@ -78,7 +108,9 @@ Every section but Needs you, Reminders and To review closes from its header: cli
 
 A closed section keeps its count and says what matters inside, such as "2 unread" or, for the Queue, "1 ready". The session you have open stays visible under its closed section, with "+N hidden" under it. Going to a session in a closed section opens it again. While you search or filter by project, every section shows.
 
-**Done** sits docked at the bottom of the sidebar while it is closed. Click it to open it: it slides up right under your other sessions. Its **⋯** has **Manage sessions…** and **Done settings…**, which open [Settings › Sessions](/settings/sessions/).
+**Done** sits docked at the bottom of the sidebar while it is closed. Click it to open it: it slides up right under your other sessions. Its **⋯** has **Manage sessions…** and **Done settings…**, which open [Settings › Sessions](/settings/sessions/). To leave Done out of the list, uncheck **Done** in the [View](#view) menu.
+
+Done also lists the sessions marked done on your [other computers](/other-computers/#done-on-another-computer), and the ones that went quiet there, with the computer's chip.
 
 The session count at the bottom of the sidebar opens [Settings › Sessions](/settings/sessions/) too, with every session you have.
 
@@ -156,7 +188,7 @@ Seshboard remembers the width and the state.
 
 <Screenshot name="sidebar-rail" alt="The sidebar collapsed to the minimal rail: one project icon per session, in the same groups and order" width={480} />
 
-The **minimal rail** is 80px wide: one project icon per session, in the same groups and order as the open sidebar, with the same coloured rails. Hover an icon to see the session's title, project, branch and state. Click a group's letter to open the sidebar there. At the top, under Home, the calendar button opens [Upcoming](/sessions/upcoming/). Its badge shows the count, in green when a queued item is ready.
+The **minimal rail** is 80px wide: one project icon per session, in the same groups and order as the open sidebar, with the same coloured rails. Hover an icon to see the session's title, project, branch and state. Click a group's letter to open the sidebar there. At the top, under Home, the calendar button opens [Upcoming](/sessions/upcoming/). Its badge shows the count, in green when a queued item is ready. The clock under it opens [Activity](/sessions/activity/).
 
 With the sidebar **hidden**, the conversation takes the whole window. A <Pill tone="needs-you">needs you</Pill> pill in the header says when sessions wait for you; click it to open the one waiting longest. After a jump with <Kbd shortcut="session.next" /> or <Kbd shortcut="session.next-needs-you" />, a short label at the top of the window says where you landed.
 
@@ -177,4 +209,4 @@ In [Settings, Sidebar](/settings/#sidebar):
 
 ## Related
 
-<Related pages={['sessions/states', 'sessions/pinned', 'sessions/split-view', 'command-palette']} />
+<Related pages={['sessions/states', 'sessions/pinned', 'sessions/split-view', 'sessions/activity', 'command-palette']} />
