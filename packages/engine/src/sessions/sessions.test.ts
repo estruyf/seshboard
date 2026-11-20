@@ -59,7 +59,7 @@ function fakeSource(initial: RawSessionInfo[]) {
   return { source, infos, messages };
 }
 
-function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), 'cache.sqlite'))) {
+function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), 'cache.sqlite')), activityDelayMs?: number) {
   const projectsDir = join(tempDir(), 'projects');
   mkdirSync(join(projectsDir, '-repo'), { recursive: true });
   const fake = fakeSource(infos);
@@ -74,6 +74,7 @@ function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), '
     log: () => {},
     onChange: (c) => changes.push(c),
     onTranscriptChanged: (id) => transcriptChanges.push(id),
+    ...(activityDelayMs !== undefined ? { activityDelayMs } : {}),
   });
   cleanups.push(() => {
     if (db.db.isOpen) db.close();
@@ -254,6 +255,39 @@ describe('SessionIndex', () => {
     writeFileSync(file, `${JSON.stringify({ type: 'user', entrypoint: 'cli', timestamp: new Date(1_000).toISOString() })}\n{"type":"last-prompt"}\n{"type":"cost-state"}\n`);
     await index.refresh();
     expect(index.get(ID_A)).toMatchObject({ updatedAt: 1_000, unread: false });
+  });
+
+  it('sends a newer time and size a while later, but a session turning unread or renamed at once', async () => {
+    const t = setup([info(ID_A, { fileSize: 100 })], undefined, 300);
+    const file = join(t.projectsDir, '-repo', `${ID_A}.jsonl`);
+    const line = (at: number) => `${JSON.stringify({ type: 'assistant', entrypoint: 'cli', timestamp: new Date(at).toISOString() })}\n`;
+    const start = Date.now() - 60_000;
+    writeFileSync(file, line(start));
+    await t.index.refresh();
+    expect(t.index.get(ID_A)).toMatchObject({ updatedAt: start, fileSize: 100, unread: true });
+    // Only the time and size moved: held back, then sent once with the latest.
+    const sent = t.changes.length;
+    appendFileSync(file, line(start + 1_000));
+    t.infos.set(ID_A, info(ID_A, { fileSize: 200 }));
+    await t.index.reread(ID_A);
+    appendFileSync(file, line(start + 2_000));
+    t.infos.set(ID_A, info(ID_A, { fileSize: 300 }));
+    await t.index.reread(ID_A);
+    expect(t.changes.length).toBe(sent);
+    expect(t.index.get(ID_A)).toMatchObject({ updatedAt: start, fileSize: 100 });
+    await until(() => t.changes.length === sent + 1);
+    expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ updatedAt: start + 2_000, fileSize: 300 });
+    // Read now, then new activity makes it unread: sent at once.
+    t.index.markViewed(ID_A);
+    const viewed = t.changes.length;
+    appendFileSync(file, line(Date.now() + 10_000));
+    await t.index.reread(ID_A);
+    expect(t.changes.length).toBe(viewed + 1);
+    expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ unread: true });
+    // Renamed: sent at once.
+    t.infos.set(ID_A, info(ID_A, { fileSize: 300, customTitle: 'Renamed' }));
+    await t.index.reread(ID_A);
+    expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ title: 'Renamed' });
   });
 
   it('follows transcript writes and deletions through the file watcher', async () => {

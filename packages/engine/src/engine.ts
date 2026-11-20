@@ -755,7 +755,7 @@ export function createEngine(options: EngineOptions): Engine {
   const search = new SearchIndex(
     cache.db,
     source,
-    () => sessions.snapshot().sessions.map((s) => ({ id: s.id, version: `${s.updatedAt}:${s.fileSize ?? ''}` })),
+    () => sessions.snapshot().sessions.map((s) => ({ id: s.id, version: `${s.updatedAt}:${s.fileSize ?? ''}`, writtenAt: sessions.writtenAt(s.id) })),
     log,
     (id, messages) => links.transcriptRead(id, messages),
   );
@@ -1156,7 +1156,12 @@ export function createEngine(options: EngineOptions): Engine {
    */
   const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onNotice' | 'onRetract' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
     onInfo: (info) => {
-      if (info.state === 'idle') transcripts.settled(info.sessionId);
+      if (info.state === 'idle') {
+        transcripts.settled(info.sessionId);
+        // The turn's messages are searchable now, not once the session has been quiet for a while.
+        search.settled(info.sessionId);
+        scheduleSearchSync();
+      }
       awake.update(info.sessionId, info);
       broadcast('session.host', withAwake(info));
       catchUpOnInfo(info);
@@ -3291,6 +3296,8 @@ export function createEngine(options: EngineOptions): Engine {
     cleanupInBackground();
   };
   scanCompleteHook = () => {
+    // Once, at the first full scan: every later change says `complete` too. Reminders are checked every minute after.
+    scanCompleteHook = () => {};
     // Pinned tabs of sessions this computer no longer knows go once, at the first full scan of a run.
     if (!scanned) {
       const gone = pinnedTabs.prune((id) => sessions.get(id) !== undefined);
@@ -5075,6 +5082,7 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      search.stop();
       browserBridge.close();
       orchestratorBridge.close();
       clearInterval(providerLiveTimer);

@@ -30,6 +30,18 @@ interface Flags {
 const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null, note: null, donePr: null, remindAt: null, remindedAt: null };
 /** Writes that land right after the user looked are not "new" for them. */
 const UNREAD_SLACK_MS = 2_000;
+/**
+ * How long a newer time and size may wait to go out while a session is being written. Both change on nearly every
+ * write, and the sidebar shows the time by the minute, so a busy session is sent (and stored) about this often instead.
+ */
+export const ACTIVITY_DELAY_MS = 15_000;
+
+/** True when two summaries differ in nothing but what every write moves: the last activity and the file's size. */
+export function onlyActivity(a: RawSummary, b: RawSummary): boolean {
+  const { updatedAt: _a, fileSize: _b, ...restA } = a;
+  const { updatedAt: _c, fileSize: _d, ...restB } = b;
+  return JSON.stringify(restA) === JSON.stringify(restB);
+}
 
 interface Entry {
   summary: RawSummary;
@@ -75,6 +87,8 @@ export interface SessionIndexOptions {
   parentOf?: (sessionId: string) => string | null;
   /** Safety-net full rescan, in case file events were missed. */
   refreshIntervalMs?: number;
+  /** How long a change of only the time and size may wait (`ACTIVITY_DELAY_MS`; tests shorten it). */
+  activityDelayMs?: number;
 }
 
 const SESSION_FILE = /^([^\\/]+)[\\/]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
@@ -106,6 +120,10 @@ export class SessionIndex {
   private readonly changed = new Map<string, { path: string; profileId: string }>();
   /** Sessions changed or forgotten while a full scan awaited the source; that scan's older view must not undo them. */
   private touchedDuringScan: Set<string> | undefined;
+  /** A newer summary that differs only in its time and size (`onlyActivity`), sent when its timer runs out. */
+  private readonly deferred = new Map<string, { entry: Entry; timer: ReturnType<typeof setTimeout> }>();
+  /** When each session's transcript was last written, as the file watcher saw it. */
+  private readonly written = new Map<string, number>();
   private readonly statements;
 
   constructor(private readonly options: SessionIndexOptions) {
@@ -200,6 +218,11 @@ export class SessionIndex {
     return this.entries.get(sessionId)?.path ?? null;
   }
 
+  /** When the file watcher last saw the session's transcript written (this run), or null. */
+  writtenAt(sessionId: string): number | null {
+    return this.written.get(sessionId) ?? null;
+  }
+
   /** Drops a deleted session from the index and its flags, and tells every window. */
   forget(sessionId: string): void {
     this.touchedDuringScan?.add(sessionId);
@@ -209,6 +232,8 @@ export class SessionIndex {
     this.perFile.get(sessionId)?.stop();
     this.perFile.delete(sessionId);
     this.changed.delete(sessionId);
+    this.undefer(sessionId);
+    this.written.delete(sessionId);
   }
 
   /**
@@ -403,6 +428,7 @@ export class SessionIndex {
     for (const c of this.perFile.values()) c.stop();
     this.perFile.clear();
     this.changed.clear();
+    for (const id of [...this.deferred.keys()]) this.undefer(id);
   }
 
   /** Full reconcile with ~/.claude. Concurrent calls share one run. */
@@ -526,6 +552,8 @@ export class SessionIndex {
   private apply(upserted: Entry[], removed: string[]): void {
     for (const entry of upserted) this.touchedDuringScan?.add(entry.summary.id);
     for (const id of removed) this.touchedDuringScan?.add(id);
+    // What goes out now is newer than what waited.
+    for (const entry of upserted) this.undefer(entry.summary.id);
     const { db } = this.options;
     db.exec('BEGIN');
     try {
@@ -548,6 +576,7 @@ export class SessionIndex {
 
   private fileChanged(sessionId: string, path: string, profileId: string): void {
     this.changed.set(sessionId, { path, profileId });
+    this.written.set(sessionId, Date.now());
     let runner = this.perFile.get(sessionId);
     if (!runner) {
       runner = coalesce(() => {
@@ -557,6 +586,40 @@ export class SessionIndex {
       this.perFile.set(sessionId, runner);
     }
     runner.trigger();
+  }
+
+  /**
+   * Whether a change can wait (`ACTIVITY_DELAY_MS`): only the time and size moved, in the same file, and the session
+   * neither turns unread nor comes back from hidden by it.
+   */
+  private mayWait(previous: Entry, next: Entry): boolean {
+    if (previous.path !== next.path || !onlyActivity(previous.summary, next.summary)) return false;
+    if (this.hidden(previous.summary) !== this.hidden(next.summary)) return false;
+    return this.decorate(previous.summary).unread === this.decorate(next.summary).unread;
+  }
+
+  /** Keeps the newest summary that may wait, and sends it once the delay since the first one runs out. */
+  private defer(entry: Entry): void {
+    const id = entry.summary.id;
+    const waiting = this.deferred.get(id);
+    if (waiting) {
+      waiting.entry = entry;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const latest = this.deferred.get(id)?.entry;
+      this.deferred.delete(id);
+      if (latest && this.entries.has(id)) this.apply([latest], []);
+    }, this.options.activityDelayMs ?? ACTIVITY_DELAY_MS);
+    timer.unref?.();
+    this.deferred.set(id, { entry, timer });
+  }
+
+  private undefer(sessionId: string): void {
+    const waiting = this.deferred.get(sessionId);
+    if (!waiting) return;
+    clearTimeout(waiting.timer);
+    this.deferred.delete(sessionId);
   }
 
   private async updateOne(sessionId: string, path: string, profileId: string): Promise<void> {
@@ -572,7 +635,10 @@ export class SessionIndex {
         const stat = statSync(path, { throwIfNoEntry: false });
         const previous = this.entries.get(sessionId);
         const entry = this.build(info, { path, mtime: Math.round(stat?.mtimeMs ?? Date.now()), profileId }, previous);
-        if (!previous || JSON.stringify(previous.summary) !== JSON.stringify(entry.summary)) this.apply([entry], []);
+        if (!previous || JSON.stringify(previous.summary) !== JSON.stringify(entry.summary)) {
+          if (previous && this.mayWait(previous, entry)) this.defer(entry);
+          else this.apply([entry], []);
+        }
       }
       this.options.onTranscriptChanged(sessionId);
     } catch (error) {
