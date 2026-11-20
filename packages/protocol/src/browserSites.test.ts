@@ -28,6 +28,30 @@ describe('browser sites', () => {
     expect(siteAllowed('https://github.com/', allowed)).toBe(false);
   });
 
+  it('allows a wildcard’s subdomains, and every site with Any site', () => {
+    const allowed = ['*.test.dev'];
+    expect(siteAllowed('https://app.test.dev/', allowed)).toBe(true);
+    expect(siteAllowed('https://beta.eu.test.dev/login', allowed)).toBe(true);
+    expect(siteAllowed('https://test.dev/', allowed)).toBe(false);
+    expect(siteAllowed('https://eviltest.dev/', allowed)).toBe(false);
+    expect(siteAllowed('http://app.test.dev/', allowed)).toBe(false);
+    expect(siteAllowed('https://app.test.dev:8443/', allowed)).toBe(false);
+    expect(siteAllowed('https://app.test.dev:8443/', ['https://*.test.dev:8443'])).toBe(true);
+    expect(siteAllowed('https://github.com/', ['*'])).toBe(true);
+    expect(siteAllowed('http://intranet.example/', ['*'])).toBe(true);
+  });
+
+  it('keeps a wildcard and Any site as typed, and refuses a star anywhere else', () => {
+    expect(normaliseSite('*.test.dev')).toBe('https://*.test.dev');
+    expect(normaliseSite('http://*.test.dev:8080/path')).toBe('http://*.test.dev:8080');
+    expect(normaliseSite(' * ')).toBe('*');
+    expect(normaliseSite('app*.test.dev')).toBeNull();
+    expect(normaliseSite('app.*.dev')).toBeNull();
+    expect(normaliseSite('*.*.dev')).toBeNull();
+    expect(siteLabel('https://*.test.dev')).toBe('*.test.dev');
+    expect(withSite(['https://*.test.dev'], '*.test.dev')).toEqual(['https://*.test.dev']);
+  });
+
   it('writes a typed site as an origin, https by default', () => {
     expect(normaliseSite(' app.example.com ')).toBe('https://app.example.com');
     expect(normaliseSite('https://app.example.com/dashboard')).toBe('https://app.example.com');

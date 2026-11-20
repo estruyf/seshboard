@@ -28,12 +28,13 @@ export const FOOTNOTE_PREFIX = `user-content-${random()}-`;
 const MARKS = {
   alertTitle: `${SEAL}:alert-title`,
   skim: `${SEAL}:skim`,
+  barePath: `${SEAL}:bare-path`,
   alert: (kind: string) => `${SEAL}:alert:${kind}`,
 };
 
 const ALERT_KINDS = /^(?:note|tip|important|warning|caution)$/;
 
-/** Replaces the marks the alert and Skim plugins put on the tree with sealed ones. Runs after both. */
+/** Replaces the marks the alert, Skim and bare path plugins put on the tree with sealed ones. Runs after them. */
 export function remarkSeal() {
   const walk = (node: RootContent | MdastRoot) => {
     const properties = node.data && 'hProperties' in node.data ? (node.data.hProperties as Record<string, unknown> | undefined) : undefined;
@@ -41,6 +42,7 @@ export function remarkSeal() {
       if (typeof properties.dataAlert === 'string' && ALERT_KINDS.test(properties.dataAlert)) node.data!.hProperties = { dataSeal: MARKS.alert(properties.dataAlert) };
       else if ('dataAlertTitle' in properties) node.data!.hProperties = { dataSeal: MARKS.alertTitle };
       else if ('dataSkimFaded' in properties) node.data!.hProperties = { dataSeal: MARKS.skim };
+      else if ('dataBarePath' in properties) node.data!.hProperties = { dataSeal: MARKS.barePath };
     }
     if ('children' in node) for (const child of node.children as RootContent[]) walk(child);
   };
@@ -56,6 +58,7 @@ export function rehypeUnseal() {
         delete node.properties.dataSeal;
         const mark = seal.slice(SEAL.length + 1);
         if (mark === 'skim') Object.assign(node.properties, { className: ['text-faint'], dataSkimFaded: true });
+        else if (mark === 'bare-path') node.properties.dataBarePath = '';
         else if (mark === 'footnote-label') node.properties.id = 'footnote-label';
         else if (mark === 'alert-title') node.properties.dataAlertTitle = '';
         else if (mark.startsWith('alert:')) node.properties.dataAlert = mark.slice('alert:'.length);

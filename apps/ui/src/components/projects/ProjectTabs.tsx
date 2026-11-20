@@ -516,9 +516,10 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         </div>
       </SettingRow>
       {browserOn && (
-        <SettingRow label="Browser sites" hint="The agent can use these sites in the browser here without asking. Pages on this computer always can. Any other site asks first." data-project-browser-sites>
+        <SettingRow label="Browser sites" hint="The agent can use these sites in the browser here without asking. *.example.com covers every subdomain of example.com. Pages on this computer always can. Any other site asks first." data-project-browser-sites>
           <BrowserSitesEditor
             sites={project.defaults.browserSites ?? []}
+            anySite
             onSave={async (browserSites) => {
               if (!client) return;
               await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, browserSites } });
@@ -530,7 +531,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
       {browserOn && (scriptsOn || (project.defaults.browserScriptSites?.length ?? 0) > 0) && (
         <SettingRow
           label="Scripts in pages"
-          hint="The agent can run scripts and read requests on these sites without asking, with your login there. Pages on this computer always can. Any other site asks first."
+          hint="The agent can run scripts and read requests on these sites without asking, with your login there. *.example.com covers every subdomain of example.com. Pages on this computer always can. Any other site asks first."
           data-project-browser-script-sites
         >
           <BrowserSitesEditor

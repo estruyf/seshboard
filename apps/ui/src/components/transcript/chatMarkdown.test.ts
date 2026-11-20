@@ -97,6 +97,9 @@ describe('Markdown in a reply', () => {
   it('keeps what the renderer itself makes: file links, language classes, footnotes, Skim fading', () => {
     const files = render('[a](src/a.ts#L12) [b](file:///a/b.md) [c](C:/a.ts) [d](https://example.com) [e](mailto:a@b.c)');
     for (const href of ['href="src/a.ts#L12"', 'href="file:///a/b.md"', 'href="C:/a.ts"', 'href="https://example.com"', 'href="mailto:a@b.c"']) expect(files).toContain(href);
+    // A path written as text is marked, so it stays text until the engine finds the file; a reply's own mark is dropped.
+    expect(render('Saved in **/tmp/out/a.md**.')).toContain('<a href="/tmp/out/a.md" data-bare-path="">/tmp/out/a.md</a>');
+    expect(render('<a href="/x/y.md" data-bare-path>y</a>')).not.toContain('data-bare-path');
     const footnote = render('Text[^1]\n\n[^1]: The note');
     expect(footnote).toContain('data-footnote-ref');
     expect(footnote).toContain('data-footnotes');

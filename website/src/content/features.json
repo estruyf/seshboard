@@ -3162,6 +3162,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:file-links-in-text",
+      "name": "File links for paths written as text in a reply, such as a file Claude saved",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:file-mentions",
       "name": "@ file mentions",
       "page": "sessions/conversation"
@@ -4364,6 +4369,11 @@
     {
       "id": "feature:browser-control-sites",
       "name": "Browser sites: pages on this computer need no approval, other sites ask first, Allow for this session stops asking until the session ends, Always allow keeps a site for the project (its settings list them)",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:browser-sites-wildcards",
+      "name": "Browser sites take wildcards (*.example.com covers every subdomain), and Any site lets the agent use every site without asking",
       "page": "sessions/web-preview"
     },
     {

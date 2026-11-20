@@ -19,7 +19,7 @@ const MARKDOWN = new Set(['markdown', 'md']);
 
 /** How an answer's Markdown renders; a previewed file's (`components/filePreview/FileMarkdown.tsx`) builds on it. */
 export const markdownComponents: Components = {
-  a: ({ href, children }) => {
+  a: ({ href, children, ...props }) => {
     // The main process opens http(s) links in the browser and blocks everything else.
     const link = (
       <a href={href} target="_blank" rel="noreferrer" className="text-link underline decoration-link/40 underline-offset-2">
@@ -28,8 +28,11 @@ export const markdownComponents: Components = {
     );
     // A link to a file in the project (`[a.ts](src/a.ts#L12)`) opens in the editor instead.
     const fileRef = fileRefFromHref(href);
+    // A path written as text (`barePaths.ts`) stays text until the engine finds the file.
+    const barePath = 'data-bare-path' in props;
+    if (barePath && !fileRef) return <>{children}</>;
     return fileRef ? (
-      <FileLink fileRef={fileRef} fallback={link}>
+      <FileLink fileRef={fileRef} fallback={barePath ? <>{children}</> : link}>
         {children}
       </FileLink>
     ) : (

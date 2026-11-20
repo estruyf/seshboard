@@ -4,6 +4,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import { remarkAlerts } from '../filePreview/remarkAlerts.ts';
 import { remarkBareLinks } from './bareLinks.ts';
+import { remarkBarePaths } from './barePaths.ts';
 import { chatSchema } from './chatSchema.ts';
 import { MARKDOWN_SYNTAX } from './escapeLoneTags.ts';
 import { FOOTNOTE_LABEL_PROPERTIES, FOOTNOTE_PREFIX, rehypeUnseal, remarkSeal } from './markdownSeal.ts';
@@ -13,12 +14,13 @@ import { remarkSkimFade } from './skimFade.ts';
  * The plugins of a reply's Markdown (`Markdown.tsx`), in one place so the tests render with the same ones. `keep`: the
  * sentences Skim keeps, the rest fade (Skim's plugin runs before the seal that carries its marks past the sanitiser).
  *
- * GFM links `https://` and `www.` addresses; `remarkBareLinks` the ones written without either (`github.com/…`);
+ * GFM links `https://` and `www.` addresses; `remarkBareLinks` the ones written without either (`github.com/…`); `remarkBarePaths`
+ * absolute paths in the text (`/Users/me/a.md`), which become file links once the engine finds them;
  * `remarkAlerts` marks GitHub's alerts. The text it reads has been through `escapeLoneTags` (`Markdown.tsx`), which leaves text that
  * only looks like a tag (`Promise<void>`) as text.
  */
 export function remarkPluginsFor(keep: readonly number[] | null): PluggableList {
-  const plugins: PluggableList = [...MARKDOWN_SYNTAX, remarkBareLinks, remarkAlerts];
+  const plugins: PluggableList = [...MARKDOWN_SYNTAX, remarkBareLinks, remarkBarePaths, remarkAlerts];
   if (keep) plugins.push([remarkSkimFade, { keep }]);
   plugins.push(remarkSeal);
   return plugins;

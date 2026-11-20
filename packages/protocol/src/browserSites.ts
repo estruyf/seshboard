@@ -267,7 +267,8 @@ export const SCRIPTS_OFF_TEXT = 'Scripts in pages are off in Seshboard. The user
 /**
  * The browser tools' guard: a call runs, is refused, or asks you first. A page on this computer always runs. evaluate
  * and network need scripts on, then a site allowed for scripts (their own card, which also covers using the site); the
- * other tools need the site allowed. Sites match by origin. A call with no web page yet runs: it says so itself.
+ * other tools need the site allowed. Sites match by origin, a wildcard or Any site (`siteAllowed`). A call with no web
+ * page yet runs: it says so itself.
  */
 export function browserAccess(input: BrowserAccessInput): { allow: true } | { refuse: string } | { ask: BrowserAsk['kind']; site: string } {
   const script = isScriptTool(input.tool);
@@ -292,11 +293,36 @@ export function siteOf(url: string): string | null {
   }
 }
 
-/** A site written by hand ("app.example.com", or a whole address) as an origin; https when no scheme is given. */
+/** The entry that allows every web site (the project's Any site). */
+export const ANY_SITE = '*';
+
+/**
+ * A site written by hand as the form a project keeps: an origin ("app.example.com", or a whole address; https when no
+ * scheme is given), a wildcard origin whose host starts with `*.` (`https://*.example.com`), or `*` for any site.
+ */
 export function normaliseSite(input: string): string | null {
   const text = input.trim();
   if (!text) return null;
-  return siteOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+  if (text === ANY_SITE) return ANY_SITE;
+  const site = siteOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+  if (!site) return null;
+  // A star only as the whole first label: `*.example.com`, never `app*.example.com` or `app.*.com`.
+  const host = new URL(site).hostname;
+  return !host.includes('*') || (host.startsWith('*.') && host.length > 2 && !host.slice(1).includes('*')) ? site : null;
+}
+
+/**
+ * Whether one entry of a project's sites covers `site` (an origin): `*` covers every site, `*.example.com` covers its
+ * subdomains at any depth (not `example.com` itself) with the same scheme and port, and any other entry its own origin.
+ */
+function siteMatches(entry: string, site: string): boolean {
+  const pattern = normaliseSite(entry);
+  if (!pattern) return false;
+  if (pattern === ANY_SITE) return true;
+  const wanted = new URL(pattern);
+  if (!wanted.hostname.startsWith('*.')) return pattern === site;
+  const actual = new URL(site);
+  return actual.protocol === wanted.protocol && actual.port === wanted.port && actual.hostname.endsWith(wanted.hostname.slice(1));
 }
 
 /** The host a site's label names: "app.example.com", "localhost:4321". */
@@ -318,12 +344,12 @@ export function isLocalSite(url: string): boolean {
 
 /**
  * Whether the tools may work on `url` without asking: a page on this computer, or a site the project allows. Sites
- * match by origin, so allowing `app.example.com` never allows `admin.example.com`.
+ * match by origin, so allowing `app.example.com` never allows `admin.example.com`; `*.example.com` allows both.
  */
 export function siteAllowed(url: string, allowed: readonly string[]): boolean {
   if (isLocalSite(url)) return true;
   const site = siteOf(url);
-  return site !== null && allowed.some((entry) => normaliseSite(entry) === site);
+  return site !== null && allowed.some((entry) => siteMatches(entry, site));
 }
 
 /** A project's sites with one more, once, in the order added (oldest dropped past the limit). */
