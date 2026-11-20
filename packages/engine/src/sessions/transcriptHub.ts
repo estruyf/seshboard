@@ -53,6 +53,11 @@ export function withNotices(
 
 /** How many live messages a session keeps for a retraction to rebuild the list from. */
 const LIVE_TAIL = 200;
+/**
+ * How often the file is read during a turn this app runs, at most. The live messages show the turn; this brings in what
+ * only the file has (a compaction, a system line) without waiting for the turn to end.
+ */
+const TURN_READ_MS = 30_000;
 
 /**
  * Live transcripts for open windows. Each watcher gets the full transcript
@@ -84,6 +89,12 @@ export class TranscriptHub {
   private readonly liveTail = new Map<string, Map<string, TranscriptMessage>>();
   /** Sessions whose next reload sends the whole list again (after a retraction). */
   private readonly rebuilds = new Set<string>();
+  /**
+   * Sessions whose turn this app runs now: their file changes are not read while the live messages show them, only once
+   * the turn ends (or every `TURN_READ_MS`). `missed`: the file changed since it was last read. `next`: a window started
+   * watching during the turn, so the next change is read (what streamed before it watched may be newer than its first read).
+   */
+  private readonly turns = new Map<string, { missed: boolean; next: boolean; timer: ReturnType<typeof setTimeout> | undefined }>();
   readonly images = new ImageStore();
 
   constructor(
@@ -124,6 +135,8 @@ export class TranscriptHub {
     let set = this.watchers.get(sessionId);
     if (!set) this.watchers.set(sessionId, (set = new Set()));
     set.add(watcher);
+    const turn = this.turns.get(sessionId);
+    if (turn) turn.next = true;
     void this.push(sessionId, [watcher], true);
     return () => {
       set.delete(watcher);
@@ -239,7 +252,35 @@ export class TranscriptHub {
   /** Called when a transcript file changed on disk. Reloads are coalesced per session. */
   changed(sessionId: string): void {
     if (!this.watchers.has(sessionId)) return;
-    this.reload(sessionId).trigger();
+    const turn = this.turns.get(sessionId);
+    if (!turn || turn.next) {
+      if (turn) turn.next = false;
+      return this.reload(sessionId).trigger();
+    }
+    turn.missed = true;
+    turn.timer ??= setTimeout(() => {
+      turn.timer = undefined;
+      if (!turn.missed || this.turns.get(sessionId) !== turn) return;
+      turn.missed = false;
+      if (this.watchers.has(sessionId)) this.reload(sessionId).trigger();
+    }, TURN_READ_MS);
+    turn.timer.unref?.();
+  }
+
+  /**
+   * Whether this app runs a turn of the session now (it streams the messages live). When the turn ends or stops for
+   * you, the file is read once for what changed meanwhile.
+   */
+  running(sessionId: string, on: boolean): void {
+    const turn = this.turns.get(sessionId);
+    if (on) {
+      if (!turn) this.turns.set(sessionId, { missed: false, next: false, timer: undefined });
+      return;
+    }
+    if (!turn) return;
+    clearTimeout(turn.timer);
+    this.turns.delete(sessionId);
+    if (turn.missed) this.changed(sessionId);
   }
 
   private isNotice(sessionId: string, uuid: string): boolean {
@@ -307,13 +348,16 @@ export class TranscriptHub {
       if (!diff) continue;
       watcher.emit({ sessionId, ...diff });
       if (initial && watcher.dirty) {
+        // What came live while the first load was read: from the file now, also during a turn.
         watcher.dirty = false;
-        this.changed(sessionId);
+        this.reload(sessionId).trigger();
       }
     }
   }
 
   stop(): void {
+    for (const turn of this.turns.values()) clearTimeout(turn.timer);
+    this.turns.clear();
     for (const reload of this.reloads.values()) reload.stop();
     this.reloads.clear();
     this.watchers.clear();

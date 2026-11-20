@@ -591,6 +591,48 @@ describe('TranscriptHub', () => {
   });
 });
 
+describe('TranscriptHub during a turn this app runs', () => {
+  it('reads the file once the turn ends, not on every write, and once more for a window that opens during it', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [msg('1')]);
+    let reads = 0;
+    const counted: SessionSource = { ...source, messages: async (id) => (reads++, source.messages(id)) };
+    const hub = new TranscriptHub(counted, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+    hub.running(ID_A, true);
+    hub.pushLive(ID_A, [msg('2', 'live')]);
+    expect(uuids(updates[1]!.messages)).toEqual(['2']);
+    // The file follows, with a line only it has: not read during the turn.
+    messages.set(ID_A, [msg('1'), msg('2'), msg('s', 'system line')]);
+    hub.changed(ID_A);
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(reads).toBe(1);
+    expect(updates).toHaveLength(2);
+    // A second window opens during the turn: its first load, and the next change, are read.
+    const second: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => second.push(u));
+    await until(() => second.length === 1);
+    messages.set(ID_A, [msg('1'), msg('2'), msg('s'), msg('3')]);
+    hub.changed(ID_A);
+    await until(() => updates.length === 3);
+    expect(reads).toBe(3);
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(reads).toBe(3);
+    // The turn ends: what the file got meanwhile comes in one read.
+    messages.set(ID_A, [msg('1'), msg('2'), msg('s'), msg('3'), msg('4')]);
+    hub.changed(ID_A);
+    hub.running(ID_A, false);
+    await until(() => updates.length === 4);
+    expect(uuids(updates.flatMap((u) => u.messages))).toEqual(['1', '2', 's', '3', '4']);
+    expect(reads).toBe(4);
+    hub.stop();
+  });
+});
+
 describe('withNotices', () => {
   const at = (uuid: string, time: number) => ({ uuid, timestamp: time }) as TranscriptMessage;
   it('puts a notice before the first message written after it, or at the end', () => {

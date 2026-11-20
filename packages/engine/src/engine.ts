@@ -105,6 +105,7 @@ import {
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
+import { TranscriptCache } from './claude/transcriptCache.ts';
 import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
@@ -578,12 +579,16 @@ export function createEngine(options: EngineOptions): Engine {
   });
   // The SDK's transcript readers take the folder from process.env.CLAUDE_CONFIG_DIR: one folder at a time.
   const lane = new ConfigDirLane();
+  /** Parsed transcripts, shared by every reader (the open transcript, search, catch-up, the phone, links). */
+  const transcriptCache = new TranscriptCache();
+  /** A session's transcript file, from the session index once it exists. */
+  let transcriptPath: (sessionId: string) => string | null = () => null;
   const sdkSources = new Map<string, SessionSource>();
   const sourceFor = (profile: ProfileRuntime): SessionSource => {
     if (options.sessionSource && profile.id === BUILTIN_PROFILE_ID) return options.sessionSource;
     const key = `${profile.id}\0${profile.configDir}`;
     let found = sdkSources.get(key);
-    if (!found) sdkSources.set(key, (found = sdkSessionSource((fn) => lane.run(profile.envDir, fn))));
+    if (!found) sdkSources.set(key, (found = sdkSessionSource((fn) => lane.run(profile.envDir, fn), { cache: transcriptCache, pathOf: (id) => transcriptPath(id) })));
     return found;
   };
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
@@ -751,6 +756,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     onTranscriptChanged: (id) => transcripts.changed(id),
   });
+  transcriptPath = (id) => sessions.pathFor(id);
   // Full-text search: indexed in the background, a little after anything changes.
   const search = new SearchIndex(
     cache.db,
@@ -1156,6 +1162,8 @@ export function createEngine(options: EngineOptions): Engine {
    */
   const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onNotice' | 'onRetract' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
     onInfo: (info) => {
+      // While this app runs a turn, the live messages show it: the file is read once the turn ends or waits for you.
+      transcripts.running(info.sessionId, info.state === 'running' || info.state === 'starting');
       if (info.state === 'idle') {
         transcripts.settled(info.sessionId);
         // The turn's messages are searchable now, not once the session has been quiet for a while.
