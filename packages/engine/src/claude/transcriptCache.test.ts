@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, statSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -34,12 +34,12 @@ function turn(parent: string | null, text: string): { lines: object[]; last: str
 
 const jsonl = (lines: object[]) => lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
 
-function setup(maxBytes?: number) {
+function setup(maxBytes?: number, skipBytes?: number) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-cache-')));
   dirs.push(dir);
   mkdirSync(join(dir, 'projects', '-tmp-project'), { recursive: true });
   const file = join(dir, 'projects', '-tmp-project', `${SESSION}.jsonl`);
-  const cache = new TranscriptCache(maxBytes);
+  const cache = new TranscriptCache({ ...(maxBytes !== undefined ? { maxBytes } : {}), ...(skipBytes !== undefined ? { skipBytes } : {}) });
   const scope = async <T>(fn: () => Promise<T>) => {
     const before = process.env.CLAUDE_CONFIG_DIR;
     process.env.CLAUDE_CONFIG_DIR = dir;
@@ -98,6 +98,84 @@ describe('TranscriptCache', () => {
     expect(await same()).toHaveLength(3);
   });
 
+  it('uses a last line that has no newline yet when it is complete, as the SDK does', async () => {
+    const { file, same } = setup();
+    const first = turn(null, 'First task');
+    writeFileSync(file, jsonl(first.lines));
+    await same();
+    const next = turn(first.last, 'No newline yet');
+    appendFileSync(file, jsonl(next.lines).trimEnd());
+    expect(await same()).toHaveLength(4);
+    // The newline and the next turn: the line is read again with them, once.
+    appendFileSync(file, `\n${jsonl(turn(next.last, 'Then more').lines)}`);
+    expect(await same()).toHaveLength(6);
+  });
+
+  it('keeps a big compacted transcript from its last compaction on, and builds what the SDK reads from it', async () => {
+    const { file, cache, same } = setup();
+    // About 3.6 MB of turns: under the size where the SDK's reader starts at the last compaction.
+    const pad = 'x'.repeat(12_000);
+    const lines: object[] = [];
+    let parent: string | null = null;
+    for (let i = 0; i < 100; i++) {
+      const t = turn(parent, `Task ${i} ${pad}`);
+      lines.push(...t.lines, { type: 'attribution-snapshot', sessionId: SESSION, n: i });
+      parent = t.last;
+    }
+    writeFileSync(file, jsonl(lines));
+    await same();
+    expect(cache.entries(SESSION, file)).not.toBeNull();
+    // A compaction, and the file grows past 5 MB: kept from the compaction on.
+    const boundary = uuid();
+    const summary = uuid();
+    const after = turn(summary, 'After the compaction');
+    const compaction = [
+      { ...base, parentUuid: null, logicalParentUuid: parent, type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', uuid: boundary, timestamp: at(), compactMetadata: { trigger: 'auto', preTokens: 150_000 } },
+      { ...base, parentUuid: boundary, type: 'user', uuid: summary, isCompactSummary: true, timestamp: at(), message: { role: 'user', content: 'This session is being continued from a previous conversation.' } },
+      ...after.lines,
+      { type: 'attribution-snapshot', sessionId: SESSION, n: 'after' },
+    ];
+    const filler: object[] = [];
+    let last = after.last;
+    for (let i = 0; i < 60; i++) {
+      const t = turn(last, `More ${i} ${pad}`);
+      filler.push(...t.lines);
+      last = t.last;
+    }
+    appendFileSync(file, jsonl([...compaction, ...filler]));
+    expect(statSync(file).size).toBeGreaterThan(5 * 1024 * 1024);
+    const whole = await same();
+    expect(whole.some((m) => m.isCompactSummary)).toBe(true);
+    expect(cache.entries(SESSION, file)).toBeNull();
+    // A compaction that kept the last turn: the SDK's reader does not start from it, nor does the cache.
+    const kept = turn(last, 'Kept through the compaction');
+    const boundary2 = uuid();
+    const summary2 = uuid();
+    appendFileSync(
+      file,
+      jsonl([
+        ...kept.lines,
+        { ...base, parentUuid: null, logicalParentUuid: kept.last, type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', uuid: boundary2, timestamp: at(), compactMetadata: { trigger: 'auto', preTokens: 150_000, preservedMessages: { uuids: [(kept.lines[0] as { uuid: string }).uuid, kept.last], anchorUuid: summary2 } } },
+        { ...base, parentUuid: boundary2, type: 'user', uuid: summary2, isCompactSummary: true, timestamp: at(), message: { role: 'user', content: 'Continued, with the last turn kept.' } },
+        ...turn(summary2, 'After the second compaction').lines,
+      ]),
+    );
+    await same();
+    // A plain compaction again: kept from there on.
+    const boundary3 = uuid();
+    const summary3 = uuid();
+    appendFileSync(
+      file,
+      jsonl([
+        { ...base, parentUuid: null, logicalParentUuid: kept.last, type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', uuid: boundary3, timestamp: at(), compactMetadata: { trigger: 'manual', preTokens: 150_000 } },
+        { ...base, parentUuid: boundary3, type: 'user', uuid: summary3, isCompactSummary: true, timestamp: at(), message: { role: 'user', content: 'Continued once more.' } },
+        ...turn(summary3, 'After the third compaction').lines,
+      ]),
+    );
+    await same();
+    expect(cache.stats).toMatchObject({ full: 2, appended: 2 });
+  });
+
   it('reads the whole file again when it shrank, was rewritten or replaced', async () => {
     const { file, cache, same } = setup();
     const first = turn(null, 'First task');
@@ -147,10 +225,13 @@ describe('TranscriptCache', () => {
   });
 
   it('keeps the least recently read sessions within its budget', async () => {
-    const { dir, file, cache, cached, paths } = setup(1);
+    // Room for one of these transcripts, not two.
+    const { dir, file, cache, cached, paths } = setup(1000);
     writeFileSync(file, jsonl(turn(null, 'First task').lines));
     const otherFile = join(dir, 'projects', '-tmp-project', `${OTHER}.jsonl`);
     writeFileSync(otherFile, jsonl(turn(null, 'Other task').lines.map((l) => ({ ...l, sessionId: OTHER }))));
+    expect(statSync(file).size).toBeLessThan(1000);
+    expect(statSync(file).size + statSync(otherFile).size).toBeGreaterThan(1000);
     paths.set(OTHER, otherFile);
     await cached.messages(SESSION);
     await cached.messages(OTHER);
