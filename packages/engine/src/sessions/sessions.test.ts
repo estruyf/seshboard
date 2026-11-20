@@ -59,7 +59,7 @@ function fakeSource(initial: RawSessionInfo[]) {
   return { source, infos, messages };
 }
 
-function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), 'cache.sqlite'))) {
+function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), 'cache.sqlite')), activityDelayMs?: number) {
   const projectsDir = join(tempDir(), 'projects');
   mkdirSync(join(projectsDir, '-repo'), { recursive: true });
   const fake = fakeSource(infos);
@@ -74,6 +74,7 @@ function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), '
     log: () => {},
     onChange: (c) => changes.push(c),
     onTranscriptChanged: (id) => transcriptChanges.push(id),
+    ...(activityDelayMs !== undefined ? { activityDelayMs } : {}),
   });
   cleanups.push(() => {
     if (db.db.isOpen) db.close();
@@ -256,6 +257,85 @@ describe('SessionIndex', () => {
     expect(index.get(ID_A)).toMatchObject({ updatedAt: 1_000, unread: false });
   });
 
+  it('sends a newer time and size a while later, but a session turning unread or renamed at once', async () => {
+    const t = setup([info(ID_A, { fileSize: 100 })], undefined, 300);
+    const file = join(t.projectsDir, '-repo', `${ID_A}.jsonl`);
+    const line = (at: number) => `${JSON.stringify({ type: 'assistant', entrypoint: 'cli', timestamp: new Date(at).toISOString() })}\n`;
+    const start = Date.now() - 60_000;
+    writeFileSync(file, line(start));
+    await t.index.refresh();
+    expect(t.index.get(ID_A)).toMatchObject({ updatedAt: start, fileSize: 100, unread: true });
+    // Only the time and size moved: held back, then sent once with the latest.
+    const sent = t.changes.length;
+    appendFileSync(file, line(start + 1_000));
+    t.infos.set(ID_A, info(ID_A, { fileSize: 200 }));
+    await t.index.reread(ID_A);
+    appendFileSync(file, line(start + 2_000));
+    t.infos.set(ID_A, info(ID_A, { fileSize: 300 }));
+    await t.index.reread(ID_A);
+    expect(t.changes.length).toBe(sent);
+    expect(t.index.get(ID_A)).toMatchObject({ updatedAt: start, fileSize: 100 });
+    await until(() => t.changes.length === sent + 1);
+    expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ updatedAt: start + 2_000, fileSize: 300 });
+    // Read now, then new activity makes it unread: sent at once.
+    t.index.markViewed(ID_A);
+    const viewed = t.changes.length;
+    appendFileSync(file, line(Date.now() + 10_000));
+    await t.index.reread(ID_A);
+    expect(t.changes.length).toBe(viewed + 1);
+    expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ unread: true });
+    // Renamed: sent at once.
+    t.infos.set(ID_A, info(ID_A, { fileSize: 300, customTitle: 'Renamed' }));
+    await t.index.reread(ID_A);
+    expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ title: 'Renamed' });
+  });
+
+  it('sends new activity at once when it moves a session out of Done or past being restored', async () => {
+    const t = setup([info(ID_A, { fileSize: 100 })], undefined, 60_000);
+    const file = join(t.projectsDir, '-repo', `${ID_A}.jsonl`);
+    const line = (at: number) => `${JSON.stringify({ type: 'assistant', entrypoint: 'cli', timestamp: new Date(at).toISOString() })}\n`;
+    writeFileSync(file, line(Date.now() - 60_000));
+    await t.index.refresh();
+    t.index.setFlags(ID_A, { archived: true });
+    const archived = t.changes.length;
+    appendFileSync(file, line(Date.now() + 5_000));
+    await t.index.reread(ID_A);
+    expect(t.changes.length).toBe(archived + 1);
+  });
+
+  it('keeps a change that waits when a full scan that read the session before it ends', async () => {
+    const t = setup([info(ID_A, { fileSize: 100 })], undefined, 300);
+    const file = join(t.projectsDir, '-repo', `${ID_A}.jsonl`);
+    const line = (at: number) => `${JSON.stringify({ type: 'assistant', entrypoint: 'cli', timestamp: new Date(at).toISOString() })}\n`;
+    const start = Date.now() - 60_000;
+    writeFileSync(file, line(start));
+    await t.index.refresh();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const stale = await t.source.list();
+    t.source.list = async () => (await gate, stale);
+    const scan = t.index.refresh();
+    appendFileSync(file, line(start + 1_000));
+    t.infos.set(ID_A, info(ID_A, { fileSize: 200 }));
+    await t.index.reread(ID_A);
+    release();
+    await scan;
+    await until(() => t.index.get(ID_A)?.fileSize === 200);
+    expect(t.index.get(ID_A)!.updatedAt).toBe(start + 1_000);
+  });
+
+  it('reads a session with files in two folders the SDK way, and keeps the first folder\u2019s file', async () => {
+    const t = setup([info(ID_A), info(ID_B)]);
+    mkdirSync(join(t.projectsDir, '-other'));
+    writeFileSync(join(t.projectsDir, '-other', `${ID_A}.jsonl`), '{"type":"user"}\n');
+    writeFileSync(join(t.projectsDir, '-repo', `${ID_A}.jsonl`), '{"type":"user"}\n');
+    writeFileSync(join(t.projectsDir, '-repo', `${ID_B}.jsonl`), '{"type":"user"}\n');
+    await t.index.refresh();
+    expect(t.index.pathFor(ID_A)).toBe(join(t.projectsDir, '-other', `${ID_A}.jsonl`));
+    expect(t.index.transcriptFile(ID_A)).toBeNull();
+    expect(t.index.transcriptFile(ID_B)).toBe(join(t.projectsDir, '-repo', `${ID_B}.jsonl`));
+  });
+
   it('follows transcript writes and deletions through the file watcher', async () => {
     const { index, changes, transcriptChanges, projectsDir, infos } = setup([]);
     index.start();
@@ -370,21 +450,24 @@ const uuids = (messages: TranscriptMessage[]) => messages.map((m) => m.uuid);
 
 describe('diffTranscript', () => {
   const t = (...ids: string[]) => ids.map((uuid) => ({ uuid }) as TranscriptMessage);
-  it('appends, ignores no-ops and replaces when history changed', () => {
+  it('appends, ignores no-ops, splices after a common start and replaces when nothing is in common', () => {
     expect(diffTranscript(['a'], t('a', 'b'))).toEqual({ mode: 'append', messages: t('b') });
     expect(diffTranscript(['a', 'b'], t('a', 'b'))).toBeNull();
-    expect(diffTranscript(['a', 'b'], t('a', 'c'))).toEqual({ mode: 'replace', messages: t('a', 'c') });
-    expect(diffTranscript(['a', 'b'], t('a'))).toEqual({ mode: 'replace', messages: t('a') });
+    expect(diffTranscript(['a', 'b'], t('a', 'c'))).toEqual({ mode: 'splice', at: 1, messages: t('c') });
+    expect(diffTranscript(['a', 'b'], t('a'))).toEqual({ mode: 'splice', at: 1, messages: [] });
+    expect(diffTranscript(['a', 'b'], t('x', 'b'))).toEqual({ mode: 'replace', messages: t('x', 'b') });
   });
 
-  it('waits when the file is only behind messages that were streamed live', () => {
+  it('waits when the file is only behind messages that were streamed live, and keeps them in a splice', () => {
     expect(diffTranscript(['a', 'p', 'r'], t('a', 'p'), new Set(['p', 'r']))).toBeNull();
-    expect(diffTranscript(['a', 'p'], t('a'), new Set(['x']))).toEqual({ mode: 'replace', messages: t('a') });
+    expect(diffTranscript(['a', 'p'], t('a'), new Set(['x']))).toEqual({ mode: 'splice', at: 1, messages: [] });
+    const live = new Map(t('r').map((m) => [m.uuid, m]));
+    expect(diffTranscript(['a', 'p', 'r'], t('a', 's', 'p'), new Set(['p', 'r']), (uuid) => live.get(uuid))).toEqual({ mode: 'splice', at: 1, messages: t('s', 'p', 'r') });
   });
 });
 
 describe('TranscriptHub', () => {
-  it('sends a full load, then appends, then replaces after a rewind', async () => {
+  it('sends a full load, then appends, then splices after a rewind', async () => {
     const { source, messages } = fakeSource([]);
     messages.set(ID_A, [msg('1'), msg('2')]);
     const hub = new TranscriptHub(source, () => {});
@@ -403,7 +486,8 @@ describe('TranscriptHub', () => {
     messages.set(ID_A, [msg('1'), msg('x')]);
     hub.changed(ID_A);
     await until(() => updates.length === 3);
-    expect(updates[2]!.mode).toBe('replace');
+    expect(updates[2]).toMatchObject({ mode: 'splice', at: 1 });
+    expect(uuids(updates[2]!.messages)).toEqual(['x']);
     stop();
     hub.stop();
   });
@@ -553,6 +637,97 @@ describe('TranscriptHub', () => {
     await until(() => updates.length === 2);
     expect(updates[1]!.error).toBeUndefined();
     expect(uuids(updates[1]!.messages)).toEqual(['1']);
+    hub.stop();
+  });
+});
+
+describe('TranscriptHub during a turn this app runs', () => {
+  it('reads the file once the turn ends, not on every write, and once more for a window that opens during it', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [msg('1')]);
+    let reads = 0;
+    const counted: SessionSource = { ...source, messages: async (id) => (reads++, source.messages(id)) };
+    const hub = new TranscriptHub(counted, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+    hub.running(ID_A, true);
+    hub.pushLive(ID_A, [msg('2', 'live')]);
+    expect(uuids(updates[1]!.messages)).toEqual(['2']);
+    // The file follows, with a line only it has: not read during the turn.
+    messages.set(ID_A, [msg('1'), msg('2'), msg('s', 'system line')]);
+    hub.changed(ID_A);
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(reads).toBe(1);
+    expect(updates).toHaveLength(2);
+    // A second window opens during the turn: its first load, and the next change, are read.
+    const second: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => second.push(u));
+    await until(() => second.length === 1);
+    messages.set(ID_A, [msg('1'), msg('2'), msg('s'), msg('3')]);
+    hub.changed(ID_A);
+    await until(() => updates.length === 3);
+    expect(reads).toBe(3);
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(reads).toBe(3);
+    // The turn ends: what the file got meanwhile comes in one read.
+    messages.set(ID_A, [msg('1'), msg('2'), msg('s'), msg('3'), msg('4')]);
+    hub.changed(ID_A);
+    hub.running(ID_A, false);
+    await until(() => updates.length === 4);
+    expect(uuids(updates.flatMap((u) => u.messages))).toEqual(['1', '2', 's', '3', '4']);
+    expect(reads).toBe(4);
+    hub.stop();
+  });
+});
+
+describe('TranscriptHub with lines only the file has', () => {
+  it('sends a line the file has among live messages as a splice, keeping what came before and what is still live', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [msg('1'), msg('2')]);
+    const hub = new TranscriptHub(source, () => {});
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+    hub.pushLive(ID_A, [msg('3'), msg('4')]);
+    // The file has a line that never came live before 3, and not 4 yet.
+    messages.set(ID_A, [msg('1'), msg('2'), msg('s', 'system line'), msg('3')]);
+    hub.changed(ID_A);
+    await until(() => updates.length === 3);
+    expect(updates[2]).toMatchObject({ mode: 'splice', at: 2 });
+    expect(uuids(updates[2]!.messages)).toEqual(['s', '3', '4']);
+    // The file catches up with 4: nothing to send.
+    messages.set(ID_A, [msg('1'), msg('2'), msg('s'), msg('3'), msg('4')]);
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(updates).toHaveLength(3);
+    // A rewind to the very start is still a replace.
+    messages.set(ID_A, [msg('x')]);
+    hub.changed(ID_A);
+    await until(() => updates.length === 4);
+    expect(updates[3]!.mode).toBe('replace');
+    hub.stop();
+  });
+
+  it('shows what came live while a window\u2019s first load was read, after it', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [msg('1')]);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: SessionSource = { ...source, messages: async (id) => (await gate, source.messages(id)) };
+    const hub = new TranscriptHub(slow, () => {});
+    hub.running(ID_A, true);
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    hub.pushLive(ID_A, [{ ...msg('2', 'live'), type: 'assistant' }]);
+    release();
+    await until(() => updates.length === 2);
+    expect(updates[0]).toMatchObject({ mode: 'replace' });
+    expect(uuids(updates[0]!.messages)).toEqual(['1']);
+    expect(updates[1]).toMatchObject({ mode: 'append' });
+    expect(uuids(updates[1]!.messages)).toEqual(['2']);
     hub.stop();
   });
 });
