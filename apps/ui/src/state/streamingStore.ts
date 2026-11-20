@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
-import type { StreamDelta } from '@seshboard/protocol/client';
+import { nextStreamBlock, type StreamDelta } from '@seshboard/protocol/client';
 
 export interface StreamingBlock {
   kind: 'text' | 'thinking' | 'tool';
@@ -19,13 +19,8 @@ interface StreamingState {
  */
 export const useStreaming = create<StreamingState>()(() => ({ blocks: new Map() }));
 
-/** The block after a delta: `clear` ends it, a tool replaces it, text and thinking grow it (or start a new one). */
-export function nextBlock(current: StreamingBlock | undefined, delta: StreamDelta): StreamingBlock | undefined {
-  if (delta.kind === 'clear') return undefined;
-  if (delta.kind === 'tool') return { kind: 'tool', text: delta.text };
-  if (current?.kind === delta.kind) return { kind: delta.kind, text: current.text + delta.text };
-  return { kind: delta.kind, text: delta.text };
-}
+/** The block after a delta (`nextStreamBlock`, the same as the engine's). */
+export const nextBlock = (current: StreamingBlock | undefined, delta: StreamDelta): StreamingBlock | undefined => nextStreamBlock(current, delta);
 
 /** Deltas since the last frame, already applied per session (undefined: cleared). */
 let pending: Map<string, StreamingBlock | undefined> | null = null;

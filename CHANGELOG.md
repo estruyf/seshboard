@@ -12,6 +12,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **A big session list stays smooth.** The sidebar no longer redraws every row when one session changes, when you type in a message box or while you scroll the list: about 20 times fewer rows are redrawn in each case. With about 750 sessions, scrolling takes about 60% less script time.
 - **Animations rest while Seshboard is in the background.** The spinners, pulses and the working animation pause while the window has no focus, so a window you aren't using costs next to nothing. The working animation also uses about a third of the CPU it used to.
 - **Smoother typing and scrolling while Claude writes.** The session view no longer redraws for every word of a reply.
+- **Windows you aren't looking at stay quiet while Claude writes.** The text Claude is writing goes only to the views that show that session. A hidden window, the Quick start panel and a minimised pop-out no longer receive it.
 
 ### Fixed
 
