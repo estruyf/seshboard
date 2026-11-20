@@ -6,6 +6,7 @@ import {
   type RpcClient,
   type SeshboardBridge,
 } from '@seshboard/protocol/client';
+import { RENDER_COUNTS } from '../lib/renderCounts.ts';
 import { startLivenessMonitor, type LivenessMonitor } from './liveness.ts';
 
 export type EngineClient = RpcClient<Contract>;
@@ -97,6 +98,8 @@ export class EngineConnection {
     }
     this.awaitingPort = false;
     const client = createRpcClient<Contract>(messagePortTransport(port));
+    // A smoke build gives the driver the port, so it can send an event the way the engine's reach the page (the render budget step).
+    if (RENDER_COUNTS) ((window as unknown as { __smoke?: { enginePort?: MessagePort } }).__smoke ??= {}).enginePort = port;
     this.watch(client);
     this.setState({ status: 'connected', client, generation: this.generation });
   };

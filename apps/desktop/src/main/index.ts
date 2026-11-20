@@ -11149,6 +11149,62 @@ async function runApiRetryStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Render budget: while a session streams text at 30 a second for four seconds (sent as the engine's events arrive: through
+ * the engine port's listeners, so it works with whatever store the page keeps streaming text in), how often the sidebar, its rows, the
+ * conversation and the message box render (a smoke build counts them: `apps/ui/src/lib/renderCounts.ts`). The sidebar and its
+ * rows may hardly render, as a delta changes nothing they show. The conversation and the message box are counted and said,
+ * not limited yet. TODO(#365): when the streaming change is on dev (`streaming` in a store of its own, Composer memoised),
+ * add `if (rendered('TranscriptView') > 5) …` and `if (rendered('Composer') > 5) …` here. Today they render about twice and once
+ * per delta (245 and 125 for 120 deltas), which is what #365 removes.
+ */
+async function runRenderBudgetStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  if (!(await js('window.__smoke?.enginePort !== undefined'))) {
+    // The packaged app is built by `npm run dist`, which leaves the counters out; every other run is a smoke build.
+    return app.isPackaged ? 'ok (skipped: the packaged app has no render counters)' : 'failed: the build has no render counters (run it through npm run smoke)';
+  }
+  const standIn = `smoke-budget-${randomUUID()}`;
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-budget-')));
+  const stream = (kind: 'text' | 'clear', text: string) =>
+    js(`window.__smoke.enginePort.dispatchEvent(new MessageEvent('message', { data: { kind: 'event', name: 'session.stream', payload: { sessionId: ${JSON.stringify(standIn)}, kind: ${JSON.stringify(kind)}, text: ${JSON.stringify(text)} } } }))`);
+  engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state: 'running' });
+  try {
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'failed: the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${standIn}"] [data-streaming]')`, 5_000))) return 'failed: the stand-in session did not open';
+    await settle(win, 500);
+    const counts = () => js('({ ...(window.__renders ?? {}) })') as Promise<Record<string, number>>;
+    const before = await counts();
+    // Paced from here, not by a timer in the page: a hidden or covered window throttles those.
+    const sent = 120;
+    for (let i = 0; i < sent; i++) {
+      await stream('text', 'streaming words ');
+      await sleep(33);
+    }
+    await settle(win, 300);
+    const after = await counts();
+    await stream('clear', '');
+    const rendered = (name: string) => (after[name] ?? 0) - (before[name] ?? 0);
+    const report = `${sent} deltas: Sidebar ${rendered('Sidebar')}, SessionRow ${rendered('SessionRow')}, TranscriptView ${rendered('TranscriptView')}, Composer ${rendered('Composer')}`;
+    // A delta changes nothing the sidebar shows: a few renders for the host updates around it, not one per delta.
+    // (Measured on dev with #363: 1 and 1.)
+    if (rendered('Sidebar') > 3) return `failed: the sidebar rendered ${rendered('Sidebar')} times while a session streamed (budget 3); ${report}`;
+    if (rendered('SessionRow') > 5) return `failed: its rows rendered ${rendered('SessionRow')} times while a session streamed (budget 5); ${report}`;
+    return `ok: ${report}`;
+  } finally {
+    engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state: 'closed' });
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`).catch(() => {});
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * The working mark under a reply (WorkingPanel), on a stand-in session: the patch panel on the working line with its
  * light moving, all its jacks pulsing while compacting, and lit in the needs-you colour while a permission prompt waits.
  * Follows the theme (Forest's plugs are its icon's). Takes the working line in light and in dark, as it is and zoomed,
@@ -15456,6 +15512,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
   await step('api retry: the working line says Claude Code is retrying', () => runApiRetryStep(win));
   await step('fast mode: a toggle with a tooltip on models that have it, /fast, why it is blocked, and from New session', () => runFastModeStep(win));
+  await step('render budget: while a session streams, the sidebar and its rows hardly render', () => runRenderBudgetStep(win));
   await step('working panel: the patch panel on the working line, pulsing while compacting, waiting on a permission', () => runWorkingPanelStep(win));
   await step('menu bar: the icon says needs you, the panel lists what needs you, works and finished', () => runMenuBarPanelStep(win));
   await step('menu bar: Allow on a waiting session moves it to Working', () => runMenuBarAllowStep());

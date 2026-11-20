@@ -37,6 +37,7 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { useRows } from '../../state/rowsStore.ts';
 import { markKept, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { useStableCallback } from '../../lib/useStableCallback.ts';
+import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
 import { VirtualRows, type VirtualRowsHandle } from './VirtualRows.tsx';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
@@ -341,6 +342,7 @@ export const SessionRow = memo(function SessionRow({
   /** Quick actions on hover (Settings › Sidebar): without it, the row has no buttons. */
   onQuickAction?(method: QuickActionMethod, data: SessionRowData): void;
 }) {
+  if (RENDER_COUNTS) countRender('SessionRow');
   const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
   // The start of an unsent message typed here (one that counts), or null: selected by the row, so typing in one session re-renders that row only.
   const ownDraft = useDraftPreview(data.id);
@@ -728,6 +730,7 @@ function useWaitingAnnouncement(rows: SessionRowData[], loaded: boolean): string
 }
 
 export function Sidebar() {
+  if (RENDER_COUNTS) countRender('Sidebar');
   const baseRows = useRows((s) => s.rows);
   const anySessions = useSessions((s) => s.sessions.size > 0);
   const waiting = useHosts((s) => s.permissions.size);

@@ -9,7 +9,7 @@ const pixel = (bitmap: Buffer, size: number, x: number, y: number) => [...bitmap
 const centre = (i: number, size: number) => [Math.round(FREE_JACKS[i]!.x * size), Math.round(FREE_JACKS[i]!.y * size)] as const;
 
 describe('shared with the working mark', () => {
-  it('takes the order, the round and the still frame from @seshboard/protocol/working-panel', () => {
+  it('BUDGET: takes the order, the round and the still frame from @seshboard/protocol/working-panel, and Light shows a frame every 300 ms at 256 px', () => {
     // The icon's jacks sit 200px apart on the 1024px canvas, the first at 312.
     expect(FREE_JACKS.map((jack) => [Math.round(jack.x * 1024), Math.round(jack.y * 1024)])).toEqual(FREE_JACK_CELLS.map((cell) => [312 + (cell % 3) * 200, 312 + Math.floor(cell / 3) * 200]));
     expect(FRAME_MS * FRAME_COUNT).toBe(WORKING_ROUND_MS);
@@ -17,6 +17,9 @@ describe('shared with the working mark', () => {
     expect(LIGHT_FRAME_MS * LIGHT_FRAME_COUNT).toBe(WORKING_ROUND_MS);
     expect(LIGHT_FRAME_COUNT).toBe(FREE_JACKS.length);
     expect(1000 / LIGHT_FRAME_MS).toBeCloseTo(3.3, 1);
+    // The budget: Light shows a frame every 300 ms, at 256 px.
+    expect(LIGHT_FRAME_MS).toBe(300);
+    expect(LIGHT_FRAME_SIZE).toBe(256);
     expect(DOCK_LOOKS.light).toEqual({ frames: LIGHT_FRAME_COUNT, ms: LIGHT_FRAME_MS, size: 256 });
     expect(DOCK_LOOKS.smooth).toEqual({ frames: FRAME_COUNT, ms: FRAME_MS, size: 512 });
     expect(STILL_LEVELS.every((level) => level === WORKING_STILL_LEVEL)).toBe(true);
