@@ -7,7 +7,7 @@ import { useProfiles } from '../state/profilesStore.ts';
 import { ProfileBadge, ProfileDot } from './profiles/ProfileBadge.tsx';
 import { Meter } from './ui/Meter.tsx';
 import type { UsageLine } from './session/foldedMeter.ts';
-import { costComputersNotes, countdown, limitCosts, limitLabel, nextUsageEntry, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
+import { costComputersNotes, countdown, FOCUS_MAX_AGE_MS, limitCosts, limitLabel, nextUsageEntry, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { useWindowCosts } from './usage/useWindowCosts.ts';
 import { openUsage } from '../state/usageViewStore.ts';
@@ -17,7 +17,7 @@ import { hasPlanUsage, quotaSummary, resetDay, TOKEN_BILLING } from './providers
 interface UsageState {
   /** Plan usage per Claude profile (each login has its own limits). No entry: not loaded yet. */
   usage: Map<string, UsageEntry>;
-  /** Profiles a band has shown; refreshed when the window comes back into focus (also after a failed fetch). */
+  /** Profiles a band has shown; refreshed when the window comes back into focus, unless the engine's numbers are fresh (also after a failed fetch). */
   wanted: Set<string>;
   set(profileId: string, result: { usage: UsageSnapshot | null; error?: string | null }): void;
 }
@@ -33,14 +33,14 @@ export const useUsage = create<UsageState>()((set) => ({
 }));
 
 /** Asks the engine for a profile's usage (`refresh`: fetch now rather than from its cache) and stores the answer, or why there is none. */
-export function fetchUsage(client: EngineClient, profileId: string, refresh = false): Promise<void> {
-  return client.call('usage.get', { refresh, profileId }).then(
+export function fetchUsage(client: EngineClient, profileId: string, refresh = false, maxAgeMs?: number): Promise<void> {
+  return client.call('usage.get', { refresh, profileId, ...(maxAgeMs ? { maxAgeMs } : {}) }).then(
     (result) => useUsage.getState().set(profileId, result),
     (error: unknown) => useUsage.getState().set(profileId, { usage: null, error: error instanceof Error ? error.message : String(error) }),
   );
 }
 
-/** Follows usage updates, and refreshes the profiles on screen when the window comes back into focus. */
+/** Follows usage updates, and refreshes the profiles on screen when the window comes back into focus, unless the engine's numbers are younger than two minutes. */
 export function useUsageSync(): void {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -48,7 +48,8 @@ export function useUsageSync(): void {
     if (!client) return;
     const off = client.on('usage.changed', ({ profileId, usage }) => useUsage.getState().set(profileId, { usage }));
     const onFocus = () => {
-      for (const profileId of useUsage.getState().wanted) void fetchUsage(client, profileId);
+      // The engine fetches only when its numbers are older than that (each fetch starts a Claude Code process).
+      for (const profileId of useUsage.getState().wanted) void fetchUsage(client, profileId, false, FOCUS_MAX_AGE_MS);
     };
     window.addEventListener('focus', onFocus);
     return () => {

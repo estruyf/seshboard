@@ -742,7 +742,12 @@ export const contract = {
      */
     'usage.get': {
       /** The profile whose plan to report (default: the default profile). */
-      params: z.object({ refresh: z.boolean().default(false), profileId: ProfileId.optional() }),
+      params: z.object({
+        refresh: z.boolean().default(false),
+        profileId: ProfileId.optional(),
+        /** Without `refresh`: how old cached numbers may be before this fetches again (default a minute). The window coming back into focus passes two minutes. */
+        maxAgeMs: z.number().int().positive().optional(),
+      }),
       result: z.object({ usage: UsageSnapshot.nullable(), error: z.string().nullable() }),
     },
     /**

@@ -862,10 +862,16 @@ export class SessionHost {
         return;
       }
       case 'rate_limit_event':
-        this.lastRateLimit = message.rate_limit_info;
-        if (message.rate_limit_info.status === 'rejected') this.rejected = message.rate_limit_info;
-        this.events.rateLimit?.(this.sessionId, message.rate_limit_info);
-        this.events.usageHint?.();
+        {
+          const info = message.rate_limit_info;
+          const before = this.lastRateLimit;
+          this.lastRateLimit = info;
+          if (info.status === 'rejected') this.rejected = info;
+          this.events.rateLimit?.(this.sessionId, info);
+          // These arrive every few seconds in a busy session. Plan usage is only worth asking again when one says
+          // something new (a warning, a limit hit, another window); the monitor keeps a floor between its fetches.
+          if (!before || before.status !== info.status || before.rateLimitType !== info.rateLimitType || before.resetsAt !== info.resetsAt) this.events.usageHint?.();
+        }
         return;
       default:
         return;

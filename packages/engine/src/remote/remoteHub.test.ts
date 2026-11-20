@@ -33,7 +33,7 @@ import {
   type TranscriptMessage,
   writeStub,
 } from '@seshboard/protocol';
-import type { RemoteAppUpdate, RemoteLimitStanding } from '@seshboard/protocol';
+import type { RemoteAppUpdate, RemoteLimitStanding, TranscriptUpdate } from '@seshboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
@@ -128,6 +128,8 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
   const sentImages: RemoteImage[][] = [];
   /** The sessions phones follow now (a watch's `stop` takes it out). */
   const watching = new Set<string>();
+  /** Each watched session's listener, to send it updates as the transcript hub would. */
+  const transcriptListeners = new Map<string, (update: TranscriptUpdate) => void>();
   const answered: string[] = [];
   const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[] }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
@@ -197,7 +199,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     readTranscript: async () => options.transcript ?? ['a', 'b', 'c'].map(message),
     // No scratchpads: the tests of `sessionFiles.ts` cover them.
     scratchpadRoots: async () => [],
-    watchTranscript: (sessionId) => (watching.add(sessionId), () => void watching.delete(sessionId)),
+    watchTranscript: (sessionId, listener) => (watching.add(sessionId), transcriptListeners.set(sessionId, listener), () => void watching.delete(sessionId)),
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
     sendQueuedNow: async (sessionId, id) => void calls.push(`send now ${sessionId} ${id}`),
@@ -300,7 +302,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, dir, port, updateRuns, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
+  return { hub, dir, port, updateRuns, on, watching, transcriptListeners, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -669,6 +671,25 @@ describe('Remote hub', () => {
     expect((await remote.call('sessions.archived', {})).sessions).toEqual([expect.objectContaining({ id: SESSION, steps: 1 })]);
     await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
     expect(calls.at(-1)).toBe('archive run-1 false');
+  });
+
+  it('sends a phone a splice as the whole list, since phones only know append and replace', async () => {
+    const { hub, port, on, transcriptListeners } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const updates: Array<{ mode: string; messages: Array<{ uuid: string }> }> = [];
+    remote.on('transcript.updated', (u) => void updates.push(u));
+    await remote.call('transcript.watch', { sessionId: SESSION });
+    const send = transcriptListeners.get(SESSION)!;
+    send({ sessionId: SESSION, mode: 'replace', messages: ['a', 'b'].map(message) });
+    send({ sessionId: SESSION, mode: 'append', messages: ['c'].map(message) });
+    send({ sessionId: SESSION, mode: 'splice', at: 2, messages: ['s', 'c'].map(message) });
+    await until(() => updates.length === 3);
+    expect(updates.map((u) => [u.mode, u.messages.map((m) => m.uuid).join('')])).toEqual([
+      ['replace', 'ab'],
+      ['append', 'c'],
+      ['replace', 'absc'],
+    ]);
   });
 
   it('stops following a session once it leaves the list, so nothing more of it reaches the phone', async () => {

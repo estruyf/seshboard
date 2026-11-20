@@ -19,7 +19,7 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((d) => removeDir(d)));
 });
 
-function setup(transcripts: Record<string, RawSessionMessage[]>, versions: Record<string, string>) {
+function setup(transcripts: Record<string, RawSessionMessage[]>, versions: Record<string, string>, extra: { writtenAt?: Record<string, number>; now?: () => number } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'seshboard-search-'));
   dirs.push(dir);
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
@@ -30,8 +30,19 @@ function setup(transcripts: Record<string, RawSessionMessage[]>, versions: Recor
     info: async () => undefined,
     messages: async (id: string) => (reads++, transcripts[id] ?? []),
   };
-  const index = new SearchIndex(cache.db, source, () => Object.entries(versions).map(([id, version]) => ({ id, version })), () => {});
-  return { index, reads: () => reads };
+  const index = new SearchIndex(
+    cache.db,
+    source,
+    () => Object.entries(versions).map(([id, version]) => ({ id, version, writtenAt: extra.writtenAt?.[id] ?? null })),
+    () => {},
+    undefined,
+    { quietMs: 30_000, maxWaitMs: 300_000, ...(extra.now ? { now: extra.now } : {}) },
+  );
+  caches.push({ close: () => index.stop() });
+  const all = (id: string) => cache.db.prepare('SELECT rowid, uuid FROM transcript_fts WHERE session_id = ? ORDER BY rowid').all(id) as Array<{ rowid: number; uuid: string }>;
+  const rows = (id: string) => all(id).map((r) => r.uuid);
+  const rowOf = (id: string, uuid: string) => all(id).find((r) => r.uuid === uuid)?.rowid;
+  return { index, reads: () => reads, rows, rowOf };
 }
 
 describe('searchableText and toFtsQuery', () => {
@@ -102,5 +113,91 @@ describe('SearchIndex', () => {
     delete versions.a;
     await index.sync();
     expect(index.search('unique', 5)).toHaveLength(0);
+  });
+
+  it('adds only the new messages of a transcript that grew, and indexes it whole again after a rewrite', async () => {
+    const transcripts = { a: [user('a1', 'first prompt'), claude('a2', 'first answer')] };
+    const versions = { a: '1' };
+    const { index, rows, rowOf } = setup(transcripts, versions);
+    await index.sync();
+    expect(rows('a')).toEqual(['a1', 'a2']);
+    const first = rowOf('a', 'a1');
+    // Grew: the last message indexed is indexed again (it may have been written in parts), the rest are added.
+    transcripts.a = [...transcripts.a, user('a3', 'second prompt'), claude('a4', 'second answer')];
+    versions.a = '2';
+    await index.sync();
+    expect(rows('a')).toEqual(['a1', 'a2', 'a3', 'a4']);
+    expect(rowOf('a', 'a1')).toBe(first);
+    expect(index.search('second', 5).map((h) => h.messageUuid).sort()).toEqual(['a3', 'a4']);
+    expect(index.search('first', 5).map((h) => h.messageUuid).sort()).toEqual(['a1', 'a2']);
+    // Rewound: an earlier message is gone and another took its place. Nothing of the old branch stays findable.
+    transcripts.a = [user('a1', 'first prompt'), claude('b2', 'another answer')];
+    versions.a = '3';
+    await index.sync();
+    expect(rows('a')).toEqual(['a1', 'b2']);
+    expect(index.search('second', 5)).toEqual([]);
+    // Shrank to fewer messages than were indexed.
+    transcripts.a = [user('a1', 'first prompt')];
+    versions.a = '4';
+    await index.sync();
+    expect(rows('a')).toEqual(['a1']);
+  });
+
+  it('indexes the last message again with the next ones, in case it was still being written', async () => {
+    const transcripts = { a: [user('a1', 'question'), claude('a2', 'partial')] };
+    const versions = { a: '1' };
+    const { index, rows } = setup(transcripts, versions);
+    await index.sync();
+    transcripts.a = [user('a1', 'question'), claude('a2', 'partial then complete'), user('a3', 'thanks')];
+    versions.a = '2';
+    await index.sync();
+    expect(rows('a')).toEqual(['a1', 'a2', 'a3']);
+    expect(index.search('complete', 5).map((h) => h.messageUuid)).toEqual(['a2']);
+  });
+
+  it('waits for a session being written to be quiet, unless its turn ended', async () => {
+    let now = 100_000;
+    const writtenAt: Record<string, number> = { busy: now - 1_000, quiet: now - 60_000 };
+    const versions: Record<string, string> = { busy: '1', quiet: '1' };
+    const { index, reads } = setup({ busy: [user('x1', 'busy words')], quiet: [user('q1', 'quiet words')] }, versions, { writtenAt, now: () => now });
+    await index.sync();
+    expect(reads()).toBe(1);
+    expect(index.search('busy', 5)).toEqual([]);
+    expect(index.search('quiet', 5)).toHaveLength(1);
+    // Its turn ended: indexed now.
+    index.settled('busy');
+    await index.sync();
+    expect(index.search('busy', 5)).toHaveLength(1);
+    expect(reads()).toBe(2);
+    // Written again: it waits until it has been quiet long enough.
+    writtenAt.busy = now;
+    versions.busy = '2';
+    await index.sync();
+    expect(reads()).toBe(2);
+    now += 31_000;
+    await index.sync();
+    expect(reads()).toBe(3);
+  });
+
+  it('indexes a session that is never quiet at least every five minutes', async () => {
+    let now = 1_000_000;
+    const writtenAt: Record<string, number> = { busy: now };
+    const versions: Record<string, string> = { busy: '1' };
+    const { index, reads } = setup({ busy: [user('x1', 'always busy')] }, versions, { writtenAt, now: () => now });
+    await index.sync();
+    expect(reads()).toBe(0);
+    // Written every few seconds for four minutes: still waiting.
+    for (let i = 0; i < 4; i++) {
+      now += 60_000;
+      writtenAt.busy = now - 2_000;
+      versions.busy = String(i + 2);
+      await index.sync();
+    }
+    expect(reads()).toBe(0);
+    now += 61_000;
+    writtenAt.busy = now - 2_000;
+    await index.sync();
+    expect(reads()).toBe(1);
+    expect(index.search('busy', 5)).toHaveLength(1);
   });
 });

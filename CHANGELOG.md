@@ -6,11 +6,15 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **The Dock animation is lighter.** Settings › Theme › App icon › Show when Claude is working now has Off, Light and Smooth. Light is the new default: the same motion at about 3 frames a second, using about 2% of a CPU core while Claude works instead of 20%. Smooth keeps the old 13 frames a second. If you had it on, you get Light, and if you had it off, it stays off.
+- **Busy sessions use far less CPU.** While Claude works, Seshboard reads only what was added to the transcript instead of the whole file, shows a session it runs from the live messages, and sends the sidebar a busy session's new time about every 15 seconds. Switching back to a session you just looked at is quicker. Search adds a session's new messages when its turn ends, or once it has been quiet for 30 seconds.
+- **Seshboard checks your plan usage less often.** At most once a minute per profile while you work, and the check no longer runs your hooks or starts your MCP servers.
 - **A big session list stays smooth.** The sidebar no longer redraws every row when one session changes, when you type in a message box or while you scroll the list: about 20 times fewer rows are redrawn in each case. With about 750 sessions, scrolling takes about 60% less script time.
 
 ### Fixed
 
 - **Copilot sessions on GPT models answer again.** A Copilot session on a GPT model failed every message with "Function 'browser.browser-click' is not allowed in reserved namespace 'browser'". Seshboard's browser tools now go by another name for these agents, and still show as browser tools in the transcript.
+- **New session keeps your choices when you pick another project.** A profile, model, effort, permission mode or worktree you set by hand stays when you switch to another project, instead of going back to that project's defaults. The branch you picked still belongs to its own project.
 
 ## [1.4.0] - 2026-11-20
 
@@ -83,6 +87,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **Clear an answer to a question.** On a question card, click a picked answer again (or press its number) to clear it.
 - **Mute a browser tab from its speaker.** The speaker on a tab that plays sound is now a button: click it to mute the tab, and click the crossed-out speaker to turn the sound back on.
 - Web addresses without `https://` (`github.com/org/repo/pull/12`) are links in your prompts and Claude's replies.
 - **A shorter top of the sidebar.** Home, Upcoming, Activity and Browser sit in one tray. The sort order (**Recent** or **Quickest to unblock**) is a menu beside the project filter, on the same row. **Add a project folder…** is in the project filter's menu. Activity no longer shows a count on its icon.
@@ -99,6 +104,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Agents see the buttons in SharePoint's dialogs.** The agent's snapshot of a page in the browser left out dialogs built with Fluent UI, such as SharePoint's *Allow debug scripts?*, so it could not click *Load debug scripts*. It now lists them and clicks them.
 - **The branch menus list the branches on the remote.** In a project you had just cloned, the branch menu in New session showed only `main`, not the other branches on GitHub. The menus in New session, the command palette, a session's header and the project's defaults now list them too, with the remote's name (`origin`) next to them. Picking one checks it out as a local branch that follows the remote one.
 - **Copying text from a reply no longer copies the theme's colours.** Selecting part of a reply and pressing ⌘C (or Copy in the selection's toolbar or right-click menu) used to paste into an email, Docs or Word with a coloured background behind code and the theme's text colour, which read badly on a white page in dark mode. It now pastes the selection with its headings, bold, lists, links, code and tables, without colours and without text you could not select, such as the turn line. A selection of a few table rows or list items keeps its table or list, only the words you selected are copied, and your prompts keep their line breaks and spaces. Select all (⌘A) in the conversation, reading mode or a file preview now selects only that text, as an editor does, so copying it is clean too. The conversation is drawn a screenful at a time, so it selects the replies drawn. A formula copies as its TeX source (`$x^2$`), and a Mermaid diagram is left out. It works in the conversation, reading mode, another computer's conversation and the file preview. Links to files in your project paste as their text.
+- **Unsent answers stay when you switch sessions.** Answers you picked or typed on a question card, and what you typed for Claude on a permission or plan card, are still there when you come back from another session.
 - **JSON and XML are readable in the browser in dark mode.** A REST response the browser shows as text, such as JSON or an XML feed, had white text on a white page. It now gets a dark background, as in Chrome.
 - **The speaker on a browser tab no longer blinks.** A tab playing music showed and hid its speaker at every quiet moment in the music. The speaker now stays until the page has been quiet for two seconds, as in Chrome.
 - **Enter in the browser's address bar reloads the page** when you haven't changed the address, instead of asking you to type one. A loading page now shows a short line that runs along the toolbar, as in VS Code, instead of a full-width pulse.

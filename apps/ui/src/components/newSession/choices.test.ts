@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Effort, ProfileDefaults, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
-import { globalChoices, globalMode, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
+import { carriedPicks, globalChoices, globalMode, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
 
 const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 
@@ -148,6 +148,15 @@ describe('the global model and effort', () => {
 
   it('start a session a link starts too', () => {
     expect(linkStartingChoices(globals, null, 'default')).toMatchObject({ model: 'opus', effort: 'high', permissionMode: 'default' });
+  });
+});
+
+describe('carriedPicks', () => {
+  it('keeps what was set by hand, but no branch of the old repository', () => {
+    expect(carriedPicks({ model: 'opus', effort: 'high', permissionMode: 'plan', workspace: 'worktree' })).toEqual({ model: 'opus', effort: 'high', permissionMode: 'plan', workspace: 'worktree' });
+    expect(carriedPicks({ branch: 'feat/x' })).toEqual({});
+    expect(carriedPicks({ baseRef: 'head' })).toEqual({ baseRef: 'head' });
+    expect(carriedPicks({ baseRef: 'refs/heads/develop' })).toEqual({});
   });
 });
 

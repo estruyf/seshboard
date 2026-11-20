@@ -110,6 +110,11 @@ class FakeQuery {
         state('idle');
         continue;
       }
+      if (text === 'rate updates') {
+        // A busy turn: the same rate-limit update over and over, then a different one, then the reply.
+        const info = (resetsAt: number, status = 'allowed') => ({ type: 'rate_limit_event', session_id: sessionId, rate_limit_info: { status, rateLimitType: 'five_hour', resetsAt } });
+        for (const message of [info(10), info(10), info(10), info(10, 'allowed_warning'), info(10, 'allowed_warning'), info(20, 'allowed_warning')]) this.out.push(message);
+      }
       if (text === 'crash') {
         this.out.fail(new Error('Claude Code process exited with code 1'));
         return;
@@ -266,6 +271,7 @@ function setup(
     /** Sees each process as it starts, before it gets a message. */
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
+    onUsageHint?: HostManagerDeps['onUsageHint'];
     signIns?: HostManagerDeps['signIns'];
     links?: HostManagerDeps['links'];
     readOnly?: HostManagerDeps['readOnly'];
@@ -327,6 +333,7 @@ function setup(
     },
   };
   const manager = new HostManager({
+    ...(opts.onUsageHint ? { onUsageHint: opts.onUsageHint } : {}),
     sdk: async () => sdk,
     // Each profile's processes get its config folder.
     env: async (profileId) => ({ PATH: '/usr/bin', ...(profileId === 'default' ? {} : { CLAUDE_CONFIG_DIR: `/config/${profileId}` }) }),
@@ -489,6 +496,20 @@ describe('HostManager', () => {
     await until(() => t.turns.length === 2);
     expect(limit).toBeNull();
     await until(() => t.infos.at(-1)!.usageLimit === null);
+    t.manager.closeAll();
+  });
+
+  it('hints that plan usage changed when a rate-limit update says something new and at the end of a turn, not for every update', async () => {
+    const hints: string[] = [];
+    const t = setup({ onUsageHint: (profileId) => hints.push(profileId) });
+    // Six rate-limit updates in a turn, three different (new, a warning, another reset): a hint for each of those and the turn's end.
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'rate updates' });
+    await until(() => lastState(t.infos, id) === 'idle' && t.turns.length === 1);
+    expect(hints).toHaveLength(4);
+    // The same update again in the next turn is nothing new: only the turn's end hints.
+    await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(hints).toHaveLength(5);
     t.manager.closeAll();
   });
 

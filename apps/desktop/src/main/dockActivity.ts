@@ -4,6 +4,7 @@
  * gets them, and no image ships for them. The painting is pure, for testing; `DockActivity` gets Electron through a host.
  */
 
+import type { DockActivityMode } from '@seshboard/protocol/bridge';
 import { FREE_JACK_CELLS, jackCell, WORKING_ROUND_MS, WORKING_STILL_LEVEL, WORKING_TAIL } from '@seshboard/protocol/working-panel';
 
 /**
@@ -23,10 +24,30 @@ export const JACK_STEPS = 4;
 export const FRAME_COUNT = FREE_JACKS.length * JACK_STEPS;
 /** How many jacks the tail reaches back over. */
 const TAIL = WORKING_TAIL;
-/** About 13 frames a second, so the cables' pulse runs smoothly: one round of the five jacks takes `WORKING_ROUND_MS`. */
+/** Smooth: about 13 frames a second, so the cables' pulse runs smoothly: one round of the five jacks takes `WORKING_ROUND_MS`. */
 export const FRAME_MS = WORKING_ROUND_MS / FRAME_COUNT;
-/** The size the frames are drawn at: the Dock's largest (128pt, magnified, on a Retina screen) and then some. */
+/** Smooth's size: the Dock's largest (128pt, magnified, on a Retina screen) and then some. */
 export const FRAME_SIZE = 512;
+
+/**
+ * Light: one round in the same time with fewer, smaller frames, about 3 a second at 256px (the Dock's 128pt on a Retina screen,
+ * unmagnified). Every `setIcon` costs main CPU by the pixel, so this takes about a tenth of Smooth's.
+ */
+/** One frame a jack, like the `WorkingPanel` under replies (`WORKING_HOLD`): each frame has one jack fully lit. */
+export const LIGHT_FRAME_COUNT = FREE_JACKS.length;
+export const LIGHT_FRAME_MS = WORKING_ROUND_MS / LIGHT_FRAME_COUNT;
+export const LIGHT_FRAME_SIZE = 256;
+
+/** What a mode draws: how many frames a round has, how long each shows and their size in pixels. */
+export interface DockLook {
+  frames: number;
+  ms: number;
+  size: number;
+}
+export const DOCK_LOOKS: Record<Exclude<DockActivityMode, 'off'>, DockLook> = {
+  light: { frames: LIGHT_FRAME_COUNT, ms: LIGHT_FRAME_MS, size: LIGHT_FRAME_SIZE },
+  smooth: { frames: FRAME_COUNT, ms: FRAME_MS, size: FRAME_SIZE },
+};
 
 /** An amber light with a hotter centre, the same on every colourway: the holes are dark on all of them. */
 const AMBER = { r: 0xff, g: 0x96, b: 0x1a };
@@ -46,12 +67,20 @@ const PLUG = 46;
 const PULSE_OUTSIDE = 0.2;
 /** The pulse's length along its cable (a share of the cable), and the light it adds at its brightest (of 255). */
 const PULSE_LENGTH = 0.13;
+
+/**
+ * The pulse's length for a round of `count` frames: with fewer frames it moves further each time, so it gets as long as one
+ * step (never shorter than Smooth's) and still reads as a light running along the cable instead of hopping dots.
+ */
+export function pulseLengthFor(count: number): number {
+  return Math.max(PULSE_LENGTH, (1 + 2 * PULSE_OUTSIDE) / count);
+}
 const PULSE_LIGHT = 115;
 
-/** How lit each jack is (0–1) in a frame: the one the light is on is full, the two before it fade. */
-export function jackLevels(frame: number): number[] {
+/** How lit each jack is (0–1) in a frame of a round of `count` frames: the one the light is on is full, the two before it fade. */
+export function jackLevels(frame: number, count = FRAME_COUNT): number[] {
   const n = FREE_JACKS.length;
-  const head = (((frame % FRAME_COUNT) + FRAME_COUNT) % FRAME_COUNT) / JACK_STEPS;
+  const head = ((((frame % count) + count) % count) / count) * n;
   return FREE_JACKS.map((_, i) => {
     const behind = (((head - i) % n) + n) % n;
     return behind < TAIL ? 1 - behind / TAIL : 0;
@@ -62,8 +91,8 @@ export function jackLevels(frame: number): number[] {
  * Where each cable's pulse is in a frame: 0 at its first plug, 1 at its last, a little outside both while it comes in
  * and goes out.
  */
-export function cableHeads(frame: number): number[] {
-  const round = (((frame % FRAME_COUNT) + FRAME_COUNT) % FRAME_COUNT) / FRAME_COUNT;
+export function cableHeads(frame: number, count = FRAME_COUNT): number[] {
+  const round = (((frame % count) + count) % count) / count;
   return CABLES.map((cable) => -PULSE_OUTSIDE + ((round + cable.phase) % 1) * (1 + 2 * PULSE_OUTSIDE));
 }
 
@@ -89,12 +118,13 @@ interface CablePixels {
   weight: Float32Array;
 }
 
-let cablePixels: { size: number; cables: CablePixels[] } | null = null;
+const cablePixels = new Map<number, CablePixels[]>();
 
 /** The cables' pixels at `size`, worked out once: the frames all share them. */
 function cablesAt(size: number): CablePixels[] {
-  if (cablePixels?.size !== size) cablePixels = { size, cables: CABLES.map((cable) => cablePixelsAt(cable.curve, cable.width / 2, size)) };
-  return cablePixels.cables;
+  let cables = cablePixels.get(size);
+  if (!cables) cablePixels.set(size, (cables = CABLES.map((cable) => cablePixelsAt(cable.curve, cable.width / 2, size))));
+  return cables;
 }
 
 function cablePixelsAt(curve: readonly [number, number][], halfWidth: number, size: number): CablePixels {
@@ -147,10 +177,11 @@ function cablePixelsAt(curve: readonly [number, number][], halfWidth: number, si
 
 /**
  * A frame: a copy of the icon's pixels (BGRA, `size` square, as `nativeImage.toBitmap()` gives them on macOS) with
- * each jack lit to its level, and each cable's pulse at its place along it (`cableHeads`; none when left out). Only
+ * each jack lit to its level, and each cable's pulse at its place along it (`cableHeads`; none when left out; its length
+ * `pulseLengthFor` the round's frames). Only
  * the jacks and the cables are touched; the rest is the icon as it is.
  */
-export function paintFrame(base: Buffer, size: number, levels: readonly number[], heads: readonly number[] = []): Buffer {
+export function paintFrame(base: Buffer, size: number, levels: readonly number[], heads: readonly number[] = [], pulseLength = PULSE_LENGTH): Buffer {
   const out = Buffer.from(base);
   const hole = HOLE * size;
   const reach = Math.ceil(RING * size);
@@ -181,7 +212,7 @@ export function paintFrame(base: Buffer, size: number, levels: readonly number[]
     const head = heads[k];
     if (head === undefined) return;
     for (let j = 0; j < cable.index.length; j++) {
-      const a = Math.exp(-(((cable.along[j]! - head) / PULSE_LENGTH) ** 2)) * cable.weight[j]!;
+      const a = Math.exp(-(((cable.along[j]! - head) / pulseLength) ** 2)) * cable.weight[j]!;
       if (a < 0.01) continue;
       const i4 = cable.index[j]! * 4;
       // Premultiplied, as above: no more light than the pixel's alpha holds.
@@ -212,14 +243,17 @@ export interface DockActivityHost<Image> {
 /**
  * Settings › Theme › App icon › Show when Claude is working: animates the Dock's icon while a session works (main's
  * Notifier says when), and puts the colourway back when none does. The frames are made when the animation starts and
- * let go when it stops, so they take no memory while nothing works.
+ * let go when it stops, so they take no memory while nothing works. The colourway's file and Reduce motion are read
+ * when it starts and again on `refresh()`, not on every frame.
  */
 export class DockActivity<Image> {
-  #enabled = true;
+  #mode: DockActivityMode = 'light';
   #working = false;
   /** The smoke test shows the animation without a session working. */
   #held = false;
-  #frames: { file: string; still: boolean; images: Image[] } | null = null;
+  #frames: { file: string; size: number; still: boolean; images: Image[] } | null = null;
+  #file: string | undefined;
+  #still = false;
   #frame = 0;
   #stop: (() => void) | null = null;
   #showing = false;
@@ -232,15 +266,28 @@ export class DockActivity<Image> {
     return this.#showing;
   }
 
+  /** How long each frame shows while the activity does (Reduce motion's still one stays), or null when it doesn't: the smoke test tells Light from Smooth by it. */
+  get frameMs(): number | null {
+    return this.#showing ? this.#look().ms : null;
+  }
+
   /** Frames put in the Dock so far, for the smoke test. */
   get shown(): number {
     return this.#shown;
   }
 
   /** The setting, at launch and on every change. */
-  setEnabled(on: boolean): void {
-    this.#enabled = on;
-    this.#update();
+  setMode(mode: DockActivityMode): void {
+    const changed = mode !== this.#mode;
+    this.#mode = mode;
+    // Another look while it shows: start over with its frames and pace.
+    if (changed && this.#showing && mode !== 'off') {
+      this.#stopTimer();
+      this.#read();
+      this.#frames = null;
+      this.#frame = 0;
+      this.#run();
+    } else this.#update();
   }
 
   /** Whether a session works, after every change the Notifier sees. */
@@ -255,52 +302,81 @@ export class DockActivity<Image> {
     this.#update();
   }
 
-  /** Another colourway was chosen: the next frame is drawn from it (Reduce motion's still one at once). */
-  iconChanged(): void {
-    if (this.#showing && !this.#stop) this.#tick();
+  /**
+   * Something the frames depend on may have changed (another colourway, the system's appearance and so Reduce motion):
+   * the file and Reduce motion are read again. The next frame is drawn from the new colourway (Reduce motion's still one
+   * at once), and Reduce motion going on or off swaps the animation and the still frame.
+   */
+  refresh(): void {
+    if (!this.#showing) return;
+    const was = this.#still;
+    this.#read();
+    if (this.#still !== was) {
+      this.#stopTimer();
+      this.#run();
+    } else if (!this.#stop) this.#tick();
   }
 
   #update(): void {
-    const want = this.#enabled && (this.#working || this.#held);
+    const want = this.#mode !== 'off' && (this.#working || this.#held);
     if (want && !this.#showing) this.#start();
     else if (!want && this.#showing) this.#end();
+  }
+
+  #read(): void {
+    this.#file = this.host.file();
+    this.#still = this.host.reducedMotion();
+  }
+
+  #stopTimer(): void {
+    this.#stop?.();
+    this.#stop = null;
   }
 
   #start(): void {
     this.#showing = true;
     this.#frame = 0;
+    this.#read();
+    this.#run();
+  }
+
+  /** The first frame at once, then one every tick; Reduce motion's still frame stays until the work is done. */
+  #run(): void {
     this.#tick();
-    // Reduce motion: the still frame stays until the work is done.
-    if (!this.#frames?.still) this.#stop = this.host.every(FRAME_MS, () => this.#tick());
+    if (!this.#still) this.#stop = this.host.every(this.#look().ms, () => this.#tick());
   }
 
   #end(): void {
-    this.#stop?.();
-    this.#stop = null;
+    this.#stopTimer();
     this.#showing = false;
     this.#frames = null;
     this.host.restore();
   }
 
+  #look(): DockLook {
+    return DOCK_LOOKS[this.#mode === 'smooth' ? 'smooth' : 'light'];
+  }
+
   #tick(): void {
-    const frames = this.#framesFor(this.host.file());
+    const frames = this.#framesFor(this.#file);
     if (!frames) return;
     const image = frames.images[this.#frame % frames.images.length]!;
-    this.#frame = (this.#frame + 1) % FRAME_COUNT;
+    this.#frame = (this.#frame + 1) % this.#look().frames;
     this.host.show(image);
     this.#shown++;
   }
 
-  /** The frames for the colourway's file, made again when the colourway or Reduce motion changed. */
+  /** The frames for the colourway's file, made again when the colourway, the size or Reduce motion changed. */
   #framesFor(file: string | undefined): { images: Image[]; still: boolean } | null {
     if (!file) return null;
-    const still = this.host.reducedMotion();
-    if (this.#frames?.file === file && this.#frames.still === still) return this.#frames;
-    const base = this.host.bitmap(file, FRAME_SIZE);
+    const { frames: count, size } = this.#look();
+    const still = this.#still;
+    if (this.#frames?.file === file && this.#frames.size === size && this.#frames.still === still) return this.#frames;
+    const base = this.host.bitmap(file, size);
     if (!base) return null;
     // Reduce motion: the jacks lit, and no pulse on the cables.
-    const paint = still ? [paintFrame(base, FRAME_SIZE, STILL_LEVELS)] : Array.from({ length: FRAME_COUNT }, (_, frame) => paintFrame(base, FRAME_SIZE, jackLevels(frame), cableHeads(frame)));
-    this.#frames = { file, still, images: paint.map((bitmap) => this.host.image(bitmap, FRAME_SIZE)) };
+    const paint = still ? [paintFrame(base, size, STILL_LEVELS)] : Array.from({ length: count }, (_, frame) => paintFrame(base, size, jackLevels(frame, count), cableHeads(frame, count), pulseLengthFor(count)));
+    this.#frames = { file, size, still, images: paint.map((bitmap) => this.host.image(bitmap, size)) };
     return this.#frames;
   }
 }
