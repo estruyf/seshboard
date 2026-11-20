@@ -11,12 +11,20 @@ import { CheckMark } from '../ui/Checkbox.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';
 import { toolSummary } from '../transcript/toolSummary.ts';
 import { cardKeyAction, OVERLAY_SELECTOR, waitingLabel, type CardKind, type KeyTarget } from './permissionKeys.ts';
-import { nextOpenQuestion } from './questionFlow.ts';
+import { nextOpenQuestion, toggleAnswer } from './questionFlow.ts';
+import { EMPTY_QUESTION_DRAFT, usePermissionDrafts } from '../../state/permissionDraftsStore.ts';
 
 /** Sends the answer; resolves to whether the engine took it (a failure shows under the card). */
 type Respond = (decision: PermissionDecision) => Promise<boolean>;
 
 const DECLINED = 'The user declined this action.';
+
+/** The feedback typed on a card, kept per request so it survives going to another session and back. */
+function useFeedbackDraft(requestId: string): [string, (text: string) => void] {
+  const feedback = usePermissionDrafts((s) => s.feedback.get(requestId) ?? '');
+  const setFeedback = usePermissionDrafts((s) => s.setFeedback);
+  return [feedback, (text) => setFeedback(requestId, text)];
+}
 
 function useRespond(request: PermissionRequest): { respond: Respond; busy: boolean; error: string | null } {
   const connection = useEngineConnection();
@@ -237,7 +245,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
   const { respond, busy, error } = useRespond(request);
   const agent = useAgentName(request.sessionId);
   const [showInput, setShowInput] = useState(false);
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useFeedbackDraft(request.requestId);
   const allowRef = useFocusIfIdle();
   const inputId = useId();
   const { detail } = toolSummary(request.toolName, request.input, cwd);
@@ -367,25 +375,22 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
   const agent = useAgentName(request.sessionId);
   const input = request.input as { questions?: Question[] };
   const questions = input.questions ?? [];
-  const [answers, setAnswers] = useState<Record<string, string[]>>({});
-  const [other, setOther] = useState<Record<string, string>>({});
-  // The question the number keys answer; it moves on as you pick and with Enter.
-  const [step, setStep] = useState(0);
+  // Kept in a store, not the card, so going to another session and back doesn't lose them.
+  // `step` is the question the number keys answer; it moves on as you pick and with Enter.
+  const { answers, other, step } = usePermissionDrafts((s) => s.questions.get(request.requestId) ?? EMPTY_QUESTION_DRAFT);
+  const update = usePermissionDrafts((s) => s.updateQuestion);
+  const setStep = (next: number) => update(request.requestId, () => ({ step: next }));
   const last = questions.length - 1;
   const current = questions[Math.min(step, last)];
 
   const toggle = (q: Question, label: string) =>
-    setAnswers((c) => {
-      const picked = c[q.question] ?? [];
-      const next = q.multiSelect ? (picked.includes(label) ? picked.filter((l) => l !== label) : [...picked, label]) : [label];
-      return { ...c, [q.question]: next };
-    });
+    update(request.requestId, (d) => ({ answers: { ...d.answers, [q.question]: toggleAnswer(d.answers[q.question] ?? [], label, q.multiSelect ?? false) } }));
 
   const final = (q: Question) => [...(answers[q.question] ?? []), ...(other[q.question]?.trim() ? [other[q.question]!.trim()] : [])];
   const complete = questions.every((q) => final(q).length > 0);
 
   const nextUnanswered = (from: number) => nextOpenQuestion(questions.map((q) => final(q).length > 0), from);
-  /** One way to answer, for a click and a number key. A single choice that is the first answer moves on; changing an answer, or a multi-select, stays. */
+  /** One way to answer, for a click and a number key. A single choice that is the first answer moves on; changing or clearing an answer, or a multi-select, stays. */
   const choose = (qi: number, q: Question, label: string) => {
     const first = final(q).length === 0;
     toggle(q, label);
@@ -486,7 +491,10 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
             )}
             <input
               value={other[q.question] ?? ''}
-              onChange={(e) => setOther((c) => ({ ...c, [q.question]: e.target.value }))}
+              onChange={(e) => {
+                const value = e.target.value;
+                update(request.requestId, (d) => ({ other: { ...d.other, [q.question]: value } }));
+              }}
               placeholder={q.multiSelect ? 'Something else (optional)' : 'Or type your own answer'}
               aria-label={`Your own answer to: ${q.question}`}
               className="h-8 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
@@ -522,7 +530,7 @@ function PlanApproval({ request, titleId, cardRef }: CardProps) {
   const { respond, busy, error } = useRespond(request);
   const agent = useAgentName(request.sessionId);
   const connection = useEngineConnection();
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useFeedbackDraft(request.requestId);
   const plan = (request.input as { plan?: string }).plan ?? '';
   const approveWithEdits = async () => {
     // Only switch modes once the plan is really approved: a failed answer leaves the card up.

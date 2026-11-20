@@ -1009,9 +1009,13 @@ export class RemoteHub {
         this.checkSession(sessionId);
         if (this.watches.has(phone)) unwatch(phone);
         else phone.onDispose(() => unwatch(phone));
+        // What this connection was sent, so a `splice` (which phones and other computers don't know) goes as the whole list.
+        let shown: TranscriptMessage[] = [];
         const stop = this.options.watchTranscript(sessionId, (update) => {
           if (update.error) return;
-          phone.emit('transcript.updated', { sessionId, mode: update.mode, messages: toRemote(sessionId, update.messages) });
+          shown = update.mode === 'replace' ? update.messages : update.mode === 'splice' ? shown.slice(0, update.at ?? 0).concat(update.messages) : shown.concat(update.messages);
+          const mode = update.mode === 'append' ? 'append' : 'replace';
+          phone.emit('transcript.updated', { sessionId, mode, messages: toRemote(sessionId, mode === 'append' ? update.messages : shown) });
         });
         this.watches.set(phone, { sessionId, stop });
         phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });

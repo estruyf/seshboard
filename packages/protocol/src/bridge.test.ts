@@ -28,6 +28,19 @@ describe('updateChannel preference', () => {
   });
 });
 
+describe('dockActivity preference', () => {
+  it('is Light by default, and keeps Off, Light and Smooth', () => {
+    expect(DEFAULT_PREFERENCES.dockActivity).toBe('light');
+    for (const mode of ['off', 'light', 'smooth'] as const) expect(sanitizePreferences({ dockActivity: mode })).toEqual({ dockActivity: mode });
+    expect(sanitizePreferences({ dockActivity: 'fast' })).toEqual({});
+  });
+
+  it('turns the old switch into a mode: on is Light, off is Off', () => {
+    expect(sanitizePreferences({ dockActivity: true })).toEqual({ dockActivity: 'light' });
+    expect(sanitizePreferences({ dockActivity: false })).toEqual({ dockActivity: 'off' });
+  });
+});
+
 describe('sidebarCollapsed preference', () => {
   it('collapses to the minimal rail by default', () => {
     expect(DEFAULT_PREFERENCES.sidebarCollapsed).toBe('minimal');

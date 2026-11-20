@@ -1051,4 +1051,12 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE session_usage ADD COLUMN usd REAL;
   `,
+
+  // v66: Search adds only the new messages of a transcript that grew: how many it read, a hash of their uuids, and the
+  // row of the last one (indexed again with the next ones). Rows from before have none, and are indexed whole once.
+  `
+  ALTER TABLE transcript_indexed ADD COLUMN messages INTEGER;
+  ALTER TABLE transcript_indexed ADD COLUMN prefix TEXT;
+  ALTER TABLE transcript_indexed ADD COLUMN last_rowid INTEGER;
+  `,
 ];

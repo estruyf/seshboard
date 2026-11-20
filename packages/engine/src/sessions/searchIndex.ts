@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { withoutContext, type SearchHit, type TranscriptMessage } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
@@ -45,20 +46,64 @@ export function toFtsQuery(input: string): string | null {
 
 interface IndexedSession {
   id: string;
-  /** Changes whenever the transcript does (its mtime and size). */
+  /** Changes whenever the transcript does (its time and size). */
   version: string;
+  /** When its transcript was last written, if known: one written in the last `quietMs` waits until it is quiet. */
+  writtenAt?: number | null;
+}
+
+/** What the index holds for a session: enough to add only the messages after it when the transcript just grew. */
+interface Indexed {
+  version: string;
+  /** How many messages were read, and a hash of their uuids in order (null for rows written before these existed). */
+  messages: number | null;
+  prefix: string | null;
+  /** The row of the last message, which is indexed again with the next messages (null when it had no text). */
+  lastRowid: number | null;
+}
+
+export interface SearchIndexOptions {
+  /** How long a transcript must go unwritten before it is indexed, unless its turn ended (`settled`). */
+  quietMs?: number;
+  /** How long a session that is never quiet waits at most. */
+  maxWaitMs?: number;
+  now?: () => number;
+}
+
+/** Writes in a busy session come about every second: it is indexed once it is quiet this long, or when its turn ends. */
+const QUIET_MS = 30_000;
+/** A session written to all the time (a long turn in a terminal) is indexed this often all the same. */
+const MAX_WAIT_MS = 5 * 60_000;
+
+/** The hash of the first `count` uuids, and of all of them. */
+function prefixHashes(messages: readonly TranscriptMessage[], count: number): { prefix: string | null; all: string } {
+  const hash = createHash('sha1');
+  let prefix: string | null = count === 0 ? hash.copy().digest('hex') : null;
+  messages.forEach((m, i) => {
+    hash.update(`${m.uuid}\n`);
+    if (i === count - 1) prefix = hash.copy().digest('hex');
+  });
+  return { prefix, all: hash.digest('hex') };
 }
 
 /**
- * Full-text index of every transcript. Sessions are (re)indexed one at a time in
- * the background whenever their transcript changed, so search stays current
- * without ever blocking the engine.
+ * Full-text index of every transcript. Sessions are (re)indexed one at a time in the background whenever their
+ * transcript changed, so search stays current without ever blocking the engine. A session being written waits until
+ * it is quiet or its turn ended, and a transcript that only grew gets its new messages added, not all of them again.
  */
 export class SearchIndex {
   private readonly statements;
   private running: Promise<void> | null = null;
   private again = false;
   private pending: IndexedSession[] = [];
+  /** Sessions whose turn ended: indexed at the next pass, written just now or not. */
+  private readonly ended = new Set<string>();
+  private retry: { timer: ReturnType<typeof setTimeout>; at: number } | undefined;
+  /** When each busy session was first left waiting, so one that is never quiet waits at most `maxWaitMs`. */
+  private readonly waiting = new Map<string, number>();
+  private readonly quietMs: number;
+  private readonly maxWaitMs: number;
+  private readonly now: () => number;
   progress = { indexed: 0, total: 0 };
 
   constructor(
@@ -68,12 +113,17 @@ export class SearchIndex {
     private readonly log: (level: 'debug' | 'warn', message: string) => void,
     /** Each transcript as it was read for indexing, for what else is read from it (the pull requests a session opened). */
     private readonly onRead?: (sessionId: string, messages: readonly TranscriptMessage[]) => void,
+    options: SearchIndexOptions = {},
   ) {
+    this.quietMs = options.quietMs ?? QUIET_MS;
+    this.maxWaitMs = options.maxWaitMs ?? MAX_WAIT_MS;
+    this.now = options.now ?? Date.now;
     this.statements = {
-      versions: db.prepare('SELECT session_id, version FROM transcript_indexed'),
+      versions: db.prepare('SELECT session_id, version, messages, prefix, last_rowid FROM transcript_indexed'),
       clear: db.prepare('DELETE FROM transcript_fts WHERE session_id = ?'),
+      clearRow: db.prepare('DELETE FROM transcript_fts WHERE rowid = ?'),
       insert: db.prepare('INSERT INTO transcript_fts (session_id, uuid, role, at, text) VALUES (?, ?, ?, ?, ?)'),
-      mark: db.prepare('INSERT OR REPLACE INTO transcript_indexed (session_id, version) VALUES (?, ?)'),
+      mark: db.prepare('INSERT OR REPLACE INTO transcript_indexed (session_id, version, messages, prefix, last_rowid) VALUES (?, ?, ?, ?, ?)'),
       forget: db.prepare('DELETE FROM transcript_indexed WHERE session_id = ?'),
       search: db.prepare(
         `SELECT session_id AS sessionId, uuid AS messageUuid, role, at,
@@ -114,8 +164,23 @@ export class SearchIndex {
     return this.running;
   }
 
+  /** The session's turn ended: the next pass indexes it, however recently it was written. */
+  settled(sessionId: string): void {
+    this.ended.add(sessionId);
+  }
+
+  stop(): void {
+    clearTimeout(this.retry?.timer);
+    this.retry = undefined;
+  }
+
   private async pass(): Promise<void> {
-    const indexed = new Map((this.statements.versions.all() as Array<{ session_id: string; version: string }>).map((r) => [r.session_id, r.version]));
+    const indexed = new Map(
+      (this.statements.versions.all() as Array<{ session_id: string; version: string; messages: number | null; prefix: string | null; last_rowid: number | null }>).map((r) => [
+        r.session_id,
+        { version: r.version, messages: r.messages, prefix: r.prefix, lastRowid: r.last_rowid } satisfies Indexed,
+      ]),
+    );
     const current = this.sessions();
     const live = new Set(current.map((s) => s.id));
     for (const id of indexed.keys()) {
@@ -123,11 +188,25 @@ export class SearchIndex {
       this.statements.clear.run(id);
       this.statements.forget.run(id);
     }
-    // Newest first, so recent conversations are searchable soonest.
-    this.pending = current.filter((s) => indexed.get(s.id) !== s.version);
+    for (const id of this.ended) if (!live.has(id)) this.ended.delete(id);
+    for (const id of this.waiting.keys()) if (!live.has(id)) this.waiting.delete(id);
+    // Newest first, so recent conversations are searchable soonest. One written just now waits until it is quiet (or
+    // its turn ends, or it has waited `maxWaitMs`).
+    const now = this.now();
+    const changed = current.filter((s) => indexed.get(s.id)?.version !== s.version);
+    const busy = changed.filter((s) => {
+      if (this.ended.has(s.id) || s.writtenAt == null || now - s.writtenAt >= this.quietMs) return false;
+      const since = this.waiting.get(s.id) ?? now;
+      this.waiting.set(s.id, since);
+      return now - since < this.maxWaitMs;
+    });
+    this.pending = changed.filter((s) => !busy.includes(s));
     this.progress = { indexed: current.length - this.pending.length, total: current.length };
+    if (busy.length) this.later(Math.min(...busy.map((s) => Math.min(s.writtenAt! + this.quietMs, this.waiting.get(s.id)! + this.maxWaitMs))) - now);
     for (const session of this.pending) {
-      await this.indexSession(session);
+      this.ended.delete(session.id);
+      this.waiting.delete(session.id);
+      await this.indexSession(session, indexed.get(session.id));
       this.progress.indexed++;
       // Let other work (RPC calls, file watching) run between sessions.
       await new Promise((resolve) => setImmediate(resolve));
@@ -135,7 +214,20 @@ export class SearchIndex {
     this.pending = [];
   }
 
-  private async indexSession(session: IndexedSession): Promise<void> {
+  /** Another pass once the first busy session is quiet: an earlier time replaces a later one. */
+  private later(delayMs: number): void {
+    const at = this.now() + Math.max(0, delayMs) + 50;
+    if (this.retry && this.retry.at <= at) return;
+    clearTimeout(this.retry?.timer);
+    const timer = setTimeout(() => {
+      this.retry = undefined;
+      void this.sync();
+    }, at - this.now());
+    timer.unref?.();
+    this.retry = { timer, at };
+  }
+
+  private async indexSession(session: IndexedSession, known: Indexed | undefined): Promise<void> {
     let messages: TranscriptMessage[];
     try {
       messages = (await this.source.messages(session.id)).map((m) => normaliseMessage(m));
@@ -143,14 +235,26 @@ export class SearchIndex {
       this.log('debug', `Could not index ${session.id}: ${(error as Error).message}`);
       return;
     }
+    // The transcript only grew when the messages indexed before are still the first ones, in the same order. A
+    // rewind, a compaction or a rewrite changes them, and the whole session is indexed again.
+    const before = known?.messages ?? null;
+    const hashes = prefixHashes(messages, before !== null && before <= messages.length ? before : -1);
+    const grew = before !== null && known!.prefix !== null && hashes.prefix === known!.prefix;
+    // The last message indexed is indexed again with the new ones, in case it was still being written.
+    const from = grew ? Math.max(0, before - 1) : 0;
     this.begin.run();
     try {
-      this.statements.clear.run(session.id);
-      for (const message of messages) {
+      if (!grew) this.statements.clear.run(session.id);
+      else if (known!.lastRowid !== null) this.statements.clearRow.run(known!.lastRowid);
+      let lastRowid: number | null = null;
+      for (let i = from; i < messages.length; i++) {
+        const message = messages[i]!;
         const text = searchableText(message);
-        if (text) this.statements.insert.run(session.id, message.uuid, message.role, message.timestamp, text);
+        if (!text) continue;
+        const row = this.statements.insert.run(session.id, message.uuid, message.role, message.timestamp, text);
+        if (i === messages.length - 1) lastRowid = Number(row.lastInsertRowid);
       }
-      this.statements.mark.run(session.id, session.version);
+      this.statements.mark.run(session.id, session.version, messages.length, hashes.all, lastRowid);
       this.commit.run();
     } catch (error) {
       this.rollback.run();
