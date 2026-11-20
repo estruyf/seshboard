@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronLeft, KeyboardOff, ListTree, Search, SlidersHorizontal, X } from 'lucide-react';
-import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, switchLosses, switchNotice, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, keptRunAs, pipelineMeta, remoteBaseName, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_WORKTREE_BASE, runAsLabel, runAsOrder, runAsSteps, switchLosses, switchNotice, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
 import { lastPipeline, rememberPipeline } from '../lib/runs.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -8,12 +8,13 @@ import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.t
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer, useWide } from '../lib/media.ts';
 import { autoOn, changedFrom, defaultChoice, EFFORT_LABEL, MODE_SHORT, modelLabel, profilesOf, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
+import { continueListKey } from '../lib/listEdit.ts';
 import { optionsSummary, providerSummary, startState, type SummaryPart } from '../lib/newOptions.ts';
 import { lastProject, rememberProject, rememberRunOn } from '../lib/storage.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import type { Client } from './Connected.tsx';
-import { BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, ProviderModeChip, ProviderModelChip, WorkspaceChip } from './OptionChips.tsx';
+import { BaseChip, BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, ProviderModeChip, ProviderModelChip, WorkspaceChip } from './OptionChips.tsx';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, Kbd, RoundButton } from './ui.tsx';
@@ -47,7 +48,8 @@ const DRAFT: DraftKey = { kind: 'new' };
  * is picked for you, so most of the time you only type. On a phone, All projects opens them as a list in a sheet, with
  * the filter there, so the keyboard doesn't come up over the tiles. Under the prompt, the project's profile (with more than one)
  * and its defaults for model, effort, mode and worktree as chips, to change for this session only. In the project's folder,
- * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). Queue for later puts it in Seshboard's queue instead,
+ * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). In a new worktree, the branch it
+ * starts from (`REMOTE_FEATURE_WORKTREE_BASE`). Queue for later puts it in Seshboard's queue instead,
  * while the project has a session working. While the keyboard is up on a phone, only the prompt and the buttons stay: the
  * view takes what the keyboard leaves (as the session's message box does, `lib/viewport.ts`), so Start session sits
  * right above it, and Hide keyboard brings the tiles and the chips back.
@@ -134,6 +136,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
 
   // Another project has its own branches.
   const takesBranch = features.includes(REMOTE_FEATURE_BRANCHES);
+  /** Branch from, for a new worktree: a computer that lists its remote branches and takes `worktreeBase`. */
+  const takesBase = features.includes(REMOTE_FEATURE_WORKTREE_BASE);
   useEffect(() => {
     setBranches(null);
     setBranch(null);
@@ -229,7 +233,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   const pipeline = provider ? null : (pipelines.find((p) => p.id === runAs) ?? null);
   /** Run as a pipeline: the prompt is its task, and the box's choices go to the steps that don't set their own. */
   const startRun = async (picked: RemotePipeline) => {
-    const { worktree: _worktree, ...choices } = changedFrom(choice, defaults, baseProfile);
+    const { worktree: _worktree, worktreeBase: _base, ...choices } = changedFrom(choice, defaults, baseProfile);
     const { state } = await client!.call('pipelines.run', { pipelineId: picked.id, projectId: projectId!, task: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...choices });
     rememberPipeline(computer, projectId!, picked.id);
     return state.run.id;
@@ -312,6 +316,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
           mode: MODE_SHORT[choice.permissionMode],
           branch: choice.worktree ? null : branchShown,
           branchPicked: branch !== null,
+          base: choice.worktree && takesBase && branches ? remoteBaseName(choice.baseRef, branches) : null,
           pipeline: pipeline?.name ?? null,
         })
       : null;
@@ -377,6 +382,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
           <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} look={look} />
           {/* A run makes its own worktree for its steps. */}
           {!pipeline && <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} look={look} />}
+          {!pipeline && choice.worktree && takesBase && branches && <BaseChip branches={branches} value={choice.baseRef} onPick={(baseRef) => change({ baseRef })} look={look} />}
           {!pipeline && !choice.worktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} look={look} />}
         </>
       )
@@ -540,6 +546,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
                 onKeyDown={(event) => {
+                  // Return is a new line here, so on a list item it starts the next one.
+                  if (continueListKey(event, false, setPrompt)) return;
                   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                     event.preventDefault();
                     void start();

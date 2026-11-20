@@ -1,3 +1,5 @@
+import { useSelectAllInText } from '../transcript/useSelectAllInText.ts';
+import { QuickOpenHost } from '../files/QuickOpen.tsx';
 import { useEffect } from 'react';
 import { SelectionMenu } from '../SelectionMenu.tsx';
 import { useReadyReport } from '../../engine/useReadyReport.ts';
@@ -21,6 +23,7 @@ import { usePopoutViewReport } from '../../state/useSessionViewSync.ts';
 import { useHostsSync } from '../../state/useHostsSync.ts';
 import { useModsSync } from '../../state/useModsSync.ts';
 import { usePopoutsSync } from '../../state/usePopoutsSync.ts';
+import { useBrowserPopoutsSync } from '../../state/browserWindow.ts';
 import { useRemoteSync } from '../../state/useRemoteSync.ts';
 import { useSessionsSync } from '../../state/useSessionsSync.ts';
 import { AddContextDialogHost } from '../composer/AddContextDialog.tsx';
@@ -42,6 +45,7 @@ import { TranscriptView } from '../transcript/TranscriptView.tsx';
 import { ToastLayer } from '../ui/Toast.tsx';
 import { TooltipLayer } from '../ui/Tooltip.tsx';
 import { useUsageSync } from '../UsageBand.tsx';
+import { WebPreviewHost } from '../webPreview/WebPreviewHost.tsx';
 
 /**
  * The app's own shortcuts, which need the sidebar, the list of sessions or another session: pressed in a pop-out, they
@@ -78,6 +82,8 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   useTerminalsSync();
   useDraftsSync();
   usePopoutsSync();
+  // The session's browser can be in a window of its own: its tabs come back here when that window goes.
+  useBrowserPopoutsSync();
   useUsageSync();
   usePreferencesSync();
   useThemesSync();
@@ -92,6 +98,8 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   // Saved prompts reach the slash menu and the message box here too; a change made in any window shows in all.
   useSavedPromptsSync();
   useReadyReport();
+  // Select all (⌘A) in the conversation selects only that text here too.
+  useSelectAllInText();
   usePopoutWindow(sessionId);
   // Main keeps the session's panels, to give them back to the main window when this one goes.
   usePopoutViewReport(sessionId);
@@ -105,10 +113,12 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   return (
     <div className="flex h-full">
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">{shown && <TranscriptView sessionId={sessionId} leading={false} />}</main>
+      <WebPreviewHost />
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
       <PaletteDialogs />
+      <QuickOpenHost />
       <RunTreeDialogs />
       <FilePreviewDialog />
       <AddContextDialogHost />

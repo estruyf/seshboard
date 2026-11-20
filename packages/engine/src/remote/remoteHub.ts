@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  agentName,
+  branchOfBase,
+  isBranchBase,
+  remoteBaseListed,
+  type ActivityEntry,
   DEFAULT_APP_ICON,
   defuseStubs,
   keyPairFromSecret,
@@ -26,6 +31,7 @@ import {
   type RemoteSessionOptions,
   type RemoteSession,
   type RemoteSessions,
+  type RemoteArchivedSession,
   type RemoteStatus,
   type RemoteContract,
   type SendMode,
@@ -40,6 +46,7 @@ import {
   type RemotePushSubscription,
   type RemoteImage,
   type ModelOption,
+  type SlashCommand,
   type PermissionMode,
   type UsageBreakdown,
   type WindowCost,
@@ -59,14 +66,19 @@ import {
   runOfParent,
   withRunStub,
   REMOTE_DIFF_LINES,
+  REMOTE_FILE_IMAGE_BYTES,
+  REMOTE_FILE_TEXT_BYTES,
   REMOTE_DESKTOP_ORIGIN,
   type RemoteProfile,
   type TriggerSession,
+  remoteOnlyBranches,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
 import { DeviceStore, type RemoteDevice } from './devices.ts';
 import { checkAttachments, promptWithFiles, pruneRemoteFiles, saveRemoteFiles } from './remoteFiles.ts';
+import { scratchpadRoots, sessionFile } from './sessionFiles.ts';
+import { readPreview, readPreviewImage } from '../system/filePreview.ts';
 import { Pairing } from './pairing.ts';
 import { RemoteServer } from './remoteServer.ts';
 import { nextFreePort } from './freePort.ts';
@@ -76,7 +88,7 @@ import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type 
 import { IdleUpdate } from './idleUpdate.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
 import { SessionOrigins } from './sessionOrigins.ts';
-import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, NO_GLOBAL_MODEL, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
+import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteArchived, remoteSessions, NO_GLOBAL_MODEL, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The app's theme, kept so a phone that connects before a window opened gets it too. */
@@ -124,6 +136,8 @@ export interface RemoteHubProfile {
   defaults: ProfileDefaults;
   /** Its account's `accountTag`, for `usage.get`; null without an account. */
   account?: string | null;
+  /** A profile of a provider that can't start sessions here (OpenAI Codex, read-only): never offered for a new one. */
+  readOnly?: boolean;
 }
 
 /** A run's button, as the computer's step tree has it. */
@@ -172,6 +186,8 @@ export interface RemoteHubOptions {
   previewApp?: boolean;
   /** Where files sent with a message are kept (`remoteFiles.ts`). */
   filesDir: string;
+  /** The temp folders that hold Claude Code's scratchpads (`sessionFiles.ts`); tests pass their own. */
+  scratchpadRoots?(): Promise<string[]>;
   /** Remote's log on disk (`remoteLog.ts`), next to the windows' log; none without it (tests). */
   logFile?: string;
   /**
@@ -195,6 +211,8 @@ export interface RemoteHubOptions {
   dequeue(sessionId: string, id: string): void;
   /** Send now on a message in Up next: Claude's turn stops and it goes, as on the computer. */
   sendQueuedNow(sessionId: string, id: string): Promise<void>;
+  /** Puts a message in Up next at another place, as dragging it on the computer does. */
+  moveQueued(sessionId: string, id: string, toIndex: number): void;
   /** A session's Up next as it is now, for a phone that starts watching it (it may have missed changes while away). */
   upNext(sessionId: string): QueuedMessage[];
   /** How a session stands with its profile's usage limit; null when its profile isn't at one. */
@@ -207,10 +225,14 @@ export interface RemoteHubOptions {
   /** Stops one of a running session's background tasks. */
   stopTask(sessionId: string, taskId: string): Promise<void>;
   respond(requestId: string, decision: PermissionDecision): void;
+  /** The slash commands (skills, custom and plugin commands) a session can run, as its / menu on the computer lists them. */
+  commands?(sessionId: string): Promise<SlashCommand[]>;
   /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
   create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
   /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
   providerOfProfile?(profileId: string): RemoteProfile['provider'] | null;
+  /** Providers whose sessions are read-only here (Codex), with the command that continues one in its own CLI. */
+  readOnlyProviders?(): ReadonlyMap<string, string>;
   /** Whether a provider profile can start a session now, and its models. */
   providerReady?(profileId: string): Promise<{ problem: string | null; models: Array<Pick<ModelOption, 'value' | 'displayName' | 'description' | 'supportsEffort'>> }>;
   /** The local branches of the folder `root`, as `git.branches` on the computer (none outside a git repository). */
@@ -232,8 +254,11 @@ export interface RemoteHubOptions {
   globalPermissionMode(): PermissionMode;
   /** Settings › General › Global model and Global effort: what a session starts with where its profile and project set none. */
   globalModel(): GlobalModel;
-  /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
-  usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
+  /**
+   * A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). Null for a profile without plan usage
+   * (Copilot's premium requests), which the phone leaves out.
+   */
+  usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null>;
   /**
    * Where the tokens of the profile signed in to an account (its `accountKey`) went, as `usage.breakdown`; null when
    * no profile here signs in to it.
@@ -241,6 +266,8 @@ export interface RemoteHubOptions {
   tokens(account: string, params: { period: UsagePeriod; groupBy: UsageGroup; model: string | null; timeZone: string }): UsageBreakdown | null;
   /** A session's estimated API cost since it started, as `usage.sessionCost` on the computer. */
   sessionCost(sessionId: string): { usd: number; partial: boolean } | null;
+  /** What the sessions did per day, as `activity.range` on the computer. */
+  activity(params: { from: string; to: string; timeZone: string }): Promise<ActivityEntry[]>;
   /** The cost of the given plan windows for the profile signed in to an account; null when no profile here signs in to it. */
   windowCosts(account: string, windows: ReadonlyArray<{ kind: string; scope: string | null; from: number }>): WindowCost[] | null;
   catchUp(sessionId: string): CatchUp | null;
@@ -600,7 +627,7 @@ export class RemoteHub {
   permissionAsked(request: PermissionRequest): void {
     const session = this.list().sessions.find((s) => s.id === request.sessionId);
     if (!session) return;
-    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, ...profileOf(session), line: needsYouLine(request), ...promptAnswers(request) });
+    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, ...profileOf(session), line: needsYouLine(request, agentName(session.provider)), ...promptAnswers(request) });
   }
 
   /** A session's process changed state: a turn that ended sends its push once the catch-up is in (or soon without). */
@@ -796,7 +823,7 @@ export class RemoteHub {
     if (!session) return;
     // A turn that ends in a step of a run that goes on is the run's news: it says when it needs you, stops or is done.
     if (this.options.pipelines?.runs().some(({ run, steps }) => run.status !== 'done' && run.status !== 'stopped' && steps.some((s) => s.sessionId === sessionId))) return;
-    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, ...profileOf(session), line: finishedLine(this.options.catchUp(sessionId)) });
+    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, ...profileOf(session), line: finishedLine(this.options.catchUp(sessionId), agentName(session.provider)) });
   }
 
   /**
@@ -832,7 +859,24 @@ export class RemoteHub {
     const runs = this.options.pipelines?.runs();
     const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
     const triggers = this.options.triggerSessions?.();
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}) });
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
+  }
+
+  /** The sessions in Done, which a phone may list and reopen (nothing else). */
+  private archived(): RemoteArchivedSession[] {
+    const projectNames = new Map(this.options.projects().map((p) => [p.root, p.name]));
+    const runs = this.options.pipelines?.runs();
+    return remoteArchived(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, ...(runs ? { runs } : {}) });
+  }
+
+  /**
+   * Reopens a session in Done, as Reopen on the computer: a session a pipeline ran from comes back with its runs'
+   * sessions (the run's tree), any other on its own.
+   */
+  private async reopen(sessionId: string): Promise<void> {
+    const run = this.options.pipelines?.runs().find((r) => r.run.parentSessionId === sessionId);
+    if (run) await this.requirePipelines().archive(run.run.id, false);
+    else this.options.setFlags(sessionId, { archived: false });
   }
 
   private projectName(root: string): string {
@@ -880,7 +924,9 @@ export class RemoteHub {
 
   /** The profile a new session in `project` runs with: the one the phone chose, else the project's, else the default. */
   private profileFor(project: RemoteProject, chosen: string | undefined): RemoteHubProfile {
-    const { profiles, defaultId } = this.options.profiles();
+    // A read-only provider's profile can't start a session: as if it weren't there.
+    const { defaultId } = this.options.profiles();
+    const profiles = this.options.profiles().profiles.filter((p) => !p.readOnly);
     const find = (id: string | null | undefined) => (id ? profiles.find((p) => p.id === id) : undefined);
     if (chosen && !find(chosen)) throw new RpcError('NOT_FOUND', 'That Claude profile no longer exists');
     const profile = find(chosen) ?? find(project.profileId) ?? find(defaultId) ?? profiles[0];
@@ -897,11 +943,18 @@ export class RemoteHub {
     // Settings › General's model and effort are Claude Code's: another provider's profile starts on its own default.
     const globals = this.options.providerOfProfile?.(profile.id) ? NO_GLOBAL_MODEL : this.options.globalModel();
     const choice = sessionChoice(options, project.defaults, profile, this.options.globalPermissionMode(), globals);
+    const base = options.worktreeBase;
+    if (base !== undefined && isBranchBase(base)) {
+      // A base is only for a new worktree, and only a branch the repository still has.
+      if (!choice.worktree) throw new RpcError('INVALID_PARAMS', 'A branch to start from is for a new worktree; choose New worktree');
+      if (!remoteBaseListed(base, await this.options.branches(project.root))) throw new RpcError('NOT_FOUND', `No branch ${branchOfBase(base)} in ${project.name}`);
+    }
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
-    const { branches, checkedOutElsewhere } = await this.options.branches(project.root);
-    if (!branches.includes(branch)) throw new RpcError('NOT_FOUND', `No branch ${branch} in ${project.name}`);
+    const { branches, checkedOutElsewhere, remoteBranches } = await this.options.branches(project.root);
+    // One only a remote has is checked out as a new branch that tracks it.
+    if (!branches.includes(branch) && !remoteOnlyBranches(branches, remoteBranches ?? []).some((b) => b.name === branch)) throw new RpcError('NOT_FOUND', `No branch ${branch} in ${project.name}`);
     if (checkedOutElsewhere.includes(branch)) throw new RpcError('INVALID_PARAMS', `${branch} is checked out in another worktree`);
     return choice;
   }
@@ -909,6 +962,12 @@ export class RemoteHub {
   /** A phone may only touch the sessions it can see in its list. */
   private checkSession(sessionId: string): void {
     if (!this.list().sessions.some((s) => s.id === sessionId)) throw new RpcError('NOT_FOUND', 'No such session');
+  }
+
+  /** `path` if the session made it (`sessionFiles.ts`), else NOT_FOUND. */
+  private async sharedFile(sessionId: string, path: string): Promise<string> {
+    const roots = await (this.options.scratchpadRoots ?? scratchpadRoots)();
+    return sessionFile(path, sessionId, await this.options.readTranscript(sessionId), roots);
   }
 
   /** The `app.update.*` methods are for Seshboard on another computer only: a phone or a browser is refused. */
@@ -938,6 +997,7 @@ export class RemoteHub {
     };
     return {
       'sessions.list': () => this.list(),
+      'sessions.archived': () => ({ sessions: this.archived() }),
       'projects.list': () => ({ projects: this.yourProjects().map((p) => ({ id: projectIdOf(p.root), name: p.name })) }),
       'projects.branches': ({ projectId }) => this.options.branches(this.project(projectId).root),
       'transcript.get': async ({ sessionId, before, after, limit }) => {
@@ -975,6 +1035,11 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId, messageUuid: sent.queued ? null : sent.messageUuid, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return { queued: sent.queued };
       },
+      'session.commands': async ({ sessionId }) => {
+        this.checkSession(sessionId);
+        if (!this.options.commands) throw new RpcError('UNSUPPORTED', 'This computer has no list of commands');
+        return { commands: await this.options.commands(sessionId) };
+      },
       'session.queue.remove': ({ sessionId, id }, phone) => {
         this.checkSession(sessionId);
         this.options.dequeue(sessionId, id);
@@ -985,6 +1050,13 @@ export class RemoteHub {
       'session.queue.sendNow': async ({ sessionId, id }) => {
         this.checkSession(sessionId);
         await this.options.sendQueuedNow(sessionId, id);
+        return {};
+      },
+      'session.queue.move': ({ sessionId, id, toIndex }, phone) => {
+        this.checkSession(sessionId);
+        this.options.moveQueued(sessionId, id, toIndex);
+        // Sent or removed meanwhile: nothing moved, so no update comes; this one sets its list right.
+        phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
         return {};
       },
       'session.interrupt': async ({ sessionId }) => {
@@ -1123,8 +1195,15 @@ export class RemoteHub {
         this.sessionsChanged();
         return {};
       },
-      'session.setFlags': ({ sessionId, pinned, archived }) => {
+      'session.setFlags': async ({ sessionId, pinned, archived }) => {
         const undo = archived === false && pinned === undefined && this.mayUndoArchive(sessionId, device);
+        // Reopen from Done: the only thing a phone may do with a session that left its list.
+        if (!undo && archived === false && pinned === undefined && this.archived().some((s) => s.id === sessionId)) {
+          this.archivedFromPhone.delete(sessionId);
+          await this.reopen(sessionId);
+          this.sessionsChanged();
+          return {};
+        }
         if (!undo) this.checkSession(sessionId);
         if (archived === true) this.archivedFromPhone.set(sessionId, { deviceId: device.id, at: Date.now() });
         else if (archived === false) this.archivedFromPhone.delete(sessionId);
@@ -1155,7 +1234,9 @@ export class RemoteHub {
         return this.options.providerReady(profileId);
       },
       'options.get': () => {
-        const { profiles, defaultId } = this.options.profiles();
+        const { defaultId } = this.options.profiles();
+        // New session's choices: a read-only provider's profile (Codex) can't start one.
+        const profiles = this.options.profiles().profiles.filter((p) => !p.readOnly);
         const globalMode = this.options.globalPermissionMode();
         const globalModel = this.options.globalModel();
         return {
@@ -1166,7 +1247,7 @@ export class RemoteHub {
             const provider = this.options.providerOfProfile?.(p.id) ?? null;
             return { id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, provider ? NO_GLOBAL_MODEL : globalModel), ...(provider ? { provider } : {}) };
           }),
-          defaultProfileId: defaultId,
+          defaultProfileId: profiles.some((p) => p.id === defaultId) ? defaultId : (profiles[0]?.id ?? defaultId),
           auto: this.options.autoModel(),
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
@@ -1181,20 +1262,25 @@ export class RemoteHub {
       },
       'usage.get': async ({ refresh }) => {
         const { profiles, defaultId } = this.options.profiles();
-        const ordered = [...profiles].sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
-        return {
-          profiles: await Promise.all(
-            ordered.map(async (p) => {
-              const result = await this.options.usage(p.id, refresh).catch((error: Error) => ({ usage: null, error: error.message }));
-              return { profile: { id: p.id, name: p.name, color: p.color }, ...result, account: p.account ?? null };
-            }),
-          ),
-        };
+        // A read-only provider's profile has no plan usage, and a profile whose provider has none of its own (Copilot) is left
+        // out (`usage` is null): only real numbers, never another login's. Codex's rate limits come as plan usage.
+        const ordered = profiles.filter((p) => !p.readOnly).sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
+        const answers = await Promise.all(
+          ordered.map(async (p) => {
+            const result = await this.options.usage(p.id, refresh).catch((error: Error) => ({ usage: null, error: error.message }));
+            return result && { profile: { id: p.id, name: p.name, color: p.color }, ...result, account: p.account ?? null };
+          }),
+        );
+        return { profiles: answers.filter((answer) => answer !== null) };
       },
       'usage.tokens': ({ account, ...params }) => {
         const breakdown = this.options.tokens(account, params);
         return { breakdown: breakdown && remoteUsage(breakdown, new Map(this.options.projects().map((p) => [p.root, p.name]))) };
       },
+      'activity.range': async (params) => ({
+        // Another computer gets the project's name, never its folders.
+        entries: (await this.options.activity(params)).map(({ projectRoot: _root, ...entry }) => entry),
+      }),
       'limits.get': ({ sessionId }) => {
         this.checkSession(sessionId);
         return { limit: this.options.limit(sessionId) };
@@ -1242,6 +1328,19 @@ export class RemoteHub {
         const listed = (await this.options.changes(sessionId))?.files.some((f) => f.path === path);
         if (!listed) throw new RpcError('NOT_FOUND', 'That file has no changes');
         return capDiff(await this.options.diff(sessionId, path), REMOTE_DIFF_LINES);
+      },
+      'files.read': async ({ sessionId, path }) => {
+        this.checkSession(sessionId);
+        // Only a file the session made: the path comes from the device, so it may not name anything else.
+        const file = await this.sharedFile(sessionId, path);
+        const preview = await readPreview(file, { maxBytes: REMOTE_FILE_TEXT_BYTES, inlineImages: false });
+        // The phone shows Markdown, HTML and code; other text files are for the desktop's Files panel for now.
+        if (preview.kind === 'text') throw new RpcError('UNSUPPORTED', `Seshboard can't show this file: ${path}`);
+        return { ...preview, kind: preview.kind };
+      },
+      'files.image': async ({ sessionId, path }) => {
+        this.checkSession(sessionId);
+        return readPreviewImage(await this.sharedFile(sessionId, path), REMOTE_FILE_IMAGE_BYTES);
       },
       'push.key': () => ({ publicKey: this.vapid().publicKey }),
       'push.subscribe': ({ subscription, needsYou, finished, reminders, vapid, label }) => {

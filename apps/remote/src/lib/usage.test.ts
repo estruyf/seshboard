@@ -51,3 +51,13 @@ describe('plan usage on Home', () => {
     expect(onComputers(['mystic', 'studio', 'laptop'])).toBe('On mystic, studio and laptop');
   });
 });
+
+describe("Codex's windows on the phone", () => {
+  it('read as the 5-hour and weekly ones, a bucket by its name, and another length by that length', () => {
+    expect(limitName(limit('session_scoped', 20, { group: 'session', scope: 'GPT-5 mini' }))).toBe('5h · GPT-5 mini');
+    expect(limitName(limit('weekly_scoped', 20, { scope: 'GPT-5 mini' }))).toBe('Week · GPT-5 mini');
+    expect(limitName(limit('window', 20, { group: 'window', scope: '3 hours' }))).toBe('3 hours');
+    expect(spokenLimit(limit('session_scoped', 20, { group: 'session', scope: 'GPT-5 mini' }), NOW)).toBe('5-hour limit (GPT-5 mini): 20% used');
+    expect(spokenLimit(limit('window', 40, { group: 'window', scope: '3 hours' }), NOW)).toBe('3 hours limit: 40% used');
+  });
+});

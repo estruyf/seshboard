@@ -3,6 +3,7 @@ import { AbsolutePath } from './absolutePath.ts';
 import type { ContractShape } from './rpc.ts';
 import {
   AutoPick,
+  AutoEffortSchema,
   AutoTierSchema,
   EditorInfo,
   Effort,
@@ -41,9 +42,9 @@ import { LimitsState } from './usageLimit.ts';
 import { SignInState } from './signIn.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
-import { ChangesBase, CheckLog, ChecksFinished, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
+import { ChangesBase, CheckLog, ChecksFinished, DiffImage, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
-import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
+import { WorktreeFacts, WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
 import { OptionalProviderSchema, ProviderDetection, ProviderQuota, ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
@@ -54,7 +55,9 @@ import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './sch
 import { Trigger, TriggerEvent, TriggerNotice, TriggerRepoInfo, TriggerSave, TriggersState } from './triggerSchema.ts';
 import { Pipeline, PipelineNotice, PipelineRunState, PipelineSave, PushPreview } from './pipelineSchema.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
+import { MAX_WORKER_TITLE } from './orchestrator.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
+import { ActivityDay, ActivityEntry, ActivitySummary, ActivitySummaryExtra, ActivitySummaryState } from './activity.ts';
 import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
@@ -137,6 +140,21 @@ export const LogEntry = z.object({
 });
 export type LogEntry = z.infer<typeof LogEntry>;
 
+/** An orchestrator and the sessions it started (`OrchestratorInfo`, docs/orchestrator.md). */
+const OrchestratorInfoSchema = z.object({
+  sessionId: z.string(),
+  projectRoot: z.string(),
+  createdAt: z.number(),
+  workers: z.array(
+    z.object({
+      sessionId: z.string().nullable(),
+      itemId: z.string().nullable(),
+      title: z.string().max(MAX_WORKER_TITLE),
+      startedAt: z.number(),
+      pr: z.object({ number: z.number().int(), url: z.string(), state: z.enum(['open', 'merged', 'closed']) }).nullable().optional(),
+    }),
+  ),
+});
 const AppStateKey = z.string().min(1).max(200);
 const SessionId = z.string().min(1).max(200);
 const Prompt = z.string().max(MAX_PROMPT_LENGTH);
@@ -162,9 +180,11 @@ export const RouteResult = z.discriminatedUnion('ok', [
     ok: z.literal(true),
     routeId: z.string(),
     model: AutoTierSchema,
+    /** The effort Haiku thought fits, with the model. */
+    effort: AutoEffortSchema,
     reason: z.string(),
     tokens: z.number(),
-    /** What the model uses against Opus, 0–1 (an estimate). */
+    /** What the model uses against Opus (1 is Opus, 2 twice as much); an estimate. */
     estimateVsOpus: z.number(),
     allowed: z.array(AutoTierSchema),
   }),
@@ -182,6 +202,77 @@ const GitLooseEndSchema = z.discriminatedUnion('kind', [
 ]);
 /** By session (or pipeline run row) id. */
 const LooseEndsMap = z.record(z.string(), z.array(GitLooseEndSchema));
+
+/** A pinned browser tab, kept by the engine so it comes back after a restart. `owner` is a session's id, or `'browser'`. */
+export const PinnedBrowserTab = z.object({
+  id: z.string().min(1).max(100),
+  owner: z.string().min(1).max(200),
+  url: z.string().min(1).max(8000),
+  title: z.string().max(500),
+  /** The name you gave it (Rename tab), shown in place of the page's title; null for none. Optional for an older window. */
+  name: z.string().max(200).nullable().optional(),
+  /** The page's icon as a small `data:` image (never an address), shown at start before the page loads. Optional for an older window. */
+  favicon: z.string().max(65_536).regex(/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i).nullable().optional(),
+  position: z.number().int().min(0),
+  pinnedAt: z.number().int(),
+  /** Its browser profile (`BrowserProfile.id`), or null for the Default one. A tab keeps it for life. Optional for an older window. */
+  profileId: z.string().max(100).nullable().optional(),
+});
+export type PinnedBrowserTab = z.infer<typeof PinnedBrowserTab>;
+
+/**
+ * A browser favourite: a site you open often, from the toolbar's star. `favicon` is the page's icon as a `data:` image
+ * (never an address, so the window loads nothing from the site), or null.
+ */
+export const BrowserFavorite = z.object({
+  id: z.string().min(1).max(100),
+  url: z.string().min(1).max(8000),
+  title: z.string().max(500),
+  favicon: z.string().max(65_536).regex(/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i).nullable(),
+  position: z.number().int().min(0),
+  createdAt: z.number().int(),
+});
+export type BrowserFavorite = z.infer<typeof BrowserFavorite>;
+
+/** A page in the browser's history: its address, its last title, how often and when last it was opened. */
+export const BrowserHistoryEntry = z.object({
+  url: z.string().min(1).max(8000),
+  title: z.string().max(500),
+  visits: z.number().int().min(0),
+  lastVisit: z.number().int(),
+});
+export type BrowserHistoryEntry = z.infer<typeof BrowserHistoryEntry>;
+
+/**
+ * A browser bookmark: a link to find again (⌘D or the star), in a folder ('' for none), shown for one project (its
+ * root) or everywhere (null). Not kept open, unlike a favourite. `favicon` as a favourite's.
+ */
+export const BrowserBookmark = z.object({
+  id: z.string().min(1).max(100),
+  url: z.string().min(1).max(8000),
+  title: z.string().max(500),
+  favicon: z.string().max(65_536).regex(/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i).nullable(),
+  folder: z.string().max(200),
+  projectRoot: z.string().max(4096).nullable(),
+  position: z.number().int().min(0),
+  createdAt: z.number().int(),
+});
+export type BrowserBookmark = z.infer<typeof BrowserBookmark>;
+
+/**
+ * A browser profile (docs/browser.md, Browser profiles): pages with their own cookies, storage and cache, in the
+ * partition `persist:browser-<id>`, for one project (its root) or everywhere (null). The built-in Default profile has
+ * no row. Not a Claude profile.
+ */
+export const BrowserProfile = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(60),
+  color: ProfileColor,
+  projectRoot: z.string().max(4096).nullable(),
+  position: z.number().int().min(0),
+  createdAt: z.number().int(),
+});
+export type BrowserProfile = z.infer<typeof BrowserProfile>;
 
 export const contract = {
   requests: {
@@ -433,6 +524,11 @@ export const contract = {
          * session from a fork's pull request Seshboard can't push to (`readOnly`), push and Create pull request are off.
          */
         github: GithubOrigin.optional(),
+        /**
+         * Start it as the project's orchestrator (docs/orchestrator.md): it gets the tools that start and track other
+         * sessions, and the sessions it starts show under it.
+         */
+        orchestrator: z.boolean().optional(),
       }),
       result: z.object({ sessionId: z.string() }),
     },
@@ -474,6 +570,47 @@ export const contract = {
     'session.queue.sendNow': { params: z.object({ sessionId: SessionId, id: z.string() }), result: z.object({}) },
     /** After a stopped or failed turn: sends the next queued message and lets the queue move on by itself again. */
     'session.queue.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** The browser tabs you pinned, a session's or the Browser view's (`owner: 'browser'`), to restore at start. */
+    'browser.pinned.list': { params: z.object({}), result: z.object({ tabs: z.array(PinnedBrowserTab) }) },
+    /** Pins a tab, or updates one already pinned (its address and title as you browse, its place). */
+    'browser.pinned.save': { params: z.object({ tab: PinnedBrowserTab.omit({ pinnedAt: true }) }), result: z.object({}) },
+    'browser.pinned.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** An owner's pinned tabs in this order. */
+    'browser.pinned.reorder': { params: z.object({ owner: z.string().min(1).max(200), ids: z.array(z.string().min(1).max(100)).max(500) }), result: z.object({}) },
+    /** Your browser favourites, in order. */
+    'browser.favorites.list': { params: z.object({}), result: z.object({ favorites: z.array(BrowserFavorite) }) },
+    /** Adds a favourite, or updates one (its title, icon, place). */
+    'browser.favorites.save': { params: z.object({ favorite: BrowserFavorite.omit({ createdAt: true }) }), result: z.object({}) },
+    'browser.favorites.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** A page opened in the browser (`counted`), or its title as it changes (not counted again), for the history. */
+    'browser.history.visit': { params: z.object({ url: z.string().min(1).max(8000), title: z.string().max(500), counted: z.boolean(), profileId: z.string().max(100).nullable().optional() }), result: z.object({}) },
+    /** The pages in the history whose address or title holds `query`, most opened and most recent first. */
+    'browser.history.search': { params: z.object({ query: z.string().max(500), limit: z.number().int().min(1).max(100), profileId: z.string().max(100).nullable().optional() }), result: z.object({ entries: z.array(BrowserHistoryEntry) }) },
+
+    /** Your browser bookmarks, in order: every project's and the ones for everywhere. */
+    'browser.bookmarks.list': { params: z.object({}), result: z.object({ bookmarks: z.array(BrowserBookmark) }) },
+    /** Adds a bookmark, or updates one (its name, folder, project, icon, place). */
+    'browser.bookmarks.save': { params: z.object({ bookmark: BrowserBookmark.omit({ createdAt: true }) }), result: z.object({}) },
+    'browser.bookmarks.remove': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Your browser profiles (not the built-in Default one), in order; `browser.profiles.changed` follows each change. */
+    'browser.profiles.list': { params: z.object({}), result: z.object({ profiles: z.array(BrowserProfile) }) },
+    /** A new browser profile, last in the list. Fails when another profile would answer to the same name there. */
+    'browser.profiles.create': {
+      params: z.object({ name: z.string().min(1).max(60), color: ProfileColor, projectRoot: z.string().max(4096).nullable() }),
+      result: z.object({ profile: BrowserProfile }),
+    },
+    /** Renames a browser profile, or gives it another colour or place. */
+    'browser.profiles.update': {
+      params: z.object({ id: z.string().uuid(), name: z.string().min(1).max(60).optional(), color: ProfileColor.optional(), projectRoot: z.string().max(4096).nullable().optional() }),
+      result: z.object({}),
+    },
+    /**
+     * Removes a browser profile, its pinned tabs and its history. Main clears its pages' data first (`window.seshboard`);
+     * the empty partition folder stays on disk.
+     */
+    'browser.profiles.delete': { params: z.object({ id: z.string().uuid() }), result: z.object({}) },
+    /** Reset's part in the engine: forgets the profile's history (`id` null: the Default profile's). Main clears the rest. */
+    'browser.profiles.reset': { params: z.object({ id: z.string().uuid().nullable(), history: z.boolean() }), result: z.object({}) },
     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
     /**
@@ -505,14 +642,19 @@ export const contract = {
     'session.keepAwake': { params: z.object({ sessionId: SessionId, on: z.boolean() }), result: z.object({}) },
     /**
      * The end of what a background command printed, from the output file Claude Code named in the transcript (the
-     * engine reads only task output files). `missing`: no such file, yet or any more.
+     * engine reads only task output files). `missing`: no such file, yet or any more. `urls`: local addresses a dev
+     * server printed, from the start of the file too, for the web preview.
      */
     'session.taskOutput': {
       params: z.object({ sessionId: SessionId, outputFile: AbsolutePath }),
-      result: z.object({ text: z.string(), size: z.number(), truncated: z.boolean(), missing: z.boolean() }),
+      result: z.object({ text: z.string(), size: z.number(), truncated: z.boolean(), missing: z.boolean(), urls: z.array(z.string()) }),
     },
-    /** A new session with this one's conversation up to and including `messageUuid`. */
-    'session.forkAt': { params: z.object({ sessionId: SessionId, messageUuid: z.string() }), result: z.object({ sessionId: z.string() }) },
+    /**
+     * A new session with this one's conversation up to and including `messageUuid`. `editOf`: the prompt Edit and resend
+     * is for (`messageUuid` is the message before it): a provider that forks only where a turn ends (Codex) forks just
+     * before that prompt instead.
+     */
+    'session.forkAt': { params: z.object({ sessionId: SessionId, messageUuid: z.string(), editOf: z.string().optional() }), result: z.object({ sessionId: z.string() }) },
     /**
      * Restores the files Claude changed to how they were before one of your messages
      * (`dryRun` reports what would change). The conversation itself is untouched.
@@ -569,6 +711,22 @@ export const contract = {
       params: z.object({ sessionId: SessionId, server: z.string().max(200), action: z.enum(['enable', 'disable', 'reconnect']) }),
       result: z.object({}),
     },
+    /**
+     * An MCP App's page (or another resource it asks for) from the session's MCP server, as `resources/read` gives it.
+     * `callId`: the tool call it draws, so the server can scope it. Sessions of a provider with MCP Apps (Codex).
+     */
+    'mcpApp.resource': {
+      params: z.object({ sessionId: SessionId, server: z.string().max(200), uri: z.string().max(4096), callId: z.string().max(200).nullable() }),
+      result: z.object({ contents: z.array(z.json()) }),
+    },
+    /**
+     * A tool an MCP App calls on its own server (`tools/call`), in a session running here. Only tools the server lets
+     * apps call. A tool that isn't read-only fails with `NEEDS_CONFIRMATION` until `confirmed`: the app asks you first.
+     */
+    'mcpApp.callTool': {
+      params: z.object({ sessionId: SessionId, server: z.string().max(200), tool: z.string().max(200), arguments: z.json(), confirmed: z.boolean().default(false) }),
+      result: z.json(),
+    },
     /** Starts a Claude Code process for a folder ahead of time so the first message answers faster. */
     'session.prewarm': {
       // The effort the new session will start with: Claude Code reads it only at startup.
@@ -577,8 +735,10 @@ export const contract = {
     },
     'models.list': { params: z.object({}), result: z.object({ models: z.array(ModelOption) }) },
     /**
-     * Plan usage (5-hour and weekly limits) from Claude Code's /usage report. Cached for a minute;
-     * `refresh` fetches now. `usage` is null without a claude.ai plan or before the first fetch.
+     * Plan usage (5-hour and weekly limits) from Claude Code's /usage report, or for a Codex profile its rate limits in
+     * the same meters (`session`, `weekly_all`, a model's `weekly_scoped`). Cached for a minute; `refresh` fetches now.
+     * `usage` is null without a plan (signed out, an API key) or before the first fetch. A Copilot profile is refused
+     * (`NOT_CLAUDE_PROFILE`): its premium requests are `providers.quota`.
      */
     'usage.get': {
       /** The profile whose plan to report (default: the default profile). */
@@ -669,14 +829,48 @@ export const contract = {
       result: z.object({ paths: z.array(z.string().nullable()) }),
     },
     /**
-     * Reads a Markdown, HTML or code file (see `previewKind`) to preview it. `content` is null when the file is over
-     * `MAX_PREVIEW_BYTES` (`size` still says how big it is). HTML comes with a Content-Security-Policy meta added and its
-     * local images inlined as data URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a
-     * folder or any other extension: only previewable files are read.
+     * Reads a Markdown, HTML or code file (see `previewKind`), or any other text file (`kind: 'text'`, a file with no
+     * NUL byte in its first 8 KB), to show it. `content` is null when the file is over `MAX_PREVIEW_BYTES` (`size` still
+     * says how big it is). HTML comes with a Content-Security-Policy meta added and its local images inlined as data
+     * URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a folder or a binary file.
      */
     'files.read': {
       params: z.object({ path: AbsolutePath }),
-      result: z.object({ kind: z.enum(['markdown', 'html', 'code']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+      result: z.object({ kind: z.enum(['markdown', 'html', 'code', 'text']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+    },
+    /**
+     * Every file of a folder Seshboard knows (a session's folder or a project's root), relative to `cwd` with `/`,
+     * sorted: git's tracked and untracked-but-not-ignored files, or a walk outside git. At most 50,000 (`truncated`).
+     * NOT_FOUND for a folder Seshboard doesn't know.
+     */
+    'files.list': {
+      params: z.object({ cwd: AbsolutePath }),
+      result: z.object({ files: z.array(z.string()), truncated: z.boolean() }),
+    },
+    /**
+     * Searches inside the files of a folder Seshboard knows: `git grep` in a git checkout (respecting .gitignore,
+     * skipping binary files), a scan of the folder's files elsewhere. `include` and `exclude` are comma-separated globs.
+     * A new search with the same `searchId` cancels the one before (that one fails with CANCELLED). After 10 seconds
+     * it returns what it found, `truncated`. `column` is 1-based in the line; `text` is the line cut to 400 characters
+     * around the match, starting at `textStart`. INVALID_QUERY for a regular expression that doesn't compile.
+     */
+    'files.grep': {
+      params: z.object({
+        cwd: AbsolutePath,
+        query: z.string().max(1000),
+        regex: z.boolean().default(false),
+        caseSensitive: z.boolean().default(false),
+        wholeWord: z.boolean().default(false),
+        include: z.string().max(2000).default(''),
+        exclude: z.string().max(2000).default(''),
+        limit: z.number().int().min(1).max(10_000).default(2000),
+        searchId: z.string().max(100).optional(),
+      }),
+      result: z.object({
+        matches: z.array(z.object({ path: z.string(), line: z.number(), column: z.number(), length: z.number(), text: z.string(), textStart: z.number() })),
+        files: z.number(),
+        truncated: z.boolean(),
+      }),
     },
     /**
      * Reads an image a previewed file shows, as base64 (the shape of `transcript.image`). Only png, jpeg, gif, webp and
@@ -688,9 +882,12 @@ export const contract = {
       result: z.object({ mediaType: z.string(), data: z.string() }),
     },
     'editors.list': { params: z.object({}), result: z.object({ editors: z.array(EditorInfo), defaultId: z.string().nullable() }) },
-    /** Opens a folder or file (optionally at a line) in an editor; `editorId` defaults to the user's default. */
+    /**
+     * Opens a folder or file (optionally at a line) in an editor; `editorId` defaults to the user's default. Picking an
+     * editor makes it the default, unless `keepDefault` (an app pinned to the rail).
+     */
     'editors.open': {
-      params: z.object({ path: AbsolutePath, line: z.number().int().positive().optional(), editorId: z.string().optional() }),
+      params: z.object({ path: AbsolutePath, line: z.number().int().positive().optional(), editorId: z.string().optional(), keepDefault: z.boolean().optional() }),
       result: z.object({}),
     },
     'editors.setDefault': { params: z.object({ editorId: z.string() }), result: z.object({}) },
@@ -815,6 +1012,14 @@ export const contract = {
       result: z.object({ diff: z.string(), truncated: z.boolean() }),
     },
     /**
+     * An image file's two sides in a diff, for the mode the list was made in: `before` from git, `after` from the
+     * working tree, each null when the file isn't there (see DiffImage). Up to `MAX_PREVIEW_IMAGE_BYTES` a side.
+     */
+    'git.diffImages': {
+      params: z.object({ cwd: AbsolutePath, base: ChangesBase, path: z.string().max(4096) }),
+      result: z.object({ before: DiffImage.nullable(), after: DiffImage.nullable() }),
+    },
+    /**
      * Local branches of the repository at `cwd`, and the one checked out (null when detached or not a repo).
      * `checkedOutElsewhere`: the branches checked out in another worktree, which git won't switch to here.
      */
@@ -829,7 +1034,8 @@ export const contract = {
       }),
     },
     /**
-     * Checks out a local branch in the checkout at `cwd` with `git switch`: uncommitted changes that
+     * Checks out a branch in the checkout at `cwd` with `git switch` (one only a remote has, as a new local
+     * branch that tracks it, from `origin` when more remotes have it): uncommitted changes that
      * don't conflict come along, and git refuses (GIT_FAILED) when they do. Nothing is stashed or
      * discarded. Refused (SESSION_BUSY) while Claude is working in a session in this checkout.
      */
@@ -940,8 +1146,14 @@ export const contract = {
      * Every worktree of the repository at `root` (`git worktree list`), main checkout first, with what it takes to decide
      * whether it can go. `fetch` runs `git fetch` first so "merged" and "pushed" are current; pull requests come from `gh`
      * (cached for a few minutes; `fetch` asks again). NOT_A_REPO outside git.
+     *
+     * It answers fast however many worktrees there are: the slow facts (changes, ahead and behind, merged, unpushed, the
+     * pull request) are read in the background, a second and a half's wait at most. Entries still waiting say `factsPending` and
+     * hold placeholders (and the list says `pullRequestsPending` while `gh` hasn't answered); `worktrees.facts` and
+     * `worktrees.pullRequests` bring the rest as they finish, and the `fetch` runs before the facts are read. With `facts: false` nothing is read in the background: for a caller that only
+     * needs the names and branches (every entry is pending).
      */
-    'worktrees.list': { params: z.object({ root: AbsolutePath, fetch: z.boolean().default(false) }), result: WorktreeList },
+    'worktrees.list': { params: z.object({ root: AbsolutePath, fetch: z.boolean().default(false), facts: z.boolean().default(true) }), result: WorktreeList },
     /**
      * Sizes on disk measured so far (cached), right away. Missing ones, and with `refresh` all of them, are measured in
      * the background and arrive through `worktrees.sizes`.
@@ -1183,6 +1395,8 @@ export const contract = {
      * You wrote in a run row (a run started from New session): it gets a session of its own in the run's folder, with a
      * brief of the run before your text, and its sub-sessions go under that session.
      */
+    /** The orchestrators (docs/orchestrator.md) and the sessions each started. */
+    'orchestrator.list': { params: z.object({}), result: z.object({ orchestrators: z.array(OrchestratorInfoSchema) }) },
     'runs.write': { params: z.object({ runId: z.string().min(1).max(100), text: z.string().min(1).max(MAX_PROMPT_LENGTH) }), result: z.object({ sessionId: z.string() }) },
 
     // --- Settings backup -----------------------------------------------------------------------
@@ -1463,6 +1677,25 @@ export const contract = {
       result: SectionCopy,
     },
 
+    // --- Activity ------------------------------------------------------------------------------
+    /**
+     * What every session did per day from `from` through `to` (at most `ACTIVITY_MAX_DAYS`), in local days of `timeZone`.
+     * Reads what is new in the transcripts in the background; `usage.tokens` says when there is more. `git: false` leaves
+     * out the commits, for what only needs the days and their sessions.
+     */
+    'activity.range': {
+      params: z.object({ from: ActivityDay, to: ActivityDay, timeZone: z.string().max(100).default('UTC'), git: z.boolean().default(true) }),
+      result: z.object({ entries: z.array(ActivityEntry) }),
+    },
+    /**
+     * The day in short. A past day's is written once, after the day is over, and kept; today's again when its sessions
+     * changed. `fresh` (Regenerate) always writes it again. `others`: sessions on other computers to count too.
+     */
+    'activity.summary': {
+      params: z.object({ day: ActivityDay, timeZone: z.string().max(100).default('UTC'), fresh: z.boolean().default(false), others: z.array(ActivitySummaryExtra).max(200).default([]) }),
+      result: z.object({ summary: ActivitySummary.nullable(), state: ActivitySummaryState }),
+    },
+
     // --- Catch-up ------------------------------------------------------------------------------
     /** A session's catch-up: the briefing on its last turn (null when it has none, or a new turn started since). */
     'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
@@ -1575,6 +1808,10 @@ export const contract = {
     'providerUpdate.changed': z.object({ updates: z.array(ProviderUpdateState) }),
     /** Worktree sizes measured in the background (`worktrees.size`), as they finish. */
     'worktrees.sizes': z.object({ sizes: z.array(WorktreeSize) }),
+    /** Facts of a project's worktrees read in the background after `worktrees.list`, as they finish. */
+    'worktrees.facts': z.object({ root: z.string(), facts: z.array(WorktreeFacts) }),
+    /** The pull requests of a project's branches, by branch, once `gh` answered after `worktrees.list` (null: it can't, so none are known). */
+    'worktrees.pullRequests': z.object({ root: z.string(), pullRequests: z.record(z.string(), WorktreePullRequest).nullable() }),
     /** A `git.prCreate` moved on: pushing, creating, done or failed. */
     'git.pr': PrProgress,
     /** A pull request's checks were read (`git.prChecks`, or the engine reading running ones again). */
@@ -1602,6 +1839,8 @@ export const contract = {
     /** A triggered session started, an issue was picked up, or a trigger paused: main's notifier says so. */
     'triggers.notice': z.object({ notices: z.array(TriggerNotice) }),
     /** Pipelines were saved, deleted or imported: the built-ins and yours. */
+    /** An orchestrator was started, or one started, queued or lost a session. */
+    'orchestrator.changed': z.object({ orchestrators: z.array(OrchestratorInfoSchema) }),
     'pipelines.changed': z.object({ pipelines: z.array(Pipeline) }),
     /** A run changed: a step started or ended, it waits for you, or it ended. */
     'runs.changed': z.object({ state: PipelineRunState }),
@@ -1611,6 +1850,8 @@ export const contract = {
     'runs.notice': z.object({ notice: PipelineNotice }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
+    /** The browser profiles changed (in any window): the whole list. */
+    'browser.profiles.changed': z.object({ profiles: z.array(BrowserProfile) }),
     /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */
     'limits.changed': LimitsState,
     /** A session armed with Resume when it resets was sent its message after the reset (for the notification). */

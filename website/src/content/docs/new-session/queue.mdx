@@ -36,7 +36,7 @@ The prompt is kept with its project, choices and images. The box empties and you
 
 The palette's New session step has the same menu and key. *Add to queue* in the palette queues the prompt you are writing in New session; anywhere else it says *Add to queue…* and opens New session to write one.
 
-At the [focus limit](/focus-limit/), the note in New session and the question before starting both offer **Add to queue**, so an idea can wait instead of starting a session you can't follow.
+At the [focus limit](/focus-limit/), Start in New session reads **Add to queue** (<Kbd shortcut="new-session.start" />), and the question before starting offers it too, so an idea can wait instead of starting a session you can't follow. Such a prompt waits for **A free slot**.
 
 ## When an item is ready
 
@@ -47,6 +47,7 @@ Each item waits for something. Choose it with **Wait for…**:
 | **Any session in this project** (the default) | Nothing is working or waiting for you in its project, its worktrees included. |
 | A session | That session finishes or is closed. |
 | **The item above it** | That item has been started and its session has finished. |
+| **A free slot (focus limit)** | You are under the [focus limit](/focus-limit/) again, even while another session works in its project. Offered while the limit is on, and what Start picks at the limit. |
 | **Nothing (start it myself)** | Never: it stays queued until you start it. |
 
 When the project you picked in New session has a session working, a line under the message box says what the prompt would wait for, such as "acme-store has a session working. If you add it to the queue, it waits for “Fix login” to finish, then starts by itself." The **Wait for** button next to it shows what is picked and changes it before you queue. For an item already in the queue, **Wait for…** is in its menu.
@@ -94,7 +95,7 @@ It only starts after a clean finish:
 
 - When the session it waits for ends with an error, or you stopped Claude, it doesn't start. It stays in the queue, ready, and says why: "“Fix login” ended with an error, so it didn't start". A notification says so too.
 - A session waiting for you (a permission or a question) isn't finished.
-- At the [focus limit](/focus-limit/), it doesn't ask, since nobody may be there to answer. Its row says "waits for a free slot (focus limit)", and it starts when a slot frees.
+- At the [focus limit](/focus-limit/), it doesn't ask, since nobody may be there to answer. Its row says "waits for a free slot (focus limit)", and it starts when a slot frees, without also waiting for its project to be free.
 - At a usage limit, it waits until the limit resets ("usage limit until 15:16"), then starts.
 - When Seshboard quit while that session was working, nothing starts at the next launch. The item is ready, and you start it.
 
@@ -110,7 +111,7 @@ Seshboard can only tell how a turn ended for sessions it runs. When the session 
 
 ## Runs from a schedule
 
-A [scheduled](/new-session/schedules/) run that comes at the focus limit, or while its profile is at its usage limit, waits in the queue as an item that starts by itself. It starts when a slot frees or the limit resets. Its schedule's row says "Queued" with the reason.
+A [scheduled](/new-session/schedules/) run that comes at the focus limit, or while its profile is at its usage limit, waits in the queue as an item that starts by itself. It starts when a slot frees or the limit resets, also while another session works in its project. A session a [trigger](/projects/triggers/) holds at a limit waits the same way. Its schedule's row says "Queued" with the reason.
 
 ## Start an item
 

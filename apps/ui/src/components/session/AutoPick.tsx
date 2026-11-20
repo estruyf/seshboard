@@ -3,8 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { tierLabel, type AutoPick, type AutoTier } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { estimateLine, failedLine, otherTiers, shortReason } from '../../lib/autoModel.ts';
-import { shouldSuggest, strongerTier, suggestSignals } from '../../lib/autoSuggest.ts';
+import { nextStep, shouldSuggest, suggestReason, suggestSignals } from '../../lib/autoSuggest.ts';
+import { whenIdle } from '../../lib/whenIdle.ts';
 import { useAutoPick } from '../../state/autoPickStore.ts';
+import { useSavedSettings, type SavedSettings } from '../../state/savedSettingsStore.ts';
+import { EFFORT_LABEL } from '../newSession/route.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -129,6 +132,14 @@ export function AutoPickPopover({ sessionId, pick, items, cwd }: { sessionId: st
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-ui">
           {pick.model && (
             <>
+              {pick.effort && (
+                <>
+                  <dt className="text-muted">Effort</dt>
+                  <dd className="text-text" data-auto-pick-effort={pick.effort}>
+                    {EFFORT_LABEL[pick.effort]}, picked with the model
+                  </dd>
+                </>
+              )}
               <dt className="text-muted">Estimate</dt>
               <dd className="text-text">{estimateLine(pick.model)}</dd>
             </>
@@ -163,25 +174,103 @@ export function AutoPickPopover({ sessionId, pick, items, cwd }: { sessionId: st
   );
 }
 
+/** Above this much context, switching models re-reads enough to offer compacting first. */
+export const COMPACT_FIRST_TOKENS = 20_000;
+
 /**
- * The note above the message box when a session Auto started has grown past its first prompt. It says what
- * switching costs, never switches by itself, and shows at most once per session.
+ * The note above the message box when a session Auto started has grown past its first prompt. It suggests the
+ * next step up (more effort first, then the next model at medium effort), says what switching costs, never acts by
+ * itself, and shows at most once per session.
  */
 export function AutoSuggestNote({ sessionId, pick, items, contextTokens }: { sessionId: string; pick: AutoPick | null; items: readonly DisplayItem[]; contextTokens: number | null }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const enabled = usePreferences((s) => s.prefs.autoModel.suggest);
+  const effort = useHosts((s) => s.hosts.get(sessionId)?.effort ?? null);
   const state = useAutoPick((s) => s.suggested[sessionId]);
   const mark = useAutoPick((s) => s.markSuggested);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const signals = useMemo(() => suggestSignals(items), [items]);
-  const fresh = shouldSuggest({ enabled, pick, seen: state !== undefined, signals });
-  // Once shown it stays until answered, also when the signals that raised it change.
-  const tier = state === 'shown' && pick && !pick.left ? (fresh ?? strongerTier(pick)) : fresh;
+  const fresh = shouldSuggest({ enabled, pick, seen: state !== undefined, signals, effort });
+  // Once shown it stays until answered, also when the signals that raised it change (or after a restart).
+  const step = state === 'shown' && pick && !pick.left ? (fresh ?? nextStep(pick, effort, suggestReason(signals) ?? 'turns')) : fresh;
   useEffect(() => {
     if (fresh && state === undefined) mark(sessionId, 'shown');
   }, [fresh, state, sessionId]);
-  if (!tier || !pick?.model || state === 'answered') return null;
+  if (!step || !pick?.model || state === 'answered') return null;
   const answer = () => mark(sessionId, 'answered');
+  const fail = (what: string) => (e: Error) => setError(`Couldn't ${what}: ${e.message}`);
+  // A session that isn't running shows its saved settings in the chips: update them too, as the chips' own menus do.
+  const saved = (patch: Partial<SavedSettings>) => useSavedSettings.getState().set(sessionId, (s) => (s ? { ...s, ...patch } : s));
+  const current = EFFORT_LABEL[effort ?? 'medium'];
+  const keep = (
+    <Button size="sm" variant="quiet" onClick={answer} data-auto-suggest-keep>
+      Keep {step.kind === 'effort' ? `${current.toLowerCase()} effort` : tierLabel(pick.model)}
+    </Button>
+  );
+  const never = (
+    <Button size="sm" variant="quiet" onClick={answer} className="ml-auto" data-auto-suggest-never>
+      Don't suggest in this session
+    </Button>
+  );
+
+  if (step.kind === 'effort') {
+    return (
+      <Notice
+        tone="neutral"
+        icon={<AutoWand />}
+        data-auto-suggest={`effort-${step.effort}`}
+        actions={
+          <>
+            <Button
+              size="sm"
+              onClick={() => {
+                answer();
+                void client
+                  ?.call('session.setEffort', { sessionId, effort: step.effort })
+                  .then(() => saved({ effort: step.effort }))
+                  .catch(fail('raise the effort'));
+              }}
+              data-auto-suggest-use
+            >
+              Use {EFFORT_LABEL[step.effort].toLowerCase()} effort
+            </Button>
+            {keep}
+            {never}
+          </>
+        }
+      >
+        <strong className="font-semibold">This looks harder than the first prompt.</strong> Give {tierLabel(pick.model)} more time to think and check its work, from this message?
+        {error && <span className="block text-error">{error}</span>}
+      </Notice>
+    );
+  }
+
+  const tier = step.tier;
+  const switchTo = async () => {
+    if (!client) return;
+    await client.call('session.setModel', { sessionId, model: tier });
+    await client.call('session.setEffort', { sessionId, effort: step.effort });
+    saved({ model: tier, effort: step.effort });
+  };
+  // Compacting on the current model first keeps the new model's first turn small: a cache belongs to its model.
+  const compactFirst = async () => {
+    if (!client) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await client.call('session.send', { sessionId, text: '/compact', attachments: [], fork: false });
+      if (!(await whenIdle({ state: () => useHosts.getState().hosts.get(sessionId)?.state, subscribe: (listener) => useHosts.subscribe(listener) }))) throw new Error('compacting did not finish');
+      await switchTo();
+      answer();
+    } catch (e) {
+      fail('compact and switch')(e as Error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const large = (contextTokens ?? 0) >= COMPACT_FIRST_TOKENS;
   const tokens = contextTokens ? `, so the next turn reads about ${formatTokens(contextTokens)} tokens again` : '';
   return (
     <Notice
@@ -190,26 +279,31 @@ export function AutoSuggestNote({ sessionId, pick, items, contextTokens }: { ses
       data-auto-suggest={tier}
       actions={
         <>
+          {large && (
+            <Button size="sm" disabled={busy || !client} aria-busy={busy || undefined} onClick={() => void compactFirst()} data-auto-suggest-compact>
+              {busy ? 'Compacting…' : `Compact, then use ${tierLabel(tier)}`}
+            </Button>
+          )}
           <Button
             size="sm"
+            variant={large ? 'quiet' : undefined}
+            disabled={busy}
             onClick={() => {
               answer();
-              void client?.call('session.setModel', { sessionId, model: tier }).catch(() => {});
+              void switchTo().catch(fail('switch'));
             }}
             data-auto-suggest-use
           >
             Use {tierLabel(tier)}
           </Button>
-          <Button size="sm" variant="quiet" onClick={answer} data-auto-suggest-keep>
-            Keep {tierLabel(pick.model)}
-          </Button>
-          <Button size="sm" variant="quiet" onClick={answer} className="ml-auto" data-auto-suggest-never>
-            Don't suggest in this session
-          </Button>
+          {keep}
+          {never}
         </>
       }
     >
-      <strong className="font-semibold">This looks bigger than the first prompt.</strong> Use {tierLabel(tier)} from this message? The cache starts over{tokens}.
+      <strong className="font-semibold">This looks bigger than the first prompt.</strong> Use {tierLabel(tier)} at medium effort from this message? Its cache starts over{tokens}
+      {large ? '. Compacting first keeps that small.' : '.'}
+      {error && <span className="block text-error">{error}</span>}
     </Notice>
   );
 }

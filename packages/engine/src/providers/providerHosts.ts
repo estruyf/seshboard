@@ -17,16 +17,32 @@ import {
   type SessionHostInfo,
   type SlashCommand,
   type StreamDelta,
+  ORCHESTRATOR_SERVER,
+  PROVIDER_NAMES,
+  browserAnswerOf,
+  browserPromptText,
+  type BrowserAnswer,
+  type BrowserAsk,
 } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import { summarise, type StoredUpNext } from '../host/upNextStore.ts';
 import { isReadOnlyTool, READ_ONLY_REASON, type AskResult, type AskText } from '../host/sideQuestions.ts';
-import type { DriverSession, ProviderAdapter } from './provider.ts';
+import type { DriverSession, DriverSessionConfig, McpStdioServer, ProviderAdapter, ProviderDriver } from './provider.ts';
+import { mcpAppToolPolicy } from './mcpApps.ts';
 
 export interface ProviderHostsDeps {
   /** The allowed providers that can run sessions (have a driver). */
   providers(): ProviderAdapter[];
+  /** The browser tools: Seshboard's `browser` MCP server for one session (null while they are off), as Claude Code's get. */
+  browserServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
+  /**
+   * The orchestrator (docs/orchestrator.md), as Claude Code's hosts get it: its `orchestrator` MCP server for one
+   * session, whether a session being resumed is one, and what a resumed session reads after the provider's prompt.
+   */
+  orchestratorServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
+  isOrchestrator?(sessionId: string): boolean;
+  appendSystemFor?(sessionId: string): string | null;
   /** The provider profile a session belongs to (to resume it with that profile's login). */
   profileOf(sessionId: string): string | undefined;
   /** The folder a session ran in. */
@@ -40,6 +56,8 @@ export interface ProviderHostsDeps {
   links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
   /** Keeps what a session showed that its provider doesn't write to its file (`DriverEvents.messages`' `keep`). */
   keepNotes?(sessionId: string, messages: RawSessionMessage[]): void;
+  /** Text for after the provider's own system prompt, at each start and resume (Skim's marks); null for none. */
+  appendSystem?(): string | null;
   /** Seshboard's own throwaway sessions (Ask's forks), which the sidebar never lists. */
   ephemeral?: { add(sessionId: string): void };
   /** A session is a pipeline's read-only step: when it resumes, only tools that read run. */
@@ -79,6 +97,10 @@ interface Host {
   queue: StoredUpNext[];
   /** Only tools that read run (a pipeline's read-only step): every other request is denied before you are asked. */
   readOnly: boolean;
+  /** An orchestrator (docs/orchestrator.md): it starts with Seshboard's `orchestrator` MCP server. */
+  orchestrator: boolean;
+  /** Text for after the provider's system prompt at each start: an orchestrator's role, a project's instructions. */
+  appendSystem: string | null;
 }
 
 /**
@@ -93,6 +115,8 @@ export class ProviderHosts {
   private readonly hosts = new Map<string, Host>();
   /** Permission request id → session. */
   private readonly requests = new Map<string, string>();
+  /** Prompts Seshboard raised itself (a browser site, or scripts on it, to allow), not the provider: where their answer goes. */
+  private readonly ownPrompts = new Map<string, { resolve(answer: BrowserAnswer): void }>();
 
   constructor(private readonly deps: ProviderHostsDeps) {}
 
@@ -121,7 +145,7 @@ export class ProviderHosts {
   }
 
   /** Starts a session with a provider in `cwd` and sends the first message. Returns its id. */
-  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode; readOnly?: boolean; beforeFirstMessage?: (sessionId: string) => Promise<void> }): Promise<string> {
+  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode; readOnly?: boolean; orchestrator?: boolean; appendSystem?: string | null; beforeFirstMessage?: (sessionId: string) => Promise<void> }): Promise<string> {
     const adapter = this.adapterOf(params.profileId);
     if (!adapter?.driver) throw new RpcError('PROVIDER_UNAVAILABLE', 'This profile is not one of a provider that can start sessions');
     const permissionMode = this.modeFor(adapter, params.permissionMode);
@@ -131,9 +155,11 @@ export class ProviderHosts {
     // The provider names the session: it is reported from then on (the window waits on `session.create` until then).
     const host = this.newHost('', adapter, params.cwd, params.model, permissionMode, 'starting', effort);
     host.readOnly = params.readOnly === true;
+    host.orchestrator = params.orchestrator === true;
+    host.appendSystem = params.appendSystem?.trim() || null;
     let session: DriverSession;
     try {
-      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly }, this.eventsFor(host));
+      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly, ...(await this.ownServers(host)), ...this.appended(host) }, this.eventsFor(host));
     } catch (error) {
       throw new RpcError('PROVIDER_FAILED', (error as Error).message);
     }
@@ -240,6 +266,12 @@ export class ProviderHosts {
     return { answer: result.answer, ...(result.error ? { error: result.error } : {}), usage: [] };
   }
 
+  /** What goes after the provider's system prompt now, as a start's config. */
+  private appended(host?: Host): { appendSystem?: string; instructions?: string } {
+    const text = this.deps.appendSystem?.();
+    return { ...(text ? { appendSystem: text } : {}), ...(host?.appendSystem ? { instructions: host.appendSystem } : {}) };
+  }
+
   /** Stops one of a session's background tasks. */
   async stopTask(sessionId: string, taskId: string): Promise<void> {
     const session = this.hosts.get(sessionId)?.session;
@@ -268,10 +300,18 @@ export class ProviderHosts {
     return this.adapterOf(this.deps.profileOf(sessionId))?.driver?.commands().catch(() => []) ?? [];
   }
 
-  /** What a session can use (Tools): its own lists once it runs here; before that, only its commands, read-only. */
-  async capabilities(sessionId: string): Promise<Capabilities> {
+  /**
+   * What a session can use (Tools): its own lists once it runs here; before that, what its driver reads for the folder
+   * without starting anything (Codex's), else only its commands. Read-only either way.
+   */
+  async capabilities(sessionId: string, cwd?: string): Promise<Capabilities> {
     const host = this.hosts.get(sessionId);
     if (host?.session) return host.session.capabilities();
+    const driver = this.adapterOf(this.deps.profileOf(sessionId))?.driver;
+    if (driver?.capabilities && cwd) {
+      const read = await driver.capabilities(cwd).catch((error: Error) => (this.deps.log('warn', `Tools for ${sessionId}: ${error.message}`), null));
+      if (read) return { ...read, live: false };
+    }
     return { live: false, mcp: [], agents: [], commands: await this.commands(sessionId), plugins: [] };
   }
 
@@ -281,10 +321,92 @@ export class ProviderHosts {
     await host.session.mcp(server, action);
   }
 
+  /** Visuals in replies (Settings › General): the `visualize` server sessions start or resume with, or null. */
+  private visualize: McpStdioServer | null = null;
+
+  setVisuals(server: McpStdioServer | null): void {
+    this.visualize = server;
+  }
+
+  /** Seshboard's own MCP servers for a session it starts (visuals, the browser tools); a read-only one gets none. */
+  private async ownServers(host: Host): Promise<Pick<DriverSessionConfig, 'mcpServers'>> {
+    if (host.readOnly) return {};
+    const browser = (await this.deps.browserServer?.(() => host.info.sessionId || null)) ?? null;
+    const orchestrator = host.orchestrator ? ((await this.deps.orchestratorServer?.(() => host.info.sessionId || null)) ?? null) : null;
+    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { browser } : {}), ...(orchestrator ? { [ORCHESTRATOR_SERVER]: orchestrator } : {}) };
+    return Object.keys(servers).length ? { mcpServers: servers } : {};
+  }
+
+  /**
+   * The browser tools want a site the session's project doesn't allow, or to run scripts on one: asks in the session's
+   * permission card, as the provider's own prompts do. Your answer (once, this session, always), or 'deny'.
+   */
+  askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
+    const host = this.hosts.get(sessionId);
+    if (!host) return Promise.resolve('deny');
+    return new Promise((resolve) => {
+      const requestId = randomUUID();
+      const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
+      const request: PermissionRequest = {
+        requestId,
+        sessionId,
+        toolName: `mcp__browser__${ask.tool}`,
+        toolUseId: null,
+        input: JSON.parse(JSON.stringify(ask.input)) as PermissionRequest['input'],
+        ...browserPromptText(agent, ask),
+        sessionAllow: true,
+        decisionReason: null,
+        blockedPath: null,
+        agentId: null,
+        createdAt: Date.now(),
+      };
+      this.ownPrompts.set(requestId, { resolve });
+      host.permissions.set(requestId, request);
+      this.requests.set(requestId, sessionId);
+      this.update(host, { state: 'needs-you' });
+      this.deps.onPermission(request);
+    });
+  }
+
+  /** An MCP App's page, or another resource it reads, from the session's MCP server. */
+  async mcpAppResource(sessionId: string, server: string, uri: string, callId: string | null): Promise<unknown[]> {
+    return this.mcpApps(sessionId).resource({ sessionId, server, uri, callId });
+  }
+
+  /**
+   * A tool an MCP App calls on its own server. Only one the server lets apps call; one that isn't read-only waits for
+   * `confirmed` (you said yes in the app's frame), so a page never changes things behind your back.
+   */
+  async mcpAppCall(sessionId: string, server: string, tool: string, args: unknown, confirmed: boolean): Promise<unknown> {
+    const apps = this.mcpApps(sessionId);
+    const policy = mcpAppToolPolicy(tool, (await apps.tools({ sessionId, server }))[tool]);
+    if (!policy) throw new RpcError('NOT_FOUND', `${server} has no tool called ${tool}`);
+    if (!policy.callable) throw new RpcError('NOT_ALLOWED', `${server} doesn't let its app use ${policy.title}`);
+    if (!policy.readOnly && !confirmed) throw new RpcError('NEEDS_CONFIRMATION', policy.title);
+    this.deps.log('info', `MCP App of ${server} in ${sessionId} called ${tool}`);
+    return apps.callTool({ sessionId, server, tool, arguments: args });
+  }
+
+  private mcpApps(sessionId: string): NonNullable<ProviderDriver['mcpApps']> {
+    const apps = this.adapterOf(this.deps.profileOf(sessionId))?.driver?.mcpApps;
+    if (!apps) throw new RpcError('UNSUPPORTED', 'This session has no MCP Apps');
+    return apps;
+  }
+
   /** Answers a permission request of a provider's session. False when the request isn't one of theirs. */
   respond(requestId: string, decision: PermissionDecision): boolean {
     const sessionId = this.requests.get(requestId);
     const host = sessionId ? this.hosts.get(sessionId) : undefined;
+    const own = this.ownPrompts.get(requestId);
+    if (own && host && sessionId) {
+      this.ownPrompts.delete(requestId);
+      host.permissions.delete(requestId);
+      this.requests.delete(requestId);
+      this.deps.onPermissionResolved(requestId, sessionId);
+      if (host.info.state === 'needs-you' && host.permissions.size === 0) this.update(host, { state: host.inTurn ? 'running' : 'idle' });
+      own.resolve(browserAnswerOf(decision));
+      return true;
+    }
     if (!host?.session) return false;
     host.session.respond(requestId, decision);
     return true;
@@ -354,8 +476,10 @@ export class ProviderHosts {
     const permissionMode = this.modeFor(adapter, saved?.permissionMode);
     const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting', effort);
     host.readOnly = this.deps.readOnly?.(sessionId) ?? false;
+    host.orchestrator = this.deps.isOrchestrator?.(sessionId) ?? false;
+    host.appendSystem = this.deps.appendSystemFor?.(sessionId) ?? null;
     try {
-      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly }, this.eventsFor(host));
+      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly, ...(await this.ownServers(host)), ...this.appended(host) }, this.eventsFor(host));
     } catch (error) {
       this.hosts.delete(sessionId);
       this.update(host, { state: 'closed' });
@@ -448,6 +572,8 @@ export class ProviderHosts {
       stopping: false,
       queue: [],
       readOnly: false,
+      orchestrator: false,
+      appendSystem: null,
       info: {
         sessionId,
         cwd,

@@ -34,6 +34,8 @@ export interface SummaryInput {
   /** The branch it starts on in the project's folder (null: not known), and whether you picked it. */
   branch: string | null;
   branchPicked: boolean;
+  /** Where a new worktree starts, by name ("origin/dev"); null when the computer can't say. */
+  base?: string | null;
   /** The pipeline Run as picked; null for one session. */
   pipeline: string | null;
 }
@@ -50,7 +52,7 @@ export function optionsSummary(input: SummaryInput): OptionsSummary {
   const second: SummaryPart[] = input.pipeline
     ? [{ text: `Runs as ${input.pipeline}`, changed: true }]
     : [
-        choice.worktree ? { text: 'New worktree', changed: choice.worktree !== defaults.worktree } : { text: input.branch ? `This folder on ${input.branch}` : 'This folder', changed: choice.worktree !== defaults.worktree || input.branchPicked },
+        choice.worktree ? { text: input.base ? `New worktree from ${input.base}` : 'New worktree', changed: choice.worktree !== defaults.worktree || choice.baseRef !== defaults.baseRef } : { text: input.branch ? `This folder on ${input.branch}` : 'This folder', changed: choice.worktree !== defaults.worktree || input.branchPicked },
         { text: 'one session', changed: false },
       ];
   const line = (parts: SummaryPart[]) => parts.map((p) => p.text).join(' · ');
@@ -78,12 +80,13 @@ export function providerSummary({ provider, model, mode }: { provider: string; m
 /**
  * Whether Start (or Send) can go now, and if not, why: the words its button says to a screen reader and a long press.
  * `blocked`: why the provider picked can't start a session (install it, or sign in with its CLI), or that it is asked.
+ * `attached`: images or files that go as the message without text, where the computer takes them alone.
  */
-export function startState({ connected, project, text, busy, reading, blocked = null }: { connected: boolean; project: boolean; text: string; busy: boolean; reading: boolean; blocked?: string | null }): { ready: boolean; reason: string | null } {
+export function startState({ connected, project, text, attached = false, busy, reading, blocked = null }: { connected: boolean; project: boolean; text: string; attached?: boolean; busy: boolean; reading: boolean; blocked?: string | null }): { ready: boolean; reason: string | null } {
   if (!connected) return { ready: false, reason: 'Waiting for the connection' };
   if (blocked) return { ready: false, reason: blocked };
   if (!project) return { ready: false, reason: 'Pick a project first' };
-  if (!text.trim()) return { ready: false, reason: 'Type a message first' };
+  if (!text.trim() && !attached) return { ready: false, reason: 'Type a message first' };
   if (reading) return { ready: false, reason: 'Reading the attachments…' };
   if (busy) return { ready: false, reason: 'Starting…' };
   return { ready: true, reason: null };

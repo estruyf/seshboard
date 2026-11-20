@@ -8,6 +8,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import type { DisplayItem } from '../transcript/displayItems.ts';
+import { fileUrlTransform } from '../transcript/fileRefs.ts';
 import { markdownComponents } from '../transcript/Markdown.tsx';
 import { RunStopNotice, StepTreeCard } from './StepTree.tsx';
 import { PARENT_PLACEHOLDER, parentRows, READ_ONLY_LINE, replyToStepPlaceholder, roundDivider, stopNotice, verdictView, waitsOnStep, type ParentRow } from './runView.ts';
@@ -118,7 +119,7 @@ export function StepVerdictCard({ sessionId, items, working }: { sessionId: stri
             <ol className="mt-2 list-decimal pl-5 text-body text-text">
               {view.verdict.items.map((item, i) => (
                 <li key={i} className="[overflow-wrap:anywhere]">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={VERDICT_ITEM_COMPONENTS}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={fileUrlTransform} components={VERDICT_ITEM_COMPONENTS}>
                     {item}
                   </ReactMarkdown>
                 </li>

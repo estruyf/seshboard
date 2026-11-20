@@ -10,6 +10,9 @@ describe('another computer’s prompts', () => {
     expect(promptTitle(prompt('ExitPlanMode', {}))).toBe('Claude has a plan. Ready to start?');
     expect(promptTitle(prompt('mcp__github__create_issue', {}))).toBe('Allow create_issue?');
     expect(promptTitle(prompt('Bash', {}, 'Allow this command?'))).toBe('Allow this command?');
+    // Another provider's session names it: Codex's questions come on the same card.
+    expect(promptTitle(prompt('AskUserQuestion', {}), 'Codex')).toBe('Codex has a question for you');
+    expect(promptTitle(prompt('ExitPlanMode', {}), 'Copilot')).toBe('Copilot has a plan. Ready to start?');
     expect(toolLabel('Bash')).toBe('Bash');
     expect(promptSubject(prompt('Bash', { command: 'rm -rf dist\nls', description: 'Clean' }))).toBe('rm -rf dist\nls');
     expect(promptSubject(prompt('Edit', { file_path: '/repo/a.ts' }))).toBe('/repo/a.ts');

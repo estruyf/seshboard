@@ -1,0 +1,94 @@
+---
+title: Tabs and pages
+description: The browser's toolbar, address bar and tabs, finding text in a page, zoom, sound, downloads and clearing a site's data.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+Each page in the [browser](/browser/overview/) has the same toolbar, whether it is in a session's Browser panel or the Browser view. This page covers what you can do with a page and its tab.
+
+## The toolbar
+
+From left to right:
+
+- **Back** and **Forward** go through the pages you visited. A narrow panel hides Forward; <Kbd shortcut="browser.forward" /> and your mouse's forward button still work.
+- **Reload** loads the page again, and turns into **Stop loading** while a page loads. A short line runs along the bottom of the toolbar while it loads.
+- **The address bar**, with the link icon at its start (see below).
+- **The profile switcher**, with the tab's [browser profile](/browser/profiles/).
+- **Pin tab** keeps the tab after a restart.
+- **The star** bookmarks the page (<Kbd shortcut="browser.bookmark" />), or edits its bookmark when it has one. See [Favourites and bookmarks](/browser/favourites-and-bookmarks/).
+- **The zoom**, such as `125%`, while the page is zoomed. Click it for 100%.
+- **Pick an element**, in a session's panel only. See [Send a page to the message](/browser/in-a-session/#send-a-page-to-the-message).
+- **Open in browser** opens the page in your usual browser.
+- **⋯** (**More for this page**) has the rest: **Pin tab**, **Bookmark this page…**, **Open in browser**, **Rename tab…**, **Copy address**, **Find in page**, **Zoom in**, **Zoom out**, **Actual size**, **Mute tab**, **Developer tools**, **Clear data for this site…** and **Clear all browsing data…**. In a session it also has **Open browser in new window**.
+
+In a narrow panel, Pin, the star and Open in browser move into **⋯**, so the address keeps room to type.
+
+## The address bar
+
+Click it or press <Kbd shortcut="browser.address" />, then type an address, such as `github.com/org/repo/pull/12`, and press <Kbd keys="enter" />. You don't need `https://`. A port on its own, such as `5173`, opens `localhost:5173`. The address bar doesn't search: text with a space, or without a dot, is not an address.
+
+- **Suggestions.** As you type, a list shows your open tabs (**Switch to tab**), your favourites and pages you opened before, matched on the address or the title. Pick one with <Kbd keys="arrowup|arrowdown" /> and <Kbd keys="enter" />, or click it. <Kbd keys="enter" /> opens the first suggestion when what you typed is the start of its address. <Kbd keys="escape" /> closes the list, and a second <Kbd keys="escape" /> puts the address back.
+- **Reload.** <Kbd keys="enter" /> on an address you didn't change loads the page again.
+- **Copy the address.** The link icon at the start of the bar copies the page's address in one click. The bar shows the address without `https://`, but copying from it takes the full address, so it pastes as a link in other apps. **Copy address** in a tab's menu and *Copy page address* in the palette do the same.
+
+When a page can't load, the tab says **Couldn't open this page**, with **Try again** and **Open in browser**. A page that stops loads again by itself, or shows **This page stopped** with **Reload**.
+
+## Tabs
+
+In a session, the tabs are a strip under the toolbar. In the Browser view, they are the list in the sidebar.
+
+- **New tab:** the **+** button, or <Kbd shortcut="browser.new-tab" />. A new tab lists your favourites, your bookmarks and the tabs you closed lately. The **⌄** next to **+** opens a tab in a [browser profile](/browser/profiles/).
+- **Pin a tab** to keep it after a restart: **Pin tab** in the toolbar or the tab's menu. Pinned tabs stay before the others, above a line in the Browser view's list.
+- **Rename a tab:** double-click it, or choose **Rename tab…** in its menu. Leave the name empty to use the page's title again. A pinned tab keeps its name after a restart.
+- **Move a tab:** drag it, or press <Kbd shortcut="browser.move-tab" /> on it. Pinned tabs stay before the others.
+- **Close a tab:** its **×**, a middle click, or <Kbd shortcut="browser.close-tab" />. A pinned tab asks first: the tab says **Close pinned tab?**, and a second middle click or **×** closes it, so one slip doesn't lose it.
+- **Reopen a closed tab:** <Kbd shortcut="browser.reopen-tab" /> (in the Browser view, or while a page has the focus), *Reopen closed tab* in the palette, or **Recently closed** on a new tab.
+- **Go to a tab:** *Go to tab…* in the palette lists the tabs of the Browser view and of every session.
+
+Right-click a tab (or click its **⋯** in the Browser view's list) for its menu: **Add to favourites**, **Bookmark tab…**, **Pin tab**, **Rename tab…**, **Mute tab**, **Copy address**, **Open in browser** and **Close tab**. With browser profiles, it also has **Open in other profile** and **Reset profile…**.
+
+## Find in a page
+
+Press <Kbd shortcut="browser.find" /> while a page or its address bar has the focus, or in the Browser view. It is also **Find in page** in **⋯** and *Find in the page* in the palette.
+
+The find bar shows how many matches there are, such as "2 of 7". <Kbd keys="enter" /> goes to the next one and <Kbd keys="shift+enter" /> to the previous one, or use the arrows. <Kbd keys="escape" /> closes it.
+
+## Zoom and sound
+
+- **Zoom:** **Zoom in**, **Zoom out** and **Actual size** in **⋯**, or *Zoom in on the page* and *Zoom out of the page* in the palette. Each tab keeps its own zoom, and the toolbar shows it.
+- **Sound:** a tab that plays sound shows a speaker. Click it to mute the tab, and click the crossed-out speaker to turn the sound back on. **Mute tab** is also in the tab's menu, **⋯** and the palette. The speaker stays until the page has been quiet for two seconds, so music doesn't make it blink.
+
+## Right-click in a page
+
+The page's own menu has what fits where you clicked: **Open link in new tab**, **Copy link address**, **Copy email address**, **Copy image**, **Copy image address**, spelling suggestions, cut, copy and paste, or **Back**, **Forward** and **Reload**. **Inspect** opens the developer tools on that element. In a session's panel, it also has **Quote in message** and **Add element to message**.
+
+## Downloads
+
+A file a page downloads goes to your Downloads folder. A toast shows while it downloads, then **Downloaded** with **Show in <Os mac="Finder" windows="File Explorer" />**. A file with the same name is never replaced: the new one gets a number, such as `report (1).pdf`. If a download fails, the toast offers **Open in browser**. A toast with a long file name cuts it: **Show all** shows the whole text.
+
+## Sign-ins and other apps
+
+- Sign-in windows, such as *Sign in with Google*, open as real windows, so the sign-in finishes. Your sign-ins last between runs.
+- A page asks before it opens another app, such as Slack or VS Code, from a link.
+- A page's **Copy** buttons and fullscreen video work.
+- A JSON or XML response, such as a REST call you open as a page, shows on a dark background in dark mode, as in Chrome.
+
+## Developer tools and site data
+
+- **Developer tools** in **⋯** (*Page developer tools* in the palette) opens the page's developer tools.
+- **Clear data for this site…** signs you out of the site in front: it forgets its cookies and storage, in the tab's profile. It asks first.
+- **Clear all browsing data…** forgets the data of every site, in every profile. It asks first.
+
+<Aside>
+To forget only part of a profile's data, such as its history, use **Reset profile…**. See [Browser profiles](/browser/profiles/#reset-or-delete-a-profile).
+</Aside>
+
+## Related
+
+<Related pages={['browser/overview', 'browser/favourites-and-bookmarks', 'browser/profiles', 'browser/in-a-session']} />

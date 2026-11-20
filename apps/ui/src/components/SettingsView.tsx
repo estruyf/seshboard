@@ -1,8 +1,9 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
+import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -43,7 +44,8 @@ import { clickKeysFor, formatKeys, keysFor, matches } from '../lib/shortcuts.ts'
 import { groupByPage, searchSettings, type SettingEntry } from './settingsSearch/searchSettings.ts';
 import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } from './settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from './settingsSearch/settingsIndex.ts';
-import { navGroups, SETTINGS_GROUP_LABEL, SETTINGS_SECTIONS, settingsPageOrder, settingsSectionLabel, type SettingsPage } from './settingsSections.ts';
+import { navGroups, SETTINGS_GROUP_LABEL, SETTINGS_SECTIONS, settingsPageOrder, settingsPageShown, settingsSectionLabel, type SettingsPage } from './settingsSections.ts';
+import { BrowserProfilesSettings } from './webPreview/BrowserProfilesSettings.tsx';
 import { SectionHeader } from './ui/SectionHeader.tsx';
 
 /** A session row in miniature, drawn with the live theme tokens. */
@@ -111,6 +113,32 @@ function ActivityPreview({ mode }: { mode: ToolActivity }) {
   );
 }
 
+/** A finished turn in miniature: everything open, or folded with some of the reply faded. */
+function ConversationViewPreview({ mode }: { mode: ConversationView }) {
+  const line = (width: string, tone: string) => <div className={`h-1.5 rounded-full ${tone}`} style={{ width }} />;
+  return (
+    <div className="absolute inset-0 flex flex-col justify-center gap-1.5 bg-bg px-3">
+      {mode === 'skim' ? (
+        <>
+          {line('45%', 'bg-faint/50')}
+          {line('30%', 'bg-ok/70')}
+          {line('80%', 'bg-faint/40')}
+          {line('65%', 'bg-text/60')}
+          {line('50%', 'bg-faint/40')}
+        </>
+      ) : (
+        <>
+          {line('60%', 'bg-text/60')}
+          {line('45%', 'bg-faint/50')}
+          {line('70%', 'bg-text/60')}
+          {line('80%', 'bg-text/60')}
+          {line('50%', 'bg-text/60')}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Section({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
   const id = useId();
   // minmax(0, 1fr): a long path or command inside wraps or truncates instead of widening the page.
@@ -133,6 +161,11 @@ function Section({ title, description, action, children }: { title: string; desc
 const ACTIVITY: Array<{ value: ToolActivity; label: string }> = [
   { value: 'summary', label: 'Summarised' },
   { value: 'steps', label: 'Every step' },
+];
+
+const CONVERSATION_VIEWS: Array<{ value: ConversationView; label: string }> = [
+  { value: 'skim', label: 'Skim' },
+  { value: 'full', label: 'Full' },
 ];
 
 /** "Under each reply": each choice with what the line looks like, at 14:32 today in the user's own time format. */
@@ -246,7 +279,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </div>
           <Toggle
             label="Show sessions from other apps"
-            detail="Also list sessions from Terminal, Claude desktop, your editor and GitHub Copilot. Off shows only sessions you started or continued in Seshboard."
+            detail="Also list sessions from Terminal, Claude desktop, your editor, GitHub Copilot, OpenAI Codex and Google Antigravity. Off shows only sessions you started or continued in Seshboard."
             checked={prefs.sessionScope === 'all'}
             attr="data-session-scope"
             onChange={(all) => update({ sessionScope: all ? 'all' : 'switchboard' })}
@@ -295,6 +328,26 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 </Choice>
               ))}
             </RadioGroup>
+            <div className="grid gap-2" data-setting-row>
+              <span>
+                <span className="block text-ui">Conversation view</span>
+                <span className="block text-meta text-muted">Skim shows less to read once a turn has finished: Claude's messages between tool calls fold into the summary, and a line above the reply says what changed. Nothing is rewritten. With Every step, messages stay open.</span>
+              </span>
+              <RadioGroup label="Conversation view" className="grid grid-cols-3 gap-4">
+                {CONVERSATION_VIEWS.map(({ value, label }) => (
+                  <Choice key={value} value={value} current={prefs.conversationView} label={label} attr="data-conversation-view" onSelect={(conversationView) => update({ conversationView })}>
+                    <ConversationViewPreview mode={value} />
+                  </Choice>
+                ))}
+              </RadioGroup>
+            </div>
+            <Toggle
+              label="Let the agent mark its key sentences"
+              detail="In Skim, the agent ends a long reply with a hidden line that names its key sentences, and the rest fade. It costs a few tokens per turn, and applies to sessions started or resumed from now on. In a terminal, the line shows as a comment."
+              checked={prefs.skimMarks}
+              attr="data-skim-marks-setting"
+              onChange={(skimMarks) => update({ skimMarks })}
+            />
             <Toggle
               label="Show prompt outline"
               detail="A thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it."
@@ -400,7 +453,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section
           title="Profiles"
-          description="Use more than one account, for example a personal Claude plan and a work one, or GitHub Copilot. Each profile is a config folder of Claude Code or GitHub Copilot with its own login. Link a project to a profile from its menu or the Projects view: its new sessions run with that profile; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
+          description="Use more than one account, for example a personal Claude plan and a work one, or GitHub Copilot. Each profile is a config folder of Claude Code, GitHub Copilot, OpenAI Codex or Google Antigravity with its own login. Link a project to a profile from its menu or the Projects view: its new sessions run with that profile; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
         >
           <ProfilesSettings />
         </Section>
@@ -486,6 +539,30 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               attr="data-chrome-setting"
               onChange={(chrome) => update({ chrome })}
             />
+            <Toggle
+              label="Visuals in replies"
+              detail={VISUALS_DETAIL}
+              checked={prefs.agentVisuals}
+              attr="data-agent-visuals-setting"
+              onChange={(agentVisuals) => update({ agentVisuals })}
+            />
+            <Toggle
+              label="Allow browser previews"
+              detail={WEB_PREVIEW_DETAIL}
+              checked={prefs.webPreview}
+              attr="data-web-preview-setting"
+              onChange={(webPreview) => update({ webPreview })}
+            />
+          </Section>
+          {/* The rest of the browser's settings are on its own page, Settings › Browser, shown while it is on. */}
+          <Section title="Browser">
+            <Toggle
+              label="Allow browser"
+              detail={BROWSER_DETAIL}
+              checked={prefs.browserEnabled}
+              attr="data-browser-setting"
+              onChange={(browserEnabled) => update({ browserEnabled, browserIntro: 'done' })}
+            />
           </Section>
           <Section title="Quitting">
             <Toggle
@@ -558,6 +635,31 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <EngineDiagnostics />
         </Section>
       );
+    case 'browser':
+      return (
+        <>
+          <Section title="Agents">
+            <Toggle
+              label="Allow Seshboard to control the browser"
+              detail={BROWSER_CONTROL_DETAIL}
+              checked={prefs.browserControl}
+              attr="data-browser-control-setting"
+              onChange={(browserControl) => update({ browserControl })}
+            />
+            <Toggle
+              label="Allow scripts in pages"
+              detail={BROWSER_SCRIPTS_DETAIL}
+              checked={prefs.browserControl && prefs.browserScripts}
+              disabled={!prefs.browserControl}
+              attr="data-browser-scripts-setting"
+              onChange={(browserScripts) => update({ browserScripts })}
+            />
+          </Section>
+          <Section title="Browser profiles" description="Each profile keeps its own logins, site data and cache, so you can use one site with several accounts side by side. Its tabs show its colour.">
+            <BrowserProfilesSettings />
+          </Section>
+        </>
+      );
     case 'about':
       return (
         <Section title="About">
@@ -610,7 +712,8 @@ export function SettingsNav({ search }: { search: SearchState }) {
       </button>
     );
   };
-  const groups = navGroups(SETTINGS_SECTIONS);
+  const browser = usePreferences((s) => s.prefs.browserEnabled);
+  const groups = navGroups(SETTINGS_SECTIONS.filter((page) => settingsPageShown(page.id, { browser })));
   const bottom = groups.find((g) => g.group === 'bottom');
   return (
     <nav aria-label="Settings sections" onKeyDown={moveBetweenPages} className={`flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 ${sidebarClosed ? 'pt-12' : 'pt-3'}`} data-settings-nav>
@@ -683,7 +786,11 @@ export function SettingsView() {
   const [active, setActive] = useState(0);
   const field = useRef<HTMLInputElement>(null);
   const listId = useId();
-  const entries = useMemo(settingsIndex, []);
+  // Settings › Browser's settings are found only while it is shown.
+  const browser = usePreferences((s) => s.prefs.browserEnabled);
+  const entries = useMemo(() => settingsIndex().filter((entry) => settingsPageShown(entry.page, { browser })), [browser]);
+  // A page that went away meanwhile (Browser, as the browser was turned off) shows General instead.
+  const shown = settingsPageShown(section, { browser }) ? section : 'general';
   const found = useMemo(() => searchSettings(query, entries, settingsSectionLabel, currentPlatform()), [query, entries]);
   const groups = useMemo(() => groupByPage(found, settingsPageOrder), [found]);
   /** The results in the order they show, for ↑ ↓. */
@@ -770,8 +877,8 @@ export function SettingsView() {
                 <SettingsSearchResults query={query} groups={groups} pages={SETTINGS_SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
               </div>
             ) : (
-              <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'pipelines' ? 'max-w-6xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
-                <SectionPage section={section} scrollRef={scroller} />
+              <div className={`mx-auto min-w-0 px-8 ${shown === 'sessions' ? 'max-w-5xl' : shown === 'pipelines' ? 'max-w-6xl' : shown === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={shown}>
+                <SectionPage section={shown} scrollRef={scroller} />
               </div>
             )}
           </div>

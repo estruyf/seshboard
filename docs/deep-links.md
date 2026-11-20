@@ -43,7 +43,7 @@ Model, effort, permission mode and the worktree choice come from the project's d
 
 ```text
 seshboard://new-session?project=switchboard&issue=32
-seshboard://new-session?repo=estruyf/switchboard&pr=151
+seshboard://new-session?repo=estruyf/seshboard&pr=151
 ```
 
 A link with `issue` or `pr` opens New session the way **New session from issue…** does in Seshboard: a new worktree named after the issue (`issue-32-<title>`), the issue as a chip above the message box, and "Fix #32: <title>" in the box (for a pull request, "Work on #151: <title>", and a choice between a new worktree from the pull request and your current checkout). A `prompt` in the link takes the place of that first line. A banner on top says **Opened from a link with issue #32. Check the prompt, then start.**

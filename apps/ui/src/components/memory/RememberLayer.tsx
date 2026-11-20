@@ -1,5 +1,6 @@
 import { BookmarkPlus, Brain, Copy, Link, TextQuote } from 'lucide-react';
 import { createContext, useCallback, useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from 'react';
+import { copySelection, currentClip, type Clip } from '../transcript/selectionClip.ts';
 import { contextMenuPoint, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { fromOf, REMEMBER_SOURCE as SOURCE, SelectionToolbar, selectionIn, useSelectionChip, type ToolbarAction } from './SelectionToolbar.tsx';
@@ -21,7 +22,7 @@ export const MessageMenuContext = createContext<OpenMessageMenu | null>(null);
  * memories are there) it is Quote and Copy only.
  */
 export function useRememberLayer({ container, textOf, onRemember, onQuote, onSavePrompt }: { container: RefObject<HTMLElement | null>; textOf(key: string): string | null; onRemember?(text: string, from: 'user' | 'claude'): void; onQuote(text: string): void; onSavePrompt?(text: string): void }) {
-  const [menu, setMenu] = useState<{ at: ContextMenuPoint; text: string; selection: boolean; from: 'user' | 'claude'; link: string | null; entries: MenuEntry[] } | null>(null);
+  const [menu, setMenu] = useState<{ at: ContextMenuPoint; text: string; selection: boolean; clip: Clip | null; from: 'user' | 'claude'; link: string | null; entries: MenuEntry[] } | null>(null);
   const { chip, toolbarRef, hide } = useSelectionChip(container);
 
   /** Opens the menu for the message `target` is in; false when it is in none, or the message has no text. */
@@ -35,7 +36,7 @@ export function useRememberLayer({ container, textOf, onRemember, onQuote, onSav
     const href = target.closest('a[href]')?.getAttribute('href') ?? null;
     const link = href && /^(https?|mailto):/i.test(href) ? href : null;
     // From the keyboard there is no pointer: open it at the link (or the message).
-    setMenu({ at: contextMenuPoint(pointer, target.getBoundingClientRect(), window.innerHeight), text, selection: selected?.element === element, from: fromOf(element), link, entries });
+    setMenu({ at: contextMenuPoint(pointer, target.getBoundingClientRect(), window.innerHeight), text, selection: selected?.element === element, clip: selected?.element === element ? currentClip() : null, from: fromOf(element), link, entries });
     return true;
   };
 
@@ -81,7 +82,7 @@ export function useRememberLayer({ container, textOf, onRemember, onQuote, onSav
           entries={[
             ...(link ? [{ label: 'Copy link', icon: <Link size={13} aria-hidden />, onSelect: () => void navigator.clipboard.writeText(link), data: { 'data-copy-link-menu': true } }, 'separator' as const] : []),
             ...(menu.entries.length > 0 ? [...menu.entries, 'separator' as const] : []),
-            ...(menu.selection ? [{ label: 'Copy', icon: <Copy size={13} aria-hidden />, onSelect: () => void navigator.clipboard.writeText(menu.text) }] : []),
+            ...(menu.selection ? [{ label: 'Copy', icon: <Copy size={13} aria-hidden />, onSelect: () => void copySelection(menu.text, menu.clip) }] : []),
             { label: menu.selection ? 'Quote' : 'Quote message', icon: <TextQuote size={13} aria-hidden />, onSelect: () => onQuote(menu.text), data: { 'data-quote-menu': true } },
             // A message you sent can become a saved prompt.
             ...(onSavePrompt && menu.from === 'user' ? [{ label: 'Save as prompt…', icon: <BookmarkPlus size={13} aria-hidden />, onSelect: () => onSavePrompt(menu.text), data: { 'data-save-as-prompt-menu': true } }] : []),

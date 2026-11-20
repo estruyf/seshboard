@@ -4,6 +4,8 @@ import { Check, ChevronDown, ChevronRight, Ellipsis, FolderCog, FolderDown, Fold
 import { isAbsolutePath, type ProjectIconChoice } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
+import { useProviders } from '../../state/providersStore.ts';
+import { startableProfiles, startLabel } from '../providers/startable.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -147,6 +149,7 @@ export function useProjectIconEntries() {
   const projects = useProjects((s) => s.projects);
   const questionsDir = useProjects((s) => s.questionsDir);
   const profiles = useProfiles((s) => s.profiles);
+  const catalog = useProviders((s) => s.providers);
   const defaultProfile = profiles.find((p) => p.isDefault);
   const openIn = useOpenIn();
   const [emojiFor, setEmojiFor] = useState<{ root: string; x: number; y: number } | null>(null);
@@ -169,8 +172,9 @@ export function useProjectIconEntries() {
         hint: linked === null ? '✓' : undefined,
         onSelect: () => void actions.setProfile(root, null),
       },
-      ...profiles.map(
-        (p): MenuEntry => ({ label: p.name, icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
+      // Only profiles that can start a session (not a read-only provider's), and the one it has.
+      ...startableProfiles(profiles, catalog, linked).map(
+        (p): MenuEntry => ({ label: startLabel(p, catalog), icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
       ),
     ];
     const iconChoices: MenuEntry[] = [
@@ -265,7 +269,11 @@ export interface RemoteProjectSummary {
   offline: boolean;
 }
 
-export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { counts: Map<string, { total: number; active: number }>; sources?: readonly SourceSummary[]; remoteProjects?: readonly RemoteProjectSummary[] }) {
+/**
+ * The sidebar's project filter: which project's sessions the list shows (and, with a paired computer, which computers'),
+ * with Manage, Add and Clone at the end of its menu. `trail` sits on its right in the same row (the sort order).
+ */
+export function ProjectFilter({ counts, sources = [], remoteProjects = [], trail }: { counts: Map<string, { total: number; active: number }>; sources?: readonly SourceSummary[]; remoteProjects?: readonly RemoteProjectSummary[]; trail?: ReactNode }) {
   const hidden = useComputers((s) => s.hidden);
   const projects = useProjects((s) => s.projects);
   const filter = useProjects((s) => s.filter);
@@ -320,7 +328,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
   };
 
   return (
-    <div className="flex items-center gap-1 px-3 pb-2">
+    <div className="flex items-center gap-2 px-3 pb-2">
       <button
         ref={buttonRef}
         type="button"
@@ -347,7 +355,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
         {remoteCurrent && <ComputerChip name={remoteCurrent.computerName} computerId={remoteCurrent.computerId} offline={remoteCurrent.offline} />}
         <ChevronDown size={13} className={`shrink-0 text-faint transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
-      <Button variant="quiet" iconOnly icon={<FolderPlus size={15} aria-hidden />} aria-label="Add a project" data-add-project onClick={() => showAdd(true)} className="no-drag" />
+      {trail}
 
       {open && (
         <FilterPopover id={menuId} x={open.x} y={open.y} anchor={buttonRef} onClose={close} closeOnEscape={!submenu} onKeyDown={onMenuKeyDown}>

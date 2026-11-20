@@ -5,6 +5,16 @@ import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { clearBrowsingData, siteName } from '../../state/browserActions.ts';
+import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
+import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { EditFavoriteDialog } from '../webPreview/EditFavoriteDialog.tsx';
+import { RenameTabDialog } from '../webPreview/RenameTabDialog.tsx';
+import { projectOfTab, useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
+import { BookmarkDialog } from '../webPreview/BookmarkDialog.tsx';
+import { DeleteProfileDialog, ResetProfileDialog } from '../webPreview/ResetProfileDialog.tsx';
+import { browserProfileName, useBrowserProfiles } from '../../state/browserProfilesStore.ts';
+import { bookmarkOf } from '../webPreview/bookmarks.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
 import { CopySectionDialog } from '../memory/CopySectionDialog.tsx';
@@ -30,10 +40,47 @@ export function PaletteDialogs() {
   const dialog = usePaletteBus((s) => s.dialog);
   const live = useSessions((s) => (dialog?.kind === 'delete-session' ? (s.live.get(dialog.sessionId) ?? null) : null));
   const host = useHosts((s) => (dialog?.kind === 'delete-session' ? s.hosts.get(dialog.sessionId) : undefined));
+  const renaming = useWebPreview((s) => (dialog?.kind === 'rename-tab' ? (s.tabs.find((t) => t.id === dialog.tabId) ?? null) : null));
+  const editing = useBrowserFavorites((s) => (dialog?.kind === 'edit-favorite' ? (s.favorites.find((f) => f.id === dialog.id) ?? null) : null));
+  const bookmarking = useWebPreview((s) => (dialog?.kind === 'bookmark' ? (s.tabs.find((t) => t.id === dialog.tabId) ?? null) : null));
+  const bookmarks = useBrowserBookmarks((s) => s.bookmarks);
+  const bookmarkHere = bookmarking ? bookmarkOf(bookmarks, bookmarking.url, projectOfTab(bookmarking)) : undefined;
   const close = () => usePaletteBus.getState().showDialog(null);
   if (!dialog) return null;
 
   switch (dialog.kind) {
+    case 'rename-tab':
+      return renaming ? <RenameTabDialog tab={renaming} onClose={close} /> : null;
+    case 'edit-favorite':
+      return editing ? <EditFavoriteDialog favorite={editing} onClose={close} /> : null;
+    case 'bookmark':
+      return bookmarking && bookmarkHere ? <BookmarkDialog key={bookmarkHere.id} tab={bookmarking} bookmark={bookmarkHere} bookmarks={bookmarks} onClose={close} /> : null;
+    case 'clear-browser-data':
+      return dialog.origin ? (
+        <ConfirmDialog
+          title={`Clear data for ${siteName(dialog.origin)}?`}
+          danger
+          confirmLabel="Clear data"
+          body={`Signs you out of ${siteName(dialog.origin)} in Seshboard's browser${dialog.profileId ? `, in the ${browserProfileName(dialog.profileId)} profile` : ''}: its cookies and stored data go. Other sites stay as they are.`}
+          data={{ 'data-clear-site-data-dialog': true }}
+          onConfirm={() => clearBrowsingData(dialog.origin, dialog.profileId ?? null)}
+          onClose={close}
+        />
+      ) : (
+        <ConfirmDialog
+          title="Clear all browsing data?"
+          danger
+          confirmLabel="Clear all data"
+          body="Signs you out of every site in Seshboard's browser, in every browser profile: cookies, stored data and the cache go. Your tabs, pins and favourites stay."
+          data={{ 'data-clear-browsing-data-dialog': true }}
+          onConfirm={() => clearBrowsingData(null, null, useBrowserProfiles.getState().profiles.map((p) => p.id))}
+          onClose={close}
+        />
+      );
+    case 'reset-browser-profile':
+      return <ResetProfileDialog profileId={dialog.profileId} onClose={close} />;
+    case 'delete-browser-profile':
+      return <DeleteProfileDialog profileId={dialog.profileId} onClose={close} />;
     case 'rename-session':
       return <RenameSessionDialog sessionId={dialog.sessionId} title={dialog.title} onClose={close} />;
     case 'rename-project':

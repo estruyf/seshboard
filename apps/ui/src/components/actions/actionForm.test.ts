@@ -93,12 +93,12 @@ describe('validateDraft', () => {
     expect(validateDraft({ ...EMPTY_DRAFT, name: 'X', command: 'ls', shortcut: 'cmd+shift+f' }, [], null).shortcut).toMatch(/Seshboard/);
   });
   it('refuses a shortcut another action already has, in any scope', () => {
-    const list = [action({ id: 'build', name: 'Build', shortcut: 'cmd+shift+b', scope: 'global' })];
-    expect(validateDraft({ ...EMPTY_DRAFT, name: 'X', command: 'ls', shortcut: 'cmd+shift+b' }, list, null).shortcut).toBe('“Build” already uses ⌘⇧B.');
+    const list = [action({ id: 'build', name: 'Build', shortcut: 'cmd+shift+i', scope: 'global' })];
+    expect(validateDraft({ ...EMPTY_DRAFT, name: 'X', command: 'ls', shortcut: 'cmd+shift+i' }, list, null).shortcut).toBe('“Build” already uses ⌘⇧I.');
   });
   it('lets the action being edited keep its shortcut, also when it moves scope', () => {
-    const list = [action({ id: 'build', name: 'Build', shortcut: 'cmd+shift+b' })];
-    const draft = { ...EMPTY_DRAFT, name: 'Build', command: 'ls', shortcut: 'cmd+shift+b' };
+    const list = [action({ id: 'build', name: 'Build', shortcut: 'cmd+shift+i' })];
+    const draft = { ...EMPTY_DRAFT, name: 'Build', command: 'ls', shortcut: 'cmd+shift+i' };
     expect(validateDraft(draft, list, { scope: 'project', id: 'build' }).shortcut).toBeUndefined();
     expect(validateDraft({ ...draft, scope: 'global' }, list, { scope: 'project', id: 'build' }).shortcut).toBeUndefined();
   });

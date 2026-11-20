@@ -2,7 +2,7 @@ import type { ProviderFeature } from '@seshboard/protocol/client';
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 
 /** What New session's Start button (and the palette's prompt step) can do with the prompt. */
-export type StartAction = 'start' | 'start-one' | 'queue' | 'schedule' | 'trigger' | 'pipeline' | 'start-worktree';
+export type StartAction = 'start' | 'start-one' | 'start-anyway' | 'queue' | 'schedule' | 'trigger' | 'pipeline' | 'start-worktree';
 
 export interface StartButtonInput {
   /** Why nothing can go anywhere: connecting, no folder yet. */
@@ -28,6 +28,12 @@ export interface StartButtonInput {
    * menu.
    */
   queueFirst?: boolean;
+  /**
+   * At the focus limit, in this mode: the main part adds to the queue, on Start's key. Nudge offers Start anyway in the
+   * menu (which skips the gate's question); Strict leaves it out. Null or left out: under the limit, or a start the
+   * limit doesn't turn into queueing.
+   */
+  atFocusLimit?: 'nudge' | 'strict' | null;
   /** Opened with Schedule a session (Upcoming): the main part is Schedule…, and starting moves into the menu. */
   scheduleFirst?: boolean;
   /** Offer Schedule… (New session; the palette's prompt step has no dialog for it). */
@@ -40,6 +46,8 @@ export interface StartButtonInput {
   canPipeline?: boolean;
   /** The pipeline the Run as chip picked: Start runs it with the prompt as its task. Null: one session. */
   runAs?: { id: string; name: string } | null;
+  /** Orchestrator is picked in the Run as chip: Start makes this session the project's orchestrator (docs/orchestrator.md). */
+  orchestrator?: boolean;
   /**
    * Another provider runs it (a GitHub Copilot profile): the items it doesn't have yet (`supports`: `later`, `schedule`,
    * `trigger`, `worktree`, `pipeline`) stay in the menu, off, with `reason` ("Not with GitHub Copilot yet").
@@ -78,7 +86,8 @@ export interface StartButtonState {
  * The split Start button: the main part starts, the ▾ opens Start session, Add to queue, Schedule…, Start when… and (in a
  * git repository on the current checkout) Start in a new worktree. A reason that stops everything disables the whole
  * button; one that only stops starting leaves the ▾ for Add to queue. With a pipeline picked in the Run as chip, the main
- * part is Run pipeline, and the ▾ starts with Start one session; the chip is the one place to pick a pipeline.
+ * part is Run pipeline, and the ▾ starts with Start one session; the chip is the one place to pick a pipeline. At the
+ * focus limit the main part is Add to queue, with Start anyway in the ▾ unless the limit is Strict.
  */
 export function startButtonState(input: StartButtonInput): StartButtonState {
   const { blocked, sending, hasMessage, hasText, startBlocked } = input;
@@ -101,6 +110,19 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', ...unless('worktree', !canStart) });
   // A pipeline runs with the prompt as its task, in a worktree of its own: the branch and the focus limit don't stop it
   // (#179). Start when… makes a trigger that starts it (#185); a queued item or a schedule is one session.
+  // An orchestrator starts now, as one session: it is never queued, scheduled or started by a trigger.
+  if (input.orchestrator && !input.question && !input.editingSchedule) {
+    return {
+      main: 'start',
+      shortcut: 'new-session.start',
+      label: sending ? 'Starting…' : 'Start orchestrator',
+      sending,
+      disabled: !canStartHere,
+      menuDisabled: !canStartHere,
+      reason: sending ? null : (blocked ?? (!hasMessage ? 'Type the tasks first' : (startBlocked ?? input.branchBlocked ?? null))),
+      items: [{ ...items[0]!, label: 'Start orchestrator' }],
+    };
+  }
   const runAs = input.canPipeline && !input.question && !input.editingSchedule && !lacks('pipeline') ? (input.runAs ?? null) : null;
   if (runAs) {
     const one: StartMenuItem = { action: 'start-one', label: 'Start one session', disabled: !canStartHere };
@@ -127,6 +149,20 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
       menuDisabled: items.every((item) => item.disabled),
       reason: sending ? null : (blocked ?? (!hasText ? 'Type a message first' : null)),
       items: [schedule, ...items.filter((item) => item !== schedule)],
+    };
+  }
+  if (input.atFocusLimit && !input.question && !lacks('later')) {
+    const anyway: StartMenuItem[] = input.atFocusLimit === 'nudge' ? [{ action: 'start-anyway', label: 'Start anyway', disabled: !canStartHere }] : [];
+    const menu = [items[1]!, ...anyway, ...items.slice(2)];
+    return {
+      main: 'queue',
+      shortcut: 'new-session.start',
+      label: sending ? 'Adding…' : 'Add to queue',
+      sending,
+      disabled: !canQueue,
+      menuDisabled: menu.every((item) => item.disabled),
+      reason: sending ? null : (blocked ?? (!hasText ? 'Type a message first' : null)),
+      items: menu,
     };
   }
   if (input.queueFirst && !input.question && !lacks('later')) {

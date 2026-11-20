@@ -31,7 +31,7 @@ This one has only a dark version, so in light mode Seshboard uses Demo Time.
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "name": "Solarized",          // required, 1 to 48 characters
   "author": "Ethan Schoonover",  // optional
   "version": 1,                 // required: the theme format, 1
@@ -54,7 +54,7 @@ Here is a short Solarized with both modes, a few colours of its own, its termina
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "name": "Solarized Short",
   "author": "Ethan Schoonover",
   "version": 1,
@@ -83,7 +83,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "name": "Demo Time",
   "author": "Elio Struyf",
   "version": 1,
@@ -91,17 +91,18 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
     "canvas": "#ffffff",
     "accent": "#ffd43b",
     "colors": {
-      "bg": "#ffffff", "sidebar": "#f4f6fa", "card": "#ffffff", "popover": "#ffffff", "code-bg": "#f4f6fa",
+      "bg": "#ffffff", "sidebar": "#f4f6fa", "card": "#ffffff", "popover": "#ffffff", "code-bg": "#f4f6fa", "code-pane": "#ffffff",
       "border": "#e1e4e8", "overlay-border": "#d1d5da", "overlay-shadow": "#15181f33",
       "text": "#202736", "muted": "#505869", "faint": "#687082", "link": "#005cc5",
       "selected": "#2027361a", "focus-ring": "#916c008c", "scrim": "#15181f59",
-      "ok": "#00806f", "warn": "#d1186b", "error": "#d73a49", "caution": "#b35900", "unread": "#005cc5", "memory": "#8250df", "remote": "#7048e8", "paper": "#fbfaf7", "paper-text": "#1f2328", "trigger": "#6f42c1", "pipeline": "#6741d9",
+      "ok": "#00806f", "warn": "#d1186b", "error": "#d73a49", "caution": "#b35900", "unread": "#005cc5", "memory": "#8250df", "remote": "#7048e8", "paper": "#fbfaf7", "paper-text": "#1f2328", "trigger": "#6f42c1", "pipeline": "#6741d9", "ultrathink-a": "#d6336c", "ultrathink-b": "#b35900", "ultrathink-c": "#2b8a3e", "ultrathink-d": "#1971c2",
       "accent": "#ffd43b", "accent-ink": "#916c00", "on-accent": "#15181f",
       "diff-added": "#00806f1f", "diff-removed": "#d73a491f",
       "terminal-bg": "#0d1016", "terminal-shadow": "#15181f29",
       "profile-yellow": "#b08300", "profile-blue": "#1f6feb", "profile-green": "#1a7f37", "profile-purple": "#8250df",
       "profile-red": "#cf222e", "profile-orange": "#d1600a", "profile-gray": "#6e7781",
       "chart-output": "#7048e8", "chart-cache-write": "#c2255c", "chart-cache-read": "#1c7ed6", "chart-input": "#099268",
+      "chart-time": "#1c7ed6", "chart-turns": "#099268", "chart-shipped": "#e8590c",
       "working-hole": "#d6d4ce", "working-lit": "#ff961a", "working-glow": "#ffb85c", "working-plug-a": "#f3a27f", "working-plug-b": "#c95f3d", "working-plug-c": "#dcb058", "working-plug-d": "#ec9f33"
     }
   },
@@ -109,17 +110,18 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
     "canvas": "#15181f",
     "accent": "#ffd43b",
     "colors": {
-      "bg": "#15181f", "sidebar": "#202736", "card": "#202736", "popover": "#2a3244", "code-bg": "#202736",
+      "bg": "#15181f", "sidebar": "#202736", "card": "#202736", "popover": "#2a3244", "code-bg": "#202736", "code-pane": "#15181f",
       "border": "#2d3142", "overlay-border": "#414861", "overlay-shadow": "#000000b3",
       "text": "#d9dbe1", "muted": "#9ba4b7", "faint": "#8b94a6", "link": "#74c0fc",
       "selected": "#d9dbe11c", "focus-ring": "#ffd43b8c", "scrim": "#00000099",
-      "ok": "#51cf66", "warn": "#ed217c", "error": "#ff6b6b", "caution": "#ffa94d", "unread": "#74c0fc", "memory": "#b197fc", "remote": "#b197fc", "paper": "#15181f", "paper-text": "#d9dbe1", "trigger": "#b197fc", "pipeline": "#9775fa",
+      "ok": "#51cf66", "warn": "#ed217c", "error": "#ff6b6b", "caution": "#ffa94d", "unread": "#74c0fc", "memory": "#b197fc", "remote": "#b197fc", "paper": "#15181f", "paper-text": "#d9dbe1", "trigger": "#b197fc", "pipeline": "#9775fa", "ultrathink-a": "#ff6b9d", "ultrathink-b": "#ffa94d", "ultrathink-c": "#69db7c", "ultrathink-d": "#74c0fc",
       "accent": "#ffd43b", "accent-ink": "#ffd43b", "on-accent": "#15181f",
       "diff-added": "#51cf661f", "diff-removed": "#ff6b6b1f",
       "terminal-bg": "#0d1016", "terminal-shadow": "#0000008c",
       "profile-yellow": "#ffd43b", "profile-blue": "#74c0fc", "profile-green": "#51cf66", "profile-purple": "#b197fc",
       "profile-red": "#ff8787", "profile-orange": "#ffa94d", "profile-gray": "#9ba4b7",
       "chart-output": "#9775fa", "chart-cache-write": "#e64980", "chart-cache-read": "#339af0", "chart-input": "#0ca678",
+      "chart-time": "#339af0", "chart-turns": "#0ca678", "chart-shipped": "#e8590c",
       "working-hole": "#3d404a", "working-lit": "#fff1cc", "working-glow": "#ff961a", "working-plug-a": "#f3a27f", "working-plug-b": "#c95f3d", "working-plug-c": "#ffd27a", "working-plug-d": "#ec9f33"
     },
     "terminal": {
@@ -154,7 +156,7 @@ For each mode, Seshboard first generates every token from `canvas` and `accent`,
 
 | Tokens | Generated as |
 |---|---|
-| `bg` | the canvas |
+| `bg`, `code-pane` | the canvas |
 | `sidebar`, `card`, `popover`, `code-bg` | steps from the canvas: lighter in dark mode, darker in light mode, with a hint of the accent's hue when the canvas has none of its own |
 | `border`, `overlay-border` | further steps from the canvas |
 | `text`, `muted` | at least 4.5:1 (WCAG AA) on the canvas, the sidebar and cards |
@@ -167,7 +169,7 @@ For each mode, Seshboard first generates every token from `canvas` and `accent`,
 | `paper` | a light canvas: a slightly warm, slightly darker lift of it. A dark canvas: the canvas |
 | `paper-text` | `text`, moved to at least 4.5:1 on `paper` |
 | `remote` | Demo Time's violet, moved to 4.5:1 on `bg`, the sidebar and cards |
-| `profile-*` | Demo Time's hues, moved to 3:1 on `bg` |
+| `profile-*`, `ultrathink-a` to `ultrathink-d` | Demo Time's hues, moved to 3:1 on `bg` |
 | `selected` | `text` at 10% (light) or 11% (dark) |
 | `focus-ring` | `accent-ink` at 55% |
 | `diff-added`, `diff-removed` | `ok` and `error` at 14% |
@@ -189,6 +191,7 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `card` | cards: your prompt, plans, permission and question cards, the message box, theme cards | `#ffffff` | `#202736` |
 | `popover` | menus, popovers, dialogs, toasts | `#ffffff` | `#2a3244` |
 | `code-bg` | code blocks, tool output, inline diffs | `#f4f6fa` | `#202736` |
+| `code-pane` | a file or diff inside a side panel (the Files viewer, Changes), set apart from `sidebar` | `#ffffff` | `#15181f` |
 | `border` | card edges, the hairline under a header while content scrolls under it | `#e1e4e8` | `#2d3142` |
 | `overlay-border` | edges of menus and dialogs, and of fields, chips and secondary buttons inside them | `#d1d5da` | `#414861` |
 | `overlay-shadow` | the shadow under menus and dialogs (one colour; the app builds the layers) | `#15181f33` | `#000000b3` |
@@ -208,6 +211,7 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `remote` | only things on another computer: its chips, the badge on its project icons, the line over its sessions | `#7048e8` | `#b197fc` |
 | `trigger` | event triggers: the bolt on a session a trigger started, event fields in a trigger's prompt | `#6f42c1` | `#b197fc` |
 | `pipeline` | pipelines: the icon on a parent row and a run row, step kinds and @ links in the editor | `#6741d9` | `#9775fa` |
+| `ultrathink-a`, `-b`, `-c`, `-d` | the word ultrathink in the message box and on the effort chip: the four colours of its gradient, in order. Never a state | `#d6336c`, `#b35900`, `#2b8a3e`, `#1971c2` | `#ff6b9d`, `#ffa94d`, `#69db7c`, `#74c0fc` |
 | `paper`, `paper-text` | reading mode: the page behind a reply and the text on it. Light is a warm off-white; dark is the same as `bg` and `text` | `#fbfaf7`, `#1f2328` | `#15181f`, `#d9dbe1` |
 | `accent` | primary buttons and tints (Demo Time's yellow) | `#ffd43b` | `#ffd43b` |
 | `accent-ink` | the accent as text, icons, spinners and borders | `#916c00` | `#ffd43b` |
@@ -218,8 +222,9 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `terminal-shadow` | the shadow the terminal panel casts on the conversation | `#15181f29` | `#0000008c` |
 | `profile-yellow`, `-blue`, `-green`, `-purple`, `-red`, `-orange`, `-gray` | the dots, tags and rails that tell Claude profiles apart | see Demo Time above | |
 | `chart-output`, `chart-cache-write`, `chart-cache-read`, `chart-input` | the token types in the Usage view's charts, and its plan windows' lines (Weekly, a model's weekly, Session). Checked together for colour blindness; generated themes keep Demo Time's | `#7048e8`, `#c2255c`, `#1c7ed6`, `#099268` | `#9775fa`, `#e64980`, `#339af0`, `#0ca678` |
+| `chart-time`, `chart-turns`, `chart-shipped` | the parts of a day's bar in Activity's day strip, from the bottom up: the time Claude worked, your turns, and the commits and pull requests. Checked together for colour blindness on every built-in theme's surfaces; generated themes keep Demo Time's | `#1c7ed6`, `#099268`, `#e8590c` | `#339af0`, `#0ca678`, `#e8590c` |
 | `working-hole`, `working-lit`, `working-glow` | the working mark under a reply (the app icon's patch panel): a free jack while dark, when the light is on it, and the ring of glow around it. A theme without them gets a light in its accent: a warm white with an accent ring in dark, the accent with a softer ring in light | `#d6d4ce`, `#ff961a`, `#ffb85c` | `#3d404a`, `#fff1cc`, `#ff961a` |
-| `working-plug-a`, `working-plug-b`, `working-plug-c`, `working-plug-d` | the working mark's plugged jacks: top left and middle right (one cable), bottom left and bottom middle (the other). Demo Time's are the app icon's cable colours, the gold a little darker in light mode; the themes named after an app icon colourway take that colourway's | `#f3a27f`, `#c95f3d`, `#dcb058`, `#ec9f33` | `#f3a27f`, `#c95f3d`, `#ffd27a`, `#ec9f33` |
+| `working-plug-a`, `working-plug-b`, `working-plug-c`, `working-plug-d` | the working mark's plugged jacks: top left and middle right (one cable), bottom left and bottom middle (the other). Demo Time's are the app icon's cable colours, the gold a little darker in light mode; the themes named after an app icon colourway take that colourway's, and Catppuccin, Nord and Solarized take colours from their own palettes. A theme without them gets Demo Time's turned round the hue wheel as far as its accent is from Demo Time's yellow, so they sit around its light the same way (a grey accent keeps Demo Time's) | `#f3a27f`, `#c95f3d`, `#dcb058`, `#ec9f33` | `#f3a27f`, `#c95f3d`, `#ffd27a`, `#ec9f33` |
 
 The terminal panel always uses the dark mode's tokens, in light mode too.
 

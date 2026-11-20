@@ -1,8 +1,8 @@
 import { useMemo, type CSSProperties } from 'react';
 import { FREE_JACK_CELLS, jackCell, jackDelayMs, WORKING_ROUND_MS } from '@seshboard/protocol/working-panel';
 
-/** `working`: the light moves. `still`: every free jack softly lit (Compacting). `waiting`: every free jack lit in `warn`. */
-export type WorkingState = 'working' | 'still' | 'waiting';
+/** `working`: the light moves. `compacting`: every free jack lit, pulsing together. `waiting`: every free jack lit in `warn`. */
+export type WorkingState = 'working' | 'compacting' | 'waiting';
 
 /**
  * The plugged jacks (cells of the 3×3 grid), each in its `--sb-working-plug-*` token: the cable colours of the app icon

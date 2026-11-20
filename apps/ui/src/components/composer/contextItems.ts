@@ -52,7 +52,7 @@ export function chipLabel(item: ContextItem, cwd: string | null): { label: strin
     const range = item.range ? `:${lines(item.range)}` : '';
     return { label: `${basename(item.path)}${range}`, detail: item.range ? `${where}, lines ${lines(item.range)}` : where };
   }
-  if (item.source === 'paste') return { label: item.label, detail: pasteSize(item.text) };
+  if (item.source === 'paste' || item.source === 'review') return { label: item.label, detail: pasteSize(item.text) };
   const where = item.path ? relativeTo(item.path, cwd) + (item.range ? `, lines ${lines(item.range)}` : '') : null;
   const size = item.text.split('\n').length;
   return { label: item.label, detail: [where, size === 1 ? '1 line of text' : `${size} lines of text`].filter(Boolean).join(' · ') };
@@ -134,7 +134,9 @@ export function promptWithContext(text: string, chips: readonly ContextItem[], c
   if (files.length) parts.push(files.map((f) => mentionFor(f, cwd)).join(' '));
   for (const item of texts) {
     const fence = fenceFor(item.text);
-    parts.push(`${item.label}:\n${fence}${item.language ?? ''}\n${item.text.replace(/\n+$/, '')}\n${fence}`);
+    // Lines from the Files panel go under their path and lines, which Claude can open, rather than the chip's short name.
+    const heading = item.source === 'file' && item.path && item.range ? `${relativeTo(item.path, cwd)}:${lines(item.range)}` : item.label;
+    parts.push(`${heading}:\n${fence}${item.language ?? ''}\n${item.text.replace(/\n+$/, '')}\n${fence}`);
   }
   for (const item of sessions) parts.push(writeStub(item.label, item.sessionId));
   for (const item of chips) if (item.kind === 'github') parts.push(writeGithubStub(item));
@@ -179,6 +181,27 @@ export function contextFromPrompt(sent: string, cwd: string | null): { text: str
   const before = prompt.slice(0, match.index);
   const after = prompt.slice(match.index + match[0].length).replace(/^\n\n/, '');
   return { text: [before, after].filter(Boolean).join('\n\n'), context: [...(files as ContextItem[]), ...linked] };
+}
+
+/**
+ * Lines of a file picked in the Files panel, as a chip: `CartButton.tsx:6–12` on the chip, the path and lines over a
+ * fenced block of them in the message.
+ */
+export function fileLinesItem(path: string, range: { start: number; end: number }, text: string, language?: string): Extract<ContextItem, { kind: 'text' }> {
+  const span = range.start === range.end ? `${range.start}` : `${range.start}–${range.end}`;
+  const safeLanguage = language && /^[\w+#.-]{1,40}$/.test(language) ? language : undefined;
+  return { kind: 'text', source: 'file', label: `${basename(path)}:${span}`, text, path, range, ...(safeLanguage ? { language: safeLanguage } : {}) };
+}
+
+/** The most matches "Ask Claude about these results" puts in a message. */
+export const SEARCH_CHIP_MATCHES = 50;
+
+/** Search results as a chip: the query, then `path:line` for each match (at most `SEARCH_CHIP_MATCHES`). */
+export function searchResultsItem(query: string, matches: ReadonlyArray<{ path: string; line: number }>, total: number): Extract<ContextItem, { kind: 'text' }> {
+  const shown = matches.slice(0, SEARCH_CHIP_MATCHES).map((m) => `${m.path}:${m.line}`);
+  const more = total > shown.length ? [`… and ${total - shown.length} more`] : [];
+  const label = `Search results for "${query.length > 60 ? `${query.slice(0, 59)}…` : query}"`;
+  return { kind: 'text', source: 'search', label, text: [...shown, ...more].join('\n') };
 }
 
 /** Dropped files and folders, as context. */

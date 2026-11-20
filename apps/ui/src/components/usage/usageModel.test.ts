@@ -71,6 +71,9 @@ describe('limits', () => {
   it('names each card and its scope', () => {
     expect(limitTitle(limit('session', 38))).toEqual({ name: 'Session', scope: '5 hours' });
     expect(limitTitle(limit('weekly_all', 52))).toEqual({ name: 'Weekly', scope: 'all models' });
+    // Codex's: another bucket's 5 hours (group session), and a window of another length.
+    expect(limitTitle({ ...limit('session_scoped', 20, 'GPT-5 mini'), group: 'session' })).toEqual({ name: 'Session · GPT-5 mini', scope: '5 hours' });
+    expect(limitTitle({ ...limit('window', 20, '3 hours'), group: 'window' })).toEqual({ name: 'Window', scope: '3 hours' });
     expect(limitTitle(limit('weekly_scoped', 82, 'Fable'))).toEqual({ name: 'Weekly · Fable', scope: 'one model' });
   });
 

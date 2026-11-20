@@ -1,0 +1,150 @@
+---
+title: Other agents
+description: Run GitHub Copilot CLI, OpenAI Codex and Google Antigravity sessions in Seshboard, next to Claude Code, each with its own login.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import { Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+Seshboard runs Claude Code, and three other agents too: **GitHub Copilot CLI**, **OpenAI Codex CLI** and **Google Antigravity CLI**. Add a profile for one, and its sessions show in the sidebar next to Claude's. You can start new ones and continue old ones from the message box, with the agent's own models and login.
+
+Each agent works through a [profile](/settings/claude-profiles/): a folder with its own login, like a Claude profile. Without a profile of an agent, Seshboard reads and runs nothing of it.
+
+## Add an agent
+
+When Seshboard finds an agent's CLI on your computer, **Settings › Profiles** offers it under the list, such as "Codex CLI is on <Os mac="this Mac" windows="this PC" />", with how many sessions it holds. Click **Add Codex profile**, or **Not now** to put the offer away for good.
+
+Or add it yourself:
+
+<Steps>
+
+1. Press <Kbd shortcut="settings" /> and choose **Profiles**, then click **Add profile**.
+2. Under **Which tool runs its sessions?**, pick **GitHub Copilot**, **OpenAI Codex** or **Google Antigravity**. Each says whether Seshboard found its CLI, and which version.
+3. Give the profile a name and a colour, and check its folder. Seshboard suggests the agent's own folder, so the sessions you already have show up.
+4. Click **Add profile**, or **Add and sign in** when the agent isn't signed in yet. Its own sign in runs in Seshboard's terminal.
+
+</Steps>
+
+When the CLI isn't installed, Add profile shows the command to install it, with a copy button, and **Check again** once it is:
+
+| Agent | Install | Its own folder |
+|---|---|---|
+| GitHub Copilot | `npm install -g @github/copilot` | `~/.copilot` (or `$COPILOT_HOME`) |
+| OpenAI Codex | `npm install -g @openai/codex` | `~/.codex` (or `$CODEX_HOME`) |
+| Google Antigravity | Google's install script, shown for your system | `~/.gemini` |
+
+The last screen says the agent is ready, such as **Codex is ready**, with the account it is signed in as and how many of its sessions now show. From there:
+
+- **Start a Codex session** opens New session with the profile picked.
+- **Use Codex for a project…** links a project to the profile, so its new sessions start with Codex.
+- **Make it the default** makes it the profile for projects without one of their own.
+
+Sessions you started outside Seshboard show when **Show sessions from other apps** is on in [Settings › Sidebar](/settings/#sidebar). If it is off, the ready screen offers to turn it on.
+
+## Signing in
+
+Seshboard never asks for a token or a password. Each agent signs in with its own login, once per profile:
+
+- **GitHub Copilot**: Copilot CLI's own login, or the GitHub CLI's. Two Copilot accounts can be two profiles.
+- **OpenAI Codex**: `codex login`, with a ChatGPT account or an API key. Reading old sessions needs no login; running one does.
+- **Google Antigravity**: Antigravity's own Google sign in. Its login is shared by every folder, so a second Antigravity profile keeps sessions apart, not accounts.
+
+A profile that isn't signed in has **Sign in**, which runs the agent's sign in in Seshboard's terminal. New session says so too, and Start waits until the agent can run.
+
+## Their sessions
+
+Each session's row and header show whose it is, with the Claude, Copilot, Codex or Antigravity mark. They are in [search](/sessions/search/), [catch-up](/sessions/catch-up/) and on [your phone](/remote-access/), and their transcript opens like a Claude session's, with tool calls and diffs.
+
+A session that is open in the agent's own CLI or editor shows as working, and Seshboard waits until it is closed there before it sends anything to it.
+
+## Start and continue
+
+Pick the profile in the profile chip of [New session](/new-session/form/), or link a project to it. The chip's menu groups profiles by agent and ends with **Add profile…**. Your prompt and attachments stay when you switch.
+
+What the agent can't do yet is turned off, with a note such as "Worktree turned off. Google Antigravity can't run in a worktree yet." and **Back to** the profile you had. A control that doesn't work with the agent says so in its tooltip: "Not with OpenAI Codex yet".
+
+In a session, the message box works as with Claude: send, steer a running turn, [Up next](/sessions/conversation/#up-next) and Stop. Under the box sit the agent's own model and effort, and its context. The agent's slash commands are in the `/` list, and **Compact** on the context meter compacts the session.
+
+### Permission modes
+
+Every agent has the same four modes as Claude Code, under the same names. <Kbd shortcut="mode.cycle" /> switches between them as for Claude.
+
+| Mode | GitHub Copilot | OpenAI Codex | Google Antigravity |
+|---|---|---|---|
+| **Ask before edits** | Asks before every edit and command | Asks before every edit, and before commands that leave the sandbox | Asks before every edit and command |
+| **Accept edits** | Lets file edits through, commands still ask | Lets edits in the project folder through | Lets edits in the folder through, commands still ask |
+| **Plan mode** | Copilot plans first | Works read-only and asks Codex to plan first | Antigravity plans first |
+| **Auto mode** | Copilot's autopilot: keeps going until the task is done, without asking | Keeps going without asking, inside the project folder | Edits and safe commands go on, others still ask |
+
+The agent's questions show as [permission cards](/permissions/). Antigravity's cards have **Allow** and **Deny**: it offers no Always allow.
+
+### Models and effort
+
+The model chip lists the agent's own models. Copilot's has **Auto**, and Copilot Fusion's tiers after it. Effort is the agent's own too, for the models that take it (Antigravity calls it the thinking level).
+
+**Global model**, **Global effort** and **Global fallback model** in [Settings › General](/settings/#new-sessions) are Claude's, so a session of another agent without a model starts on the agent's default. The global permission mode applies to every agent. A profile and a project can set the agent's own model, effort, mode and workspace as **New session defaults**.
+
+## What each one has
+
+| | GitHub Copilot | OpenAI Codex | Google Antigravity |
+|---|---|---|---|
+| New session, the queue, schedules and triggers | Yes | Yes | Yes |
+| A new worktree or a branch at start | Yes | Yes | Yes |
+| A step in a [pipeline](/sessions/pipelines/) | Yes | Yes | Yes |
+| Fork, and Edit and resend | Yes | Yes | No |
+| Rewind | Yes | No | No |
+| Rename | Yes | Yes | No |
+| [Ask about this session](/sessions/ask/) | Yes | Yes | Yes |
+| Delete, to the <Os mac="Trash" windows="Recycle Bin" /> | Yes | Yes | Yes |
+| [Tools](/sessions/conversation/#agents-and-tools) | MCP servers, agents and skills | MCP servers, skills and hooks | MCP servers |
+
+What a session can't do yet, its **⋯** menu says in a faint line at the end, such as "Fork, Rewind and Rename work with Claude Code only, for now." in an Antigravity session.
+
+An [orchestrator](/sessions/orchestrator/) can run on Copilot and Codex as well as Claude Code, and hand its tasks to any of them.
+
+A few things are Claude Code's only: Auto model, fast mode, ultrathink, the fallback model and plan mode instructions.
+
+### Rewind in Copilot
+
+Copilot's rewind takes the conversation back too, not only the files: the dialog says so, and your message goes back in the box.
+
+### Codex
+
+- **Fork** from a reply forks where its turn ends, since Codex forks only there.
+- **Edit and resend** works on a prompt that started a turn. For a prompt sent into a running turn, fork from a reply instead.
+- **Tools** lists Codex's MCP servers, skills and hooks. **Reconnect** reconnects every server. Codex keeps which servers are on in its own config, so you turn one on or off there.
+- **MCP Apps**: when a tool of an MCP server has a page of its own, the page shows in the conversation where Codex called the tool, in your theme. Its buttons can put a message in the box for you to send, and call its server's tools while the session runs here. A tool that can change things asks you first. **Details** shows the call itself.
+
+### Antigravity
+
+**Open in › Antigravity CLI** only finds sessions of Antigravity's own folder (`~/.gemini`), since Antigravity CLI has no way to open another one.
+
+## The ⋯ menu
+
+A session of another agent has its own **⋯** menu:
+
+- **Open in**: your editors, terminals and <Os mac="Finder" windows="File Explorer" />, as for a Claude session, with the agent's CLI next to them. The CLI waits until the session isn't running in Seshboard, since an agent can't run a session in two places.
+- **Compact**, while the agent runs it here.
+- **Tools**, **Copy the last reply**, **Rename…** (when the agent can), **Agents** (Copilot's subagents) and **Done**.
+
+## Usage
+
+Each agent's usage shows under the message box, in [New session](/new-session/form/) and in the [Usage view](/usage/):
+
+- **GitHub Copilot**: the premium requests left this period, and when they reset. An account billed per token shows the AI credits its sessions on this computer used in the last 30 days instead.
+- **OpenAI Codex**: its 5-hour and weekly limits, like Claude's, with their estimated cost.
+- **Google Antigravity**: no limits Seshboard can read. The context meter and the Tokens tab still count its tokens.
+
+The Usage view's **Tokens** tab has each agent's tokens by session, project, model and day, with the estimated cost. See [Other agents in Usage](/usage/#other-agents).
+
+## Updates
+
+Settings › About checks GitHub Copilot CLI and Codex CLI for updates while you have a profile of them. See [Updates](/settings/updates/). Antigravity CLI updates itself.
+
+## Related
+
+<Related pages={['settings/claude-profiles', 'new-session/form', 'usage', 'sessions/orchestrator']} />

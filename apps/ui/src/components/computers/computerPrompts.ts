@@ -17,10 +17,10 @@ export function toolLabel(name: string): string {
 }
 
 /** The card's heading, as the card on that computer says it. */
-export function promptTitle(prompt: RemotePrompt): string {
+export function promptTitle(prompt: RemotePrompt, agent = 'Claude'): string {
   const kind = promptKind(prompt);
-  if (kind === 'question') return 'Claude has a question for you';
-  if (kind === 'plan') return 'Claude has a plan. Ready to start?';
+  if (kind === 'question') return `${agent} has a question for you`;
+  if (kind === 'plan') return `${agent} has a plan. Ready to start?`;
   return prompt.title ?? `Allow ${toolLabel(prompt.toolName)}?`;
 }
 

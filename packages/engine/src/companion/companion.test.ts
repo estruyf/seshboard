@@ -21,7 +21,7 @@ import type { SessionSource } from '../claude/sessionSource.ts';
 import { createEngine } from '../engine.ts';
 import type { PermissionDecision, PermissionRequest, SessionSummary } from '@seshboard/protocol';
 import { CompanionHub } from './companionHub.ts';
-import { companionSessions, inFolders, isWithin, promptsFor, sessionsFor } from './companionSessions.ts';
+import { companionSessions, doneSessions, inFolders, isWithin, promptsFor, sessionsFor } from './companionSessions.ts';
 
 const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 // Folders in this platform's form (E:\work\web on Windows), as the companion only takes absolute local paths.
@@ -361,5 +361,24 @@ describe('which sessions are listed', () => {
     const list = [summary('open', { archivedAt: now, inApp: false })];
     expect(ids(list, { scope: 'switchboard' })).toEqual([]);
     expect(ids(list, { scope: 'switchboard', keep: 'open' })).toEqual(['open']);
+  });
+
+  it('lists the rest under Done, most recently done first, with when each went there', () => {
+    const list = [
+      summary('recent'),
+      summary('archived', { archivedAt: now - 30_000 }),
+      summary('old', { updatedAt: now - RECENT_MS - 1 }),
+      summary('old-unread', { updatedAt: now - RECENT_MS - 1, unread: true }),
+      summary('terminal', { inApp: false, archivedAt: now - 30_000 }),
+    ];
+    const done = (scope: 'switchboard' | 'all') => doneSessions({ summaries: list, live: [], hosts: [] }, { now, scope, archiveAfterDays: DAYS }).map((d) => [d.summary.id, d.archivedAt, d.inactive]);
+    // Archived after the archive days: it went there when they ran out, after the one archived by hand.
+    expect(done('switchboard')).toEqual([
+      ['old', now - 1, true],
+      ['archived', now - 30_000, false],
+    ]);
+    expect(done('all').map(([id]) => id)).toEqual(['old', 'archived', 'terminal']);
+    // Every session in scope is in one of the two lists.
+    expect([...ids(list, { scope: 'all' }), ...done('all').map(([id]) => id)].sort()).toEqual(list.map((s) => s.id).sort());
   });
 });

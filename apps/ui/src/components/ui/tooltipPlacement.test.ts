@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeTooltip, placeTooltipRight } from './tooltipPlacement.ts';
+import { placeTooltip, placeTooltipLeft, placeTooltipRight } from './tooltipPlacement.ts';
 
 const viewport = { width: 1000, height: 800 };
 
@@ -31,5 +31,12 @@ describe('placeTooltipRight', () => {
   it('stays inside the window', () => {
     expect(placeTooltipRight({ left: 10, top: 0, bottom: 20, right: 54, width: 44, height: 20 }, { width: 200, height: 60 }, viewport).top).toBe(8);
     expect(placeTooltipRight({ left: 10, top: 780, bottom: 800, right: 54, width: 44, height: 20 }, { width: 200, height: 60 }, viewport).top).toBe(732);
+  });
+});
+
+describe('placeTooltipLeft', () => {
+  it('sits to the left of its target, centred vertically, inside the window', () => {
+    expect(placeTooltipLeft({ left: 950, top: 100, bottom: 140, width: 36, height: 40 }, { width: 200, height: 20 }, viewport)).toEqual({ left: 744, top: 110 });
+    expect(placeTooltipLeft({ left: 100, top: 100, bottom: 140, width: 36, height: 40 }, { width: 200, height: 20 }, viewport).left).toBe(8);
   });
 });

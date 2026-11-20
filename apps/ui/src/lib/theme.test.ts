@@ -92,6 +92,22 @@ describe('generating a theme from canvas and accent', () => {
     expect(contrastOf(light['working-glow'], '#fffbea')).toBeLessThan(contrastOf(light['working-lit'], '#fffbea'));
   });
 
+  it("turns the working mark's cables to the accent", () => {
+    const hueOf = (value: string) => toOklch(parseColor(value)!).h;
+    const apart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+    for (const mode of THEME_MODES) {
+      const demo = DEMO_TIME_TOKENS[mode];
+      // Catppuccin Mocha's mauve: every cable moves round the wheel as far as the accent is from Demo Time's yellow.
+      const turn = hueOf('#cba6f7') - hueOf(demo.accent);
+      const purple = generateTokens(mode, demo.bg, '#cba6f7');
+      for (const plug of ['working-plug-a', 'working-plug-b', 'working-plug-c', 'working-plug-d'] as const) {
+        expect(apart(hueOf(purple[plug]), hueOf(demo[plug]) + turn), `${mode} ${plug}`).toBeLessThan(8);
+        // A grey accent has no hue to follow: Demo Time's cables.
+        expect(apart(hueOf(generateTokens(mode, demo.bg, '#808080')[plug]), hueOf(demo[plug])), `${mode} ${plug} grey`).toBeLessThan(8);
+      }
+    }
+  });
+
   it("keeps the working mark's plugs apart from its free jacks", () => {
     // A grey cable (Aluminium, Signal) only differs from the holes in lightness, so it needs more of it to read as plugged.
     for (const { id, raw } of BUILT_IN_THEMES) {

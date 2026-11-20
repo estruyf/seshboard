@@ -2,7 +2,7 @@ import type { GithubStarStatus } from '@seshboard/protocol';
 import { classifyGhFailure, firstUsefulLine, runGh, type GhCommand, type RunResult } from './pullRequest.ts';
 
 /** Seshboard's own repository, which the sidebar's Star on GitHub button stars. */
-export const SESHBOARD_REPO = 'estruyf/switchboard';
+export const SESHBOARD_REPO = 'estruyf/seshboard';
 const STAR_ENDPOINT = `/user/starred/${SESHBOARD_REPO}`;
 
 /** What `gh api /user/starred/…` answered: 204 (exit 0) when starred, 404 when not, anything else can't tell. */

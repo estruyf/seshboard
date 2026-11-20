@@ -1,7 +1,8 @@
 import { CircleCheck } from 'lucide-react';
 import type { MouseEvent, ReactNode } from 'react';
-import type { CatchUp, ProjectInfo } from '@seshboard/protocol/client';
+import { apiRetryLine, type CatchUp, type ProjectInfo } from '@seshboard/protocol/client';
 import { shortAge } from '../../lib/format.ts';
+import { useSecondClock } from '../../lib/secondClock.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
@@ -99,11 +100,13 @@ export function NeedsLane({ rows, ctx }: { rows: readonly SessionRowData[]; ctx:
 export function WorkingLane({ rows, ctx }: { rows: readonly SessionRowData[]; ctx: LaneContext }) {
   const hosts = useHosts((s) => s.hosts);
   const streaming = useHosts((s) => s.streaming);
+  // A session retrying an API call counts its wait down on its card.
+  const now = useSecondClock(rows.some((row) => !!hosts.get(row.id)?.apiRetry));
   return (
     <Lane id="working" title="Working" tone="working" count={rows.length} empty="Claude isn't working on anything.">
       {rows.map((row) => {
         const host = hosts.get(row.id);
-        const said = workingLabel({ waiting: false, compacting: host?.compacting === true, block: streaming.get(row.id) });
+        const said = workingLabel({ waiting: false, compacting: host?.compacting === true, block: streaming.get(row.id), retry: host?.apiRetry ? apiRetryLine(host.apiRetry, now) : null });
         // Without a turn streaming here (Claude Code elsewhere), what runs in the background, or who works on it.
         const label = said !== 'Working' ? said : (row.live?.background?.[0] ?? `${agentNameOf(row.summary ?? { provider: host?.provider ?? null })} is working`);
         return (
@@ -111,7 +114,7 @@ export function WorkingLane({ rows, ctx }: { rows: readonly SessionRowData[]; ct
             <CardTop row={row} ctx={ctx} />
             <span className="truncate text-meta text-muted">{where(row, ctx.nameOf(row.projectRoot))}</span>
             <span className="flex min-w-0 items-center gap-2 text-ui text-muted">
-              <WorkingPanel />
+              <WorkingPanel state={host?.compacting === true ? 'compacting' : 'working'} />
               <span className="truncate">{label}</span>
             </span>
           </CardLink>

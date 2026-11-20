@@ -41,6 +41,43 @@ describe('sidebarCollapsed preference', () => {
   });
 });
 
+describe('sidebar view and rail preferences', () => {
+  it('groups by state, shows Done and keeps every tool on the rail by default', () => {
+    expect(DEFAULT_PREFERENCES.sidebarGroup).toBe('state');
+    expect(DEFAULT_PREFERENCES.sidebarShowDone).toBe(true);
+    expect(DEFAULT_PREFERENCES.railHidden).toEqual([]);
+  });
+
+  it('keeps state and project, and drops anything else', () => {
+    expect(sanitizePreferences({ sidebarGroup: 'project' })).toEqual({ sidebarGroup: 'project' });
+    expect(sanitizePreferences({ sidebarGroup: 'state' })).toEqual({ sidebarGroup: 'state' });
+    expect(sanitizePreferences({ sidebarGroup: 'day' })).toEqual({});
+  });
+
+  it('keeps Show Done only as a boolean', () => {
+    expect(sanitizePreferences({ sidebarShowDone: false })).toEqual({ sidebarShowDone: false });
+    expect(sanitizePreferences({ sidebarShowDone: 'no' })).toEqual({});
+  });
+
+  it('keeps the known tools hidden from the rail, once each, in the rail order', () => {
+    expect(sanitizePreferences({ railHidden: ['ask', 'changes', 'ask', 'nope', 3] })).toEqual({ railHidden: ['changes', 'ask'] });
+    expect(sanitizePreferences({ railHidden: 'ask' })).toEqual({});
+  });
+
+  it("keeps the rail's order with every tool once, a missing one at its own place", () => {
+    expect(DEFAULT_PREFERENCES.railOrder).toEqual(['files', 'changes', 'terminal', 'web', 'ask', 'agents', 'commands', 'note']);
+    expect(sanitizePreferences({ railOrder: ['web', 'changes', 'terminal', 'preview', 'commands', 'agents', 'ask'] })).toEqual({ railOrder: ['files', 'web', 'changes', 'terminal', 'commands', 'agents', 'ask', 'note'] });
+    expect(sanitizePreferences({ railOrder: ['terminal', 'changes', 'mods', 'nope', 'terminal'] })).toEqual({ railOrder: ['files', 'terminal', 'changes', 'web', 'ask', 'agents', 'commands', 'note'] });
+    expect(sanitizePreferences({ railOrder: 'web' })).toEqual({});
+  });
+
+  it('keeps the apps pinned to the rail as editor ids, once each, in their order', () => {
+    expect(DEFAULT_PREFERENCES.railApps).toEqual([]);
+    expect(sanitizePreferences({ railApps: ['finder', 'vscode', 'finder', 'Bad Id', 3, '../x'] })).toEqual({ railApps: ['finder', 'vscode'] });
+    expect(sanitizePreferences({ railApps: 'finder' })).toEqual({});
+  });
+});
+
 describe('fileLinkClick preference', () => {
   const REV = FILE_LINK_CLICK_REVISION;
 
@@ -135,6 +172,14 @@ describe('global model and effort preferences', () => {
     expect(sanitizePreferences({ newSessionModel: ' opus ' })).toEqual({ newSessionModel: 'opus' });
     expect(sanitizePreferences({ newSessionModel: 'x'.repeat(201) })).toEqual({});
     expect(sanitizePreferences({ newSessionModel: null })).toEqual({});
+  });
+
+  it('keeps the global fallback model off by default, trimmed when set, and drops what is no model', () => {
+    expect(DEFAULT_PREFERENCES.newSessionFallbackModel).toBe('');
+    for (const model of ['', 'sonnet', 'claude-sonnet-5-5[1m]']) expect(sanitizePreferences({ newSessionFallbackModel: model })).toEqual({ newSessionFallbackModel: model });
+    expect(sanitizePreferences({ newSessionFallbackModel: ' sonnet ' })).toEqual({ newSessionFallbackModel: 'sonnet' });
+    expect(sanitizePreferences({ newSessionFallbackModel: 'x'.repeat(201) })).toEqual({});
+    expect(sanitizePreferences({ newSessionFallbackModel: null })).toEqual({});
   });
 
   it('keeps the effort levels and empty, and drops anything else', () => {

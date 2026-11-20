@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Popover } from './Popover.tsx';
 import { nextTypeaheadIndex } from './typeahead.ts';
@@ -9,6 +9,8 @@ export interface SelectOption<T extends string> {
   icon?: ReactNode;
   /** Shown in the list only, after the label. */
   hint?: string;
+  /** Shown on the button in place of the label, where the label is too long for it. */
+  short?: string;
   disabled?: boolean;
 }
 
@@ -29,6 +31,8 @@ export interface SelectProps<T extends string> {
   placeholder?: string;
   /** Extra attributes for the button, e.g. `{ 'data-model-select': true }` for the smoke test. */
   dataAttrs?: Record<`data-${string}`, string | boolean | undefined>;
+  /** The button's arrow: down (the default), or up and down for a compact choice such as a sort order. */
+  chevron?: 'down' | 'up-down';
   /** An option was highlighted in the open list, by the pointer or the keys (not when the list opens): to preview it, such as playing a sound. */
   onHighlight?(value: T): void;
 }
@@ -38,7 +42,7 @@ export interface SelectProps<T extends string> {
  * popover. Arrow keys, Home/End, type-ahead, Enter/Space choose, Escape and Tab close. The button
  * carries `data-value` so the smoke test can read the current choice.
  */
-export function Select<T extends string>({ value, options, onChange, disabled, label, tooltip, className = '', menuWidth = 180, placeholder, dataAttrs, onHighlight }: SelectProps<T>) {
+export function Select<T extends string>({ value, options, onChange, disabled, label, tooltip, className = '', menuWidth = 180, placeholder, dataAttrs, chevron = 'down', onHighlight }: SelectProps<T>) {
   const id = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -142,8 +146,8 @@ export function Select<T extends string>({ value, options, onChange, disabled, l
         {...dataAttrs}
       >
         {selected?.icon && <span className="flex shrink-0 items-center">{selected.icon}</span>}
-        <span className="min-w-0 flex-1 truncate">{selected?.label ?? placeholder ?? value}</span>
-        <ChevronDown size={12} className="shrink-0 opacity-60" />
+        <span className="min-w-0 flex-1 truncate">{selected?.short ?? selected?.label ?? placeholder ?? value}</span>
+        {chevron === 'up-down' ? <ChevronsUpDown size={12} className="shrink-0 opacity-60" /> : <ChevronDown size={12} className="shrink-0 opacity-60" />}
       </button>
       {/* The list fits its longest option (a long pipeline name), up to a cap; past that, options truncate. */}
       {open && (

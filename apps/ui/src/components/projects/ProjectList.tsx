@@ -1,3 +1,4 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { AlertTriangle, GripVertical, Plus, Search, Settings, X } from 'lucide-react';
 import { memo, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import type { ProjectInfo } from '@seshboard/protocol/client';
@@ -17,7 +18,6 @@ import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { useProjectIconEntries } from '../sidebar/ProjectMenu.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { CountBadge } from '../ui/Pill.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
@@ -223,13 +223,10 @@ export function ProjectList({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar" data-project-list>
-      <div className="drag flex h-13 shrink-0 items-center gap-2 px-4">
-        <SidebarToggle />
-        <h2 className="text-title font-semibold">Projects</h2>
+      <ViewHeader title="Projects">
         <CountBadge count={list.length} />
-        <span className="flex-1" />
-        <Button variant="quiet" iconOnly icon={<Plus size={15} aria-hidden />} aria-label="Add a project folder" onClick={() => showAdd(true)} className="no-drag" data-manager-add />
-      </div>
+        <Button variant="quiet" iconOnly icon={<Plus size={15} aria-hidden />} aria-label="Add a project folder" onClick={() => showAdd(true)} className="no-drag ml-auto" data-manager-add />
+      </ViewHeader>
       <div className="px-3 pb-2">
         <label className="flex h-8 items-center gap-2 rounded-md border border-border bg-bg px-2.5 text-ui focus-within:border-accent-ink/60">
           <Search size={13} className="shrink-0 text-faint" aria-hidden />

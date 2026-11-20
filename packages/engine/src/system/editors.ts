@@ -12,6 +12,8 @@ interface EditorSpec extends EditorInfo {
   cli?: string;
   /** Where Windows installers put the CLI when it isn't on PATH (from `%LOCALAPPDATA%`, `%ProgramFiles%`). */
   windowsCli?: (env: Record<string, string>) => string[];
+  /** The app's program on Windows, from the folder of its `.cmd` CLI, for its icon. */
+  windowsExe?: string;
   gotoArgs?: (path: string, line: number | undefined) => string[];
   /**
    * Opens a file in the window of the folder given before it (focusing that window when it's already
@@ -34,7 +36,7 @@ const programs = (...rest: string[]) => (env: Record<string, string>) =>
 
 /** Known apps, in the order they are offered. Only installed ones are shown. */
 export const EDITOR_SPECS: readonly EditorSpec[] = [
-  { id: 'vscode', name: 'VS Code', kind: 'editor', app: 'Visual Studio Code', cli: 'code', windowsCli: programs('Microsoft VS Code', 'bin', 'code.cmd'), gotoArgs: dashG, folderFirst: true },
+  { id: 'vscode', name: 'VS Code', kind: 'editor', app: 'Visual Studio Code', cli: 'code', windowsCli: programs('Microsoft VS Code', 'bin', 'code.cmd'), windowsExe: '..\\Code.exe', gotoArgs: dashG, folderFirst: true },
   {
     id: 'vscode-insiders',
     name: 'VS Code Insiders',
@@ -42,11 +44,12 @@ export const EDITOR_SPECS: readonly EditorSpec[] = [
     app: 'Visual Studio Code - Insiders',
     cli: 'code-insiders',
     windowsCli: programs('Microsoft VS Code Insiders', 'bin', 'code-insiders.cmd'),
+    windowsExe: '..\\Code - Insiders.exe',
     gotoArgs: dashG,
     folderFirst: true,
   },
-  { id: 'cursor', name: 'Cursor', kind: 'editor', app: 'Cursor', cli: 'cursor', windowsCli: programs('cursor', 'resources', 'app', 'bin', 'cursor.cmd'), gotoArgs: dashG, folderFirst: true },
-  { id: 'windsurf', name: 'Windsurf', kind: 'editor', app: 'Windsurf', cli: 'windsurf', windowsCli: programs('Windsurf', 'bin', 'windsurf.cmd'), gotoArgs: dashG, folderFirst: true },
+  { id: 'cursor', name: 'Cursor', kind: 'editor', app: 'Cursor', cli: 'cursor', windowsCli: programs('cursor', 'resources', 'app', 'bin', 'cursor.cmd'), windowsExe: '..\\..\\..\\Cursor.exe', gotoArgs: dashG, folderFirst: true },
+  { id: 'windsurf', name: 'Windsurf', kind: 'editor', app: 'Windsurf', cli: 'windsurf', windowsCli: programs('Windsurf', 'bin', 'windsurf.cmd'), windowsExe: '..\\Windsurf.exe', gotoArgs: dashG, folderFirst: true },
   { id: 'zed', name: 'Zed', kind: 'editor', app: 'Zed', cli: 'zed', gotoArgs: colon, folderFirst: true },
   { id: 'sublime', name: 'Sublime Text', kind: 'editor', app: 'Sublime Text', cli: 'subl', windowsCli: programs('Sublime Text', 'subl.exe'), gotoArgs: colon },
   { id: 'webstorm', name: 'WebStorm', kind: 'editor', app: 'WebStorm', cli: 'webstorm', gotoArgs: jetbrains },
@@ -69,14 +72,15 @@ export const EDITOR_SPECS: readonly EditorSpec[] = [
 /** What the file manager is called: Finder on macOS, File Explorer on Windows, Files on Linux. */
 export const fileManagerName = (platform: NodeJS.Platform) => (platform === 'win32' ? 'File Explorer' : platform === 'darwin' ? 'Finder' : 'Files');
 
-function appInstalled(app: string, home: string): boolean {
-  return [
-    `/Applications/${app}.app`,
-    posix.join(home, 'Applications', `${app}.app`),
-    `/System/Applications/Utilities/${app}.app`,
-    `/System/Applications/${app}.app`,
-  ].some((p) => existsSync(p));
+/** Where a macOS app's bundle is, or null when it isn't installed. */
+function appBundle(app: string, home: string, exists: (path: string) => boolean = existsSync): string | null {
+  return (
+    [`/Applications/${app}.app`, posix.join(home, 'Applications', `${app}.app`), `/System/Applications/Utilities/${app}.app`, `/System/Applications/${app}.app`].find((p) => exists(p)) ??
+    null
+  );
 }
+
+const FINDER_BUNDLE = '/System/Library/CoreServices/Finder.app';
 
 const isExecutable = (path: string) => {
   try {
@@ -115,11 +119,28 @@ function findCli(spec: EditorSpec, env: Record<string, string>, platform: NodeJS
 
 const offeredOn = (spec: EditorSpec, platform: NodeJS.Platform) => !spec.platforms || spec.platforms.includes(platform);
 
-/** Editors, terminals and the file manager installed here. */
+/**
+ * The file whose icon stands for the app: its bundle on macOS, its program on Windows (Explorer, an `.exe` CLI, or the
+ * program next to a `.cmd` one). None on Linux, where an app's icon comes from the icon theme.
+ */
+function iconFile(spec: EditorSpec, env: Record<string, string>, home: string, platform: NodeJS.Platform, exists?: (path: string) => boolean): string | undefined {
+  if (platform === 'darwin') return (spec.kind === 'finder' ? FINDER_BUNDLE : spec.app && appBundle(spec.app, home, exists)) || undefined;
+  if (platform !== 'win32') return undefined;
+  if (spec.kind === 'finder') return win32.join(env.SystemRoot || env.windir || 'C:\\Windows', 'explorer.exe');
+  const cli = findCli(spec, env, platform, exists);
+  if (cli?.toLowerCase().endsWith('.exe')) return cli;
+  const exe = cli && spec.windowsExe ? win32.join(win32.dirname(cli), spec.windowsExe) : null;
+  return exe && (exists ?? existsSync)(exe) ? exe : undefined;
+}
+
+/** Editors, terminals and the file manager installed here, each with the file its icon comes from when there is one. */
 export function detectEditors(env: Record<string, string>, home = homedir(), platform: NodeJS.Platform = process.platform, exists?: (path: string) => boolean): EditorInfo[] {
-  const named = ({ id, name, kind }: EditorSpec): EditorInfo => ({ id, name: kind === 'finder' ? fileManagerName(platform) : name, kind });
+  const named = (spec: EditorSpec): EditorInfo => {
+    const icon = iconFile(spec, env, home, platform, exists);
+    return { id: spec.id, name: spec.kind === 'finder' ? fileManagerName(platform) : spec.name, kind: spec.kind, ...(icon ? { icon } : {}) };
+  };
   const specs = EDITOR_SPECS.filter((e) => offeredOn(e, platform));
-  if (platform === 'darwin') return specs.filter((e) => e.kind === 'finder' || (e.app && appInstalled(e.app, home)) || (e.cli && findOnPath(e.cli, env, platform, exists))).map(named);
+  if (platform === 'darwin') return specs.filter((e) => e.kind === 'finder' || (e.app && appBundle(e.app, home, exists)) || (e.cli && findOnPath(e.cli, env, platform, exists))).map(named);
   // Elsewhere only what can be started: File Explorer always on Windows, the file manager through xdg-open on Linux,
   // the rest by their CLI.
   const fileManager = platform === 'win32' || !!findOnPath('xdg-open', env, platform, exists);

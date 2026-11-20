@@ -1,6 +1,6 @@
 import { Check, FolderOpen, GitBranch, Image, Plus, RotateCcw, Settings2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { ListedAction, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
+import { anyFactsPending, MAX_ORCHESTRATOR_INSTRUCTIONS, MAX_PLAN_MODE_INSTRUCTIONS, type ListedAction, type ProjectDefaults, type ProjectInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { formatShortcut } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -12,6 +12,8 @@ import { fileManagerName } from '../../lib/platform.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
 import { useMultipleProfiles, useProfile, useProfiles } from '../../state/profilesStore.ts';
+import { useProviders, useStartableProfiles } from '../../state/providersStore.ts';
+import { startLabel } from '../providers/startable.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { projectOf } from '../../state/queue.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -39,6 +41,8 @@ import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
+import { InstructionsEditor } from './InstructionsEditor.tsx';
+import { BrowserSitesEditor } from './BrowserSitesEditor.tsx';
 import { defaultChips, overviewWorktrees, recentSessions, sessionState } from './projectOverview.ts';
 
 /** Re-renders relative ages once a minute. */
@@ -162,7 +166,7 @@ export function ProjectOverview({ project }: { project: ProjectInfo }) {
         <OverviewPanel title="Worktrees" link={safe > 0 ? { label: `Clean up ${safe}`, onClick: () => cleanUpWorktrees(root), data: { 'data-overview-cleanup': true } } : null} data-overview-worktrees>
           {!project.exists || state.notRepo ? (
             <p className="text-ui text-muted">Not a git repository.</p>
-          ) : !state.list ? (
+          ) : !state.list || (worktrees.length === 0 && anyFactsPending(state.list)) ? (
             <p className="text-ui text-muted">Reading…</p>
           ) : worktrees.length === 0 ? (
             <p className="text-ui text-muted">{others.length === 0 ? 'No worktrees besides the main checkout.' : 'None in use, and none ready to remove.'}</p>
@@ -430,17 +434,24 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   const [removing, setRemoving] = useState(false);
   const projectActions = useProjectActions();
   const profiles = useProfiles((s) => s.profiles);
+  // Only profiles that can start a session (not a read-only provider's), and the one it has.
+  const startable = useStartableProfiles(project.profileId);
+  const catalog = useProviders((s) => s.providers);
   const home = useHomeFolder();
   // Fields the project leaves unset come from its profile's defaults.
   const profile = useProfile(project.profileId);
   // A project on a Copilot profile picks Copilot's models for its defaults.
   const provider = useProviderChoices(profile);
   const fallback = profiles.find((p) => p.isDefault);
+  // "Always allow" on a site's prompt changes the project's sites in the engine: read them again when this opens.
+  useEffect(() => reload(), [reload]);
+  const browserOn = usePreferences((s) => s.prefs.browserEnabled && s.prefs.browserControl);
+  const scriptsOn = usePreferences((s) => s.prefs.browserScripts);
   const save = async (defaults: ProjectDefaults) => {
     if (!client) return;
     try {
       setError(null);
-      await client.call('projects.setDefaults', { root: project.root, defaults });
+      await client.call('projects.setDefaults', { root: project.root, defaults: { ...defaults, browserSites: project.defaults.browserSites, browserScriptSites: project.defaults.browserScriptSites } });
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -481,14 +492,14 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         </Button>
         {!project.exists && <span className="text-meta text-warn">Folder not found</span>}
       </SettingRow>
-      {profiles.length > 1 && (
+      {startable.length > 1 && (
         <SettingRow label="Claude profile">
           <Select
             label="Claude profile"
             className="h-8 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60"
             value={project.profileId ?? ''}
             onChange={(value) => void projectActions.setProfile(project.root, value || null)}
-            options={[{ value: '', label: `Default${fallback ? ` (${fallback.name})` : ''}` }, ...profiles.map((p) => ({ value: p.id, label: p.name, hint: p.account?.email ?? undefined }))]}
+            options={[{ value: '', label: `Default${fallback ? ` (${fallback.name})` : ''}` }, ...startable.map((p) => ({ value: p.id, label: startLabel(p, catalog), hint: p.account?.email ?? undefined }))]}
             menuWidth={320}
             dataAttrs={{ 'data-project-profile': true }}
           />
@@ -503,6 +514,75 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
             </p>
           )}
         </div>
+      </SettingRow>
+      {browserOn && (
+        <SettingRow label="Browser sites" hint="The agent can use these sites in the browser here without asking. *.example.com covers every subdomain of example.com. Pages on this computer always can. Any other site asks first." data-project-browser-sites>
+          <BrowserSitesEditor
+            sites={project.defaults.browserSites ?? []}
+            anySite
+            onSave={async (browserSites) => {
+              if (!client) return;
+              await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, browserSites } });
+              reload();
+            }}
+          />
+        </SettingRow>
+      )}
+      {browserOn && (scriptsOn || (project.defaults.browserScriptSites?.length ?? 0) > 0) && (
+        <SettingRow
+          label="Scripts in pages"
+          hint="The agent can run scripts and read requests on these sites without asking, with your login there. *.example.com covers every subdomain of example.com. Pages on this computer always can. Any other site asks first."
+          data-project-browser-script-sites
+        >
+          <BrowserSitesEditor
+            sites={project.defaults.browserScriptSites ?? []}
+            inputLabel="Site to allow scripts on"
+            onSave={async (browserScriptSites) => {
+              if (!client) return;
+              await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, browserScriptSites } });
+              reload();
+            }}
+          />
+        </SettingRow>
+      )}
+      <SettingRow
+        label="Orchestrator instructions"
+        hint="What this project's orchestrator and every session it starts read first: which branch to start from, how to check the work, what needs your go-ahead. Rules about the code itself belong in the repository's own instructions file."
+        data-project-orchestrator-instructions
+      >
+        <InstructionsEditor
+          hook="orchestrator-instructions"
+          label="Orchestrator instructions"
+          max={MAX_ORCHESTRATOR_INSTRUCTIONS}
+          placeholder={'Branch from dev and open one draft pull request per session.\nRun the tests before you call work done.\nAsk me before you change CI.'}
+          savedNote="Saved. Sessions started from now on read them."
+          instructions={project.defaults.orchestratorInstructions ?? ''}
+          onSave={async (orchestratorInstructions) => {
+            if (!client) return;
+            await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, orchestratorInstructions } });
+            reload();
+          }}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Plan mode instructions"
+        hint="Replaces the steps Claude Code follows in plan mode: what to look at, what the plan lists, when to ask. Its read-only rules stay. Claude Code sessions only, read when a session starts, so it applies to sessions started from now on."
+        data-project-plan-mode-instructions
+      >
+        <InstructionsEditor
+          hook="plan-mode-instructions"
+          label="Plan mode instructions"
+          max={MAX_PLAN_MODE_INSTRUCTIONS}
+          rows={5}
+          placeholder={'Read the code that matters first.\nList the files you will change and why.\nName the tests you will add, then ask me to approve.'}
+          savedNote="Saved. Sessions started from now on use it."
+          instructions={project.defaults.planModeInstructions ?? ''}
+          onSave={async (planModeInstructions) => {
+            if (!client) return;
+            await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, planModeInstructions } });
+            reload();
+          }}
+        />
       </SettingRow>
       <SettingRow
         label="Remove"

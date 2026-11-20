@@ -26,7 +26,9 @@ export interface ChoiceAction {
   label: string;
   hint?: string;
   disabled?: boolean;
-  /** `data-*` attributes for the item's button (test hooks). */
+  /** An option that is on or off (not a one-time command): shown as a checkbox item with a check while on. */
+  checked?: boolean;
+  /** `data-*` attributes for the item's button (test hooks, a tooltip). */
   data?: Record<`data-${string}`, string | boolean>;
   onSelect(): void;
 }
@@ -35,7 +37,7 @@ export interface ChoiceAction {
 export const CHOICE_PILL = 'flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-md px-2 text-ui whitespace-nowrap text-muted hover:bg-border/50 hover:text-text disabled:opacity-50';
 
 /** The items keyboard navigation moves between: the choices and the enabled actions. */
-const ITEMS = '[role=menuitemradio]:not(:disabled),[role=menuitem]:not(:disabled)';
+const ITEMS = '[role=menuitemradio]:not(:disabled),[role=menuitemcheckbox]:not(:disabled),[role=menuitem]:not(:disabled)';
 
 /**
  * A pill that opens a small menu of choices under (or above) it. The checked choice (or the search
@@ -58,6 +60,7 @@ export function ChoiceMenu<T extends string>({
   mono = false,
   extra,
   actions,
+  fixed = false,
   children,
 }: {
   /** `data-menu` on the panel, and `data-<name>-select` on the pill, for the smoke test. */
@@ -78,6 +81,8 @@ export function ChoiceMenu<T extends string>({
   align?: 'left' | 'right';
   /** A small chevron after the pill's content, to read as a dropdown. */
   chevron?: boolean;
+  /** Keeps the pill at its full width in a row that runs out of room, so the pills beside it shrink instead. */
+  fixed?: boolean;
   /** Placeholder of a search field over the choices, which filters them by label. */
   search?: string;
   /** Choice labels in the monospace font (branch names). */
@@ -147,7 +152,7 @@ export function ChoiceMenu<T extends string>({
   };
 
   return (
-    <div ref={ref} className="relative min-w-0" onKeyDown={open ? onKeyDown : undefined}>
+    <div ref={ref} className={`relative ${fixed ? 'shrink-0' : 'min-w-0'}`} onKeyDown={open ? onKeyDown : undefined}>
       <button
         ref={trigger}
         type="button"
@@ -241,7 +246,8 @@ export function ChoiceMenu<T extends string>({
                 <button
                   key={action.label}
                   type="button"
-                  role="menuitem"
+                  role={action.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+                  aria-checked={action.checked}
                   disabled={action.disabled}
                   {...action.data}
                   onClick={() => {
@@ -252,6 +258,7 @@ export function ChoiceMenu<T extends string>({
                 >
                   <span className="min-w-0 flex-1 truncate">{action.label}</span>
                   {action.hint && <span className="shrink-0 text-meta text-faint">{localizeKeys(action.hint)}</span>}
+                  {action.checked !== undefined && <Check size={13} aria-hidden className={`shrink-0 text-accent-ink ${action.checked ? '' : 'invisible'}`} />}
                 </button>
               ))}
             </>

@@ -1,4 +1,6 @@
+import { QuickOpenHost } from './components/files/QuickOpen.tsx';
 import { useEffect } from 'react';
+import { useSelectAllInText } from './components/transcript/useSelectAllInText.ts';
 import { NewSessionView } from './components/newSession/NewSessionView.tsx';
 import { HomeView } from './components/home/HomeView.tsx';
 import { TooltipLayer } from './components/ui/Tooltip.tsx';
@@ -37,11 +39,22 @@ import { SessionHud } from './components/sidebar/SessionHud.tsx';
 import { EngineStalledNotice } from './components/EngineStalledNotice.tsx';
 import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { SplitPanes } from './components/split/SplitPanes.tsx';
+import { WebPreviewHost } from './components/webPreview/WebPreviewHost.tsx';
+import { BrowserView } from './components/browser/BrowserView.tsx';
+import { followDeletedSessions, followView } from './state/browserViewStore.ts';
+import { useBrowserTabsSync } from './state/browserTabsSync.ts';
+import { useBrowserFavoritesSync } from './state/browserFavoritesStore.ts';
+import { useBrowserHistorySync } from './state/browserHistory.ts';
+import { useBrowserBookmarksSync } from './state/browserBookmarksStore.ts';
+import { useBrowserProfilesSync } from './state/browserProfilesStore.ts';
+import { browserOn } from './state/webPreviewStore.ts';
+import { browserKey, mainBrowserScope } from './state/browserKeys.ts';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
 import { useTriggersSync } from './state/triggersStore.ts';
 import { usePipelinesSync } from './state/pipelinesStore.ts';
+import { useOrchestratorSync } from './state/orchestratorStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useLooseEndsSync } from './state/looseEndsStore.ts';
@@ -83,12 +96,15 @@ import { openRow } from './state/useRemoteRows.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { runMainRequest } from './state/mainRequests.ts';
 import { usePopoutsSync } from './state/usePopoutsSync.ts';
+import { useBrowserPopoutsSync } from './state/browserWindow.ts';
 import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 import { UpcomingView } from './components/upcoming/UpcomingView.tsx';
+import { ActivityView } from './components/activity/ActivityView.tsx';
 import { SelectionMenu } from './components/SelectionMenu.tsx';
 import { openUpcoming } from './state/upcomingStore.ts';
+import { openActivity } from './state/activityStore.ts';
 
 /** What the main area shows, as the terminal sees it: Home is the session view without a session. */
 function terminalView(view: MainView, sessionId: string | null): TerminalView {
@@ -142,6 +158,12 @@ function useShortcuts() {
       } else if (matches(event, 'upcoming')) {
         event.preventDefault();
         openUpcoming();
+      } else if (browserOn() && browserKey(event, mainBrowserScope())) {
+        // Before Activity: ⌘⇧T reopens a closed tab in the Browser view and in a page.
+        event.preventDefault();
+      } else if (matches(event, 'activity')) {
+        event.preventDefault();
+        openActivity();
       } else if (matches(event, 'search')) {
         if (otherModalOpen()) return;
         event.preventDefault();
@@ -225,6 +247,7 @@ export function App() {
   useSidebarSync();
   useDraftsSync();
   usePopoutsSync();
+  useBrowserPopoutsSync();
   useSessionViewHandoff();
   useUsageSync();
   usePreferencesSync();
@@ -233,6 +256,7 @@ export function App() {
   useSchedulesSync();
   useTriggersSync();
   usePipelinesSync();
+  useOrchestratorSync();
   useCatchUpSync();
   useLooseEndsSync();
   useReminderClear();
@@ -248,10 +272,18 @@ export function App() {
   useCompanionSync();
   useWorktreesSync();
   useNavHistorySync();
+  useBrowserTabsSync();
+  useBrowserFavoritesSync();
+  useBrowserHistorySync();
+  useBrowserBookmarksSync();
+  useBrowserProfilesSync();
+  useEffect(followView, []);
+  useEffect(followDeletedSessions, []);
   // Listen for links before telling main the window is ready: main hands over waiting links then.
   useLinksSync();
   useReadyReport();
   useShortcuts();
+  useSelectAllInText();
   useWindowFocus();
   const view = useSessions((s) => s.view);
   const settingsFrom = useSessions((s) => s.settingsFrom);
@@ -269,7 +301,8 @@ export function App() {
   return (
     <div className="flex h-full">
       <SidebarShell inert={reading} />
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden" inert={reading}>
+      {/* New session has its own main (the message box, beside its projects and context): only one on a page. */}
+      <div role={view === 'new' ? undefined : 'main'} className="relative flex min-w-0 flex-1 flex-col overflow-hidden" inert={reading}>
         {/* Outside a session, the window's own terminal (⌘J) docks below or beside the view, and Settings. */}
         <AppTerminalFrame view={shownView}>
         {/* Settings is a sheet over the view it opened from, which stays on screen (inert) behind it. */}
@@ -285,6 +318,10 @@ export function App() {
           <NewSessionView />
         ) : behind === 'upcoming' ? (
           <UpcomingView />
+        ) : behind === 'browser' ? (
+          <BrowserView />
+        ) : behind === 'activity' ? (
+          <ActivityView />
         ) : hasPanes ? (
           <SplitPanes />
         ) : (
@@ -293,14 +330,16 @@ export function App() {
         </div>
         {view === 'settings' && <SettingsView />}
         </AppTerminalFrame>
-      </main>
+      </div>
       <QuitPrompt />
+      <WebPreviewHost />
       <LinkError />
       {overlay === 'search' && <SearchDialog />}
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
       <PaletteDialogs />
+      <QuickOpenHost />
       <RunTreeDialogs />
       <FilePreviewDialog />
       <TriggerEditorHost />

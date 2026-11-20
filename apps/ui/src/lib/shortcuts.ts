@@ -39,9 +39,11 @@ export function shortcutFromEvent(event: {
       ? event.code.slice(3).toLowerCase()
       : event.altKey && event.code?.startsWith("Digit")
         ? event.code.slice(5)
-        : event.code === "Space"
-          ? " "
-          : event.key.toLowerCase();
+        : event.altKey && (event.code === "BracketLeft" || event.code === "BracketRight")
+          ? (event.code === "BracketLeft" ? "[" : "]")
+          : event.code === "Space"
+            ? " "
+            : event.key.toLowerCase();
   const key = NAMED_KEYS[raw] ?? raw;
   return [
     event.metaKey && "cmd",
@@ -221,7 +223,7 @@ export const sameShortcut = (a: string, b: string) =>
 
 /** Where you are, for `when()`. Built from the stores (and where focus was) when the shortcuts sheet opens. */
 export interface ShortcutContext {
-  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming";
+  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming" | "activity" | "browser";
   /** A session is open in the session view. */
   session: boolean;
   /** Claude is working, or waiting for you, in that session. */
@@ -270,7 +272,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail" | "files" | "text";
 
 export interface ShortcutDef {
   id: string;
@@ -359,6 +361,14 @@ export const SHORTCUTS = [
     keys: ["mod+shift+y"],
     action: "Upcoming: queued and scheduled",
     section: "general",
+  },
+  {
+    id: "activity",
+    keys: ["mod+shift+t"],
+    action: "Activity: what you did per day",
+    section: "general",
+    // In the Browser view (and in a page) ⌘⇧T reopens the closed tab, as in a browser.
+    when: (ctx) => ctx.view !== "browser",
   },
   {
     id: "usage.open",
@@ -688,6 +698,13 @@ export const SHORTCUTS = [
     where: "sidebar",
   },
   {
+    id: "sidebar.fold-projects",
+    keys: ["mod+alt+["],
+    action: "Collapse or expand all projects",
+    section: "sessions",
+    context: "While the sidebar groups sessions by project",
+  },
+  {
     id: "queue.start",
     keys: ["mod+enter"],
     action: "Start a queued item now",
@@ -843,6 +860,15 @@ export const SHORTCUTS = [
     when: inSession,
   },
   {
+    id: "text.select-all",
+    keys: ["mod+a"],
+    action: "Select all of the text you are in",
+    section: "session",
+    context: "In the conversation, reading mode and a file preview",
+    note: "With this only that text is selected, so a copy has no colours. The conversation is drawn a screenful at a time: it selects the replies drawn.",
+    where: "text",
+  },
+  {
     id: "read.previous",
     keys: ["arrowleft"],
     action: "Go to the previous reply",
@@ -972,10 +998,68 @@ export const SHORTCUTS = [
     when: inSession,
   },
   {
+    id: "files.toggle",
+    keys: ["mod+alt+e"],
+    action: "Show or hide Files",
+    section: "session",
+    when: inSession,
+    note: "The project's files: browse, read and search them beside the conversation",
+  },
+  {
+    id: "files.quick-open",
+    keys: ["mod+alt+p"],
+    action: "Quick open a file",
+    section: "session",
+    note: "Type part of a name; name:42 opens it at line 42. Outside a session, in the selected project",
+  },
+  {
+    id: "files.search",
+    keys: ["mod+alt+f"],
+    action: "Search in files",
+    section: "session",
+    when: inSession,
+    note: "With text selected in the viewer, it searches for that",
+  },
+  {
+    id: "files.add-lines",
+    keys: ["mod+alt+m"],
+    action: "Add the selected lines, or the file, to the message",
+    section: "session",
+    context: "In the Files viewer",
+    when: inSession,
+    where: "files",
+  },
+  {
+    id: "files.go-to-line",
+    keys: ["mod+alt+l"],
+    action: "Go to line",
+    section: "session",
+    context: "In the Files viewer",
+    when: inSession,
+  },
+  {
+    id: "files.find",
+    keys: ["mod+f"],
+    action: "Find in the file",
+    section: "session",
+    context: "In the Files viewer",
+    when: inSession,
+    where: "files",
+  },
+  {
     id: "changes.toggle",
     keys: ["mod+shift+d"],
     action: "Show or hide Changes",
     section: "session",
+    when: inSession,
+  },
+  {
+    id: "changes.comment",
+    keys: ["mod+shift+m"],
+    action: "Comment on the selected lines",
+    section: "session",
+    context: "In a diff in Changes",
+    note: "Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box",
     when: inSession,
   },
   {
@@ -993,6 +1077,104 @@ export const SHORTCUTS = [
     section: "session",
     when: inSession,
     note: "The commands Claude runs in the background, with their output",
+  },
+  {
+    id: "rail.move",
+    keys: ["alt+arrowup", "alt+arrowdown"],
+    action: "Move a tool or an app on the rail up or down",
+    section: "session",
+    context: "On a button on the rail at the session's right edge",
+    note: "Or drag it. A button moves only inside its group",
+    when: inSession,
+    where: "rail",
+  },
+  {
+    id: "web.toggle",
+    keys: ["mod+shift+b"],
+    action: "Show or hide the session's browser",
+    section: "session",
+    when: inSession,
+    note: "Your running dev server, or with the browser on any page, beside the conversation",
+  },
+  {
+    id: "browser.view",
+    keys: ["mod+shift+b"],
+    action: "Browser: your tabs outside a session",
+    section: "general",
+    context: "Outside a session, with the browser on",
+    when: (ctx) => !inSession(ctx),
+  },
+  {
+    id: "browser.new-tab",
+    keys: ["mod+t"],
+    action: "New tab",
+    section: "general",
+    context: "In a session or the Browser view, with the browser on",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+  },
+  {
+    id: "browser.address",
+    keys: ["mod+l"],
+    action: "Go to the address bar",
+    section: "general",
+    context: "With a browser on screen",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+  },
+  {
+    id: "browser.find",
+    keys: ["mod+f"],
+    action: "Find in the page",
+    section: "general",
+    context: "While a page or its address bar has focus, or in the Browser view",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+    where: "tab",
+  },
+  {
+    id: "browser.reopen-tab",
+    keys: ["mod+shift+t"],
+    action: "Reopen the closed tab",
+    section: "general",
+    context: "In the Browser view, or while a page has focus",
+    note: "Elsewhere it opens Activity",
+    when: (ctx) => ctx.view === "browser",
+  },
+  {
+    id: "browser.move-tab",
+    keys: ["alt+arrowup", "alt+arrowdown", "alt+arrowleft", "alt+arrowright"],
+    action: "Move the tab up or down, or left or right",
+    section: "general",
+    context: "On a tab, in the Browser view's list or a session's tab strip",
+    note: "Or drag it. Pinned tabs stay before the others",
+    when: (ctx) => inSession(ctx) || ctx.view === "browser",
+    where: "tab",
+  },
+  {
+    id: "browser.close-tab",
+    keys: ["mod+w"],
+    action: "Close the tab",
+    section: "general",
+    context: "While a page or its address bar has focus",
+  },
+  {
+    id: "browser.bookmark",
+    keys: ["mod+d"],
+    action: "Bookmark the page, or edit its bookmark",
+    section: "general",
+    context: "While a page or its address bar has focus",
+  },
+  {
+    id: "browser.back",
+    keys: ["mod+["],
+    action: "Back in the page",
+    section: "general",
+    context: "While a page has focus",
+  },
+  {
+    id: "browser.forward",
+    keys: ["mod+]"],
+    action: "Forward in the page",
+    section: "general",
+    context: "While a page has focus",
   },
   {
     id: "ask.open",

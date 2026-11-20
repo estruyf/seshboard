@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { quotaFooter, quotaLeft, quotaLine, quotaSummary, quotaUsed, resetDay } from './quotaText.ts';
+import { hasPlanUsage, planWindowsOnly, quotaFooter, quotaLeft, quotaLine, quotaSummary, quotaUsed, resetDay } from './quotaText.ts';
 
 const quota = { used: 212, entitlement: 1500, percentUsed: 14.13, resetsAt: '2026-11-01' };
 
@@ -8,6 +8,12 @@ describe("a provider's premium requests", () => {
     expect(quotaLine('Copilot', quota, 'en-US')).toBe('Copilot · Premium requests 14% · resets Nov 1');
     expect(quotaLine('Copilot', { ...quota, resetsAt: null }, 'en-US')).toBe('Copilot · Premium requests 14%');
     expect(quotaLine('Copilot', { ...quota, entitlement: null, percentUsed: 0 }, 'en-US')).toBe('Copilot · Premium requests 212 used · resets Nov 1');
+  });
+
+  it('says the account is billed per token in AI credits, without request counts', () => {
+    const credits = { used: 0, entitlement: null, percentUsed: 0, resetsAt: '2026-11-17T07:26:09Z', tokenBilling: true };
+    expect(quotaLine('Copilot', credits, 'en-US')).toBe('Copilot · Billed per token in AI credits');
+    expect(quotaSummary(credits, 'en-US')).toBe('Billed per token in AI credits. The Tokens tab in Usage shows what each session cost.');
   });
 
   it("reads as a session's footer", () => {
@@ -35,5 +41,12 @@ describe('the premium requests ring', () => {
   it('says the details in its tooltip', () => {
     expect(quotaSummary(quota, 'en-US')).toBe('Premium requests: 212 of 1,500 used (14%) · resets Nov 1');
     expect(quotaSummary({ ...quota, entitlement: null, resetsAt: null }, 'en-US')).toBe('Premium requests: 212 used, no limit on this plan');
+  });
+});
+
+describe("how a profile's usage comes", () => {
+  it("is plan windows for Claude Code and Codex, without Claude Code's history for Codex, and premium requests for Copilot", () => {
+    expect(['claude', 'codex', 'copilot'].map((p) => hasPlanUsage(p as 'claude'))).toEqual([true, true, false]);
+    expect(['claude', 'codex', 'copilot'].map((p) => planWindowsOnly(p as 'claude'))).toEqual([false, true, false]);
   });
 });

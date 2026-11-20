@@ -1,0 +1,485 @@
+{
+ "replay": [
+  {
+   "sessionUpdate": "user_message_chunk",
+   "content": {
+    "type": "text",
+    "text": "Do these steps one by one with your tools: 1) read notes.txt, 2) search the folder for the word world, 3) list the files in this folder, 4) edit notes.txt to replace world with there, 5) create a new file todo.md with one line, 6) run the shell command: echo done. Then reply in one short sentence."
+   }
+  },
+  {
+   "sessionUpdate": "agent_thought_chunk",
+   "content": {
+    "type": "text",
+    "text": "Initial plan: The task requires a series of file operations and command executions. Starting with reading a note, searching for a string, listing files, editing the note, creating a new file, and finally executing a shell command. The directory `/work/notes-demo` appears to be the current working directory, which will be used for these operations.\n\n\n"
+   }
+  },
+  {
+   "sessionUpdate": "tool_call",
+   "toolCallId": "call_1721374020839001789",
+   "name": "read_file",
+   "args": {
+    "Path": "/work/notes-demo/notes.txt"
+   },
+   "status": "completed",
+   "kind": "read",
+   "title": "File ../agy-sandbox/notes.txt",
+   "locations": [
+    {
+     "path": "/work/notes-demo/notes.txt"
+    }
+   ],
+   "rawInput": {
+    "Path": "/work/notes-demo/notes.txt"
+   }
+  },
+  {
+   "sessionUpdate": "tool_call",
+   "toolCallId": "call_17185782775658566408",
+   "name": "run_command",
+   "args": {
+    "CommandLine": "grep -rn \"world\" .",
+    "WaitMsBeforeAsync": 5000,
+    "toolSummary": "Search folder for word world"
+   },
+   "status": "completed",
+   "kind": "execute",
+   "title": "grep -rn \"world\" .",
+   "rawInput": {
+    "CommandLine": "grep -rn \"world\" .",
+    "WaitMsBeforeAsync": 5000,
+    "toolSummary": "Search folder for word world"
+   },
+   "rawOutput": {
+    "output": "Created At: 2026-11-19T17:26:30+01:00\nCompleted At: 2026-11-19T17:26:30+01:00\nCommand exited with code 0.\n\nCommand output:\n./notes.txt:2:world\r\n",
+    "exit_code": 0
+   },
+   "content": [
+    {
+     "type": "content",
+     "content": {
+      "type": "text",
+      "text": "Created At: 2026-11-19T17:26:30+01:00\nCompleted At: 2026-11-19T17:26:30+01:00\nCommand exited with code 0.\n\nCommand output:\n./notes.txt:2:world\r\n"
+     }
+    }
+   ]
+  },
+  {
+   "sessionUpdate": "tool_call",
+   "toolCallId": "call_3038778948891344259",
+   "name": "run_command",
+   "args": {
+    "CommandLine": "ls -la .",
+    "WaitMsBeforeAsync": 5000,
+    "toolSummary": "List files in folder"
+   },
+   "status": "completed",
+   "kind": "execute",
+   "title": "ls -la .",
+   "rawInput": {
+    "CommandLine": "ls -la .",
+    "WaitMsBeforeAsync": 5000,
+    "toolSummary": "List files in folder"
+   },
+   "rawOutput": {
+    "output": "Created At: 2026-11-19T17:26:33+01:00\nCompleted At: 2026-11-19T17:26:33+01:00\nCommand exited with code 0.\n\nCommand output:\ntotal 8\r\ndrwxr-xr-x@ 4 demo  wheel  128 Nov 19 17:25 .\r\ndrwx------@ 4 demo  wheel  128 Nov 19 17:25 ..\r\ndrwxr-xr-x@ 9 demo  wheel  288 Nov 19 17:25 .git\r\n-rw-r--r--@ 1 demo  wheel   12 Nov 19 17:25 notes.txt\r\n",
+    "exit_code": 0
+   },
+   "content": [
+    {
+     "type": "content",
+     "content": {
+      "type": "text",
+      "text": "Created At: 2026-11-19T17:26:33+01:00\nCompleted At: 2026-11-19T17:26:33+01:00\nCommand exited with code 0.\n\nCommand output:\ntotal 8\r\ndrwxr-xr-x@ 4 demo  wheel  128 Nov 19 17:25 .\r\ndrwx------@ 4 demo  wheel  128 Nov 19 17:25 ..\r\ndrwxr-xr-x@ 9 demo  wheel  288 Nov 19 17:25 .git\r\n-rw-r--r--@ 1 demo  wheel   12 Nov 19 17:25 notes.txt\r\n"
+     }
+    }
+   ]
+  },
+  {
+   "sessionUpdate": "tool_call",
+   "toolCallId": "call_17931639765190695514",
+   "name": "edit_file",
+   "args": {
+    "Path": "/work/notes-demo/notes.txt",
+    "Replacement": "there",
+    "Target": "world"
+   },
+   "status": "completed",
+   "kind": "edit",
+   "title": "File ../agy-sandbox/notes.txt",
+   "locations": [
+    {
+     "path": "/work/notes-demo/notes.txt"
+    }
+   ],
+   "rawInput": {
+    "Path": "/work/notes-demo/notes.txt",
+    "Replacement": "there",
+    "Target": "world"
+   },
+   "rawOutput": {},
+   "content": [
+    {
+     "type": "diff",
+     "path": "/work/notes-demo/notes.txt",
+     "newText": "hello\nthere\n",
+     "oldText": "hello\nworld\n"
+    }
+   ]
+  },
+  {
+   "sessionUpdate": "tool_call",
+   "toolCallId": "call_8012673763871576614",
+   "name": "write_file",
+   "args": {
+    "Content": "- [ ] Complete tasks\n",
+    "Path": "/work/notes-demo/todo.md"
+   },
+   "status": "completed",
+   "kind": "edit",
+   "title": "File ../agy-sandbox/todo.md",
+   "locations": [
+    {
+     "path": "/work/notes-demo/todo.md"
+    }
+   ],
+   "rawInput": {
+    "Content": "- [ ] Complete tasks\n",
+    "Path": "/work/notes-demo/todo.md"
+   },
+   "rawOutput": {},
+   "content": [
+    {
+     "type": "diff",
+     "path": "/work/notes-demo/todo.md",
+     "newText": "- [ ] Complete tasks\n"
+    }
+   ]
+  },
+  {
+   "sessionUpdate": "tool_call",
+   "toolCallId": "call_18016148818054408450",
+   "name": "run_command",
+   "args": {
+    "CommandLine": "echo done",
+    "WaitMsBeforeAsync": 5000,
+    "toolSummary": "Echo done"
+   },
+   "status": "completed",
+   "kind": "execute",
+   "title": "echo done",
+   "rawInput": {
+    "CommandLine": "echo done",
+    "WaitMsBeforeAsync": 5000,
+    "toolSummary": "Echo done"
+   },
+   "rawOutput": {
+    "output": "Created At: 2026-11-19T17:26:40+01:00\nCompleted At: 2026-11-19T17:26:40+01:00\nCommand exited with code 0.\n\nCommand output:\ndone\r\n",
+    "exit_code": 0
+   },
+   "content": [
+    {
+     "type": "content",
+     "content": {
+      "type": "text",
+      "text": "Created At: 2026-11-19T17:26:40+01:00\nCompleted At: 2026-11-19T17:26:40+01:00\nCommand exited with code 0.\n\nCommand output:\ndone\r\n"
+     }
+    }
+   ]
+  },
+  {
+   "sessionUpdate": "agent_thought_chunk",
+   "content": {
+    "type": "text",
+    "text": "I'm thinking through how to approach this.\n\n\n"
+   }
+  },
+  {
+   "sessionUpdate": "agent_message_chunk",
+   "content": {
+    "type": "text",
+    "text": "I have completed all six requested steps, including updating [notes.txt](file:///work/notes-demo/notes.txt) and creating [todo.md](file:///work/notes-demo/todo.md)."
+   }
+  },
+  {
+   "sessionUpdate": "usage_update",
+   "used": 11212,
+   "size": 1048576
+  },
+  {
+   "sessionUpdate": "session_info_update",
+   "title": "Multi-Step File Operations Task"
+  }
+ ],
+ "steer": [
+  {
+   "sessionUpdate": "user_message_chunk",
+   "content": {
+    "type": "text",
+    "text": "Run the shell command: sleep 8 && echo one. Then reply with the word one."
+   }
+  },
+  {
+   "sessionUpdate": "tool_call",
+   "toolCallId": "call_3773156417363988802",
+   "name": "run_command",
+   "args": {
+    "CommandLine": "sleep 8 && echo one",
+    "WaitMsBeforeAsync": 10000,
+    "toolSummary": "Run sleep and echo command"
+   },
+   "status": "completed",
+   "kind": "execute",
+   "title": "sleep 8 && echo one",
+   "rawInput": {
+    "CommandLine": "sleep 8 && echo one",
+    "WaitMsBeforeAsync": 10000,
+    "toolSummary": "Run sleep and echo command"
+   },
+   "rawOutput": {
+    "output": "Created At: 2026-11-19T17:28:03+01:00\nCompleted At: 2026-11-19T17:28:11+01:00\nCommand exited with code 0.\n\nCommand output:\none\r\n",
+    "exit_code": 0
+   },
+   "content": [
+    {
+     "type": "content",
+     "content": {
+      "type": "text",
+      "text": "Created At: 2026-11-19T17:28:03+01:00\nCompleted At: 2026-11-19T17:28:11+01:00\nCommand exited with code 0.\n\nCommand output:\none\r\n"
+     }
+    }
+   ]
+  },
+  {
+   "sessionUpdate": "user_message_chunk",
+   "content": {
+    "type": "text",
+    "text": "Also, end your reply with the word banana."
+   }
+  },
+  {
+   "sessionUpdate": "agent_message_chunk",
+   "content": {
+    "type": "text",
+    "text": "one banana"
+   }
+  },
+  {
+   "sessionUpdate": "user_message_chunk",
+   "content": {
+    "type": "text",
+    "text": "Run the shell command: sleep 20 && echo two."
+   }
+  },
+  {
+   "sessionUpdate": "user_message_chunk",
+   "content": {
+    "type": "text",
+    "text": "/compact"
+   }
+  },
+  {
+   "sessionUpdate": "usage_update",
+   "used": 11980,
+   "size": 1048576
+  },
+  {
+   "sessionUpdate": "session_info_update",
+   "title": "Run Shell Command Sleep And Echo"
+  },
+  {
+   "sessionUpdate": "session_info_update",
+   "title": "Run Shell Command Sleep And Echo"
+  }
+ ],
+ "permissions": [
+  {
+   "sessionId": "882da019-6f1f-4509-9033-d84613788c00",
+   "toolCall": {
+    "sessionUpdate": "tool_call",
+    "toolCallId": "call_17185782775658566408",
+    "name": "run_command",
+    "args": {
+     "CommandLine": "grep -rn \"world\" .",
+     "WaitMsBeforeAsync": 5000,
+     "toolSummary": "Search folder for word world"
+    },
+    "status": "pending",
+    "kind": "execute",
+    "title": "grep -rn \"world\" .",
+    "rawInput": {
+     "CommandLine": "grep -rn \"world\" .",
+     "WaitMsBeforeAsync": 5000,
+     "toolSummary": "Search folder for word world"
+    }
+   },
+   "options": [
+    {
+     "optionId": "allow",
+     "name": "Allow",
+     "kind": "allow_once"
+    },
+    {
+     "optionId": "deny",
+     "name": "Deny",
+     "kind": "reject_once"
+    }
+   ]
+  },
+  {
+   "sessionId": "882da019-6f1f-4509-9033-d84613788c00",
+   "toolCall": {
+    "sessionUpdate": "tool_call",
+    "toolCallId": "call_3038778948891344259",
+    "name": "run_command",
+    "args": {
+     "CommandLine": "ls -la .",
+     "WaitMsBeforeAsync": 5000,
+     "toolSummary": "List files in folder"
+    },
+    "status": "pending",
+    "kind": "execute",
+    "title": "ls -la .",
+    "rawInput": {
+     "CommandLine": "ls -la .",
+     "WaitMsBeforeAsync": 5000,
+     "toolSummary": "List files in folder"
+    }
+   },
+   "options": [
+    {
+     "optionId": "allow",
+     "name": "Allow",
+     "kind": "allow_once"
+    },
+    {
+     "optionId": "deny",
+     "name": "Deny",
+     "kind": "reject_once"
+    }
+   ]
+  },
+  {
+   "sessionId": "882da019-6f1f-4509-9033-d84613788c00",
+   "toolCall": {
+    "sessionUpdate": "tool_call",
+    "toolCallId": "call_17931639765190695514",
+    "name": "edit_file",
+    "args": {
+     "Path": "/work/notes-demo/notes.txt",
+     "Replacement": "there",
+     "Target": "world"
+    },
+    "status": "pending",
+    "kind": "edit",
+    "title": "File ../agy-sandbox/notes.txt",
+    "locations": [
+     {
+      "path": "/work/notes-demo/notes.txt"
+     }
+    ],
+    "rawInput": {
+     "Path": "/work/notes-demo/notes.txt",
+     "Replacement": "there",
+     "Target": "world"
+    },
+    "content": [
+     {
+      "type": "diff",
+      "path": "/work/notes-demo/notes.txt",
+      "newText": "there",
+      "oldText": "world"
+     }
+    ]
+   },
+   "options": [
+    {
+     "optionId": "allow",
+     "name": "Allow",
+     "kind": "allow_once"
+    },
+    {
+     "optionId": "deny",
+     "name": "Deny",
+     "kind": "reject_once"
+    }
+   ]
+  },
+  {
+   "sessionId": "882da019-6f1f-4509-9033-d84613788c00",
+   "toolCall": {
+    "sessionUpdate": "tool_call",
+    "toolCallId": "call_8012673763871576614",
+    "name": "write_file",
+    "args": {
+     "Content": "- [ ] Complete tasks\n",
+     "Path": "/work/notes-demo/todo.md"
+    },
+    "status": "pending",
+    "kind": "edit",
+    "title": "File ../agy-sandbox/todo.md",
+    "locations": [
+     {
+      "path": "/work/notes-demo/todo.md"
+     }
+    ],
+    "rawInput": {
+     "Content": "- [ ] Complete tasks\n",
+     "Path": "/work/notes-demo/todo.md"
+    },
+    "content": [
+     {
+      "type": "diff",
+      "path": "/work/notes-demo/todo.md",
+      "newText": "- [ ] Complete tasks\n"
+     }
+    ]
+   },
+   "options": [
+    {
+     "optionId": "allow",
+     "name": "Allow",
+     "kind": "allow_once"
+    },
+    {
+     "optionId": "deny",
+     "name": "Deny",
+     "kind": "reject_once"
+    }
+   ]
+  },
+  {
+   "sessionId": "882da019-6f1f-4509-9033-d84613788c00",
+   "toolCall": {
+    "sessionUpdate": "tool_call",
+    "toolCallId": "call_18016148818054408450",
+    "name": "run_command",
+    "args": {
+     "CommandLine": "echo done",
+     "WaitMsBeforeAsync": 5000,
+     "toolSummary": "Echo done"
+    },
+    "status": "pending",
+    "kind": "execute",
+    "title": "echo done",
+    "rawInput": {
+     "CommandLine": "echo done",
+     "WaitMsBeforeAsync": 5000,
+     "toolSummary": "Echo done"
+    }
+   },
+   "options": [
+    {
+     "optionId": "allow",
+     "name": "Allow",
+     "kind": "allow_once"
+    },
+    {
+     "optionId": "deny",
+     "name": "Deny",
+     "kind": "reject_once"
+    }
+   ]
+  }
+ ]
+}

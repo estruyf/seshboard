@@ -1,6 +1,9 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { CalendarClock, EyeOff, House, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
+import { CalendarClock, Clock, EyeOff, Globe, LayoutList, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
+import { openActivity } from '../../state/activityStore.ts';
+import { openBrowserView } from '../../state/browserViewStore.ts';
 import { openUpcoming } from '../../state/upcomingStore.ts';
+import { useSessionsToday } from '../../state/useSessionsToday.ts';
 import { useUpcomingSummary } from '../../state/useUpcomingSummary.ts';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
@@ -119,6 +122,29 @@ function UpcomingButton({ now, selected }: { now: number; selected: boolean }) {
       data-tooltip-tone={summary.ready > 0 ? 'ok' : 'faint'}
       data-upcoming-nav
       onClick={() => openUpcoming()}
+      className="no-drag w-9! rounded-lg!"
+    />
+  );
+}
+
+/** Activity in the rail: its icon, with how many sessions you had today in the tooltip. */
+function ActivityButton({ now, selected }: { now: number; selected: boolean }) {
+  const today = useSessionsToday(now);
+  return (
+    <Button
+      variant="quiet"
+      size="lg"
+      iconOnly
+      icon={<Clock size={15} aria-hidden />}
+      aria-label={today > 0 ? `Activity, ${today} today` : 'Activity'}
+      shortcut="activity"
+      selected={selected}
+      aria-current={selected ? 'page' : undefined}
+      data-tooltip-placement="right"
+      data-tooltip-title="Activity"
+      data-tooltip-meta={today > 0 ? `${today} today` : undefined}
+      data-activity-nav
+      onClick={() => openActivity()}
       className="no-drag w-9! rounded-lg!"
     />
   );
@@ -261,6 +287,8 @@ export function SidebarRail() {
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
   const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   const atUpcoming = useSessions((s) => s.view === 'upcoming' || (s.view === 'settings' && s.settingsFrom === 'upcoming'));
+  const atActivity = useSessions((s) => s.view === 'activity' || (s.view === 'settings' && s.settingsFrom === 'activity'));
+  const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const now = useNow();
@@ -407,7 +435,7 @@ export function SidebarRail() {
           variant="quiet"
           size="lg"
           iconOnly
-          icon={<House size={15} aria-hidden />}
+          icon={<LayoutList size={15} aria-hidden />}
           aria-label="Home"
           shortcut="home"
           selected={atHome}
@@ -418,6 +446,23 @@ export function SidebarRail() {
           className="no-drag w-9! rounded-lg!"
         />
         <UpcomingButton now={now} selected={atUpcoming} />
+        <ActivityButton now={now} selected={atActivity} />
+        {browserPreview && (
+          <Button
+            variant="quiet"
+            size="lg"
+            iconOnly
+            icon={<Globe size={15} aria-hidden />}
+            aria-label="Browser"
+            shortcut="browser.view"
+            selected={view === 'browser'}
+            aria-current={view === 'browser' ? 'page' : undefined}
+            data-tooltip-placement="right"
+            data-nav="browser"
+            onClick={openBrowserView}
+            className="no-drag w-9! rounded-lg!"
+          />
+        )}
       </div>
       <div aria-hidden className="mx-3 h-px shrink-0 bg-border" />
 

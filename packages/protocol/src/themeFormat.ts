@@ -14,6 +14,7 @@ export const THEME_TOKENS = [
   'card',
   'popover',
   'code-bg',
+  'code-pane',
   'border',
   'overlay-border',
   'overlay-shadow',
@@ -35,6 +36,10 @@ export const THEME_TOKENS = [
   'remote',
   'trigger',
   'pipeline',
+  'ultrathink-a',
+  'ultrathink-b',
+  'ultrathink-c',
+  'ultrathink-d',
   'accent',
   'accent-ink',
   'on-accent',
@@ -53,6 +58,9 @@ export const THEME_TOKENS = [
   'chart-cache-write',
   'chart-cache-read',
   'chart-input',
+  'chart-time',
+  'chart-turns',
+  'chart-shipped',
   'working-hole',
   'working-lit',
   'working-glow',
@@ -71,7 +79,7 @@ export type ThemeMode = (typeof THEME_MODES)[number];
 /** The theme file format this build reads and writes (`version` in the file). */
 export const THEME_FORMAT = 1;
 /** Where `$schema` points; the file is docs/switchboard-theme.schema.json in the repository. */
-export const THEME_SCHEMA_URL = 'https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json';
+export const THEME_SCHEMA_URL = 'https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json';
 export const THEME_NAME_MAX = 48;
 /** The built-in theme every other one falls back to for a mode it doesn't have. */
 export const DEFAULT_THEME_ID = 'demo-time';

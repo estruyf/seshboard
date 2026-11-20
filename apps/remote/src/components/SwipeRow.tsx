@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { Check, CheckCheck } from 'lucide-react';
+import { Check, CheckCheck, Mail } from 'lucide-react';
 import { startsEdgeSwipe } from '../lib/drawer.ts';
 import { addSample, axisOf, velocity, type Sample } from '../lib/gesture.ts';
 import { restingOffset, swipeOffset, swipeOutcome, type SwipeAction } from '../lib/swipe.ts';
@@ -14,12 +14,13 @@ const LOOK: Record<SwipeAction, { label: string; className: string; icon: ReactN
 };
 
 /**
- * A session row you can swipe (`lib/swipe.ts`): to the right Mark as read, on the `info` blue with a check; to the left
- * Archive, on a neutral grey with the archive icon. A short swipe leaves the button out, a long one acts at once.
+ * A session row you can swipe (`lib/swipe.ts`): to the right Mark as read, on the `info` blue with a check (Mark as
+ * unread with a letter, on a read row: `unread` is false); to the left Archive, on a neutral grey with the archive icon.
+ * A short swipe leaves the button out, a long one acts at once.
  * Only with a finger: a mouse or the keyboard use the row's menu, which has the same actions. A drag that goes up or
  * down is a scroll and leaves the row alone. `onClickCapture` swallows the click a swipe ends with.
  */
-export function SwipeRow({ allowed, onAction, children }: { allowed: Record<SwipeAction, boolean>; onAction: (action: SwipeAction) => void; children: ReactNode }) {
+export function SwipeRow({ allowed, unread = true, onAction, children }: { allowed: Record<SwipeAction, boolean>; unread?: boolean; onAction: (action: SwipeAction) => void; children: ReactNode }) {
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const row = useRef<HTMLDivElement>(null);
@@ -74,13 +75,13 @@ export function SwipeRow({ allowed, onAction, children }: { allowed: Record<Swip
     const width = row.current?.offsetWidth ?? 0;
     const outcome = swipeOutcome(offset, width, velocity(d.samples, event.timeStamp), allowed);
     if (outcome.kind === 'commit') {
-      // Archive slides the row away; Mark as read comes back, read.
+      // Archive slides the row away; Mark as read (or unread) comes back, marked.
       setOffset(outcome.action === 'archive' ? -width : 0);
       onAction(outcome.action);
     } else setOffset(restingOffset(outcome));
   };
 
-  // A row that comes back (Undo) or stays (Mark as read) sits closed again.
+  // A row that comes back (Undo) or stays (Mark as read or unread) sits closed again.
   useEffect(() => {
     if (!dragging && Math.abs(offset) > 200) {
       const timer = setTimeout(() => setOffset(0), 1_500);
@@ -104,8 +105,8 @@ export function SwipeRow({ allowed, onAction, children }: { allowed: Record<Swip
           className={`absolute inset-0 flex items-center gap-2 px-6 text-ui font-semibold ${LOOK[side].className}`}
           data-remote-swipe-action={side}
         >
-          {side === 'read' && LOOK.read.icon}
-          <span>{LOOK[side].label}</span>
+          {side === 'read' && (unread ? LOOK.read.icon : <Mail className="size-5" aria-hidden />)}
+          <span>{side === 'read' && !unread ? 'Mark as unread' : LOOK[side].label}</span>
           {side === 'archive' && LOOK.archive.icon}
         </button>
       )}

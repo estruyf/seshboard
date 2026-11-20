@@ -12,7 +12,7 @@ import { focusedTarget, folderFor, isWithin, statusBarView, targetChoices } from
 
 /** Seshboard's bundle id, to open it without changing what it shows. */
 const APP_ID = 'dev.switchboard.app';
-const DOWNLOAD_URL = 'https://github.com/estruyf/switchboard/releases/latest';
+const DOWNLOAD_URL = 'https://github.com/estruyf/seshboard/releases/latest';
 
 const config = () => vscode.workspace.getConfiguration('seshboard');
 const workspaceFolders = () => (vscode.workspace.workspaceFolders ?? []).filter((f) => f.uri.scheme === 'file').map((f) => f.uri.fsPath);

@@ -12,7 +12,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const title = data.hero?.title ?? data.title;
 const tagline = data.hero?.tagline;
 const fresh = (await newPages()).slice(0, 3);
-const releases = 'https://github.com/estruyf/switchboard/releases/latest';
+const releases = 'https://github.com/estruyf/seshboard/releases/latest';
 ---
 
 <div class="sb-hero not-content">
@@ -38,7 +38,7 @@ const releases = 'https://github.com/estruyf/switchboard/releases/latest';
   </div>
   <p class="sb-hero-note">
     <span class="sb-os-mac">For Macs with Apple Silicon, macOS 13 or later.</span><span class="sb-os-windows">For Windows 10 and 11, on x64 and Arm64 PCs.</span>{' '}
-    Free and open source. Needs Claude Code, signed in.
+    Free and open source. Needs Claude Code, GitHub Copilot CLI, Codex or Antigravity CLI, signed in.
   </p>
   <div class="sb-hero-board">
     <LiveBoard />

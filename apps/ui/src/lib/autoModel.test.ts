@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { estimatePhrase, sanitizeAutoModel, tierOf, type AutoPick, type ModelOption } from '@seshboard/protocol/client';
+import { estimatePhrase, sanitizeAutoModel, tierOf, type AutoPick, type Effort, type ModelOption } from '@seshboard/protocol/client';
 import type { DisplayItem } from '../components/transcript/displayItems.ts';
 import { autoChipModel, effectiveModel, estimateLine, failedLine, modelChoices, modelLabel, otherTiers, shortReason, toggleTier } from './autoModel.ts';
-import { shouldSuggest, strongerTier, suggestReason, suggestSignals, type SuggestSignals } from './autoSuggest.ts';
+import { nextStep, shouldSuggest, strongerTier, suggestReason, suggestSignals, type SuggestSignals } from './autoSuggest.ts';
 
 const MODELS: ModelOption[] = [
   { value: 'default', displayName: 'Default', description: 'Your Claude Code default', supportsEffort: true },
@@ -52,9 +52,13 @@ describe('first-turn line and popover', () => {
   });
 
   it('estimates against Opus, as an estimate', () => {
-    expect(estimateLine('haiku')).toBe('About a fifth of what Opus would use (est.)');
-    expect(estimateLine('sonnet')).toBe('About three fifths of what Opus would use (est.)');
+    // From list prices: Haiku 5.5 is a fortieth of Opus 5.5, Sonnet 5.5 half, Fable 5.2 twice.
+    expect(estimateLine('haiku')).toBe('Under a tenth of what Opus would use (est.)');
+    expect(estimateLine('sonnet')).toBe('About half of what Opus would use (est.)');
+    expect(estimateLine('fable')).toBe('About twice what Opus would use (est.)');
     expect(estimatePhrase(1)).toBe('The same as Opus');
+    expect(estimatePhrase(0.2)).toBe('About a fifth of what Opus would use');
+    expect(estimatePhrase(3)).toBe('About 3 times what Opus would use');
   });
 
   it('offers the other allowed models, strongest first', () => {
@@ -67,6 +71,8 @@ describe('settings', () => {
   it('keeps at least one model, in order, and falls back to defaults', () => {
     expect(sanitizeAutoModel({ enabled: false, allowed: ['opus', 'haiku', 'gpt'], lean: 'cheaper', suggest: false })).toEqual({ enabled: false, allowed: ['haiku', 'opus'], lean: 'cheaper', suggest: false });
     expect(sanitizeAutoModel({ allowed: [] })).toEqual({ enabled: true, allowed: ['haiku', 'sonnet', 'opus'], lean: 'balanced', suggest: true });
+    // Fable is kept when you turned it on, in tier order.
+    expect(sanitizeAutoModel({ allowed: ['fable', 'haiku'] })?.allowed).toEqual(['haiku', 'fable']);
     expect(sanitizeAutoModel('auto')).toBeNull();
     expect(tierOf('claude-opus-5-5')).toBe('opus');
   });
@@ -108,16 +114,37 @@ describe('suggesting a stronger model', () => {
     expect(suggestReason({ ...quiet, failedInARow: 3 })).toBe('errors');
   });
 
-  it('suggests the strongest allowed model above the pick, at most once, and never after you changed the model', () => {
-    const grown = { ...quiet, editedFiles: 20 };
+  it('steps one model up, never past the next allowed one', () => {
+    expect(strongerTier({ ...PICK, model: 'haiku' })).toBe('sonnet');
     expect(strongerTier(PICK)).toBe('opus');
+    expect(strongerTier({ ...PICK, model: 'haiku', allowed: ['haiku', 'opus'] })).toBe('opus');
     expect(strongerTier({ ...PICK, model: 'opus' })).toBeNull();
+    expect(strongerTier({ ...PICK, model: 'opus', allowed: ['haiku', 'sonnet', 'opus', 'fable'] })).toBe('fable');
     expect(strongerTier({ ...PICK, allowed: ['haiku', 'sonnet'] })).toBeNull();
-    expect(shouldSuggest({ enabled: true, pick: PICK, seen: false, signals: grown })).toBe('opus');
-    expect(shouldSuggest({ enabled: true, pick: PICK, seen: true, signals: grown })).toBeNull();
-    expect(shouldSuggest({ enabled: false, pick: PICK, seen: false, signals: grown })).toBeNull();
-    expect(shouldSuggest({ enabled: true, pick: { ...PICK, left: true }, seen: false, signals: grown })).toBeNull();
-    expect(shouldSuggest({ enabled: true, pick: PICK, seen: false, signals: quiet })).toBeNull();
-    expect(shouldSuggest({ enabled: true, pick: null, seen: false, signals: grown })).toBeNull();
+  });
+
+  it('raises effort first, then moves one model up at medium effort', () => {
+    expect(nextStep(PICK, null, 'files')).toEqual({ kind: 'effort', effort: 'high' });
+    expect(nextStep(PICK, 'low', 'errors')).toEqual({ kind: 'effort', effort: 'medium' });
+    expect(nextStep(PICK, 'high', 'files')).toEqual({ kind: 'model', tier: 'opus', effort: 'medium' });
+    // Past high, the next model up: an effort you set yourself above high counts as high.
+    expect(nextStep(PICK, 'xhigh', 'turns')).toEqual({ kind: 'model', tier: 'opus', effort: 'medium' });
+    // A new big ask needs a skill, not more thinking: straight to the next model.
+    expect(nextStep(PICK, 'medium', 'ask')).toEqual({ kind: 'model', tier: 'opus', effort: 'medium' });
+    // With no model above, more effort is all that's left; at high, nothing.
+    expect(nextStep({ ...PICK, model: 'opus' }, 'medium', 'ask')).toEqual({ kind: 'effort', effort: 'high' });
+    expect(nextStep({ ...PICK, model: 'opus' }, 'high', 'files')).toBeNull();
+  });
+
+  it('suggests at most once, and never after you changed the model', () => {
+    const grown = { ...quiet, editedFiles: 20 };
+    const base = { enabled: true, pick: PICK as AutoPick | null, seen: false, signals: grown, effort: 'high' as Effort | null };
+    expect(shouldSuggest(base)).toEqual({ kind: 'model', tier: 'opus', effort: 'medium' });
+    expect(shouldSuggest({ ...base, effort: null })).toEqual({ kind: 'effort', effort: 'high' });
+    expect(shouldSuggest({ ...base, seen: true })).toBeNull();
+    expect(shouldSuggest({ ...base, enabled: false })).toBeNull();
+    expect(shouldSuggest({ ...base, pick: { ...PICK, left: true } })).toBeNull();
+    expect(shouldSuggest({ ...base, signals: quiet })).toBeNull();
+    expect(shouldSuggest({ ...base, pick: null })).toBeNull();
   });
 });

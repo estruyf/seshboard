@@ -150,6 +150,7 @@ The **⋯** menu has the quick settings:
 - **Theme**: **Auto**, **Dark** or **Light**. Auto follows your phone. See [Theme](#theme).
 - **Notifications**, with **On** or **Off**: tap it to turn notifications on or off on this phone.
 - **Refresh** gets the list again.
+- **Done sessions** lists the sessions in Done. See [Done sessions](#done-sessions).
 - **All settings** opens the [Settings page](#settings-on-your-phone).
 
 The card under it shows how much of your plan is used: **Usage** with a bar for the 5-hour window and one for the week. With more than one Claude profile it is **Profiles**, with a row for each, its colour and both bars. With three or more, it shows the two closest to a limit and **+1** for the rest. A bar turns orange from 60% and red from 85%. Tap the card for each profile's full card, with when each window resets; tap it again to fold them. The numbers come from your computer: they update when it checks, and each time you come back to the app.
@@ -167,12 +168,16 @@ Pull the list down from the top to refresh it: it says **Pull to refresh**, then
 
 ### Swipe a session
 
-- **Swipe right** to mark it as read, on blue with a check.
+- **Swipe right** to mark it as read, on blue with a check. On a session you already read, it marks it as unread, so you can read it again later.
 - **Swipe left** to mark it done.
 
 A short swipe shows the button: tap it, or tap the session to put it back. A long swipe, past most of the row, does it at once. Either way a message says what happened, with **Undo**. A session that needs you doesn't swipe, so you can't dismiss a prompt by accident: open it to answer.
 
-A long press on a session has the same **Mark as read** and **Done**, and so does a right-click in a browser on a computer. With a screen reader, each session has its own actions button. Undo after **Mark as read** needs this version of Seshboard on your computer.
+A long press on a session has the same **Mark as read** (or **Mark as unread**) and **Done**, and so does a right-click in a browser on a computer. With a screen reader, each session has its own actions button. **Undo** after **Mark as unread** marks it read again. **Mark as unread**, and Undo after **Mark as read**, need this version of Seshboard on your computer.
+
+### Done sessions
+
+**Done sessions**, in Home's **⋯** menu, in the drawer and in the search, lists the sessions in Done on every paired computer: the ones you marked done and the ones that went quiet, most recently done first, with a search field. A session there can't be read from your phone: tap **Reopen** to put it back in your list, then open it. A pipeline's session comes back with its steps. This needs this version of Seshboard on your computer.
 
 ## Switch sessions
 
@@ -183,7 +188,7 @@ The round menu button at the top left of Home and of every session opens the dra
 From top to bottom, the drawer has:
 
 - The search field, with **×** to empty it. While you search, the drawer lists every match.
-- **Home**, which goes back to the first screen, and **New session**.
+- **Home**, which goes back to the first screen, **New session**, and **Done sessions**.
 - **Recent**: the sessions that need you, the ones working, then the newest, with the open one picked. **All sessions** under them shows every group.
 - **Settings**, which opens the [Settings page](#settings-on-your-phone), and the row of your computer. Tap your computer for its menu: **Switch to** another computer, **Disconnect** or **Connect**, and **Forget this computer…**.
 
@@ -234,19 +239,21 @@ When Claude's turn ended but a background command or agent it started still runs
 
 Claude's answers show headings, lists, links, code and tables, also while Claude is still writing them. Code blocks have **Copy**, which stays at the top of the screen while you scroll through a long block. A run of tool calls is one line, such as **6 steps · edited 3 files, ran 2 commands**: tap it to see each step. Steps are named as in the app: a command by what it does, such as **Merge origin/dev**, not its raw text. The run Claude is working on stays open.
 
-A finished turn ends with when it ended, how long it took and its tokens, as on your computer: *8:19 AM · 31s · 18.4k tokens*. Your messages have **Copy**. A finished reply has **Copy** and **Read**, which opens the turn's replies in full, one after another, with how long they take to read. Tokens need this version of Seshboard on your computer; an older one shows the time and duration only.
+When Claude names a file it wrote, such as a review in its scratchpad, tap the path to see it in a sheet: Markdown, HTML, code and images. Your computer only shows files the session wrote or keeps in its scratchpad, never other files on its disk. This needs this version of Seshboard on your computer.
+
+A finished turn ends with when it ended, how long it took and its tokens, as on your computer: *8:19 AM · 31s · 18.4k tokens*. Your messages have **Copy**. A finished reply has **Copy**, **Read**, which opens the turn's replies in full, one after another, with how long they take to read, and **Listen**. **Listen** reads the reply aloud with your phone's own voice: nothing goes to a server. Code blocks and tables are skipped. Tap **Stop** to end it; it also stops when you leave the session. Tokens need this version of Seshboard on your computer; an older one shows the time and duration only.
 
 When a session finished, and nothing it started still runs in the background, it starts with its catch-up, as on your computer: how it ended, how long it takes to review, what you asked as its title, what Claude did, whether the tests passed, and how much changed. **Show the prompt** shows all of what you asked. The conversation is folded under it: tap **Show the conversation** to read it.
 
 In a session that runs in Seshboard, the chips under the message box show its model, effort and permission mode. Tap one to change it. The effort chip only shows for a model that takes an effort; **Default** is the model's own. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
 
-While Claude works, **Stop** is next to the send button. A message you send waits under **Up next** above the message box, with **Send now** to stop Claude and send it at once, and **×** to remove it. It shows what you queued for the session on your computer too. When you stop Claude from your phone, Up next carries on: its first message goes as soon as the turn has stopped.
+While Claude works, **Stop** is next to the send button. A message you send waits under **Up next** above the message box, with **Send now** to stop Claude and send it at once, **Move up** to put it before the message above it, and **×** to remove it. It shows what you queued for the session on your computer too. When you stop Claude from your phone, Up next carries on: its first message goes as soon as the turn has stopped.
 
-To send a message another way while Claude works, tap the arrow next to the send button: **Queue** holds it in Up next until Claude finishes, **Steer** gives it to Claude now, and Claude reads it at its next step, and **Send now** stops Claude first. With a keyboard, <Kbd keys="alt+enter" /> steers and <Kbd keys="mod+shift+enter" /> sends now. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it.
+To send a message another way while Claude works, tap the arrow next to the send button: **Queue** holds it in Up next until Claude finishes, **Steer** gives it to Claude now, and Claude reads it at its next step, and **Send now** stops Claude first. With a keyboard, <Kbd keys="alt+enter" /> steers and <Kbd keys="mod+shift+enter" /> sends now. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it. In the message box, Return on a list item (`- `, `2. `, `- [ ] `) starts the next one, and on an empty item ends the list. With a keyboard, that is <Kbd keys="shift+enter" />.
 
 When a usage limit stopped the session, a notice above the message box says which limit and when it resets, with **Resume now** and **Resume when it resets**. Messages held in Up next wait for the reset too. This needs this version of Seshboard on your computer.
 
-To send images or files with a message, tap the paperclip button next to the message box: your phone offers its camera and its photos, and a computer offers its files. In a browser on a computer, you can also paste a screenshot or drop files on the message box. Each shows above the box, with a button to remove it. A message takes up to four images and four files, and about 2.7 MB in all. Your phone makes big photos smaller before it sends them. New session takes them too, and starts the session with them. Sending files, and images with a new session, needs this version of Seshboard on your computer. Queue for later doesn't take attachments.
+To send images or files with a message, tap the paperclip button next to the message box: your phone offers its camera and its photos, and a computer offers its files. In a browser on a computer, you can also paste a screenshot or drop files on the message box. Each shows above the box, with a button to remove it. An image or a file can go on its own, without text, with this version of Seshboard on your computer. A message takes up to four images and four files, and about 2.7 MB in all. Your phone makes big photos smaller before it sends them. New session takes them too, and starts the session with them. Sending files, and images with a new session, needs this version of Seshboard on your computer. Queue for later doesn't take attachments.
 
 ## Pipelines
 
@@ -280,6 +287,8 @@ Tap **New session** on Home, or in the drawer. In a wide window, pick a project 
 On a phone, New session is simpler. The round **×** at the top closes it. The project is one row: tap it to pick another in **Pick a project**, with a filter when you have many. Under the box, one **Options** row sums up the choices, such as *Personal · Default model · Auto* and *This folder on dev · one session*. What you changed from the project's defaults shows in the accent colour. Tap the row for the **Options** sheet, with **Run as** (when you have pipelines), the profile, model, effort, mode, workspace and branch as rows, and **Reset to** the project's defaults. **Start session** floats at the bottom, dimmed until you type.
 
 With **This folder**, the branch chip shows the branch checked out in the project's folder. Pick another local branch and Seshboard checks it out before the session starts. Git keeps your uncommitted changes, or refuses when they conflict; then the session doesn't start and the app says why. A branch checked out in another worktree isn't listed.
+
+With **New worktree**, **Branch from** picks the branch the worktree starts from: the remote's default branch, the branch checked out on your computer, and the other local and remote branches. It starts from the project's default until you pick another. This needs this version of Seshboard on your computer.
 
 With [Auto model](/new-session/auto-model/) on in Settings › Conversation on your computer, the model list starts with **Auto**: Haiku reads your prompt and picks the model the session starts on, from the models you allowed. In the session, the model chip then says what it picked, such as **Auto · Sonnet**, until you pick another model. With Auto off, it isn't offered, and a project whose default is Auto starts on your default model.
 

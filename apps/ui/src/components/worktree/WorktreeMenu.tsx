@@ -101,7 +101,7 @@ export function WorktreeMenu({ sessionId, cwd, branch, openRequest = 0 }: { sess
         </span>
         <ChevronDown size={11} className="shrink-0 @max-[860px]:hidden" aria-hidden />
       </button>
-      {menu.at && <Menu x={menu.at.x} y={menu.at.y} width={280} entries={entries} onClose={menu.close} label="Worktree" />}
+      {menu.at && <Menu x={menu.at.x} y={menu.at.y} width={280} entries={entries} onClose={menu.close} label="Worktree" anchor={trigger} />}
 
       {confirm && status && client && (
         <ConfirmDialog

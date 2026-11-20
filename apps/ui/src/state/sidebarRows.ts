@@ -74,14 +74,14 @@ export function rowListing(row: SessionRowData): ListingState {
  * then the days count from there.
  */
 export function isActive(row: SessionRowData, now: number, archiveAfterDays: number): boolean {
-  // Another computer only lists what its own sidebar does, outside Archived. A pipeline's run row follows the same rule
-  // as a session, with its tree's newest activity (`sidebarForest`).
-  if (row.remote) return true;
+  // Another computer lists what its own sidebar does outside Done, and its Done apart (`remote.done`). A pipeline's run
+  // row follows the same rule as a session, with its tree's newest activity (`sidebarForest`).
+  if (row.remote) return !row.remote.done;
   return listedInMainList(rowListing(row), now, archiveAfterDays);
 }
 
 /** When an archived row went to Archived (by hand, or its last activity plus the archive days); null while it is listed. */
-export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays: number): number | null => archivedSinceOf(rowListing(row), now, archiveAfterDays);
+export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays: number): number | null => (row.remote ? (row.remote.done ? row.archivedAt : null) : archivedSinceOf(rowListing(row), now, archiveAfterDays));
 
 /**
  * Why a session is in Done, for its row: you marked it done, or it was inactive for the days set in Settings › Sessions.
@@ -93,8 +93,10 @@ const DAY = 24 * 60 * 60 * 1000;
 
 /** The reason a row is in Done, or null while it is listed. */
 export function doneReason(row: SessionRowData, now: number, archiveAfterDays: number): DoneReason | null {
+  // Another computer says why: marked done there, or inactive for its own archive days.
+  if (row.remote) return row.remote.done ? (row.remote.done.inactive ? { kind: 'inactive', days: Math.max(1, Math.floor((now - row.updatedAt) / DAY)) } : { kind: 'done' }) : null;
   const listing = rowListing(row);
-  if (row.remote || archivedSinceOf(listing, now, archiveAfterDays) === null) return null;
+  if (archivedSinceOf(listing, now, archiveAfterDays) === null) return null;
   // The same test as the archive rule: marked done after its last activity, or while it was still working.
   if (listing.archivedAt !== null && (listing.archivedAt >= listing.updatedAt || listing.working)) {
     // Moved by its merged pull request (the engine, `mergedDone.ts`): the number says which.
@@ -246,7 +248,7 @@ export interface QuickInfo {
 }
 
 /** Where a row stands in the quickest-to-unblock order: waiting for you, finished and unread (or failed), read, working. */
-function quickTier(row: SessionRowData): 0 | 1 | 2 | 3 {
+export function quickTier(row: SessionRowData): 0 | 1 | 2 | 3 {
   const status = rowStatus(row);
   if (status === 'needs-you') return 0;
   if (status === 'running' || status === 'background') return 3;
@@ -298,12 +300,30 @@ export type SidebarListRow =
       parent?: { open: boolean; count: number };
       /** A sub-session, under its parent: its place among its siblings (from 1). */
       child?: { parentId: string; position: number; count: number; level: number };
+      /** Grouped by project: the project it is listed under, so the row leaves out the project's icon and name. */
+      project?: string;
     }
   | { kind: 'group'; group: SessionGroup; count: number; first: boolean; open: boolean; unread: number }
   | { kind: 'hidden'; group: SessionGroup; count: number }
   | { kind: 'queue-header'; count: number; ready: number; open: boolean; first: boolean }
   | { kind: 'queue'; entry: QueueEntry }
-  | { kind: 'archived'; count: number; open: boolean };
+  | { kind: 'archived'; count: number; open: boolean }
+  /** Grouped by project (`sidebarProjectRows.ts`): a project's header, with how many sessions it holds. */
+  | { kind: 'project'; key: string; name: string; remote: { computerId: string; computerName: string; offline: boolean } | null; count: number; open: boolean; first: boolean }
+  /** Under a folded project: what is in it ("1 needs you · 2 working"). */
+  | { kind: 'project-summary'; key: string; parts: ProjectSummaryPart[] }
+  /** Over a project's queued prompts. */
+  | { kind: 'queue-label'; key: string; count: number };
+
+/** What a session counts as in a project's group: the four states the sidebar colours. */
+export type ProjectState = 'needs-you' | 'working' | 'review' | 'open';
+
+/** One part of a folded project's line: "2 working", in its state's colour. */
+export interface ProjectSummaryPart {
+  state: ProjectState;
+  count: number;
+  text: string;
+}
 
 export interface ListRowOptions {
   now: number;
@@ -326,6 +346,29 @@ export interface ListRowOptions {
 }
 
 /**
+ * Adds a session's row to `list` and, when it is an open parent in the pipelines tree, its sub-sessions under it (theirs
+ * too). `project` marks rows listed under a project's header.
+ */
+export function sessionPusher(list: SidebarListRow[], children: ReadonlyMap<string, readonly SessionRowData[]>, openParents: ReadonlySet<string>, project?: string) {
+  // `seen` stops a loop of parents.
+  const push = (data: SessionRowData, archived: boolean, kept: boolean, seen: Set<string> = new Set()) => {
+    const kids = seen.has(data.id) ? [] : (children.get(data.id) ?? []);
+    const open = kids.length > 0 && openParents.has(data.id);
+    list.push({ kind: 'session', data, archived, ...(kept ? { kept: true } : {}), ...(kids.length ? { parent: { open, count: kids.length } } : {}), ...(project !== undefined ? { project } : {}) });
+    if (!open) return;
+    seen.add(data.id);
+    kids.forEach((kid, i) => {
+      const at = list.length;
+      push(kid, archived, false, seen);
+      const row = list[at];
+      if (row?.kind === 'session') row.child = { parentId: data.id, position: i + 1, count: kids.length, level: seen.size + 1 };
+    });
+    seen.delete(data.id);
+  };
+  return push;
+}
+
+/**
  * The flat row list the sidebar virtualises: each non-empty section under its header, the Queue right under
  * Working (when it has items), then Archived while it's open. A closed section keeps its header and, when the open
  * session is in it, that session's row with a "+N hidden" line.
@@ -334,22 +377,7 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
   const list: SidebarListRow[] = [];
   const closed = options.closed ?? new Set<SectionKey>();
   const children = options.children ?? new Map<string, readonly SessionRowData[]>();
-  const openParents = options.openParents ?? new Set<string>();
-  // A row, and under it (when it is an open parent) its sub-sessions, theirs too. `seen` stops a loop of parents.
-  const pushSession = (data: SessionRowData, archived: boolean, kept: boolean, seen: Set<string> = new Set()) => {
-    const kids = seen.has(data.id) ? [] : (children.get(data.id) ?? []);
-    const open = kids.length > 0 && openParents.has(data.id);
-    list.push({ kind: 'session', data, archived, ...(kept ? { kept: true } : {}), ...(kids.length ? { parent: { open, count: kids.length } } : {}) });
-    if (!open) return;
-    seen.add(data.id);
-    kids.forEach((kid, i) => {
-      const at = list.length;
-      pushSession(kid, archived, false, seen);
-      const row = list[at];
-      if (row?.kind === 'session') row.child = { parentId: data.id, position: i + 1, count: kids.length, level: seen.size + 1 };
-    });
-    seen.delete(data.id);
-  };
+  const pushSession = sessionPusher(list, children, options.openParents ?? new Set<string>());
   // The Queue only shows in Recent.
   const queue = options.sort === 'quickest' ? undefined : options.queue;
   const pushQueue = () => {
@@ -440,7 +468,7 @@ export function waitingLabel(toolName: string | null): string {
 }
 
 /** The key of a header row in the list: its group, or 'archived'. */
-export type HeaderKey = SessionGroup | 'archived';
+export type HeaderKey = SessionGroup | 'archived' | `project:${string}`;
 
 /** The sessions under each header, in list order: what ⌘A and a header's "Select all" pick. */
 export function sessionsByHeader(rows: readonly SidebarListRow[]): Map<HeaderKey, string[]> {
@@ -449,6 +477,7 @@ export function sessionsByHeader(rows: readonly SidebarListRow[]): Map<HeaderKey
   for (const row of rows) {
     if (row.kind === 'session') ids?.push(row.data.id);
     else if (row.kind === 'group' || row.kind === 'archived') map.set(row.kind === 'group' ? row.group : 'archived', (ids = []));
+    else if (row.kind === 'project') map.set(`project:${row.key}`, (ids = []));
     // Queued prompts aren't sessions: nothing under the Queue header can be picked.
     else if (row.kind === 'queue-header') ids = null;
   }

@@ -80,6 +80,8 @@ describe('wantsLabel', () => {
   it('says what a prompt wants in a few words', () => {
     expect(wantsLabel(request('a'))).toBe('Wants to run npm test');
     expect(wantsLabel(request('a', { toolName: 'Edit', input: {}, title: 'Claude wants to edit src/app.ts' }))).toBe('Wants to edit src/app.ts');
+    expect(wantsLabel(request('a', { toolName: 'Edit', input: {}, title: 'Codex wants to edit src/app.ts' }))).toBe('Wants to edit src/app.ts');
+    expect(wantsLabel(request('a', { toolName: 'Fetch', input: {}, title: 'GitHub Copilot wants to fetch a page.' }))).toBe('Wants to fetch a page');
     expect(wantsLabel(request('a', { toolName: 'WebFetch', input: {}, title: null }))).toBe('Wants to use WebFetch');
     expect(wantsLabel(request('a', { toolName: 'AskUserQuestion' }))).toBe('Has a question');
     expect(wantsLabel(null)).toBe('Waiting for you');

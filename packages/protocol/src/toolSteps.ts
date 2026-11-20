@@ -1,5 +1,6 @@
 import { commandLabel } from './commandLabel.ts';
 import { pathInside } from './paths.ts';
+import { VISUAL_GUIDE_TOOL, VISUAL_TOOL } from './visuals.ts';
 
 /**
  * Tool calls named the way Claude Code words them ("Run the unit tests", "Reading src/a.ts"), for the app's
@@ -96,6 +97,10 @@ export function toolStepLabel(name: string, input: unknown, cwd: string | null):
       return step('Use', `the ${str(i.skill) ?? str(i.command) ?? ''} skill`);
     case 'AskUserQuestion':
       return { past: 'Asked you a question', present: 'Asking you a question' };
+    case VISUAL_TOOL:
+      return step('Draw', 'a visual');
+    case VISUAL_GUIDE_TOOL:
+      return step('Read', 'how to draw visuals');
     default: {
       const mcp = mcpLabel(name);
       return step('Use', mcp ?? (name || 'a tool'));

@@ -33,8 +33,11 @@ export interface SessionSource {
   info(sessionId: string): Promise<RawSessionInfo | undefined>;
   messages(sessionId: string): Promise<RawSessionMessage[]>;
   subagentMessages?(sessionId: string, agentId: string): Promise<RawSessionMessage[]>;
-  /** Copies a session up to and including `upToMessageId` into a new one; returns its id. */
-  fork?(sessionId: string, upToMessageId: string): Promise<string>;
+  /**
+   * Copies a session up to and including `upToMessageId` into a new one; returns its id. `editing`: the prompt Edit and
+   * resend is for, the message after `upToMessageId` (a source that forks at turns forks just before it).
+   */
+  fork?(sessionId: string, upToMessageId: string, options?: { editing?: string }): Promise<string>;
   /** Sets the session's title the way Claude Code's `/rename` does, so the CLI shows it too. */
   rename?(sessionId: string, title: string): Promise<void>;
 }

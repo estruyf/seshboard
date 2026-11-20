@@ -42,7 +42,7 @@ export const Outro: React.FC = () => {
         <span style={{ color: T.faint }}>$ </span>brew install --cask <span style={{ color: T.accent }}>estruyf/tap/seshboard</span>
       </div>
       <div style={{ ...line(24), marginTop: 30, fontSize: 26, color: T.muted }}>
-        github.com/estruyf/switchboard
+        github.com/estruyf/seshboard
         <span style={{ color: T.faint }}> &middot; </span>
         Free and open source, for macOS
       </div>

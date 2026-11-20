@@ -14,10 +14,13 @@ import {
 import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
 import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
 import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
+import type { McpAppCsp } from "./visuals.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
 export * from "./appIcons.ts";
+export * from "./browserSites.ts";
+export * from "./orchestrator.ts";
 export { channelOf } from "./appUpdate.ts";
 export * from "./notificationPause.ts";
 
@@ -34,6 +37,7 @@ export const REMOTE_LOG_FILE = "remote.log";
 
 /** IPC channel names shared by main and preload. */
 export const IpcChannel = {
+  mcpAppDocument: "seshboard:mcp-app-document",
   requestEnginePort: "seshboard:request-engine-port",
   enginePort: "seshboard:engine-port",
   engineRestarted: "seshboard:engine-restarted",
@@ -46,6 +50,7 @@ export const IpcChannel = {
   chooseImportFile: "seshboard:choose-import-file",
   chooseMemoryExport: "seshboard:choose-memory-export",
   saveImage: "seshboard:save-image",
+  saveTextFile: "seshboard:save-text-file",
   showSavedImage: "seshboard:show-saved-image",
   showRemoteLog: "seshboard:show-remote-log",
   focusSession: "seshboard:focus-session",
@@ -69,6 +74,7 @@ export const IpcChannel = {
   windowButtons: "seshboard:window-buttons",
   focusWindow: "seshboard:focus-window",
   listSounds: "seshboard:list-sounds",
+  appIcon: "seshboard:app-icon",
   playSound: "seshboard:play-sound",
   notificationPermission: "seshboard:notification-permission",
   openNotificationSettings: "seshboard:open-notification-settings",
@@ -84,6 +90,18 @@ export const IpcChannel = {
   showSession: "seshboard:show-session",
   forwardKeys: "seshboard:forward-keys",
   keysForwarded: "seshboard:keys-forwarded",
+  webPreviewKeys: "seshboard:web-preview-keys",
+  webPreviewEvent: "seshboard:web-preview-event",
+  webPreviewAddressFocus: "seshboard:web-preview-address-focus",
+  webPreviewClearData: "seshboard:web-preview-clear-data",
+  webPreviewShowDownload: "seshboard:web-preview-show-download",
+  webPreviewResetPartition: "seshboard:web-preview-reset-partition",
+  webPreviewKeysToWindow: "seshboard:web-preview-keys-to-window",
+  webPreviewSessionPage: "seshboard:web-preview-session-page",
+  webPreviewPickElement: "seshboard:web-preview-pick-element",
+  webPreviewCancelPick: "seshboard:web-preview-cancel-pick",
+  browserAgentTarget: "seshboard:browser-agent-target",
+  browserAgentTargetReply: "seshboard:browser-agent-target-reply",
   showInMain: "seshboard:show-in-main",
   mainRequested: "seshboard:main-requested",
   popoutsChanged: "seshboard:popouts-changed",
@@ -94,6 +112,16 @@ export const IpcChannel = {
   getPopoutView: "seshboard:get-popout-view",
   reportView: "seshboard:report-view",
   viewReturned: "seshboard:view-returned",
+  getBrowserPopouts: "seshboard:get-browser-popouts",
+  browserPopoutsChanged: "seshboard:browser-popouts-changed",
+  popOutBrowser: "seshboard:pop-out-browser",
+  popInBrowser: "seshboard:pop-in-browser",
+  getBrowserPopoutTabs: "seshboard:get-browser-popout-tabs",
+  reportBrowserTabs: "seshboard:report-browser-tabs",
+  browserReturned: "seshboard:browser-returned",
+  browserOpenUrl: "seshboard:browser-open-url",
+  browserToMessage: "seshboard:browser-to-message",
+  browserMessage: "seshboard:browser-message",
   menuBarCommand: "seshboard:menu-bar-command",
   menuBarResize: "seshboard:menu-bar-resize",
   menuBarShown: "seshboard:menu-bar-shown",
@@ -107,6 +135,9 @@ export const IpcChannel = {
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
 export const POPOUT_QUERY = "popout";
+
+/** The query parameter that makes a window a session's browser on its own: the id of the session whose tabs it shows. */
+export const BROWSER_POPOUT_QUERY = "browserpopout";
 
 /** The query parameter that makes a window the menu bar's panel (`?menubar=1`). */
 export const MENU_BAR_QUERY = "menubar";
@@ -153,6 +184,15 @@ export type DraftsChange = Record<string, unknown>;
  */
 export type SessionView = Record<string, unknown>;
 
+/**
+ * A session's browser tabs as they move to its browser window and back (`BrowserHandoff` in the renderer), as plain data:
+ * main keeps the last one it heard and passes it on without looking inside.
+ */
+export type BrowserTabsHandoff = Record<string, unknown>;
+
+/** What a browser window sends to its session's message, which is in another window: a quote of the page, or an element picked on it. */
+export type BrowserMessageItem = { kind: "quote"; text: string; url: string } | { kind: "element"; element: PickedElement };
+
 /** A key press a pop-out hands to the main window (an app-wide shortcut: the palette, search, New session…). */
 export interface ForwardedKeys {
   key: string;
@@ -161,6 +201,73 @@ export interface ForwardedKeys {
   ctrlKey: boolean;
   altKey: boolean;
   shiftKey: boolean;
+}
+
+/** An app shortcut typed in the web preview's page, which main took from the page: `contentsId` is the page's. */
+export interface WebPreviewKeys {
+  contentsId: number;
+  keys: ForwardedKeys;
+}
+
+/**
+ * What a browser page did that its window shows (the browser on): it opened a new window (`window.open`,
+ * `target=_blank`, a sign-in popup), which becomes a tab of the same owner, a download started or ended, or its icon
+ * came. `contentsId` is the page's.
+ */
+export type WebPreviewEvent =
+  | { kind: 'popup'; contentsId: number; url: string }
+  /**
+   * A download into the Downloads folder, by `id` (one per download, this run): `started`, then `done` (`path` is the
+   * file), `failed` or `cancelled`. `url` is the page's address for Open in browser, empty when it has none.
+   */
+  | { kind: 'download'; contentsId: number; id: number; state: 'started' | 'done' | 'failed' | 'cancelled'; name: string; path: string; url: string }
+  /** The page's icon, as a `data:` image main fetched in the page's partition. */
+  | { kind: 'favicon'; contentsId: number; url: string }
+  /** The page started or stopped playing sound. */
+  | { kind: 'audio'; contentsId: number; audible: boolean }
+  /** Quote in message, from a session's page: the selected text and the page it is on. */
+  | { kind: 'quote'; contentsId: number; text: string; url: string }
+  /** Add element to message, from a session's page: the element under the right-click. */
+  | { kind: 'element'; contentsId: number; element: PickedElement };
+
+/** An element of a session's page, for its message: where it is, its HTML and how it looks. */
+export interface PickedElement {
+  /** The page's address. */
+  url: string;
+  /** A CSS selector that finds it on the page. */
+  selector: string;
+  /** Its HTML, cut short when long. */
+  html: string;
+  /** Its text, cut short when long. */
+  text: string;
+  /** Its picture as a PNG, base64 without the `data:` prefix; null when it is off screen or empty. */
+  image: string | null;
+}
+
+/**
+ * The browser tools ask a window for the page a session's tools work on (main/browserAgent.ts). `open`: load this
+ * address in the session's agent tab (made, and its panel shown, when needed). `ensure`: make the page live (show the
+ * panel) when it was dropped. Without either, only say which page it is.
+ */
+export interface BrowserAgentTargetRequest {
+  requestId: number;
+  sessionId: string;
+  open: string | null;
+  ensure: boolean;
+  /**
+   * With `open`: the browser profile to open it in (null: the Default one). The agent has a tab of its own per profile,
+   * so it can use two accounts at once; the other tools work on the one it opened last.
+   */
+  profileId?: string | null;
+}
+
+/** The page's contents id (null: no page yet), the address its tab shows and its browser profile; `error` when the window can't. */
+export interface BrowserAgentTarget {
+  contentsId: number | null;
+  url: string | null;
+  /** The tab's browser profile, null for the Default one. */
+  profileId?: string | null;
+  error?: string;
 }
 
 /**
@@ -177,7 +284,9 @@ export type MainWindowRequest =
   | { kind: "go-to" }
   | { kind: "search"; memory: boolean }
   | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
-  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null };
+  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null }
+  | { kind: "activity"; day: string | null }
+  | { kind: "browser" };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -187,6 +296,8 @@ export type SidebarStyle = "large" | "standard" | "compact";
 export type SidebarCollapsed = "minimal" | "closed";
 /** Tool calls in a conversation: one summary line per run (click for the steps), or every step. */
 export type ToolActivity = "summary" | "steps";
+/** How a conversation shows Claude's work: finished turns with less to read, or everything as written. */
+export type ConversationView = "skim" | "full";
 /** Settings › Conversation, "Under each reply": what a finished turn's line shows after the reply's actions. */
 export type TurnDetails = "none" | "time" | "duration" | "tokens";
 /**
@@ -226,6 +337,16 @@ export type WhileWorking = "queue" | "steer";
 export type ResumeAtLimit = "ask" | "always";
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
+/** How the sidebar groups its sessions: by state (Needs you, Working, To review, Open) or by project. */
+export type SidebarGroup = "state" | "project";
+/** The session tools the rail at a session's right edge can show (a mod's panes go under `mods`). */
+export const RAIL_TOOLS = ["files", "changes", "terminal", "web", "ask", "agents", "commands", "note", "mods"] as const;
+export type RailTool = (typeof RAIL_TOOLS)[number];
+/** The rail's tools in their default order, as `railOrder` starts (the mods' panes keep their own place). */
+export const RAIL_ORDER: readonly Exclude<RailTool, "mods">[] = RAIL_TOOLS.filter((tool): tool is Exclude<RailTool, "mods"> => tool !== "mods");
+/** An editor id as `editors.list` gives it, for `railApps`. */
+const RAIL_APP_ID = /^[a-z0-9-]{1,40}$/;
+const RAIL_APPS_MAX = 20;
 /** Which buttons a session row shows under the pointer: only Archive, or Mark as read, Pin and Archive. */
 export type QuickActionsShow = "archive" | "all";
 
@@ -242,6 +363,9 @@ export const FOCUS_LIMIT_DEFAULT = 3;
  * you dismissed it (`done`). It never asks again after that.
  */
 export type GithubStar = "ask" | "done";
+
+/** The browser's card in the sidebar after the update (`Preferences.browserIntro`). */
+export type BrowserIntro = "ask" | "done";
 
 /**
  * The moments that can play a sound: Claude needs you (a permission, a question or a plan), finished a turn,
@@ -342,6 +466,7 @@ export interface Preferences {
   sidebarStyle: SidebarStyle;
   sidebarCollapsed: SidebarCollapsed;
   toolActivity: ToolActivity;
+  conversationView: ConversationView;
   /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
   fileLinkClick: FileLinkClick;
   /** Internal: which version of the `fileLinkClick` choices was saved; "file-manager" without the current one is the old default. */
@@ -369,11 +494,36 @@ export interface Preferences {
   /** The global effort (Settings › General): as the model, `""` leaves it to Claude Code. */
   newSessionEffort: NewSessionEffort;
   /**
+   * The global fallback model (Settings › General): the model Claude Code sessions switch to when their own is
+   * overloaded or unavailable, where the profile and the project set none. `""` is off.
+   */
+  newSessionFallbackModel: string;
+  /**
    * Settings › General: "Use Claude in Chrome". On, sessions start with `--chrome`, so they get the Claude in Chrome
    * extension's browser tools. Claude Code's own "Enabled by default" only applies in a terminal, so an SDK host has to
    * ask for it. Off by default: not everyone has the extension.
    */
   chrome: boolean;
+  /**
+   * Settings › General: "Visuals in replies". On, the sessions Seshboard starts or resumes (Claude Code's, Codex's and
+   * Copilot's) get its `visualize` MCP server, so the agent can draw a diagram or a small tool in its reply. On by
+   * default. Its two tools cost a few tokens in every turn, so it can be turned off.
+   */
+  agentVisuals: boolean;
+  /**
+   * Settings › Browser: "Allow Seshboard to control the browser". On (with the browser on), the sessions
+   * Seshboard starts or resumes get its `browser` tools, whatever their agent (Claude Code, Copilot, Codex): open,
+   * read, click and type in the session's Browser panel. Pages on this computer need no approval; other sites ask
+   * first, or are allowed per project.
+   */
+  browserControl: boolean;
+  /**
+   * Settings › Browser › Agents: "Allow scripts in pages". On (with browser control), sessions started or resumed
+   * after the change also get `evaluate` (a script in the page, with its globals and your login) and `network` (the
+   * page's requests and their bodies). Pages on this computer run them at once; any other site asks on a card of its
+   * own. Off by default; turning it off refuses both at once, even in sessions that list them.
+   */
+  browserScripts: boolean;
   /**
    * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
    * Seshboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
@@ -404,6 +554,18 @@ export interface Preferences {
    * up in turn while a session works. On by default.
    */
   dockActivity: boolean;
+  /**
+   * Settings › General › Browser: "Allow browser". On (the default), any web page opens in tabs, beside a session and
+   * in a Browser view of its own, with pinned tabs. Off, a session's preview shows only this computer's dev servers.
+   */
+  browserEnabled: boolean;
+  /**
+   * Settings › General › New sessions: "Allow browser previews". On (the default), a dev server a session runs shows in
+   * a Web tab beside the conversation. Off, and with the browser off too, there is no web page in the app at all.
+   */
+  webPreview: boolean;
+  /** The sidebar's card that tells about the browser after the update: shown (`ask`, the browser on) until you open it or say Got it. */
+  browserIntro: BrowserIntro;
   /**
    * Settings › General › Menu bar: "Show in the menu bar" ("in the notification area" on Windows). The working light,
    * what needs you and new work, from the menu bar's icon. On by default.
@@ -445,6 +607,16 @@ export interface Preferences {
    */
   catchUpSummaries: boolean;
   /**
+   * Settings › Conversation: "Write the day in short with Haiku". Off, Activity and Home's card show the numbers and the
+   * list only, with no Haiku call.
+   */
+  activitySummaries: boolean;
+  /**
+   * Settings › Conversation: "Let the agent mark its key sentences". On, sessions Seshboard starts or resumes get
+   * `SKIM_MARKS_PROMPT` appended to their system prompt, and Skim fades what a reply's keep line leaves out.
+   */
+  skimMarks: boolean;
+  /**
    * Settings › Conversation: "Show catch-ups folded". On, a finished session's catch-up starts as the strip, even unread;
    * a turn that ended with an error still opens in full.
    */
@@ -484,6 +656,16 @@ export interface Preferences {
   providerOffersDismissed: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
+  /** The sidebar's View button: group the sessions by state or by project. */
+  sidebarGroup: SidebarGroup;
+  /** The View button's Show › Done: Done docked under the list. Off, Done shows only while searching. */
+  sidebarShowDone: boolean;
+  /** Tools left off the rail (its right-click menu). They keep their shortcuts and palette commands. */
+  railHidden: RailTool[];
+  /** The rail's tools in the order you dragged them to: every tool once, each group's in its own order. */
+  railOrder: Exclude<RailTool, "mods">[];
+  /** Apps pinned to the rail (its right-click menu), by editor id (`editors.list`), top to bottom. A click opens the session's folder in one. */
+  railApps: string[];
   /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
   quickActions: boolean;
   /** Settings › Sidebar: which quick actions show ("Show"). Working rows keep Stop either way. */
@@ -505,6 +687,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarStyle: "standard",
   sidebarCollapsed: "minimal",
   toolActivity: "summary",
+  conversationView: "skim",
   fileLinkClick: "switchboard",
   fileLinkClickRevision: FILE_LINK_CLICK_REVISION,
   promptOutline: true,
@@ -518,7 +701,11 @@ export const DEFAULT_PREFERENCES: Preferences = {
   newSessionMode: "default",
   newSessionModel: "",
   newSessionEffort: "",
+  newSessionFallbackModel: "",
   chrome: false,
+  agentVisuals: true,
+  browserControl: true,
+  browserScripts: false,
   keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
@@ -530,6 +717,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
   dockActivity: true,
+  browserEnabled: true,
+  webPreview: true,
+  browserIntro: "ask",
   menuBar: true,
   keepRunning: true,
   hideDock: false,
@@ -544,6 +734,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
+  activitySummaries: true,
+  skimMarks: true,
   catchUpFolded: false,
   resumeAtLimit: "ask",
   showCost: true,
@@ -555,6 +747,11 @@ export const DEFAULT_PREFERENCES: Preferences = {
   githubHintSeen: [],
   providerOffersDismissed: [],
   sidebarSort: "recent",
+  sidebarGroup: "state",
+  sidebarShowDone: true,
+  railHidden: [],
+  railOrder: [...RAIL_ORDER],
+  railApps: [],
   quickActions: true,
   quickActionsShow: "all",
   githubStar: "ask",
@@ -671,6 +868,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.sidebarCollapsed = raw.sidebarCollapsed;
   if (oneOf(["summary", "steps"] as const, raw.toolActivity))
     out.toolActivity = raw.toolActivity;
+  if (oneOf(["skim", "full"] as const, raw.conversationView))
+    out.conversationView = raw.conversationView;
   // An unknown value (a newer version's choice) is left out, so the default or the last good one stays.
   // "file-manager" saved before the revision was the old default, not a choice: leave it out so "switchboard" applies.
   if (
@@ -696,9 +895,14 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   // Models come from Claude Code at runtime, so any short id is kept; one it no longer lists is shown as it is.
   if (typeof raw.newSessionModel === "string" && raw.newSessionModel.length <= NEW_SESSION_MODEL_MAX)
     out.newSessionModel = raw.newSessionModel.trim();
+  if (typeof raw.newSessionFallbackModel === "string" && raw.newSessionFallbackModel.length <= NEW_SESSION_MODEL_MAX)
+    out.newSessionFallbackModel = raw.newSessionFallbackModel.trim();
   if (oneOf(NEW_SESSION_EFFORTS, raw.newSessionEffort))
     out.newSessionEffort = raw.newSessionEffort;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
+  if (typeof raw.agentVisuals === "boolean") out.agentVisuals = raw.agentVisuals;
+  if (typeof raw.browserControl === "boolean") out.browserControl = raw.browserControl;
+  if (typeof raw.browserScripts === "boolean") out.browserScripts = raw.browserScripts;
   if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "beta"] as const, raw.updateChannel))
@@ -725,6 +929,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
+  if (typeof raw.browserEnabled === "boolean") out.browserEnabled = raw.browserEnabled;
+  if (typeof raw.webPreview === "boolean") out.webPreview = raw.webPreview;
+  if (oneOf(["ask", "done"] as const, raw.browserIntro)) out.browserIntro = raw.browserIntro;
   if (typeof raw.menuBar === "boolean") out.menuBar = raw.menuBar;
   if (typeof raw.keepRunning === "boolean") out.keepRunning = raw.keepRunning;
   if (typeof raw.hideDock === "boolean") out.hideDock = raw.hideDock;
@@ -750,6 +957,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
+  if (typeof raw.activitySummaries === "boolean") out.activitySummaries = raw.activitySummaries;
+  if (typeof raw.skimMarks === "boolean") out.skimMarks = raw.skimMarks;
   if (typeof raw.catchUpFolded === "boolean") out.catchUpFolded = raw.catchUpFolded;
   if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
     out.resumeAtLimit = raw.resumeAtLimit;
@@ -767,6 +976,18 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
+  if (oneOf(["state", "project"] as const, raw.sidebarGroup))
+    out.sidebarGroup = raw.sidebarGroup;
+  if (typeof raw.sidebarShowDone === "boolean") out.sidebarShowDone = raw.sidebarShowDone;
+  if (Array.isArray(raw.railHidden))
+    out.railHidden = RAIL_TOOLS.filter((tool) => (raw.railHidden as unknown[]).includes(tool));
+  // Every tool once: the ones the list leaves out (a tool added later) go where they are by default.
+  if (Array.isArray(raw.railOrder)) {
+    const known = RAIL_ORDER.filter((tool) => (raw.railOrder as unknown[]).includes(tool)).sort((a, b) => (raw.railOrder as unknown[]).indexOf(a) - (raw.railOrder as unknown[]).indexOf(b));
+    out.railOrder = RAIL_ORDER.reduce((order, tool) => (order.includes(tool) ? order : [...order.slice(0, RAIL_ORDER.indexOf(tool)), tool, ...order.slice(RAIL_ORDER.indexOf(tool))]), known);
+  }
+  if (Array.isArray(raw.railApps))
+    out.railApps = [...new Set(raw.railApps.filter((id): id is string => typeof id === "string" && RAIL_APP_ID.test(id)))].slice(0, RAIL_APPS_MAX);
   if (typeof raw.quickActions === "boolean") out.quickActions = raw.quickActions;
   if (oneOf(["archive", "all"] as const, raw.quickActionsShow))
     out.quickActionsShow = raw.quickActionsShow;
@@ -801,18 +1022,18 @@ export interface AppInfo {
 
 /** `releases/tag/v…` for a version, where its release notes are. */
 export const releaseUrl = (version: string) =>
-  `https://github.com/estruyf/switchboard/releases/tag/v${version}`;
+  `https://github.com/estruyf/seshboard/releases/tag/v${version}`;
 export const CHANGELOG_URL =
-  "https://github.com/estruyf/switchboard/blob/main/CHANGELOG.md";
+  "https://github.com/estruyf/seshboard/blob/main/CHANGELOG.md";
 /** Seshboard's repository, which Star on GitHub opens when gh can't star it. */
-export const REPO_URL = "https://github.com/estruyf/switchboard";
+export const REPO_URL = "https://github.com/estruyf/seshboard";
 
 /** Where the VS Code companion is published: the Marketplace for VS Code, Open VSX for Cursor and Windsurf. */
 export const VSCODE_EXTENSION_URLS = {
   marketplace:
     "https://marketplace.visualstudio.com/items?itemName=eliostruyf.switchboard-companion",
   openVsx: "https://open-vsx.org/extension/eliostruyf/switchboard-companion",
-  guide: "https://github.com/estruyf/switchboard#vs-code-companion",
+  guide: "https://github.com/estruyf/seshboard#vs-code-companion",
 } as const;
 
 /**
@@ -965,6 +1186,8 @@ export interface SeshboardBridge {
   chooseMemoryExport(): Promise<string[]>;
   /** Native save dialog for an image from the conversation, then writes it. Resolves to the path, or null when cancelled. */
   saveImage(request: SaveImageRequest): Promise<string | null>;
+  /** Native save dialog for an export (Activity's), suggesting `fileName`, then writes it. Resolves to the path, or null when cancelled. */
+  saveTextFile(request: { fileName: string; content: string }): Promise<string | null>;
   /** Shows an image saved with `saveImage` in Finder (only those, never any other path). */
   showSavedImage(path: string): void;
   /** Shows Remote's log (`REMOTE_LOG_FILE` in the data folder) in Finder, or the folder before there is one. */
@@ -1021,6 +1244,11 @@ export interface SeshboardBridge {
   removeTheme(id: string): Promise<void>;
   /** Saves a copy of any theme as a new imported one ("<name> 2"). Resolves to its id. */
   duplicateTheme(id: string): Promise<string>;
+  /**
+   * Serves an MCP App's page from an address of its own (`seshboard-visual://app/…`), with a Content-Security-Policy
+   * from the origins it declared (`csp`) and nothing else. Resolves to that address, for a sandboxed frame.
+   */
+  mcpAppDocument(html: string, csp: McpAppCsp | null): Promise<string>;
   /** Native save dialog for a theme, then writes `content` (validated again). Resolves to the path, or null when cancelled. */
   exportTheme(fileName: string, content: string): Promise<string | null>;
   openThemesFolder(): void;
@@ -1028,6 +1256,8 @@ export interface SeshboardBridge {
   showThemeFile(id: string): void;
   /** The system sounds to pick from in Settings › Notifications. */
   listSounds(): Promise<SoundList>;
+  /** An app's icon as a PNG data URL, from its bundle (`.app`) or program (`.exe`) as `EditorInfo.icon` names it; null when there is none. */
+  appIcon(path: string): Promise<string | null>;
   /** Plays a sound once at a volume (0 to 1), to try it. Only sounds from `listSounds`. */
   playSound(id: string, volume: number): void;
   /** Whether the system lets Seshboard show notifications (System Settings, or Windows settings). */
@@ -1065,6 +1295,34 @@ export interface SeshboardBridge {
   onViewReturned(listener: (sessionId: string, view: SessionView) => void): () => void;
   /** From a pop-out: shows its session in the main window again and closes the pop-out. */
   popIn(): void;
+  /** The session whose browser this window shows on its own (`?browserpopout=<id>`), or null. Read once when the page loads. */
+  readonly browserPopout: string | null;
+  /** The sessions whose browser has a window of its own, with how many tabs each has: read once when the page loads, then follow `onBrowserPopoutsChanged`. */
+  readonly browserPopouts: Readonly<Record<string, number>>;
+  /** Fires in every window when a browser window opens, closes or its number of tabs changes. */
+  onBrowserPopoutsChanged(listener: (tabs: Record<string, number>) => void): () => void;
+  /**
+   * Moves a session's browser to a window of its own with `tabs` (its tabs as this window had them), or brings that window
+   * to the front when it has one. `url`: an address to show there (a link clicked in the conversation).
+   */
+  popOutBrowser(sessionId: string, tabs?: BrowserTabsHandoff | null, url?: string | null): void;
+  /** In a browser window: the tabs it opened with, or null. Read once when the page loads. */
+  readonly browserPopoutTabs: BrowserTabsHandoff | null;
+  /** From a browser window: how its tabs stand now, so they go back to the session's window when it closes. */
+  reportBrowserTabs(tabs: BrowserTabsHandoff): void;
+  /** From a browser window: its tabs go back to the session's window, which shows them, and the browser window closes. */
+  popInBrowser(): void;
+  /**
+   * In the window that shows a session: its browser came back with its tabs. `show`: Move back, so the panel opens on them;
+   * otherwise the browser window was closed and the tabs wait for the next open.
+   */
+  onBrowserReturned(listener: (sessionId: string, tabs: BrowserTabsHandoff, show: boolean) => void): () => void;
+  /** In a browser window: show this address (a link clicked in the session, or its Browser button with a server offered). */
+  onBrowserOpenUrl(listener: (url: string) => void): () => void;
+  /** From a browser window: a quote or a picked element for its session's message, in the window that shows the session. */
+  browserToMessage(item: BrowserMessageItem): void;
+  /** In the window that shows a session: its browser window sent something to its message. */
+  onBrowserMessage(listener: (sessionId: string, item: BrowserMessageItem) => void): () => void;
   /** Whether this window is the menu bar's panel (`?menubar=1`). Read once when the page loads. */
   readonly menuBar: boolean;
   /** From the menu bar's panel: open the main window, quit, or close the panel. */
@@ -1097,8 +1355,50 @@ export interface SeshboardBridge {
   showSession(sessionId: string): void;
   /** From a pop-out: brings the main window to the front and presses these keys there. */
   forwardKeys(keys: ForwardedKeys): void;
+  /** A browser page opened a window or a download was refused (the browser on), or a session's page sent a quote or an element. */
+  onWebPreviewEvent(listener: (event: WebPreviewEvent) => void): () => void;
+  /**
+   * A page of a session's tab (`contentsId`), not the Browser view's: its right-click menu then offers Quote in message
+   * and Add element to message.
+   */
+  markSessionPage(contentsId: number): void;
+  /**
+   * Pick an element on a session's page: the page outlines what is under the pointer until a click picks it (resolves
+   * with it) or Escape, a navigation or `cancelPick` ends it (null).
+   */
+  pickElement(contentsId: number): Promise<PickedElement | null>;
+  /** Ends the pick on that page, if one is running. */
+  cancelPick(contentsId: number): void;
+  /** The browser tools: main asks for (and, to open, makes) the page a session's tools work on. */
+  onBrowserAgentTarget(listener: (request: BrowserAgentTargetRequest) => Promise<BrowserAgentTarget>): () => void;
+  /**
+   * The browser's address bar has focus (or lost it): main then hands ⌘W (Ctrl+W) to the window as keys, for Close tab,
+   * instead of closing the window.
+   */
+  setAddressFocus(focused: boolean): void;
+  /**
+   * Clears what the browser's pages keep (the browser on): a site's cookies and storage for `origin`, which signs you
+   * out of it, or with null everything (cookies, storage, cache, sign-ins). In `partition`, a browser profile's (the
+   * Default one's when left out). Resolves once it is done.
+   */
+  clearBrowsingData(origin: string | null, partition?: string): Promise<void>;
+  /** Shows a file a browser page downloaded this run in Finder (only those, never any other path). */
+  showDownload(path: string): void;
+  /**
+   * Reset or Delete of a browser profile (docs/browser.md, Browser profiles): clears what main keeps for its partition
+   * (`WEB_PREVIEW_PARTITION` for the Default one), the parts ticked. History is the engine's (`browser.profiles.reset`).
+   */
+  resetBrowserPartition(partition: string, parts: { cookies: boolean; siteData: boolean; cache: boolean }): Promise<void>;
+  /**
+   * A browser page's keys go to the window: the window's document took the focus from the page (`contentsId`, a key it
+   * handed over opened the palette or a dialog), but Chromium leaves the keyboard with the page. Main sends what is
+   * typed there to the window until the page has the focus again (null).
+   */
+  keysToWindow(contentsId: number | null): void;
   /** In the main window: keys a pop-out handed over. */
   onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
+  /** An app shortcut typed in a web preview's page in this window (`<webview>`, whose keys the window never sees). */
+  onWebPreviewKeys(listener: (keys: WebPreviewKeys) => void): () => void;
   /** From a pop-out: brings the main window to the front and shows this view there (Settings, Usage, a project, New session). */
   showInMain(request: MainWindowRequest): void;
   /** In the main window: a view a pop-out asked it to show. */

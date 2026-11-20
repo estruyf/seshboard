@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "$comment": "Matches the Forest app icon (assets/app-icons/forest.svg).",
   "name": "Forest",
   "author": "Elio Struyf",

@@ -30,6 +30,62 @@ export function isTrashableCopilotSession(path: string, copilotHome: string): bo
   }
 }
 
+/** A Codex rollout file's name: `rollout-<timestamp>-<thread id>.jsonl`, or `.jsonl.zst` once Codex compressed it. */
+const CODEX_ROLLOUT = /^rollout-[0-9A-Za-z.-]+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl(?:\.zst)?$/i;
+
+/**
+ * An OpenAI Codex session's rollout file: a real file directly in a day's folder (`<CODEX_HOME>/sessions/YYYY/MM/DD/`)
+ * or in `<CODEX_HOME>/archived_sessions/`, named like a rollout. Never a folder, a link, or a file anywhere else, and
+ * the folders above it must really be inside `CODEX_HOME` (no linked day or year folder leading out).
+ */
+export function isTrashableCodexSession(path: string, codexHome: string): boolean {
+  if (resolve(path) !== path || resolve(codexHome) !== codexHome || codexHome === sep) return false;
+  if (!CODEX_ROLLOUT.test(basename(path))) return false;
+  const folder = dirname(path);
+  const day = basename(folder);
+  const month = basename(dirname(folder));
+  const year = basename(dirname(dirname(folder)));
+  const inDay = dirname(dirname(dirname(folder))) === join(codexHome, 'sessions') && /^\d{4}$/.test(year) && /^\d{2}$/.test(month) && /^\d{2}$/.test(day);
+  if (!inDay && folder !== join(codexHome, 'archived_sessions')) return false;
+  try {
+    const realHome = realpathSync(codexHome);
+    if (realpathSync(folder) !== join(realHome, folder.slice(codexHome.length + 1))) return false;
+    return lstatSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch {
+    // A missing folder, ENOTDIR, EACCES or a link loop: refuse rather than fail the request.
+    return false;
+  }
+}
+
+/**
+ * What Delete moves to the Trash of a Google Antigravity conversation, in the profile's `--gemini-dir`
+ * (`<dir>/antigravity-cli/`): its history `conversations/<uuid>.db` and `annotations/<uuid>.pbtxt` (real files), and its
+ * folder `brain/<uuid>` (a real folder). Never a link, another file, or anything outside those three folders, and the
+ * folders above it must really be inside the profile's folder.
+ */
+export function isTrashableAgySession(path: string, agyHome: string): boolean {
+  if (resolve(path) !== path || resolve(agyHome) !== agyHome || agyHome === sep) return false;
+  const data = join(agyHome, 'antigravity-cli');
+  const folder = dirname(path);
+  const name = basename(path);
+  const kind =
+    folder === join(data, 'conversations') && /^[0-9a-f-]{36}\.db$/i.test(name) && SESSION_FOLDER.test(name.slice(0, -3))
+      ? 'file'
+      : folder === join(data, 'annotations') && /^[0-9a-f-]{36}\.pbtxt$/i.test(name) && SESSION_FOLDER.test(name.slice(0, -6))
+        ? 'file'
+        : folder === join(data, 'brain') && SESSION_FOLDER.test(name)
+          ? 'folder'
+          : null;
+  if (!kind) return false;
+  try {
+    if (realpathSync(folder) !== join(realpathSync(agyHome), folder.slice(agyHome.length + 1))) return false;
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    return kind === 'file' ? (stat?.isFile() ?? false) : (stat?.isDirectory() ?? false);
+  } catch {
+    return false;
+  }
+}
+
 /** A Claude Code config folder named by the engine: an absolute, normalised path with a projects folder. */
 export function isConfigDir(dir: unknown): dir is string {
   if (typeof dir !== 'string' || resolve(dir) !== dir || dir === sep) return false;

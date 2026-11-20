@@ -6,7 +6,8 @@ import { BACKGROUND_LABEL, backgroundDetail, NEEDS_YOU_DETAIL, NEEDS_YOU_LABEL, 
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
-import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
+import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -55,6 +56,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-new-session-effort]',
     },
     {
+      id: 'new-session-fallback-model',
+      page: 'general',
+      label: 'Global fallback model',
+      detail: GLOBAL_FALLBACK_DETAIL,
+      keywords: 'fallback backup model overloaded unavailable busy switch retry opus sonnet haiku claude code profile project',
+      target: '[data-new-session-fallback-model]',
+    },
+    {
       id: 'chrome',
       page: 'general',
       label: 'Use Claude in Chrome',
@@ -62,7 +71,57 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'browser chrome extension mcp tools claude-in-chrome --chrome web',
       target: '[data-chrome-setting]',
     },
+    {
+      id: 'agent-visuals',
+      page: 'general',
+      label: 'Visuals in replies',
+      detail: VISUALS_DETAIL,
+      keywords: 'visual diagram chart widget draw mcp app show_widget visualize codex copilot antigravity',
+      target: '[data-agent-visuals-setting]',
+    },
+    {
+      id: 'web-preview',
+      page: 'general',
+      label: 'Allow browser previews',
+      detail: WEB_PREVIEW_DETAIL,
+      keywords: 'web preview dev server localhost site page',
+      target: '[data-web-preview-setting]',
+    },
+    {
+      id: 'browser',
+      page: 'general',
+      label: 'Allow browser',
+      detail: BROWSER_DETAIL,
+      keywords: 'web page tabs pin github pull request url internet',
+      target: '[data-browser-setting]',
+    },
     { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
+
+    // Browser (only while the browser is on)
+    {
+      id: 'browser-control',
+      page: 'browser',
+      label: 'Allow Seshboard to control the browser',
+      detail: BROWSER_CONTROL_DETAIL,
+      keywords: 'agent claude copilot codex browser tools control click type test check page sites dev server',
+      target: '[data-browser-control-setting]',
+    },
+    {
+      id: 'browser-scripts',
+      page: 'browser',
+      label: 'Allow scripts in pages',
+      detail: BROWSER_SCRIPTS_DETAIL,
+      keywords: 'agent evaluate javascript script run network requests responses fetch api devtools token sharepoint',
+      target: '[data-browser-scripts-setting]',
+    },
+    {
+      id: 'browser-profiles',
+      page: 'browser',
+      label: 'Browser profiles',
+      detail: 'Each profile keeps its own logins, site data and cache, so you can use one site with several accounts side by side.',
+      keywords: 'browser profile account accounts login logins sign in cookies storage partition container separate test users admin customer reset delete new',
+      target: '[data-new-browser-profile]',
+    },
 
     // Theme
     { id: 'appearance', page: 'theme', label: 'Appearance', detail: 'Match System, Light or Dark.', keywords: 'dark mode light mode night colour color scheme', target: '[data-color-scheme]' },
@@ -211,6 +270,22 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-tool-activity]',
     },
     {
+      id: 'conversation-view',
+      page: 'conversation',
+      label: 'Conversation view',
+      detail: 'Skim folds Claude\'s messages between tool calls and shows what changed once a turn has finished. Full shows everything.',
+      keywords: 'skim full fold less reading stats',
+      target: '[data-conversation-view]',
+    },
+    {
+      id: 'skim-marks',
+      page: 'conversation',
+      label: 'Let the agent mark its key sentences',
+      detail: 'In Skim, the agent ends a long reply with a hidden line that names its key sentences, and the rest fade. It costs a few tokens per turn.',
+      keywords: 'skim fade highlight marks key sentences important reply system prompt keep',
+      target: '[data-skim-marks-setting]',
+    },
+    {
       id: 'prompt-outline',
       page: 'conversation',
       label: 'Show prompt outline',
@@ -266,10 +341,18 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'catch-up briefing banner summary what happened review why permission model tokens',
       target: '[data-catchup-summaries]',
     },
+    {
+      id: 'activity-summaries',
+      page: 'conversation',
+      label: 'Write the day in short with Haiku',
+      detail: 'A few lines on what you did each day, on Activity and Home.',
+      keywords: 'activity day summary yesterday standup model tokens',
+      target: '[data-activity-summaries]',
+    },
     { id: 'auto-model', page: 'conversation', label: 'Auto model', detail: 'Shows Auto in the model menu. Haiku reads only your prompt, never your files or memory.', keywords: 'automatic routing pick choose', target: '[data-auto-model-enabled]' },
     { id: 'auto-model-allowed', page: 'conversation', label: 'Models it can pick', detail: 'Haiku, Sonnet and Opus. At least one.', keywords: 'auto model', target: '[data-auto-model-allowed]' },
     { id: 'auto-model-lean', page: 'conversation', label: 'When in doubt', detail: 'Which way to lean on a close call: Cheaper, Balanced or Stronger.', keywords: 'auto model cost', target: '[data-auto-model-lean]' },
-    { id: 'auto-model-suggest', page: 'conversation', label: 'Suggest a stronger model later', detail: 'When a session grows past its first prompt. Never switches by itself.', keywords: 'auto model upgrade', target: '[data-auto-model-suggest]' },
+    { id: 'auto-model-suggest', page: 'conversation', label: 'Suggest a stronger model later', detail: 'More effort first, then the next model, when a session grows past its first prompt. Never switches by itself.', keywords: 'auto model upgrade', target: '[data-auto-model-suggest]' },
 
     // Notifications and sounds
     {
@@ -327,7 +410,7 @@ export function settingsIndex(): SettingEntry[] {
       page: 'profiles',
       label: 'Claude profiles',
       detail: 'Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login.',
-      keywords: 'accounts login work personal config folder',
+      keywords: 'accounts login work personal config folder copilot codex antigravity gemini',
       target: '[data-profiles]',
     },
     {
@@ -364,7 +447,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'show-cost',
       page: 'usage',
       label: 'Show estimated cost',
-      detail: "What your tokens would cost at Anthropic's API prices: after the usage bars, for each session, and in the Usage view.",
+      detail: "What your tokens would cost at API prices: after the usage bars, for each session, and in the Usage view.",
       keywords: 'cost price money dollars euro spend api estimate usage bar footer session project model tokens',
       target: '[data-show-cost]',
     },

@@ -1,6 +1,6 @@
 import { ArrowUp, Clock, Copy, EyeOff, MessageCircleQuestion, Plus, Quote, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import { MAX_SIDE_QUESTION_LENGTH } from '@seshboard/protocol/client';
+import { MAX_SIDE_QUESTION_LENGTH, skimMarks } from '@seshboard/protocol/client';
 import { agoText } from '../../lib/format.ts';
 import { currentThread, lastQuestion, threadRows, type AskEntry, type SessionAsk } from '../../state/ask.ts';
 import { useAsk } from '../../state/askStore.ts';
@@ -133,7 +133,8 @@ export function AskPanel(props: AskPanelProps) {
   // Drag the left edge to resize; ← → do the same from the keyboard.
   const startResize = (event: PointerEvent<HTMLDivElement>) => {
     const startX = event.clientX;
-    const startWidth = props.width;
+    // From the width on screen: the stored one can be wider than the session area lets the panel be.
+    const startWidth = Math.min(props.width, event.currentTarget.parentElement?.getBoundingClientRect().width ?? props.width);
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     const move = (e: globalThis.PointerEvent) => props.onWidth(startWidth + (startX - e.clientX));
@@ -199,7 +200,7 @@ export function AskPanel(props: AskPanelProps) {
       aria-label="Ask about this session"
       tabIndex={-1}
       onKeyDown={onPanelKey}
-      className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
+      className="relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
       style={{ width: props.width }}
       data-ask-panel
     >
@@ -323,7 +324,7 @@ function Item({ item, onRetry, onQuote }: { item: AskEntry; onRetry(): void; onQ
         ) : item.status === 'answering' ? (
           <>
             <div className="stream-caret" aria-busy="true">
-              {item.answer && <StreamingMarkdown text={item.answer} />}
+              {item.answer && <StreamingMarkdown text={item.answer} html />}
             </div>
             <p className="mt-1.5 flex items-center gap-1.5 text-meta text-link" role="status" data-ask-answering>
               <span className="size-3 animate-spin rounded-full border-[1.5px] border-link/25 border-t-link" aria-hidden />
@@ -332,13 +333,13 @@ function Item({ item, onRetry, onQuote }: { item: AskEntry; onRetry(): void; onQ
           </>
         ) : (
           <>
-            <Markdown text={item.answer} />
+            <Markdown text={skimMarks(item.answer).text} html />
             <div className="mt-1 -ml-1.5 flex items-center gap-0.5">
               <Button
                 variant="quiet"
                 size="sm"
                 icon={<Copy size={12} aria-hidden />}
-                onClick={() => void navigator.clipboard.writeText(item.answer).then(() => flashCopied('Copied'), () => {})}
+                onClick={() => void navigator.clipboard.writeText(skimMarks(item.answer).text).then(() => flashCopied('Copied'), () => {})}
                 data-tooltip="Copy the answer as markdown"
                 data-ask-copy={copied ? 'copied' : ''}
               >

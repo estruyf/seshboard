@@ -1,32 +1,8 @@
 import type { KeyboardEvent } from 'react';
+import { continueList, type TextEdit } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 
-/** Text to put in place of `from`–`to`, and what to select after it (the caret after the text by default). */
-export interface TextEdit {
-  from: number;
-  to: number;
-  insert: string;
-  select?: [number, number];
-}
-
-/** `- `, `* `, `+ `, `1. ` or `1) `, indented or not, with an optional `[ ]` task box. */
-const ITEM = /^(\s*)(?:([-*+])|(\d{1,9})([.)]))( +)(\[[ xX]\] +)?/;
-
-/**
- * What ⇧↵ does on a list item: the next item, numbered one up, unchecked, at the same indent. On an
- * empty item it ends the list instead, leaving the line blank. Null outside a list, where ⇧↵ is a plain new line.
- */
-export function continueList(text: string, start: number, end: number): TextEdit | null {
-  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-  const match = ITEM.exec(text.slice(lineStart, start));
-  if (!match) return null;
-  const lineEnd = text.indexOf('\n', end);
-  const rest = text.slice(end, lineEnd === -1 ? text.length : lineEnd);
-  if (!text.slice(lineStart + match[0].length, start).trim() && !rest.trim()) return { from: lineStart, to: end, insert: '' };
-  const [, indent, bullet, number, delimiter, space, task] = match;
-  const marker = bullet ?? `${Number(number) + 1}${delimiter}`;
-  return { from: start, to: end, insert: `\n${indent}${marker}${space}${task ? '[ ] ' : ''}` };
-}
+export { continueList, type TextEdit };
 
 /** The longest run of backticks in `text`. */
 const longestTicks = (text: string) => Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
@@ -62,13 +38,14 @@ export function asQuote(quoted: string): string {
 
 /**
  * Quote in reply: `quoted` as a Markdown quote at the end of the message, after a blank line, with the caret
- * on a new line under it, ready for your answer. Null when there is nothing to quote.
+ * on a new line under it, ready for your answer. `heading` goes on the line above it (where a quote from a page came
+ * from). Null when there is nothing to quote.
  */
-export function appendQuote(text: string, quoted: string): TextEdit | null {
+export function appendQuote(text: string, quoted: string, heading?: string): TextEdit | null {
   const quote = asQuote(quoted);
   if (quote === '>' || !quote) return null;
   const before = !text ? '' : text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n';
-  return { from: text.length, to: text.length, insert: `${before}${quote}\n\n` };
+  return { from: text.length, to: text.length, insert: `${before}${heading ? `${heading}\n` : ''}${quote}\n\n` };
 }
 
 /** A prompt put in the box for you (Fix failing checks with Claude): at the end of what is there, after a blank line. */

@@ -4,16 +4,16 @@ import Default from '@astrojs/starlight/components/Footer.astro';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const links = [
-  { label: 'GitHub', href: 'https://github.com/estruyf/switchboard' },
-  { label: 'Releases', href: 'https://github.com/estruyf/switchboard/releases' },
+  { label: 'GitHub', href: 'https://github.com/estruyf/seshboard' },
+  { label: 'Releases', href: 'https://github.com/estruyf/seshboard/releases' },
   { label: 'Changelog', href: `${base}/changelog/` },
-  { label: 'MIT License', href: 'https://github.com/estruyf/switchboard/blob/main/LICENSE' },
+  { label: 'MIT License', href: 'https://github.com/estruyf/seshboard/blob/main/LICENSE' },
 ];
 const splash = Astro.locals.starlightRoute.entry.data.template === 'splash';
 /** The README's visitorbadge.io badge, with a slug per page: `website` for the homepage, `website/sessions/sidebar` for the others. */
 const pageId = Astro.locals.starlightRoute.id.replace(/^\/|\/$/g, '');
 const badgeQuery = new URLSearchParams({
-  path: 'https://github.com/estruyf/switchboard',
+  path: 'https://github.com/estruyf/seshboard',
   slug: pageId ? `website/${pageId}` : 'website',
 });
 const badge = {

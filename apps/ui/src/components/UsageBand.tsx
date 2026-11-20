@@ -12,7 +12,7 @@ import { usePreferences } from '../state/preferencesStore.ts';
 import { useWindowCosts } from './usage/useWindowCosts.ts';
 import { openUsage } from '../state/usageViewStore.ts';
 import { thisComputerName } from '../lib/platform.ts';
-import { quotaSummary, resetDay } from './providers/quotaText.ts';
+import { hasPlanUsage, quotaSummary, resetDay, TOKEN_BILLING } from './providers/quotaText.ts';
 
 interface UsageState {
   /** Plan usage per Claude profile (each login has its own limits). No entry: not loaded yet. */
@@ -120,7 +120,7 @@ const resetTitle = (limit: UsageLimit, now: number) =>
  * `footer`: small rings (`5h ◔ 9%   Week ◔ 18%`) for the tray under the message box, reset times in the tooltips;
  * the profile is a chip on the same tray.
  */
-export function UsageBand({ profileId, compact = false, footer = false }: { profileId?: string | null; compact?: boolean; footer?: boolean }) {
+export function UsageBand({ profileId, compact = false, footer = false, cost = true }: { profileId?: string | null; compact?: boolean; footer?: boolean; /** The windows' cost after the bars (Settings › Usage), when `footer`. */ cost?: boolean }) {
   const defaultId = useProfiles((s) => s.defaultId);
   const id = profileId ?? defaultId;
   const usage = useUsageFor(id)?.usage;
@@ -132,7 +132,7 @@ export function UsageBand({ profileId, compact = false, footer = false }: { prof
   const limits = usage ? visibleLimits(usage.limits) : [];
   const extra = usage?.extraUsage;
   // The estimated API cost of each window, after its bar (Settings › Usage), in the footer and New session's tray.
-  const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && footer;
+  const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && footer && cost;
   const currency = usePreferences((s) => s.prefs.costCurrency);
   const priced = useWindowCosts(id, showCost && limits.length > 0);
   const costs = limitCosts(limits, priced.windows, showCost ? currency : null);
@@ -241,7 +241,7 @@ export interface HomeProfileUsage {
 
 /** The limits a profile's line and bars show, by their short names ("5h", "Week", "Premium requests"). */
 export function homeLimits({ profile, entry, quota }: HomeProfileUsage): { label: string; percent: number }[] {
-  if (profile.provider !== 'claude') return quota && quota.entitlement !== null ? [{ label: 'Premium requests', percent: quota.percentUsed }] : [];
+  if (!hasPlanUsage(profile.provider)) return quota && quota.entitlement !== null ? [{ label: 'Premium requests', percent: quota.percentUsed }] : [];
   return entry?.usage ? visibleLimits(entry.usage.limits).map((limit) => ({ label: footerLabel(limit), percent: limit.percent })) : [];
 }
 
@@ -252,7 +252,8 @@ export function homeLimits({ profile, entry, quota }: HomeProfileUsage): { label
  */
 export function ProfileUsageCard({ usage, activity, now }: { usage: HomeProfileUsage; activity: string; now: number }) {
   const { profile, entry, quota } = usage;
-  const provider = profile.provider !== 'claude' ? profile.provider : null;
+  // Premium requests (Copilot's); plan windows (Claude Code's, Codex's) read as Claude Code's.
+  const provider = !hasPlanUsage(profile.provider) && profile.provider !== 'claude' ? profile.provider : null;
   const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
   const extra = entry?.usage?.extraUsage;
   return (
@@ -268,7 +269,9 @@ export function ProfileUsageCard({ usage, activity, now }: { usage: HomeProfileU
       {provider ? (
         quota ? (
           <button type="button" onClick={() => openUsage(profile.id)} aria-label={`${quotaSummary(quota)}. Open usage`} data-tooltip={quotaSummary(quota)} className={`-mx-1.5 grid gap-2 rounded-md px-1.5 py-1 text-left ${BAND_HOVER}`} data-provider-usage={provider}>
-            {quota.entitlement === null ? (
+            {quota.tokenBilling ? (
+              <span className="text-meta text-muted">{TOKEN_BILLING}</span>
+            ) : quota.entitlement === null ? (
               <span className="text-meta text-muted">{quota.used.toLocaleString()} premium requests used, no limit on this plan</span>
             ) : (
               <Meter percent={quota.percentUsed} size="compact" showValue>
@@ -317,10 +320,11 @@ export function ProfileUsageCard({ usage, activity, now }: { usage: HomeProfileU
  */
 export function QuietProfileLine({ usage, numbers, now }: { usage: HomeProfileUsage; numbers: string; now: number }) {
   const { profile, entry, quota } = usage;
-  const provider = profile.provider !== 'claude' ? profile.provider : null;
+  // Premium requests (Copilot's); plan windows (Claude Code's, Codex's) read as Claude Code's.
+  const provider = !hasPlanUsage(profile.provider) && profile.provider !== 'claude' ? profile.provider : null;
   const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
   const summary = provider ? (quota ? quotaSummary(quota) : null) : limits.length ? usageSummary(limits, now) : null;
-  const text = numbers || (provider ? (quota ? `${quota.used.toLocaleString()} premium requests` : '') : usageMessage(entry));
+  const text = numbers || (provider ? (quota ? (quota.tokenBilling ? 'AI credits' : `${quota.used.toLocaleString()} premium requests`) : '') : usageMessage(entry));
   return (
     <li className="grid min-w-0" data-home-profile={profile.id}>
       <button

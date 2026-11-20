@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/estruyf/switchboard/main/apps/vscode-extension/assets/icon.png" alt="Seshboard logo" width="128" height="128">
+  <img src="https://raw.githubusercontent.com/estruyf/seshboard/main/apps/vscode-extension/assets/icon.png" alt="Seshboard logo" width="128" height="128">
 </p>
 
 <h1 align="center">Seshboard for VS Code</h1>
@@ -8,7 +8,7 @@
   <a href="https://visitorbadge.io/status?path=https%3A%2F%2Fgithub.com%2Festruyf%2Fswitchboard%3Fslug%3Dvscode"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2Festruyf%2Fswitchboard&labelColor=%2315181f&countColor=%23ffd43b&slug%3Dvscode" alt="Visitors"></a>
 </p>
 
-Send what you're looking at in VS Code to a [Seshboard](https://github.com/estruyf/switchboard) session: the open file, the selected lines, several files from the Explorer, problems, terminal output and changed files. It arrives as chips in the session's message box. Nothing is sent to Claude until you add your question and press ⌘↵ in Seshboard.
+Send what you're looking at in VS Code to a [Seshboard](https://github.com/estruyf/seshboard) session: the open file, the selected lines, several files from the Explorer, problems, terminal output and changed files. It arrives as chips in the session's message box. Nothing is sent to Claude until you add your question and press ⌘↵ in Seshboard.
 
 It also works the other way: when a session in this workspace asks for a permission, has a question or a plan, you can answer it from a VS Code notification.
 
@@ -16,7 +16,7 @@ This is a companion, not a chat. Claude Code's own extension stays the chat insi
 
 ## Requirements
 
-- [Seshboard](https://github.com/estruyf/switchboard) 0.0.13 or later, on the same Mac. Answering prompts needs 0.0.14 or later.
+- [Seshboard](https://github.com/estruyf/seshboard) 0.0.13 or later, on the same Mac. Answering prompts needs 0.0.14 or later.
 - VS Code 1.95 or later (or Cursor, Windsurf, VSCodium).
 
 ## What you can send
@@ -79,8 +79,8 @@ All under **Seshboard:** in the command palette: *Add Selection to Seshboard*, *
 
 ## License
 
-[MIT](https://github.com/estruyf/switchboard/blob/main/LICENSE)
+[MIT](https://github.com/estruyf/seshboard/blob/main/LICENSE)
 
 ## More
 
-How the connection works, and the message format: [docs/vscode-companion.md](https://github.com/estruyf/switchboard/blob/main/docs/vscode-companion.md).
+How the connection works, and the message format: [docs/vscode-companion.md](https://github.com/estruyf/seshboard/blob/main/docs/vscode-companion.md).

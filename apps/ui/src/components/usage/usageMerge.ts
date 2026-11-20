@@ -102,6 +102,8 @@ function combine(rows: readonly MergedRow[]): MergedRow[] {
     seen.weight += weight;
     const byAuto = sum(into.byAuto, row.byAuto);
     if (byAuto !== undefined) into.byAuto = byAuto;
+    const autoChanged = sum(into.autoChanged, row.autoChanged);
+    if (autoChanged !== undefined) into.autoChanged = autoChanged;
     if (into.autoRouting || row.autoRouting) into.autoRouting = { picks: (into.autoRouting?.picks ?? 0) + (row.autoRouting?.picks ?? 0) };
     if (into.sideQuestions || row.sideQuestions) into.sideQuestions = { asked: (into.sideQuestions?.asked ?? 0) + (row.sideQuestions?.asked ?? 0) };
     if (into.catchUpSummaries || row.catchUpSummaries) into.catchUpSummaries = { calls: (into.catchUpSummaries?.calls ?? 0) + (row.catchUpSummaries?.calls ?? 0) };

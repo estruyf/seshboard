@@ -25,6 +25,7 @@ import { NO_GLOBAL_MODEL } from '../packages/engine/src/remote/remoteView.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
 import { SessionOrigins } from '../packages/engine/src/remote/sessionOrigins.ts';
+import { CODEX_MODES } from '../packages/engine/src/providers/codex/codexModes.ts';
 
 const APP_URL = process.env.SESHBOARD_REMOTE_APP_URL ?? 'http://localhost:5199/remote/';
 const PORT = Number(process.env.PORT ?? 47699);
@@ -43,6 +44,8 @@ const PROFILES = [
   { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const }, account: accountTag({ email: 'demo@example.com', organization: 'Acme' }) },
   // A GitHub Copilot profile: its sessions run with Copilot (`providerOfProfile` below).
   { id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: NO_DEFAULTS },
+  // An OpenAI Codex profile, the same way.
+  { id: 'codex', name: 'Codex', color: 'green' as const, defaults: NO_DEFAULTS },
 ];
 /** The profile a demo session runs with: its project's. */
 const profileOf = (root: string) => PROJECTS.find((p) => p.root === root)?.profileId ?? 'default';
@@ -173,8 +176,8 @@ const summaries = (): SessionSummary[] =>
         fileSize: 1000,
         tag: null,
         pinned: false,
-        archivedAt: archived.has(s.id) ? now : null,
-        restoredAt: null,
+        archivedAt: archived.get(s.id) ?? null,
+        restoredAt: restored.get(s.id) ?? null,
         viewedAt: null,
         unread: !read.has(s.id) && (s.unread ?? false),
         inApp: true,
@@ -243,7 +246,13 @@ let permissions: PermissionRequest[] = [
   }),
 ];
 
-const archived = new Set<string>();
+/** Archived sessions and when; reopened ones and when, so they stay listed however old (as the engine's flags). */
+const archived = new Map<string, number>();
+const restored = new Map<string, number>();
+const setArchived = (id: string, on: boolean) => {
+  if (on) archived.set(id, Date.now());
+  else if (archived.delete(id)) restored.set(id, Date.now());
+};
 const models = new Map<string, string | null>();
 const modes = new Map<string, string>();
 const efforts = new Map<string, SessionHostInfo['effort']>();
@@ -323,6 +332,8 @@ const BRIEF = '# Rate limits for the webhooks\n\nAdd rate limits to the webhook 
 
 function transcript(sessionId: string): TranscriptMessage[] {
   const p = sessionId.slice(-2);
+  // A file Claude wrote, by its absolute path: the reply names it, and the app previews it through `files.read`.
+  const review = join(dir, 'review.md');
   return [
     text(`${p}-1`, 'user', sessionId === CATCH_UP.sessionId ? BRIEF : 'Add rate limits to the webhook endpoints. 100 requests a minute per customer, and tell me what you changed.', 40),
     text(`${p}-2`, 'assistant', "I'll look at how the webhooks are routed first.", 39),
@@ -340,6 +351,8 @@ function transcript(sessionId: string): TranscriptMessage[] {
     result(`${p}-14`, `${p}-t6`, 'Tests  14 passed (14)', 35),
     tool(`${p}-15`, `${p}-t7`, 'Bash', { command: 'npm run typecheck' }, 35),
     result(`${p}-16`, `${p}-t7`, '', 35),
+    tool(`${p}-16a`, `${p}-t8`, 'Write', { file_path: review, content: '' }, 35),
+    result(`${p}-16b`, `${p}-t8`, 'ok', 35),
     text(
       `${p}-17`,
       'assistant',
@@ -366,6 +379,8 @@ function transcript(sessionId: string): TranscriptMessage[] {
         '```',
         '',
         'See [the RFC](https://www.rfc-editor.org/rfc/rfc6585#section-4) for `429`. <script>alert(1)</script> stays text.',
+        '',
+        `My review notes are in ${review}.`,
       ].join('\n'),
       34,
     ),
@@ -374,6 +389,7 @@ function transcript(sessionId: string): TranscriptMessage[] {
 
 const dir = process.env.SESHBOARD_DEMO_DIR ?? join(tmpdir(), 'seshboard-remote-demo');
 mkdirSync(dir, { recursive: true });
+writeFileSync(join(dir, 'review.md'), '# Review\n\nThe limit holds under load. **No changes needed.**\n');
 const keyFile = join(dir, 'identity.key');
 if (!existsSync(keyFile)) writeFileSync(keyFile, crypto.getRandomValues(new Uint8Array(32)));
 const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
@@ -592,8 +608,7 @@ const demoPipelines: RemotePipelines = {
     const state = runById(runId);
     if (on && (state.run.status === 'running' || state.run.status === 'waiting')) throw new Error('The run is still going. Stop it first.');
     const tree = [state.run.parentSessionId, ...state.steps.map((s) => s.sessionId)].filter((id): id is string => Boolean(id));
-    for (const id of tree) if (on) archived.add(id);
-    else archived.delete(id);
+    for (const id of tree) setArchived(id, on);
     if (on) state.run.archivedAt = Date.now();
     else state.run.restoredAt = Date.now();
     runChanged(state);
@@ -653,7 +668,7 @@ const hub: RemoteHub = new RemoteHub({
   filesDir: join(dir, 'remote-files'),
   computerName: () => process.env.SESHBOARD_DEMO_NAME ?? "Elio's iMac",
   identity: async () => new Uint8Array(readFileSync(keyFile)),
-  sources: () => ({ summaries: summaries().filter((s) => !archived.has(s.id)), live: [], hosts: hosts(), permissions }),
+  sources: () => ({ summaries: summaries(), live: [], hosts: hosts(), permissions }),
   archiveAfterDays: () => 30,
   scope: () => 'switchboard',
   projects: () => PROJECTS.map((p, order) => ({ ...p, exists: true, added: true, order, defaults: { ...NO_DEFAULTS, branch: null } })),
@@ -685,6 +700,12 @@ const hub: RemoteHub = new RemoteHub({
     background = background.filter((task) => task.taskId !== taskId);
     hub.sessionsChanged();
   },
+  // A few of what a session lists on a real computer, so the / menu has skills and commands.
+  commands: async () => [
+    { name: 'review', description: 'Review a pull request', argumentHint: '[pr]' },
+    { name: 'release-notes', description: 'Write the release notes for the next version', argumentHint: '' },
+    { name: 'compact', description: 'Clear the conversation but keep a summary in context', argumentHint: '<optional instructions>' },
+  ],
   respond: (requestId) => {
     permissions = permissions.filter((p) => p.requestId !== requestId);
     hub.sessionsChanged();
@@ -696,9 +717,18 @@ const hub: RemoteHub = new RemoteHub({
     setTimeout(() => hub.sessionsChanged(), 0);
     return { sessionId: id };
   },
-  // The Copilot profile is GitHub Copilot's, with its modes and two models; its sessions start like the others.
+  // The Copilot profile is GitHub Copilot's and the Codex one OpenAI Codex's, each with its modes and two models; their
+  // sessions start like the others.
   providerOfProfile: (profileId) =>
-    profileId === 'copilot'
+    profileId === 'codex'
+      ? {
+          id: 'codex',
+          name: 'OpenAI Codex',
+          // Codex's own modes, as this computer's catalog has them.
+          modes: CODEX_MODES,
+          supports: ['delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+        }
+      : profileId === 'copilot'
       ? {
           id: 'copilot',
           name: 'GitHub Copilot',
@@ -711,9 +741,12 @@ const hub: RemoteHub = new RemoteHub({
           supports: [],
         }
       : null,
-  providerReady: async () => ({
+  providerReady: async (profileId) => ({
     problem: null,
-    models: [
+    models: profileId === 'codex' ? [
+      { value: 'gpt-5.3-codex', displayName: 'GPT-5.3 Codex', description: '', supportsEffort: true },
+      { value: 'gpt-5.3-codex-mini', displayName: 'GPT-5.3 Codex Mini', description: '', supportsEffort: true },
+    ] : [
       { value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false },
       { value: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: '', supportsEffort: true },
     ],
@@ -723,8 +756,7 @@ const hub: RemoteHub = new RemoteHub({
   markRead: (sessionId) => void read.add(sessionId),
   markUnread: (sessionId) => void read.delete(sessionId),
   setFlags: (sessionId, flags) => {
-    if (flags.archived) archived.add(sessionId);
-    else if (flags.archived === false) archived.delete(sessionId);
+    if (flags.archived !== undefined) setArchived(sessionId, flags.archived);
   },
   setModel: async (sessionId, model) => void models.set(sessionId, model),
   setEffort: async (sessionId, effort) => void efforts.set(sessionId, effort),

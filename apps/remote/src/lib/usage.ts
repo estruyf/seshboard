@@ -10,9 +10,13 @@ export function visibleLimits(limits: readonly UsageLimit[]): UsageLimit[] {
   return limits.filter((l) => l.kind === 'session' || l.kind === 'weekly_all' || l.percent >= 1);
 }
 
-/** "5h", "Week", "Week · Opus". */
+/** A 5-hour window: Claude Code's, or one of another bucket's (Codex's `session_scoped`). */
+const isSession = (limit: UsageLimit) => limit.kind === 'session' || limit.group === 'session';
+
+/** "5h", "Week", "Week · Opus"; a window of another length (Codex's `window`) by its length, its scope ("3 hours"). */
 export function limitName(limit: UsageLimit): string {
-  const base = limit.kind === 'session' ? '5h' : limit.group === 'weekly' || limit.kind.startsWith('weekly') ? 'Week' : limit.kind.replace(/_/g, ' ');
+  if (limit.kind === 'window') return limit.scope ?? 'Window';
+  const base = isSession(limit) ? '5h' : limit.group === 'weekly' || limit.kind.startsWith('weekly') ? 'Week' : limit.kind.replace(/_/g, ' ');
   return limit.scope ? `${base} · ${limit.scope}` : base;
 }
 
@@ -30,8 +34,8 @@ export function countdown(resetsAt: number, now: number): string {
 
 /** "5-hour limit: 44% used, resets in 3h2m", for screen readers (the bar and "5h" don't read well). */
 export function spokenLimit(limit: UsageLimit, now: number): string {
-  const name = limit.kind === 'session' ? '5-hour limit' : limitName(limit).startsWith('Week') ? 'Weekly limit' : `${limit.kind.replace(/_/g, ' ')} limit`;
-  const scoped = limit.scope ? `${name} (${limit.scope})` : name;
+  const name = isSession(limit) ? '5-hour limit' : limit.kind === 'window' ? `${limit.scope ?? 'Window'} limit` : limitName(limit).startsWith('Week') ? 'Weekly limit' : `${limit.kind.replace(/_/g, ' ')} limit`;
+  const scoped = limit.scope && limit.kind !== 'window' ? `${name} (${limit.scope})` : name;
   const reset = limit.resetsAt ? `, resets in ${countdown(limit.resetsAt, now)}` : '';
   return `${scoped}: ${Math.round(limit.percent)}% used${reset}`;
 }

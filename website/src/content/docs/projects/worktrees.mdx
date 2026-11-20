@@ -42,7 +42,7 @@ The table has one row per worktree, with its branch and folder, and these column
 | **Size** | Its size on disk. |
 | **Last active** | When something last happened there. |
 
-Pull requests show when the [GitHub CLI](https://cli.github.com) (`gh`) is installed and signed in. In a narrow window, the Ahead and Last active columns are left out.
+The rows show at once, also in a repository with many worktrees. Their changes, commits and pull requests fill in as they are read. Pull requests show when the [GitHub CLI](https://cli.github.com) (`gh`) is installed and signed in. In a narrow window, the Ahead and Last active columns are left out.
 
 ## The groups
 
@@ -54,6 +54,7 @@ The worktrees are grouped so the decision is quick:
 | **Probably done** | Pushed or with an open pull request, no uncommitted changes, and nothing happened there for 14 days. |
 | **Keep** | Everything else, with the reason: a session is working there, uncommitted changes, locked by git, commits that aren't pushed anywhere, outside `.claude/worktrees`, active in the last 14 days, or not merged. |
 | **Stale** | The folder is gone, but git still lists it. |
+| **Reading** | Its changes, commits and pull request are still being read. It can't be picked for clean-up until they are in. |
 
 Only worktrees Claude Code made (under `.claude/worktrees`) are suggested. Others are listed under Keep and are only removed when you pick them yourself.
 

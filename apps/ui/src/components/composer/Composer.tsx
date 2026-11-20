@@ -1,5 +1,5 @@
 import { AtSign, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
-import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
@@ -10,15 +10,20 @@ import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
 import { ComposerTray, type TrayUsage } from './ComposerTray.tsx';
+import { paletteRoom, type PaletteRoom } from './paletteRoom.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
 import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
+import { MAX_ATTACHMENTS } from './images.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
+import { hasUltrathink, ultrathinkSend } from './ultrathink.ts';
+import { UltrathinkMirror } from './UltrathinkMirror.tsx';
+import { useUltrathink } from '../../state/ultrathinkStore.ts';
 import { branchOf, linkableSessions } from './sessionLinks.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -37,6 +42,13 @@ import { cachedSearch, forgetGithub, githubStatus, rememberSearch } from '../git
 import { GithubStateIcon } from '../github/GithubParts.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { startFromGithub } from '../../state/githubStartStore.ts';
+
+/**
+ * New session's box: 210px at rest in three columns, 140px in two, and it grows with the text until the column has no
+ * room left (the flex items around it shrink to its toolbar), then scrolls inside. Stacked, the page scrolls, so it stops
+ * at 320px. A short window lets the rest size go first.
+ */
+const LARGE_BOX = 'max-h-80 min-h-24 @min-[860px]/new-session:max-h-none @min-[860px]/new-session:min-h-[140px] @min-[1200px]/new-session:min-h-[210px] [@media(max-height:680px)]:@min-[860px]/new-session:min-h-24';
 
 /**
  * A row of the /, @ or # list; `prompt` makes it a saved prompt rather than a command, `session` a session to link,
@@ -121,7 +133,9 @@ export interface ComposerProps {
    */
   secondary?: { shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false> };
   /** More ways to send what is in the box while Claude works (Steer or Queue, whichever Enter isn't), each on its own shortcut and in `submitControl`. */
-  others?: Array<{ shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false> }>;
+  others?: Array<{ shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false>; steers?: boolean }>;
+  /** While Claude works, Enter steers: the message goes into the turn that is running. Ultrathink waits for a message that starts a turn. */
+  steers?: boolean;
   /** ↑ in an empty box asks for the last message waiting in Up next; true when it took one (the box then fills with it). */
   onRecallQueued?(): boolean;
   /** What the hint line says about messages while Claude works, in place of the default. */
@@ -158,6 +172,11 @@ export interface ComposerProps {
    * one offers to attach it. Only in a project with a remote on GitHub; without gh, one hint per project.
    */
   github?: { root: string | null };
+  /**
+   * A Claude Code box: the word ultrathink is coloured (it runs that turn at xhigh), and the effort chip's "Ultrathink this
+   * turn" adds it to the next message from this box (needs a `draftKey`). Off for another provider's session.
+   */
+  ultrathink?: boolean;
 }
 
 /** What the message was made of: the typed text and the context chips that `promptWithContext` put together. */
@@ -212,6 +231,14 @@ export function Composer(props: ComposerProps) {
     return split.question;
   };
   const [palette, setPalette] = useState<Palette | null>(null);
+  // The large box sits high in New session's column: its lists open on the side with more room.
+  const [room, setRoom] = useState<PaletteRoom | null>(null);
+  const paletteOpen = palette !== null;
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    setRoom(props.large && paletteOpen && root ? paletteRoom(root.getBoundingClientRect(), window.innerHeight) : null);
+  }, [props.large, paletteOpen]);
+  const paletteSide = room?.below ? 'top-full mt-2' : 'bottom-full mb-2';
   /** A saved prompt being filled in: the box shows it over the text, which then holds what goes after it. */
   const [fillState, setFill] = useState<FillState | null>(saved?.fill ?? null);
   const fillerRef = useRef<PromptFillerHandle>(null);
@@ -219,6 +246,10 @@ export function Composer(props: ComposerProps) {
   const { prompts: savedPrompts } = useSavedPrompts(promptsFor ? promptsFor.root : undefined);
   const projectName = promptsFor?.projectName ?? 'This project';
   const left = fillState ? blanksLeft(fillState) : [];
+  /** Where "Ultrathink this turn" is kept for this box: its draft key, for a Claude Code box. */
+  const armedKey = props.ultrathink && props.draftKey !== undefined ? props.draftKey : null;
+  /** The word is in the box: it is drawn under the text, in colour. */
+  const marked = !!props.ultrathink && hasUltrathink(text);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -394,7 +425,7 @@ export function Composer(props: ComposerProps) {
     if (!quoteRequest) return;
     useDrafts.getState().clearQuote();
     const el = ref.current;
-    const edit = (quoteRequest.plain ? appendText : appendQuote)(el?.value ?? text, quoteRequest.text);
+    const edit = quoteRequest.plain ? appendText(el?.value ?? text, quoteRequest.text) : appendQuote(el?.value ?? text, quoteRequest.text, quoteRequest.heading);
     if (!edit) return;
     if (!el || el.disabled) return setText((current) => current + edit.insert);
     history.current!.reset();
@@ -410,6 +441,14 @@ export function Composer(props: ComposerProps) {
       card.classList.add('composer-flash');
     }
   }, [quoteRequest]);
+
+  // Images put here for you (an element picked in the browser): after the ones there, up to the most a message takes.
+  const imagesRequest = useDrafts((s) => (draftKey !== undefined && s.images?.key === draftKey ? s.images : null));
+  useEffect(() => {
+    if (!imagesRequest) return;
+    useDrafts.getState().clearImages();
+    setAttachments((current) => [...current, ...imagesRequest.images].slice(0, MAX_ATTACHMENTS));
+  }, [imagesRequest]);
 
   // Mounting with autoFocus, or a new focusRequest, focuses the prompt. While the prompt is disabled
   // (engine connecting, no folder yet) the request waits, and is dropped if by then the user is typing
@@ -704,7 +743,7 @@ export function Composer(props: ComposerProps) {
   };
 
   /** `requested`: sent through `submitRequest` rather than Enter or the button. `send`: the secondary action instead of `onSubmit`. */
-  const submit = async (requested = false, send: (value: string, attachments: ImageAttachment[], parts: SentParts) => Promise<void | false> | void | false = (value, sent, parts) => props.onSubmit(value, sent, requested, parts)) => {
+  const submit = async (requested = false, send: (value: string, attachments: ImageAttachment[], parts: SentParts) => Promise<void | false> | void | false = (value, sent, parts) => props.onSubmit(value, sent, requested, parts), steer = !!props.running && !!props.steers) => {
     if (sending || props.disabledReason) return;
     // A saved prompt with a required blank still empty: the keys go to that blank instead of sending.
     if (fillState && left.length) {
@@ -715,11 +754,17 @@ export function Composer(props: ComposerProps) {
     const sentChips = chips;
     const sentFill = fillState;
     // A saved prompt is filled in, and what was typed under it goes after it.
-    const typed = sentFill ? fillMessage(sentFill, text) : text;
+    let typed = sentFill ? fillMessage(sentFill, text) : text;
     // The chips go with the message: files as @ mentions after what you typed, text in fenced blocks.
-    const value = promptWithContext(typed, sentChips, cwd);
+    let value = promptWithContext(typed, sentChips, cwd);
     const sentAttachments = attachments;
     if (!value && sentAttachments.length === 0) return;
+    // "Ultrathink this turn": the word goes on this message only (what counts is in `ultrathinkSend`).
+    const sendWord = ultrathinkSend(typed, { armed: armedKey !== null && !!useUltrathink.getState().armed[armedKey], steer });
+    if (sendWord.typed !== typed) {
+      typed = sendWord.typed;
+      value = promptWithContext(typed, sentChips, cwd);
+    }
     // Said here rather than as the engine's "Invalid params": the text stays, so you can trim it.
     const tooLong = tooLongReason(value);
     if (tooLong) return setNotice(tooLong);
@@ -728,6 +773,7 @@ export function Composer(props: ComposerProps) {
     closePalette();
     try {
       if ((await send(value, sentAttachments, { typed, context: sentChips.map(({ id: _id, ...item }) => item as ContextItem) })) === false) return;
+      if (sendWord.consume) useUltrathink.getState().set(armedKey!, false);
       if (sentFill) {
         // Counted for the order of the lists; a prompt deleted meanwhile just isn't.
         void engineClient()?.call('savedPrompts.used', { id: sentFill.prompt.id, scope: sentFill.prompt.scope }).catch(() => {});
@@ -902,7 +948,7 @@ export function Composer(props: ComposerProps) {
       void ask();
     } else if (other) {
       event.preventDefault();
-      void submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts));
+      void submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts), !!props.running && !!other.steers);
     } else if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
       event.preventDefault();
       openPicker();
@@ -921,10 +967,13 @@ export function Composer(props: ComposerProps) {
   };
 
   const disabled = !!props.disabledReason;
-  const submitSecondary = () => (props.secondary ? submit(false, (value, sent, parts) => props.secondary!.onSubmit(value, sent, parts)) : Promise.resolve());
+  /** The box's type and padding, which the coloured copy of the text under it shares, and the sizes only the box has. */
+  const boxType = props.large && !fillState ? 'px-1 pt-1 text-title font-normal leading-relaxed' : 'px-1 text-body leading-relaxed';
+  const boxSize = props.large && !fillState ? LARGE_BOX : 'max-h-[10lh] min-h-[3lh]';
+  const submitSecondary = () => (props.secondary ? submit(false, (value, sent, parts) => props.secondary!.onSubmit(value, sent, parts), false) : Promise.resolve());
   const submitOther = (shortcut: ShortcutId) => {
     const other = props.others?.find((o) => o.shortcut === shortcut);
-    return other ? submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts)) : Promise.resolve();
+    return other ? submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts), !!props.running && !!other.steers) : Promise.resolve();
   };
   /** The @ button: an `@` at the caret (after a space, in the middle of a word) opens the list of files and sessions, as typing it does. */
   const mention = () => {
@@ -1000,7 +1049,7 @@ export function Composer(props: ComposerProps) {
   return (
     <div
       ref={rootRef}
-      className="@container/box relative"
+      className={`@container/box relative ${props.large ? 'flex min-h-0 flex-col' : ''}`}
       data-composer-root
       onFocusCapture={() => {
         if (draftKey !== undefined) useComposerTargets.getState().register({ key: draftKey, cwd });
@@ -1011,7 +1060,7 @@ export function Composer(props: ComposerProps) {
       {palette?.kind === 'issue' &&
         palette.github &&
         (palette.github.hint ? (
-          <GithubHint className="absolute right-0 bottom-full left-0 z-10 mb-2" />
+          <GithubHint className={`absolute right-0 left-0 z-10 ${paletteSide}`} />
         ) : (
           <GithubList
             id={`${ids}-palette`}
@@ -1035,7 +1084,8 @@ export function Composer(props: ComposerProps) {
               const token = el ? tokenAtCaret(el.value, el.selectionStart) : null;
               if (token?.kind === 'issue') openGithub(token.start, token.query, ++searchSeq.current, true);
             }}
-            className="absolute right-0 bottom-full left-0 z-10 mb-2"
+            className={`absolute right-0 left-0 z-10 ${paletteSide}`}
+            style={room ? { maxHeight: room.height } : undefined}
           />
         ))}
       {palette && palette.kind !== 'issue' && (
@@ -1044,7 +1094,8 @@ export function Composer(props: ComposerProps) {
         <ul
           ref={listRef}
           id={`${ids}-palette`}
-          className="absolute right-0 bottom-full left-0 z-10 mb-2 max-h-72 overflow-y-auto rounded-lg border overlay"
+          className={`absolute right-0 left-0 z-10 max-h-72 overflow-y-auto rounded-lg border overlay ${paletteSide}`}
+          style={room ? { maxHeight: room.height } : undefined}
           role="listbox"
           aria-label={palette.kind === 'slash' ? (palette.items[0]?.prompt ? 'Saved prompts and commands' : 'Commands') : palette.items[0]?.session ? 'Sessions and files' : 'Files'}
           data-palette
@@ -1112,7 +1163,7 @@ export function Composer(props: ComposerProps) {
       <div
         ref={cardRef}
         onAnimationEnd={(e) => e.animationName === 'composer-flash' && e.currentTarget.classList.remove('composer-flash')}
-        className={`relative z-[1] rounded-[18px] border bg-card px-3 pt-3 pb-2 shadow-md transition-colors ${sideToken ? 'border-link' : props.restored ? 'border-edge' : 'border-border'} ${disabled || sideToken ? '' : 'focus-within:border-accent-ink/60'}`}
+        className={`relative z-[1] ${props.large ? 'flex min-h-0 flex-col' : ''} rounded-[18px] border bg-card px-3 pt-3 pb-2 shadow-md transition-colors ${sideToken ? 'border-link' : props.restored ? 'border-edge' : 'border-border'} ${disabled || sideToken ? '' : 'focus-within:border-accent-ink/60'}`}
         style={props.frameColor && !sideToken ? { borderColor: props.frameColor } : undefined}
         data-side-question={sideToken || undefined}
         data-composer-card
@@ -1167,9 +1218,9 @@ export function Composer(props: ComposerProps) {
             ref.current?.focus();
           }}
         />
-        {/* At least three lines; grows with the content up to ten (New session's: max-h-80), then scrolls. CSS sizes it: collapsing it to measure scrollHeight
+        {/* At least three lines; grows with the content up to ten (New session's: up to the room its column has), then scrolls. CSS sizes it: collapsing it to measure scrollHeight
             made the conversation above taller for a moment, and the browser clamped its scroll position. */}
-        <div className="relative flex items-start gap-2">
+        <div className={`relative flex gap-2 ${props.large ? 'min-h-0 flex-col' : 'items-start'}`}>
           {fillState && !text && !props.disabledReason && (
             <span className="pointer-events-none absolute top-0 left-0 text-body leading-relaxed text-muted" aria-hidden data-context-placeholder>
               Add more context… <span className="text-faint">(optional, sent after the prompt)</span>
@@ -1181,6 +1232,9 @@ export function Composer(props: ComposerProps) {
               {SIDE_TOKEN}
             </span>
           )}
+          {/* The wrapper holds the box's place in the row, so the coloured copy of the text can sit over exactly the box. */}
+          <div className={`relative min-w-0 ${props.large ? 'flex min-h-0 flex-[0_1_auto] flex-col' : 'flex-1'}`}>
+          {marked && <UltrathinkMirror text={text} textarea={ref} className={boxType} disabled={disabled} />}
           <textarea
             data-composer
             data-history={props.history?.length ?? 0}
@@ -1233,8 +1287,9 @@ export function Composer(props: ComposerProps) {
                 setPalette(null);
               }, 100);
             }}
-            className={`block field-sizing-content w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large && !fillState ? 'max-h-80 min-h-24 px-1 pt-1 text-title font-normal' : 'max-h-[10lh] min-h-[3lh] px-1 text-body'}`}
+            className={`relative block field-sizing-content w-full min-w-0 resize-none bg-transparent outline-none placeholder:text-faint disabled:opacity-60 ${props.large ? 'flex-[0_1_auto]' : ''} ${marked ? 'text-transparent caret-text selection:bg-accent/35' : 'text-text'} ${boxType} ${boxSize}`}
           />
+          </div>
         </div>
         {menuAt && <Menu x={menuAt.x} y={menuAt.y} above={menuAt.above} width={180} label="Message" onClose={() => setMenuAt(null)} entries={textMenu()} />}
         {notice && (

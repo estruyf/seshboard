@@ -33,6 +33,11 @@
   --sb-trigger: #6f42c1;
   /* Pipelines: the icon on a parent row and a run row, step kinds and @ links in the editor. Never a state. */
   --sb-pipeline: #6741d9;
+  /* The word ultrathink (message box, effort chip): a four colour gradient. Never a state. */
+  --sb-ultrathink-a: #d6336c;
+  --sb-ultrathink-b: #b35900;
+  --sb-ultrathink-c: #2b8a3e;
+  --sb-ultrathink-d: #1971c2;
   /*
    * The selected row in a list: a neutral fill (a yellow tint disappears on the light sidebar). A tint
    * of the text colour rather than a fixed grey, so it shows on every surface: sidebar, card, dialog.
@@ -51,6 +56,10 @@
   --sb-chart-cache-write: #c2255c;
   --sb-chart-cache-read: #1c7ed6;
   --sb-chart-input: #099268;
+  /* Activity's day strip: the parts of a day's score (time, turns, shipped). Checked together for colour blindness on every theme's surfaces. */
+  --sb-chart-time: #1c7ed6;
+  --sb-chart-turns: #099268;
+  --sb-chart-shipped: #e8590c;
   /*
    * The working mark under a reply (WorkingPanel): the app icon's patch panel. Its free jacks are holes that
    * light up in turn; the plugged ones keep the cables' colours, the gold a little darker in light mode, where it washes out.
@@ -76,6 +85,7 @@
   --sb-terminal-shadow: rgb(21 24 31 / 0.16);
   /* Code blocks and diffs: their own surface, and the backgrounds of added and removed lines. */
   --sb-code-bg: #f4f6fa;
+  --sb-code-pane: #ffffff;
   --sb-diff-added: #00806f1f;
   --sb-diff-removed: #d73a491f;
   /* The outline around the focused control while moving with Tab. */
@@ -108,6 +118,10 @@
     --sb-remote: #b197fc;
     --sb-trigger: #b197fc;
     --sb-pipeline: #9775fa;
+    --sb-ultrathink-a: #ff6b9d;
+    --sb-ultrathink-b: #ffa94d;
+    --sb-ultrathink-c: #69db7c;
+    --sb-ultrathink-d: #74c0fc;
     --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
     --sb-profile-yellow: #ffd43b;
     --sb-profile-blue: #74c0fc;
@@ -120,6 +134,9 @@
     --sb-chart-cache-write: #e64980;
     --sb-chart-cache-read: #339af0;
     --sb-chart-input: #0ca678;
+    --sb-chart-time: #339af0;
+    --sb-chart-turns: #0ca678;
+    --sb-chart-shipped: #e8590c;
     --sb-working-hole: #3d404a;
     --sb-working-lit: #fff1cc;
     --sb-working-glow: #ff961a;
@@ -135,6 +152,7 @@
     --sb-terminal-bg: #0d1016;
     --sb-terminal-shadow: rgb(0 0 0 / 0.55);
     --sb-code-bg: #202736;
+    --sb-code-pane: #15181f;
     --sb-diff-added: #51cf661f;
     --sb-diff-removed: #ff6b6b1f;
     --sb-focus-ring: #ffd43b8c;
@@ -171,6 +189,10 @@
   --sb-remote: #b197fc;
   --sb-trigger: #b197fc;
   --sb-pipeline: #9775fa;
+  --sb-ultrathink-a: #ff6b9d;
+  --sb-ultrathink-b: #ffa94d;
+  --sb-ultrathink-c: #69db7c;
+  --sb-ultrathink-d: #74c0fc;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-profile-yellow: #ffd43b;
   --sb-profile-blue: #74c0fc;
@@ -183,6 +205,9 @@
   --sb-chart-cache-write: #e64980;
   --sb-chart-cache-read: #339af0;
   --sb-chart-input: #0ca678;
+  --sb-chart-time: #339af0;
+  --sb-chart-turns: #0ca678;
+  --sb-chart-shipped: #e8590c;
   --sb-working-hole: #3d404a;
   --sb-working-lit: #fff1cc;
   --sb-working-glow: #ff961a;
@@ -197,6 +222,7 @@
   --sb-scrim: rgb(0 0 0 / 0.6);
   --sb-terminal-bg: #0d1016;
   --sb-code-bg: #202736;
+  --sb-code-pane: #15181f;
   --sb-diff-added: #51cf661f;
   --sb-diff-removed: #ff6b6b1f;
   --sb-focus-ring: #ffd43b8c;
@@ -226,6 +252,10 @@
   --color-remote: var(--sb-remote);
   --color-trigger: var(--sb-trigger);
   --color-pipeline: var(--sb-pipeline);
+  --color-ultrathink-a: var(--sb-ultrathink-a);
+  --color-ultrathink-b: var(--sb-ultrathink-b);
+  --color-ultrathink-c: var(--sb-ultrathink-c);
+  --color-ultrathink-d: var(--sb-ultrathink-d);
   --color-paper: var(--sb-paper);
   --color-paper-text: var(--sb-paper-text);
   --color-selected: var(--sb-selected);
@@ -239,6 +269,9 @@
   --color-chart-cache-write: var(--sb-chart-cache-write);
   --color-chart-cache-read: var(--sb-chart-cache-read);
   --color-chart-input: var(--sb-chart-input);
+  --color-chart-time: var(--sb-chart-time);
+  --color-chart-turns: var(--sb-chart-turns);
+  --color-chart-shipped: var(--sb-chart-shipped);
   --color-profile-gray: var(--sb-profile-gray);
   --color-popover: var(--sb-popover);
   --color-scrim: var(--sb-scrim);
@@ -278,6 +311,18 @@
 @utility hatched {
   background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--sb-text) 30%, transparent) 0 2px, transparent 2px 6px);
   background-color: var(--sb-selected);
+}
+
+/*
+ * The word ultrathink in the message box and on the effort chip, like Claude Code's rainbow word: a gradient of the
+ * ultrathink-a to -d tokens, which a theme can set and which stay readable on the canvas in both modes.
+ */
+@utility ultrathink-word {
+  background-image: linear-gradient(90deg, var(--sb-ultrathink-a), var(--sb-ultrathink-b), var(--sb-ultrathink-c), var(--sb-ultrathink-d));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 /*
@@ -608,9 +653,22 @@ html[data-quick-start-window] body {
 .working-panel[data-working-state='working'] .jack-glow {
   animation-name: working-glow;
 }
-/* Compacting, and every state with Reduce motion: the five free jacks softly lit, without glow, as the Dock's still frame. */
-.working-panel[data-working-state='still'] .jack-light {
+/*
+ * Compacting: the five free jacks lit as the Dock's still frame, pulsing together, so a long compact never looks stuck
+ * and still reads apart from the moving light. With Reduce motion they hold the still frame, as every state does.
+ */
+.working-panel[data-working-state='compacting'] .jack-light {
   opacity: 0.8;
+  animation: working-compacting 1.6s ease-in-out infinite;
+}
+@keyframes working-compacting {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.25;
+  }
 }
 /* Waiting for you: all five lit in the needs-you colour. */
 .working-panel[data-working-state='waiting'] .jack-light {
@@ -686,6 +744,9 @@ html[data-quick-start-window] body {
   .working-panel[data-working-state='working'] .jack-glow {
     visibility: hidden;
   }
+  .working-panel[data-working-state='compacting'] .jack-light {
+    animation: none;
+  }
   /* Spinners keep turning (they mean "busy"); everything else stops moving. */
   *:not(.animate-spin),
   *::before,
@@ -750,6 +811,38 @@ html[data-quick-start-window] body {
   }
 }
 
+/*
+ * A browser page loading: a short segment that runs from left to right under the toolbar, as VS Code's progress bar
+ * does. With Reduce motion it is a still, faint line.
+ */
+.page-progress {
+  overflow: hidden;
+}
+.page-progress::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 20%;
+  background: var(--sb-accent-ink);
+  animation: page-progress 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes page-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(500%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-progress::before {
+    width: 100%;
+    opacity: 0.4;
+    animation: none;
+  }
+}
+
 /* The prompt outline's marks draw their focus ring around the mark itself, not around the rail-wide hit area. */
 html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
   outline: none;
@@ -759,6 +852,14 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
 .setting-flash {
   animation: search-highlight 2.5s ease-out;
   border-radius: 0.5rem;
+}
+
+/*
+ * A side panel's code (the Files viewer, the diffs in Changes): code-pane rather than code-bg, which is the panel's
+ * own surface in most themes, so the file stands apart from the panel around it.
+ */
+.code-pane {
+  --sb-code-bg: var(--sb-code-pane);
 }
 
 /* Find in session (⌘F): every match, and the one you're on. */
@@ -784,4 +885,9 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
 [data-built-in] [data-pipeline-steps] :is(:disabled, [aria-disabled='true']) {
   opacity: 1 !important;
   cursor: default;
+}
+
+/* A faded sentence fades as a whole: inline code and links in it take its colour. */
+[data-skim-faded] * {
+  color: inherit;
 }

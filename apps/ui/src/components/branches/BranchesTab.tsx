@@ -36,6 +36,7 @@ import {
 import { sharedWarning } from '../worktree/branchMenu.ts';
 import { useSharingCheckout } from '../worktree/useSharingCheckout.ts';
 import { DeleteBranchesDialog } from './DeleteBranchesDialog.tsx';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /** Above this many branches the table only renders the rows in view. */
 const VIRTUALIZE_FROM = 50;
@@ -214,7 +215,7 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
         ? [{ label: toSwitch.label, icon: <ArrowRightLeft size={13} />, disabled: switchBlocked !== null, onSelect: () => askSwitch(toSwitch.branch), data: { 'data-branch-switch': toSwitch.branch } }]
         : []),
       { label: 'Copy branch name', icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(entry.name).then(() => toast('Copied the branch name'), fail('copy the branch name')) },
-      ...(entry.pr ? [{ label: `Open pull request #${entry.pr.number}`, icon: <ExternalLink size={13} />, onSelect: () => void window.open(entry.pr!.url, '_blank') }] : []),
+      ...(entry.pr ? [{ label: `Open pull request #${entry.pr.number}`, icon: <ExternalLink size={13} />, onSelect: () => openWebLink(entry.pr!.url) }] : []),
       'separator',
       { label: 'Delete local branch…', icon: <Trash2 size={13} />, danger: true, disabled: !canLocal, onSelect: () => setDeleting({ rows: [row], scope: { local: true, remote: false } }), data: { 'data-branch-delete-local-one': true } },
       { label: `Delete ${remote}…`, icon: <Trash2 size={13} />, danger: true, disabled: !canRemote, onSelect: () => setDeleting({ rows: [row], scope: { local: false, remote: true } }), data: { 'data-branch-delete-remote-one': true } },
@@ -298,7 +299,7 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
         </span>
         <span role="cell" className={`flex min-w-0 ${NARROW_HIDDEN}`}>
           {pr ? (
-            <Pill tone={pr.tone} shrink onClick={() => void window.open(entry.pr!.url, '_blank')} data-tooltip={entry.pr!.url}>
+            <Pill tone={pr.tone} shrink onClick={() => openWebLink(entry.pr!.url)} data-tooltip={entry.pr!.url}>
               <span className="truncate">{pr.text}</span>
             </Pill>
           ) : (

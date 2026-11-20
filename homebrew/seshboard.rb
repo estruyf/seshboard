@@ -2,10 +2,10 @@ cask "seshboard" do
   version "0.0.7"
   sha256 "6020522178b743e3bdfb798a589d61a0215089b80b465b183afd23db50549616"
 
-  url "https://github.com/estruyf/switchboard/releases/download/v#{version}/Seshboard-#{version}-arm64-mac.zip"
+  url "https://github.com/estruyf/seshboard/releases/download/v#{version}/Seshboard-#{version}-arm64-mac.zip"
   name "Seshboard"
   desc "Desktop app for managing Claude Code sessions"
-  homepage "https://github.com/estruyf/switchboard"
+  homepage "https://github.com/estruyf/seshboard"
 
   livecheck do
     url :url

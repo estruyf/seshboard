@@ -15,6 +15,7 @@ export const GLOBAL_MODE_DETAIL = 'What new sessions start in, unless their Clau
 /** The lines under Settings › General › Global model and Global effort, also what Settings' search shows. */
 export const GLOBAL_MODEL_DETAIL = 'What new sessions start on, unless their Claude profile or project sets a model. A session can still change it.';
 export const GLOBAL_EFFORT_DETAIL = 'How hard new sessions think, unless their Claude profile or project sets an effort. A session can still change it.';
+export const GLOBAL_FALLBACK_DETAIL = 'Claude Code switches to this model when the main one is overloaded or unavailable, unless the Claude profile or project sets one. The main model is tried again on each turn.';
 
 /** The global permission mode as a menu names it: its mode, or the one picked last. */
 export const globalModeLabel = (setting: NewSessionMode) => (setting === 'remember' ? 'Last picked' : MODE_LABEL[setting]);

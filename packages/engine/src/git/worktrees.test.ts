@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { WorktreeEntry } from '@seshboard/protocol';
+import { mergeFacts, type WorktreeEntry } from '@seshboard/protocol';
 import { git } from './gitChanges.ts';
-import { ignoredFiles, listWorktrees, measureSize, parseWorktreeList, removalRefusal, removeWorktrees, sessionsBlocking, unlockWorktree, type SessionActivity } from './worktrees.ts';
+import { ignoredFiles, listWorktrees, measureSize, parseWorktreeList, readWorktrees, removalRefusal, removeWorktrees, sessionsBlocking, unlockWorktree, type SessionActivity } from './worktrees.ts';
 
 let dir: string;
 let repo: string;
@@ -129,6 +129,90 @@ describe('listWorktrees', () => {
     expect(byName(list, 'locked')).toMatchObject({ isLocked: true, lockReason: 'keep me', pr: { number: 7, state: 'open' } });
     expect(list.pullRequests).toBe(true);
   });
+});
+
+describe('readWorktrees', () => {
+  it('lists what is cheap at once and reads the slow facts per worktree, with the same answer as listWorktrees', async () => {
+    const merged = await addWorktree('merged');
+    await commit(merged, 'm.txt', 'merged\n');
+    await run(repo, 'merge', '-q', '--ff-only', 'worktree-merged');
+    await run(repo, 'push', '-q', 'origin', 'main');
+    const dirty = await addWorktree('dirty');
+    writeFileSync(join(dirty, 'wip.txt'), 'wip\n');
+    const unpushed = await addWorktree('unpushed');
+    await commit(unpushed, 'u1.txt', '1\n');
+    const pushed = await addWorktree('pushed');
+    await commit(pushed, 'p.txt', 'p\n');
+    await run(pushed, 'push', '-q', '-u', 'origin', 'worktree-pushed');
+    await addWorktree('empty');
+    const gone = await addWorktree('gone');
+    rmSync(gone, { recursive: true, force: true });
+    const detached = join(dir, 'detached');
+    await run(repo, 'worktree', 'add', '-q', '--detach', detached);
+
+    const quick = await readWorktrees(repo);
+    for (const w of quick.list.worktrees) {
+      expect(w.factsPending).toBe(true);
+      expect(w).toMatchObject({ uncommitted: 0, ahead: null, behind: null, merged: false, unpushed: 0, pushed: false, pr: null });
+    }
+    // What needs no per-worktree call is there: the folder, the branch, the upstream and when it was last touched.
+    expect(byName(quick.list, 'pushed')).toMatchObject({ branch: 'worktree-pushed', upstream: 'origin/worktree-pushed', missing: false, underClaudeDir: true });
+    expect(byName(quick.list, 'gone').missing).toBe(true);
+    expect(byName(quick.list, 'detached')).toMatchObject({ branch: null });
+    for (const w of quick.list.worktrees.filter((x) => !x.missing)) expect(w.lastActivity).toBeGreaterThan(0);
+
+    // Each worktree's facts, read one by one, say what the repository holds (the expectations are written out here).
+    const read = mergeFacts(quick.list, await Promise.all(quick.list.worktrees.map((w) => quick.facts(w.path))));
+    expect(read.worktrees.some((w) => w.factsPending)).toBe(false);
+    expect(read.worktrees.every((w) => !w.unreadable)).toBe(true);
+    expect(byName(read, 'merged')).toMatchObject({ merged: true, ahead: 0, behind: 0, unpushed: 0 });
+    expect(byName(read, 'dirty')).toMatchObject({ uncommitted: 1, merged: false });
+    expect(byName(read, 'unpushed')).toMatchObject({ ahead: 1, unpushed: 1, pushed: false, upstream: null });
+    expect(byName(read, 'pushed')).toMatchObject({ ahead: 1, unpushed: 0, pushed: true, upstream: 'origin/worktree-pushed' });
+    expect(byName(read, 'empty')).toMatchObject({ ahead: 0, merged: false, pushed: false });
+    expect(byName(read, 'gone')).toMatchObject({ missing: true, uncommitted: 0 });
+    expect(byName(read, 'detached')).toMatchObject({ ahead: 0, merged: false });
+    // listWorktrees is the same facts, all of them, in one call.
+    const full = await listWorktrees(repo);
+    expect(full.worktrees.map(({ lastActivity: _a, ...w }) => w)).toEqual(read.worktrees.map(({ lastActivity: _a, ...w }) => w));
+  }, 30_000);
+
+  it('refuses to judge a removal on placeholders, and removes from the quick look after counting the changes itself', async () => {
+    const tree = await addWorktree('judged');
+    const quick = await readWorktrees(repo);
+    const pending = byName(quick.list, 'judged');
+    expect(removalRefusal(pending)).toMatchObject({ code: 'FACTS_PENDING' });
+    expect(removalRefusal({ ...pending, factsPending: undefined })).toBeNull();
+    // removeWorktrees uses the quick look, so a dirty worktree must still be refused by its own count.
+    writeFileSync(join(tree, 'wip.txt'), 'wip\n');
+    const [refused] = await removeWorktrees(repo, [{ path: tree, deleteBranch: false, recoveryRef: false }], { activity: () => [], release: async () => {} });
+    expect(refused).toMatchObject({ ok: false, code: 'UNCOMMITTED' });
+    expect(existsSync(tree)).toBe(true);
+  }, 20_000);
+
+  it('says so when git could not read a worktree, instead of calling it clean and pushed', async () => {
+    const tree = await addWorktree('vanishing');
+    await commit(tree, 'v.txt', 'v\n');
+    const quick = await readWorktrees(repo);
+    // The branch goes after the list was read: the commit counts fail, which must not read as "nothing ahead".
+    await run(repo, 'update-ref', '-d', 'refs/heads/worktree-vanishing');
+    const facts = await quick.facts(tree);
+    expect(facts).toMatchObject({ unreadable: true, merged: false, pushed: false });
+    expect(mergeFacts(quick.list, [facts]).worktrees.find((w) => w.path === tree)).toMatchObject({ unreadable: true });
+  }, 20_000);
+
+  it('reads pushed against a fetch that happened after the list', async () => {
+    const tree = await addWorktree('later');
+    await commit(tree, 'l.txt', 'l\n');
+    await run(tree, 'push', '-q', '-u', 'origin', 'worktree-later');
+    const quick = await readWorktrees(repo);
+    expect(byName(quick.list, 'later').upstream).toBe('origin/worktree-later');
+    // Someone deletes the branch on the remote and a fetch notices: the upstream is gone by the time the facts are read.
+    await run(repo, 'push', '-q', 'origin', '--delete', 'worktree-later');
+    await run(repo, 'fetch', '-q', '--prune');
+    const facts = await quick.facts(tree);
+    expect(facts).toMatchObject({ upstream: null, ahead: 1, unpushed: 1, pushed: false });
+  }, 20_000);
 });
 
 describe('removeWorktrees', () => {

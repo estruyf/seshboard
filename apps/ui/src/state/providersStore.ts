@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
-import type { ModelOption, OptionalProvider, ProviderDetection, ProviderInfo, ProviderQuota, ProvidersSnapshot, ProviderStatus, SlashCommand } from '@seshboard/protocol/client';
+import type { ClaudeProfile, ModelOption, OptionalProvider, ProviderDetection, ProviderInfo, ProviderQuota, ProvidersSnapshot, ProviderStatus, SessionProvider, SlashCommand } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
+import { providerCanStart, startableProfiles } from '../components/providers/startable.ts';
+import { useProfiles } from './profilesStore.ts';
 
 interface ProvidersState {
   /** The providers besides Claude Code that a profile can use: what each is (its modes, its resume command, its folder). */
@@ -36,15 +38,30 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   },
 }));
 
-/** What `providers.detect` found for one provider, asked the first time something wants it. */
-export function useProviderDetection(id: OptionalProvider): ProviderDetection | null {
+/** What `providers.detect` found for every provider, asked the first time something wants it; null until then. */
+export function useProviderDetections(): ProviderDetection[] | null {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const detected = useProviders((s) => s.detected);
   useEffect(() => {
     if (client && detected === null) void useProviders.getState().detect(client);
   }, [client, detected]);
-  return detected?.find((d) => d.id === id) ?? null;
+  return detected;
+}
+
+/** Whether Seshboard can start sessions with a provider (`canStart`); a read-only one's are only shown. */
+export function useProviderCanStart(provider: SessionProvider | null | undefined): boolean {
+  return useProviders((s) => providerCanStart(provider ?? 'claude', s.providers));
+}
+
+/**
+ * The profiles that can start a session (`startableProfiles`): what New session, a project's profile, the default and
+ * triggers offer. `keep` stays listed anyway (the one picked now).
+ */
+export function useStartableProfiles(keep?: string | null): ClaudeProfile[] {
+  const profiles = useProfiles((s) => s.profiles);
+  const catalog = useProviders((s) => s.providers);
+  return useMemo(() => startableProfiles(profiles, catalog, keep), [profiles, catalog, keep]);
 }
 
 /**
@@ -106,6 +123,31 @@ export function useProvidersSync(): void {
     if (!client) return;
     void client.call('providers.list', {}).then((snapshot) => useProviders.getState().set(snapshot), () => {});
   }, [client]);
+}
+
+/**
+ * The models of several provider profiles at once (a pipeline step's other tools), by profile id: asked once each is
+ * ready to run (`providers.status` without a problem). Empty until then.
+ */
+export function useProviderModels(profileIds: readonly string[]): ReadonlyMap<string, ModelOption[]> {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const [models, setModels] = useState<ReadonlyMap<string, ModelOption[]>>(new Map());
+  const key = profileIds.join('\0');
+  useEffect(() => {
+    if (!client || profileIds.length === 0) return;
+    let current = true;
+    for (const profileId of profileIds) {
+      void client
+        .call('providers.status', { profileId })
+        .then((status) => (status.problem ? [] : client.call('providers.models', { profileId }).then((r) => r.models)))
+        .then((list) => current && setModels((m) => new Map(m).set(profileId, list)), () => {});
+    }
+    return () => {
+      current = false;
+    };
+  }, [client, key]);
+  return models;
 }
 
 export interface ProviderReadiness {

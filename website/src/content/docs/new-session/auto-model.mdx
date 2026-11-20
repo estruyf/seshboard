@@ -1,6 +1,6 @@
 ---
 title: Auto model
-description: Let Haiku read the first prompt of a new session and pick Haiku, Sonnet or Opus for it. Picked once, shown in the session, easy to undo.
+description: Let Haiku read the first prompt of a new session and pick the model and effort for it. Picked once, shown in the session, easy to undo.
 sidebar:
   label: Auto model
 ---
@@ -10,7 +10,9 @@ import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-**Auto** is a choice in the model menu, next to the models themselves. With Auto, Haiku reads your prompt when you start the session and picks the model it runs on: Haiku for quick answers, Sonnet for everyday coding, Opus for complex, multi-step work.
+**Auto** is a choice in the model menu, next to the models themselves. With Auto, Haiku reads your prompt when you start the session and picks the model it runs on: Haiku for quick answers, Sonnet for everyday coding, Opus for complex, multi-step work. With **Fable** turned on, it can pick Fable for the hardest work.
+
+It picks the effort too: low for a quick answer, medium for most work, high for a hard bug. An effort you set yourself in the effort chip wins.
 
 Use it when you don't want to choose a model for every session. Quick answers then don't run on Opus, and you can see each pick and undo it.
 
@@ -32,9 +34,15 @@ Your prompt goes to Claude once Auto has picked, on the model it picked. If you 
 
 Only the text of your prompt. It never sees your files, your memory, CLAUDE.md or the project's name. When the prompt has images, Haiku isn't sent them; it is told how many there are.
 
+A few rules come before Haiku's pick:
+
+- A prompt that changes code never goes to Haiku.
+- A prompt about images goes to Opus.
+- With one model allowed in [Settings](#settings), Auto picks it without asking Haiku.
+
 ### Picked once
 
-Auto picks when the session starts and never switches by itself. Claude Code's prompt cache belongs to one model, so switching would read the whole conversation again. Later, Auto can only [suggest a stronger model](#a-stronger-model-later).
+Auto picks when the session starts and never switches by itself. Claude Code's prompt cache belongs to one model, so switching would read the whole conversation again. Later, Auto can only [suggest a step up](#a-step-up-later).
 
 ### When picking fails
 
@@ -51,20 +59,29 @@ Above Claude's first answer, a quiet line says what Auto picked and why, such as
 The details show:
 
 - the reason Haiku gave, in full
-- **Estimate**: how much the model uses against Opus, such as "About three fifths of what Opus would use (est.)". It is an estimate, like the shares in [Usage](/usage/).
+- **Effort**: the effort Auto picked with the model, such as "Low, picked with the model".
+- **Estimate**: how much the model uses against Opus, at today's list prices: "Under a tenth of what Opus would use (est.)" for Haiku, about half for Sonnet, about twice for Fable. It is an estimate, like the shares in [Usage](/usage/).
 - **Routing**: how many tokens Haiku read to pick. They count in your usage.
 - **Run again with Opus** (and the other models Auto may pick): starts a new session with the same prompt and images on that model, and archives this one. To undo, find it in [Archived](/sessions/archived/).
 - **Use Opus from the next message**: switches the model for the rest of the session. The cache starts over, so the next turn reads the whole conversation again.
 
-## A stronger model later
+## A step up later
 
-When a session started by Auto grows past its first prompt, a note above the message box suggests a stronger model:
+When a session started by Auto grows past its first prompt, a note above the message box suggests one step up, not a jump to the strongest model:
 
-> **This looks bigger than the first prompt.** Use Opus from this message? The cache starts over, so the next turn reads about 84K tokens again.
+1. **More effort on the same model** first, up to high:
 
-The number is the session's context right now. It shows when you ask to plan, refactor or design across many files, when Claude has edited many files, when the session has run for many messages, or when tool calls keep failing. Seshboard reads this from the conversation; it makes no extra model call.
+   > **This looks harder than the first prompt.** Give Sonnet more time to think and check its work, from this message?
 
-Choose **Use Opus**, **Keep Sonnet** or **Don't suggest in this session**. It never switches without a click, and it shows at most once per session.
+   Choose **Use high effort**, **Keep medium effort** or **Don't suggest in this session**.
+
+2. **The next model up, at medium effort**, once the effort is high, or right away when you ask for something new and big:
+
+   > **This looks bigger than the first prompt.** Use Opus at medium effort from this message? Its cache starts over, so the next turn reads about 84K tokens again.
+
+   The number is the session's context right now. Choose **Use Opus**, **Keep Sonnet** or **Don't suggest in this session**. With a large context, **Compact, then use Opus** compacts the conversation on the current model first, so the new model's first turn stays small.
+
+The note shows when you ask to plan, refactor or design across many files, when Claude has edited many files, when the session has run for many messages, or when tool calls keep failing. Seshboard reads this from the conversation; it makes no extra model call. It never switches without a click, and it shows at most once per session. It only suggests models you allow in [Settings](#settings).
 
 ## Queued prompts and project defaults
 
@@ -74,7 +91,9 @@ A project can start every new session on Auto: choose **Auto** for **Model** on 
 
 ## Usage
 
-Each pick uses a few hundred to a few thousand Haiku tokens. The call runs on the session's Claude profile, so it counts toward that plan. In [Usage](/usage/), the **Model** breakdown shows the calls as their own row, **Auto routing**, with how many picks it made. Each model's row says how many of its sessions Auto picked, such as "Sonnet · 11 by Auto".
+Each pick uses a few hundred to a few thousand Haiku tokens. The call runs on the session's Claude profile, so it counts toward that plan. In [Usage](/usage/), the **Model** breakdown shows the calls as their own row, **Auto routing**, with how many picks it made.
+
+Each model's row says how many of its sessions Auto picked, and how many of those you moved to another model, such as "Sonnet · 11 by Auto, 2 changed". If you often move sessions to a stronger model, set **When in doubt** to **Stronger**.
 
 ## Settings
 
@@ -85,9 +104,9 @@ In [Settings](/settings/), under **Conversation**:
 | Setting | What it does |
 |---|---|
 | **Auto model** | Shows Auto in the model menus. On by default. |
-| **Models it can pick** | Haiku, Sonnet and Opus. At least one stays checked. |
+| **Models it can pick** | Haiku, Sonnet, Opus and Fable. At least one stays checked. Fable is off by default: it is for the hardest work, such as a migration across the whole codebase, and uses about twice what Opus does. |
 | **When in doubt** | Which way Auto leans on a close call: **Cheaper**, **Balanced** or **Stronger**. |
-| **Suggest a stronger model later** | The note above the message box. It never switches by itself. |
+| **Suggest a stronger model later** | The note above the message box: more effort first, then the next model. It never switches by itself. |
 
 <Aside>
 With **Auto model** off, Auto leaves every menu. Anything saved as Auto (a project's default, the choice you made last, a queued prompt) starts on your default model, and New session says so under the message box.

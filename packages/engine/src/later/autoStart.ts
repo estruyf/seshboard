@@ -143,6 +143,7 @@ export class QueueAutoStarter {
   }
 
   private summary() {
+    const focus = this.deps.focus();
     return queueStates({
       items: this.deps.store.list(),
       started: this.deps.store.startedLinks(),
@@ -151,6 +152,7 @@ export class QueueAutoStarter {
       limitOf: (item) => this.deps.limitOf(item),
       now: this.now(),
       outcomeOf: (id) => this.outcomeOf(id),
+      focusFull: focus.limit !== null && focus.count >= focus.limit,
     });
   }
 
@@ -170,6 +172,12 @@ export class QueueAutoStarter {
         continue;
       }
       if (this.starting.has(item.id)) continue;
+      if (entry.baseState === 'waiting' && item.waitFor.kind === 'slot') {
+        // It waits for a free slot, not for a session: it starts once one frees.
+        this.heldByLimit.add(item.id);
+        if (!this.armed.has(item.id)) this.armed.set(item.id, new Set());
+        continue;
+      }
       if (entry.baseState === 'waiting') {
         // It waits on a session now: its finish decides, as for any item that starts by itself.
         this.heldByLimit.delete(item.id);

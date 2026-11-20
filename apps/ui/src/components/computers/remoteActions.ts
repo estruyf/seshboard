@@ -38,6 +38,25 @@ export function archiveRemote(client: RpcClient<Contract> | null, target: Remote
   setRemoteFlags(client, target.computerId, target.sessionId, archived ? { archived: true, pinned: false } : { archived: false });
 }
 
+/** "Reopen", or "Reopen with its 3 steps" for a pipeline's parent, as for a session here. */
+export const remoteReopenLabel = (steps: number): string => (steps ? `Reopen with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Reopen');
+
+/**
+ * Reopens a session in Done on another computer (`session.setFlags`, which brings a pipeline's parent back with its
+ * run's tree there), then opens it: that computer doesn't let anything read a session in Done. True once reopened.
+ */
+export async function reopenRemote(client: RpcClient<Contract> | null, target: Pick<RemoteTarget, 'computerId' | 'sessionId'>, options: { open?: { beside?: boolean } } = {}): Promise<boolean> {
+  if (!client) return false;
+  try {
+    await callComputer(client, target.computerId, 'session.setFlags', { sessionId: target.sessionId, archived: false });
+  } catch (e) {
+    toast((e as Error).message);
+    return false;
+  }
+  if (options.open) useComputers.getState().openSession(target, options.open);
+  return true;
+}
+
 /** Stop on another computer: the run that goes on in its tree, and Claude's turn in the session (a run row has none). */
 export async function stopRemote(client: RpcClient<Contract> | null, target: RemoteTarget): Promise<void> {
   if (!client) return;
@@ -87,11 +106,21 @@ export function setRemoteUnread(client: RpcClient<Contract> | null, computerId: 
 export function remoteSessionEntries(
   client: RpcClient<Contract> | null,
   computer: Pick<Computer, 'id' | 'name' | 'state' | 'features'>,
-  session: Pick<RemoteSession, 'id' | 'title' | 'pinned' | 'unread' | 'projectId' | 'projectName'> & Pick<RemoteTarget, 'runRow' | 'treeRunId'>,
+  session: Pick<RemoteSession, 'id' | 'title' | 'pinned' | 'unread' | 'projectId' | 'projectName'> & Pick<RemoteTarget, 'runRow' | 'treeRunId'> & { done?: { steps: number } | null },
   options: { open: boolean },
 ): MenuEntry[] {
   const away = computer.state !== 'connected';
   const target: RemoteTarget = { computerId: computer.id, sessionId: session.id, runRow: session.runRow ?? false, treeRunId: session.treeRunId ?? null };
+  // In Done there: it can only be reopened (and then opened), not read or changed.
+  if (session.done) {
+    return [
+      { label: 'Reopen and open', disabled: away, onSelect: () => void reopenRemote(client, target, { open: {} }), data: { 'data-remote-reopen-open': true } },
+      { label: remoteReopenLabel(session.done.steps), hint: `on ${computer.name}`, disabled: away, onSelect: () => void reopenRemote(client, target), data: { 'data-remote-reopen': true } },
+      { label: 'Copy title', onSelect: () => void navigator.clipboard.writeText(session.title) },
+      'separator',
+      { label: `New session in ${session.projectName}`, disabled: away, onSelect: () => newSessionOn(computer.id, session.projectId), data: { 'data-remote-new-session': true } },
+    ];
+  }
   // A run row (a run started from New session there) has no session yet: it opens, stops and goes to Done with its tree.
   if (session.runRow) {
     const run = remoteRunState(computer.id, session.id);

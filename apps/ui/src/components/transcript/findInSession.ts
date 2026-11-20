@@ -1,4 +1,4 @@
-import type { RenderItem } from './displayItems.ts';
+import { isFoldedMessage, type RenderItem } from './displayItems.ts';
 
 /** One occurrence of the search text: the row it's in, and which occurrence in that row. */
 export interface FindMatch {
@@ -8,8 +8,9 @@ export interface FindMatch {
 
 /**
  * The text find searches in a row: what reads as a message (your prompts, Claude's replies,
- * commands, notices, plans, agent report titles). Collapsed tool activity is left out, since a
- * match there couldn't be shown.
+ * commands, notices, plans, agent report titles, Claude's messages Skim folded, which open when
+ * the search lands on one). Collapsed tool activity is left out, since a match there couldn't be
+ * shown.
  */
 export function searchableText(item: RenderItem): string | null {
   switch (item.kind) {
@@ -24,6 +25,10 @@ export function searchableText(item: RenderItem): string | null {
     case 'tool': {
       const plan = item.name === 'ExitPlanMode' ? (item.input as { plan?: unknown } | null)?.plan : null;
       return typeof plan === 'string' ? plan : null;
+    }
+    case 'activity': {
+      const messages = item.items.filter(isFoldedMessage);
+      return messages.length > 0 ? messages.map((message) => message.text).join('\n\n') : null;
     }
     default:
       return null;

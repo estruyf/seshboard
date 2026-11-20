@@ -104,8 +104,12 @@ export function ClonePanel({
               )}
             </span>
             {parent !== null && (
-              <label className="flex h-6 min-w-0 flex-1 items-center rounded-md border border-edge bg-bg px-2 font-mono text-meta focus-within:border-accent-ink" data-tooltip="The folder it goes in">
-                <span className="shrink-0 text-faint">{parent}</span>
+              // Beside the name where it fits, on its own line in New session's column. A long parent is cut at its
+              // start (right to left, the path kept left to right inside), so the end of it stays in view.
+              <label className="flex h-6 min-w-0 flex-1 basis-48 items-center rounded-md border border-edge bg-bg px-2 font-mono text-meta focus-within:border-accent-ink" data-tooltip={`The folder it goes in\n${plan?.where ?? ''}`}>
+                <span className="min-w-0 shrink-[1000] truncate text-faint [direction:rtl]">
+                  <bdi dir="ltr">{parent}</bdi>
+                </span>
                 <input
                   value={name}
                   onChange={(e) => onName(e.target.value)}
@@ -114,7 +118,8 @@ export function ClonePanel({
                   placeholder={repo.name}
                   aria-label="Folder name"
                   spellCheck={false}
-                  className="w-full min-w-0 bg-transparent text-text outline-none placeholder:text-text read-only:text-muted"
+                  size={Math.max(4, (name || repo.name).length)}
+                  className="min-w-[6ch] grow bg-transparent text-text outline-none placeholder:text-text read-only:text-muted"
                   data-clone-folder
                 />
               </label>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, checkRemoteSessions, RemoteSessions, type Pipeline, type PipelineRunState, type SessionSummary, type TranscriptMessage } from '@seshboard/protocol';
+import { BUILT_IN_PIPELINES, checkRemoteSessions, RemoteSessions, type Pipeline, type PipelineRunState, type SessionHostInfo, type SessionSummary, type TranscriptMessage } from '@seshboard/protocol';
 import { projectIdOf, remoteMessage, remoteRuns, remoteSessions } from './remoteView.ts';
 
 const msg = (role: TranscriptMessage['role'], blocks: TranscriptMessage['blocks']): TranscriptMessage => ({ uuid: 'm1', role, timestamp: 1, parentToolUseId: null, model: null, blocks });
@@ -34,7 +34,10 @@ describe('remoteMessage', () => {
   it('drops reminders and names what a system turn marks', () => {
     expect(user('Fix it<system-reminder>secret</system-reminder>')).toMatchObject({ role: 'user', blocks: [{ type: 'text', text: 'Fix it' }] });
     expect(user('<system-reminder>secret</system-reminder>').blocks).toEqual([]);
+    // Skim's keep line is for the desktop's fade only.
+    expect(remoteMessage(msg('assistant', [{ type: 'text', text: 'It works.\n\n<!-- keep: "It works" -->' }])).blocks).toEqual([{ type: 'text', text: 'It works.' }]);
     expect(remoteMessage(msg('system', [{ type: 'unknown', kind: 'compact_boundary' }]))).toMatchObject({ role: 'system', blocks: [{ type: 'text', text: 'Conversation compacted' }] });
+    expect(remoteMessage(msg('system', [{ type: 'unknown', kind: 'compact_boundary_idle' }]))).toMatchObject({ role: 'system', blocks: [{ type: 'text', text: 'Compacted while idle' }] });
     // A tool result is left alone, even when its output looks like markup.
     const result = remoteMessage(msg('user', [{ type: 'tool_result', toolUseId: 't', isError: false, text: '<task-notification>', truncated: false, images: [] }]));
     expect(result.role).toBe('user');
@@ -128,6 +131,17 @@ describe('remoteSessions with runs', () => {
     expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW }).sessions[0]).not.toHaveProperty('startedBy');
   });
 
+  it("gives a read-only provider's session its resume command, in place of the message box", () => {
+    const codex = { ...summary('019a-codex', null), provider: 'codex' } as SessionSummary;
+    const copilot = { ...summary('copilot-1', null), provider: 'copilot' } as SessionSummary;
+    const list = remoteSessions({ summaries: [codex, copilot, summary('claude-1', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), readOnlyProviders: new Map([['codex', 'codex resume {sessionId}']]), now: NOW });
+    const byId = new Map(list.sessions.map((s) => [s.id, s]));
+    expect(byId.get('019a-codex')!.readOnly).toEqual({ resumeCommand: 'codex resume 019a-codex' });
+    expect(byId.get('copilot-1')).not.toHaveProperty('readOnly');
+    expect(byId.get('claude-1')).not.toHaveProperty('readOnly');
+    expect(RemoteSessions.parse(list).sessions.find((s) => s.id === '019a-codex')!.readOnly).toEqual({ resumeCommand: 'codex resume 019a-codex' });
+  });
+
   it('says which trigger started a session or a run, and nothing for the rest', () => {
     const link = (sessionId: string) => ({ sessionId, triggerId: 't1', eventId: 'e1', triggerName: 'CI fails on main', kind: 'ci' as const, ref: 'CI #4512', url: 'https://github.com/acme/web/actions/runs/4512', at: NOW - 60_000 });
     const row = runState({ id: 'run-row', parentSessionId: null, task: 'Fix CI', unattended: true });
@@ -144,6 +158,17 @@ describe('remoteSessions with runs', () => {
     // One a later version sends in another shape is left out, not the session.
     const odd = RemoteSessions.parse({ ...parsed, sessions: parsed.sessions.map((s) => ({ ...s, trigger: { name: 1 } })) });
     expect(odd.sessions.map((s) => s.trigger)).toEqual([undefined, undefined]);
+  });
+
+  it('sends a running session\u2019s API retry, and nothing for one that is not retrying', () => {
+    const apiRetry = { attempt: 3, maxRetries: 10, delayMs: 8000, status: 529, at: 5 };
+    const host = { sessionId: 'parent', cwd: ROOT, state: 'running', model: 'opus', effort: null, permissionMode: 'default', profileId: 'work', backgroundTasks: [] } as unknown as SessionHostInfo;
+    const options = { archiveAfterDays: 7, scope: 'switchboard' as const, projectNames: new Map(), now: NOW };
+    const list = remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [{ ...host, apiRetry }] }, options);
+    expect(list.sessions[0]!.apiRetry).toEqual(apiRetry);
+    // What another computer reads keeps it.
+    expect(RemoteSessions.parse(list).sessions[0]!.apiRetry).toEqual(apiRetry);
+    expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [host] }, options).sessions[0]).not.toHaveProperty('apiRetry');
   });
 
   it('sends no runs from an engine without pipelines', () => {

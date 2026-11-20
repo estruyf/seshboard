@@ -1,15 +1,16 @@
 import type { Options, PermissionResult, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { RpcError, type ModelOption, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type StreamDelta } from '@seshboard/protocol';
+import { SKIM_MARKS_PROMPT, RpcError, type ModelOption, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type StreamDelta } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
 import type { LimitStop } from '../usageLimit/usageLimit.ts';
 import { describeSuggestions, RECHECK_MESSAGE } from './permissions.ts';
-import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, toModelOption, type HostConfig } from './sessionHost.ts';
+import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, isFallbackModel, toModelOption, type HostConfig } from './sessionHost.ts';
 import { createMemorySessionSettings, createSessionSettingsStore, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
@@ -62,6 +63,8 @@ class FakeQuery {
   inputEnded = false;
   mode: string;
   model = 'fake-model';
+  /** The model its plain replies come from (`message.model`); the fallback when the main one is overloaded. */
+  replyModel = 'fake';
   /** The folder Claude's shell is in, which `cd` moves; each turn's init reports it. */
   shellCwd: string | undefined;
   constructor(
@@ -79,7 +82,7 @@ class FakeQuery {
     const sessionId = (this.options.sessionId ?? this.options.resume)!;
     const state = (s: string) => this.out.push({ type: 'system', subtype: 'session_state_changed', state: s, session_id: sessionId });
     const assistant = (text: string) =>
-      this.out.push({ type: 'assistant', uuid: `a-${text}`, parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text }] } });
+      this.out.push({ type: 'assistant', uuid: `a-${text}`, parent_tool_use_id: null, session_id: sessionId, message: { model: this.replyModel, content: [{ type: 'text', text }] } });
     for await (const message of this.prompt) {
       const text = (message.message.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text')?.text ?? '';
       this.received.push({ text, ...(message.priority ? { priority: message.priority } : {}) });
@@ -269,6 +272,12 @@ function setup(
     planApproved?: HostManagerDeps['planApproved'];
     autoAnswer?: HostManagerDeps['autoAnswer'];
     assertTrusted?: HostManagerDeps['assertTrusted'];
+    browserServer?: HostManagerDeps['browserServer'];
+    orchestratorServer?: HostManagerDeps['orchestratorServer'];
+    isOrchestrator?: HostManagerDeps['isOrchestrator'];
+    appendSystemFor?: HostManagerDeps['appendSystemFor'];
+    fallbackModel?: HostManagerDeps['fallbackModel'];
+    planModeInstructionsFor?: HostManagerDeps['planModeInstructionsFor'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -277,6 +286,8 @@ function setup(
   const infos: SessionHostInfo[] = [];
   const streams: StreamDelta[] = [];
   const messages: Array<{ id: string; messages: RawSessionMessage[] }> = [];
+  const notices: RawSessionMessage[] = [];
+  const retracted: string[] = [];
   const permissions: PermissionRequest[] = [];
   const resolved: string[] = [];
   const created: string[] = [];
@@ -328,6 +339,8 @@ function setup(
     onInfo: (i) => infos.push(i),
     onStream: (d) => streams.push(d),
     onMessages: (id, m) => messages.push({ id, messages: m }),
+    onNotice: (_id, m) => notices.push(m),
+    onRetract: (_id, uuids) => retracted.push(...uuids),
     onPermission: (r) => permissions.push(r),
     onPermissionResolved: (id) => resolved.push(id),
     onCreated: (id) => created.push(id),
@@ -340,13 +353,19 @@ function setup(
     planApproved: opts.planApproved,
     autoAnswer: opts.autoAnswer,
     assertTrusted: opts.assertTrusted,
+    browserServer: opts.browserServer,
+    orchestratorServer: opts.orchestratorServer,
+    isOrchestrator: opts.isOrchestrator,
+    appendSystemFor: opts.appendSystemFor,
+    fallbackModel: opts.fallbackModel,
+    planModeInstructionsFor: opts.planModeInstructionsFor,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
     ephemeral,
     log: () => {},
   });
-  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral, upNextEvents, turns };
+  return { manager, queries, infos, streams, messages, notices, retracted, permissions, resolved, created, models, warmups, ephemeral, upNextEvents, turns };
 }
 
 /** Up next kept in memory, as the engine keeps it in SQLite. */
@@ -580,6 +599,107 @@ describe('HostManager', () => {
     expect(t.manager.list().permissions).toHaveLength(1);
     t.manager.respond(t.permissions[2]!.requestId, { behavior: 'allow' });
     await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-Write=recheck Bash=recheck AskUserQuestion=allow')));
+    t.manager.closeAll();
+  });
+
+  it('asks for a browser site, or scripts on it, in the session’s permission card, and reports which choice you picked', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const ask = { kind: 'site' as const, site: 'https://app.example.com', tool: 'click' as const, input: { ref: 'e1' }, profile: null, project: true };
+    const always = t.manager.askBrowser(id, ask);
+    await until(() => t.permissions.length === 1);
+    expect(t.permissions[0]).toMatchObject({
+      sessionId: id,
+      toolName: 'mcp__browser__click',
+      title: 'Claude Code wants to use app.example.com in the browser',
+      alwaysLabel: 'app.example.com in this project',
+      sessionAllow: true,
+    });
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', always: true });
+    await expect(always).resolves.toBe('always');
+    // Scripts: their own card, in the browser profile it names; outside an added project, no Always allow.
+    const session = t.manager.askBrowser(id, { ...ask, kind: 'scripts', tool: 'evaluate', input: { script: 'document.title' }, profile: 'Admin', project: false });
+    await until(() => t.permissions.length === 2);
+    expect(t.permissions[1]).toMatchObject({ title: 'Claude Code wants to run scripts on app.example.com as you', alwaysLabel: null, description: expect.stringContaining('browser profile Admin') });
+    t.manager.respond(t.permissions[1]!.requestId, { behavior: 'allow', session: true });
+    await expect(session).resolves.toBe('session');
+    const declined = t.manager.askBrowser(id, { ...ask, site: 'https://other.example.com', tool: 'open', input: { url: 'https://other.example.com/' } });
+    await until(() => t.permissions.length === 3);
+    t.manager.respond(t.permissions[2]!.requestId, { behavior: 'deny' });
+    await expect(declined).resolves.toBe('deny');
+    t.manager.closeAll();
+  });
+
+  it('gives sessions the browser server while it is on, with its tools allowed: its bridge asks for sites itself', async () => {
+    let on = false;
+    const owners: Array<() => string | null> = [];
+    const t = setup({
+      browserServer: async (sessionId) => {
+        if (!on) return null;
+        owners.push(sessionId);
+        return { command: '/app/Seshboard', args: ['browser-mcp.js'], env: { SESHBOARD_BROWSER_TOKEN: 'secret' } };
+      },
+    });
+    await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.mcpServers).toBeUndefined();
+    on = true;
+    t.manager.browserChanged();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    expect(t.queries[1]!.options.mcpServers?.browser).toEqual({ type: 'stdio', command: '/app/Seshboard', args: ['browser-mcp.js'], env: { SESHBOARD_BROWSER_TOKEN: 'secret' } });
+    expect(t.queries[1]!.options.allowedTools).toEqual(expect.arrayContaining(['mcp__browser__open', 'mcp__browser__click', 'mcp__browser__console']));
+    // Its calls drive this session's page.
+    expect(owners.at(-1)!()).toBe(id);
+    t.manager.closeAll();
+  });
+
+  it('starts and resumes an orchestrator with its tools and its role, and no other session', async () => {
+    const owners: Array<() => string | null> = [];
+    const server = { command: '/app/Seshboard', args: ['orchestrator-mcp.js'], env: { SESHBOARD_ORCHESTRATOR_TOKEN: 'secret' } };
+    const t = setup({
+      cwds: { 'old-orchestrator': '/w', 'its-session': '/w' },
+      orchestratorServer: async (sessionId) => (owners.push(sessionId), server),
+      isOrchestrator: (id) => id === 'old-orchestrator',
+      appendSystemFor: (id) => (id === 'old-orchestrator' ? 'You are the orchestrator.' : id === 'its-session' ? 'Branch from dev.' : null),
+    });
+    await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.mcpServers).toBeUndefined();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', orchestrator: true, appendSystem: 'You are the orchestrator.' });
+    expect(t.queries[1]!.options.mcpServers?.orchestrator).toEqual({ type: 'stdio', ...server });
+    expect(t.queries[1]!.options.allowedTools).toEqual(expect.arrayContaining(['mcp__orchestrator__start_session']));
+    expect(t.queries[1]!.options.systemPrompt).toMatchObject({ append: expect.stringContaining('You are the orchestrator.') });
+    // Its calls are this session's.
+    expect(owners.at(-1)!()).toBe(id);
+    await t.manager.send({ sessionId: 'old-orchestrator', text: 'Say hi', attachments: [], fork: false });
+    expect(t.queries[2]!.options.mcpServers?.orchestrator).toEqual({ type: 'stdio', ...server });
+    expect(t.queries[2]!.options.systemPrompt).toMatchObject({ append: expect.stringContaining('You are the orchestrator.') });
+    // A session it started resumes with the project's instructions, without the tools.
+    await t.manager.send({ sessionId: 'its-session', text: 'Say hi', attachments: [], fork: false });
+    expect(t.queries[3]!.options.mcpServers).toBeUndefined();
+    expect(t.queries[3]!.options.systemPrompt).toMatchObject({ append: expect.stringContaining('Branch from dev.') });
+    t.manager.closeAll();
+  });
+
+  it("starts a project's sessions with its plan mode instructions, and passes nothing for a project without", async () => {
+    const t = setup({
+      cwds: { old: '/with' },
+      planModeInstructionsFor: (cwd) => (cwd === '/with' ? 'Read first. List the files.' : null),
+    });
+    await t.manager.create({ ...base, cwd: '/with', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.planModeInstructions).toBe('Read first. List the files.');
+    await t.manager.create({ ...base, cwd: '/without', prompt: 'Say hi' });
+    expect(t.queries[1]!.options).not.toHaveProperty('planModeInstructions');
+    // A resumed session reads them again.
+    await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: false });
+    expect(t.queries[2]!.options.planModeInstructions).toBe('Read first. List the files.');
+    t.manager.closeAll();
+  });
+
+  it("gives a fork the project's plan mode instructions too", async () => {
+    const t = setup({ cwds: { old: '/with' }, planModeInstructionsFor: (cwd) => (cwd === '/with' ? 'Read first.' : null) });
+    const forked = await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: true });
+    expect(forked.sessionId).not.toBe('old');
+    expect(t.queries[0]!.options).toMatchObject({ forkSession: true, planModeInstructions: 'Read first.' });
     t.manager.closeAll();
   });
 
@@ -1090,6 +1210,137 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('passes the fallback model its resolver gives, for a new session, a resume and a pre-warmed process, and only when it is not the model itself', async () => {
+    const asked: Array<[string, string]> = [];
+    const t = setup({
+      cwds: { old: '/work/app' },
+      fallbackModel: (cwd, profileId) => {
+        asked.push([cwd, profileId]);
+        return cwd === '/work/none' ? null : 'sonnet';
+      },
+    });
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.fallbackModel).toBe('sonnet');
+    expect(asked).toContainEqual(['/work/app', 'default']);
+    // Nothing set: the option is not there at all.
+    const none = await t.manager.create({ ...base, cwd: '/work/none', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(t.infos, none) === 'idle');
+    expect('fallbackModel' in t.queries[1]!.options).toBe(false);
+    // The fallback is the model itself: Claude Code would refuse it, so it is left out.
+    const same = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'sonnet' });
+    await until(() => lastState(t.infos, same) === 'idle');
+    expect('fallbackModel' in t.queries[2]!.options).toBe(false);
+    // A resume starts a new process, so it asks again.
+    await t.manager.send({ sessionId: 'old', text: 'hello', attachments: [], fork: false });
+    await until(() => t.queries.length === 4);
+    expect(t.queries[3]!.options.fallbackModel).toBe('sonnet');
+    // A pre-warmed process starts with it too, and is adopted by a session that can use it.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[0]!.options.fallbackModel).toBe('sonnet');
+    const warm = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'opus' });
+    expect(warm).toBe(t.warmups[0]!.options.sessionId);
+    t.manager.closeAll();
+  });
+
+  it('starts a session cold when its model is the fallback of the pre-warmed process', async () => {
+    const t = setup({ fallbackModel: () => 'sonnet' });
+    await t.manager.prewarm('/work/app', 'default');
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'sonnet' });
+    expect(id).not.toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect('fallbackModel' in t.queries[0]!.options).toBe(false);
+    t.manager.closeAll();
+  });
+
+  it('shows a turn that ran on the fallback model, until a turn runs on the main one again', async () => {
+    const t = setup({ fallbackModel: () => 'sonnet', onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5-20260101') });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(t.infos, id) === 'idle' && t.infos.at(-1)!.fallbackRan === 'claude-sonnet-5-5-20260101');
+    // Claude Code tries the main model again at the next turn: its reply clears it.
+    t.queries[0]!.replyModel = 'fake-model';
+    await t.manager.send({ sessionId: id, text: 'again', attachments: [], fork: false });
+    await until(() => t.infos.at(-1)!.fallbackRan === null);
+    t.manager.closeAll();
+  });
+
+  it('does not call a reply the fallback after you switch to the fallback model yourself', async () => {
+    const t = setup({ fallbackModel: () => 'sonnet', onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5-20260101') });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });
+    await until(() => t.infos.at(-1)!.fallbackRan === 'claude-sonnet-5-5-20260101');
+    // /model sonnet: the next turn's init names Sonnet, which is the main model now.
+    t.queries[0]!.model = 'claude-sonnet-5-5-20260101';
+    await t.manager.send({ sessionId: id, text: 'again', attachments: [], fork: false });
+    await until(() => t.infos.at(-1)!.fallbackRan === null);
+    await t.manager.send({ sessionId: id, text: 'and again', attachments: [], fork: false });
+    await until(() => t.queries[0]!.received.length === 3 && lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)!.fallbackRan).toBeNull();
+    t.manager.closeAll();
+  });
+
+  it('gives a fork, a start on another profile and a question the fallback model of their own folder and profile', async () => {
+    const asked: Array<[string, string]> = [];
+    const t = setup({
+      cwds: { plan: '/work/app', old: '/work/app' },
+      profiles: { old: 'work' },
+      openElsewhere: ['old'],
+      fallbackModel: (cwd, profileId) => {
+        asked.push([cwd, profileId]);
+        return profileId === 'work' ? 'haiku' : 'sonnet';
+      },
+    });
+    const fork = await t.manager.fork({ from: 'plan', text: 'Build it', model: 'opus', effort: null, permissionMode: 'default' });
+    await until(() => lastState(t.infos, fork) === 'idle');
+    expect(t.queries[0]!.options).toMatchObject({ forkSession: true, fallbackModel: 'sonnet' });
+    const work = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', model: 'opus', profileId: 'work' });
+    await until(() => lastState(t.infos, work) === 'idle');
+    expect(t.queries[1]!.options.fallbackModel).toBe('haiku');
+    expect(asked).toContainEqual(['/work/app', 'work']);
+    // Ask about this session: the helper fork of a session on the work profile, and not on its own model.
+    await t.manager.askAbout('old', '<side-question>\n</side-question>\n\nWhat changed?', () => {});
+    expect(t.queries[2]!.options).toMatchObject({ forkSession: true, persistSession: false, fallbackModel: 'haiku' });
+    t.manager.closeAll();
+  });
+
+  it('says nothing about the fallback when none is set, or when a reply is from some other model', async () => {
+    const without = setup({ onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5') });
+    const a = await without.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(without.infos, a) === 'idle');
+    expect(without.infos.some((i) => i.fallbackRan)).toBe(false);
+    // A fallback is set, but the reply is from neither: not something to report.
+    const other = setup({ fallbackModel: () => 'sonnet', onQuery: (q) => void (q.replyModel = 'claude-haiku-5') });
+    const b = await other.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', model: 'opus' });
+    await until(() => lastState(other.infos, b) === 'idle');
+    expect(other.infos.some((i) => i.fallbackRan)).toBe(false);
+    without.manager.closeAll();
+    other.manager.closeAll();
+  });
+
+  it("pre-warms with the project's plan mode instructions and adopts the process only while they are the same", async () => {
+    let text: string | null = 'Read first.';
+    const t = setup({ planModeInstructionsFor: () => text });
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[0]!.options.planModeInstructions).toBe('Read first.');
+    // Asking again with the same text keeps the process.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(1);
+    const warm = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    expect(warm).toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, warm) === 'idle');
+    // The text changed while one waited: a new pre-warm replaces it, and a session that comes first starts cold.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(2);
+    text = 'Ask first.';
+    const cold = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    expect(cold).not.toBe(t.warmups[1]!.options.sessionId);
+    await until(() => lastState(t.infos, cold) === 'idle');
+    expect(t.queries.at(-1)!.options.planModeInstructions).toBe('Ask first.');
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(3);
+    expect(t.warmups[2]!.options.planModeInstructions).toBe('Ask first.');
+    t.manager.closeAll();
+  });
+
   it('drops a pre-warmed process that failed, so the next pre-warm tries again and a session starts fresh', async () => {
     const t = setup({ warmFails: { message: 'Claude Code process exited with code 1' } });
     await t.manager.prewarm('/work/app', 'default');
@@ -1195,6 +1446,24 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('starts sessions with the visualize server while Visuals in replies is on, and drops a warm process when it changes', async () => {
+    const t = setup();
+    const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    await t.manager.prewarm('/work/app', 'default');
+    t.manager.setVisuals(null);
+    expect(t.warmups[0]!.closed).toBe(false);
+    t.manager.setVisuals(visualize);
+    await until(() => t.warmups[0]!.closed);
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.mcpServers).toEqual({ visualize: { type: 'stdio', ...visualize } });
+    t.manager.setVisuals(null);
+    const other = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, other) === 'idle');
+    expect(t.queries[1]!.options.mcpServers).toBeUndefined();
+    t.manager.closeAll();
+  });
+
   it('drops a pre-warm still starting when Use Claude in Chrome changes', async () => {
     const t = setup();
     const starting = t.manager.prewarm('/work/app', 'default');
@@ -1293,6 +1562,16 @@ describe('HostManager', () => {
     expect(t.queries[0]!.options.model).toBeUndefined();
     expect(t.infos.at(-1)).toMatchObject({ model: 'sonnet', autoPick });
     expect(t.infos.at(-1)!.autoChoosing).toBeUndefined();
+    t.manager.closeAll();
+  });
+
+  it('starts on the effort Auto picked with the model', async () => {
+    const t = setup();
+    const autoPick = { model: 'opus' as const, effort: 'high' as const, reason: 'A hard bug.', at: 1, tokens: 900, allowed: ['sonnet' as const, 'opus' as const] };
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', pickModel: async () => ({ model: 'opus', effort: 'high', autoPick }) });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)).toMatchObject({ model: 'opus', effort: 'high', autoPick });
+    expect(t.manager.savedSettings(id)).toMatchObject({ model: 'opus', effort: 'high' });
     t.manager.closeAll();
   });
 
@@ -1606,6 +1885,126 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('shows an API retry on the host until a reply, the end of the turn or going idle clears it', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    const retry = (attempt: number, status: number | null = 529) => out.push({ type: 'system', subtype: 'api_retry', attempt, max_retries: 10, retry_delay_ms: 8000, error_status: status, error: 'server_error', uuid: randomUUID(), session_id: id });
+    expect(t.infos.at(-1)!.apiRetry).toBeUndefined();
+
+    retry(3);
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 3);
+    expect(t.infos.at(-1)!.apiRetry).toMatchObject({ attempt: 3, maxRetries: 10, delayMs: 8000, status: 529 });
+    // The next try replaces it.
+    retry(4, null);
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 4);
+    expect(t.infos.at(-1)!.apiRetry!.status).toBeNull();
+
+    // A reply, a result and going idle each clear it.
+    out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'Hi' }] }, session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry === undefined);
+    retry(1);
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 1);
+    out.push({ type: 'result', subtype: 'success', is_error: false, result: '', total_cost_usd: 0, session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry === undefined);
+    retry(2);
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 2);
+    out.push({ type: 'system', subtype: 'session_state_changed', state: 'idle', session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry === undefined);
+    t.manager.closeAll();
+  });
+
+  it('keeps a line in the conversation when a refusal moves the session to another model, and takes the refused messages back', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    const lines = () => t.notices.map((m) => (m.message as { content?: string }).content);
+    const before = t.infos.at(-1)!.model;
+    expect(before).not.toBe('claude-sonnet-5-5');
+    out.push({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', scope: 'session', original_model: 'claude-opus-5-5', fallback_model: 'claude-sonnet-5-5', request_id: null, retracted_message_uuids: ['r1', 'r2'], content: 'x', uuid: randomUUID(), session_id: id });
+    await until(() => lines().length === 1);
+    expect(lines()[0]).toBe('Claude switched this session to Sonnet after a refusal');
+    expect(t.retracted).toEqual(['r1', 'r2']);
+    // The model chip shows what runs now.
+    await until(() => t.infos.at(-1)?.model === 'claude-sonnet-5-5');
+    // A fallback only a subagent used leaves nothing.
+    out.push({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', scope: 'local', original_model: 'a', fallback_model: 'claude-haiku-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
+    out.push({ type: 'system', subtype: 'model_refusal_no_fallback', original_model: 'claude-opus-5-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
+    await until(() => lines().length === 2);
+    expect(lines()[1]).toBe('Claude refused and no fallback model was available');
+    expect(t.infos.at(-1)!.model).toBe('claude-sonnet-5-5');
+    // The reply that replaces the refused leg retracts it too.
+    out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: null, supersedes: ['r3'], message: { role: 'assistant', content: [{ type: 'text', text: 'Hi' }] }, session_id: id });
+    await until(() => t.retracted.includes('r3'));
+    t.manager.closeAll();
+  });
+
+  it('does not show the overload fallback for the model a refusal moved the session to', async () => {
+    const t = setup({ fallbackModel: () => 'sonnet', onQuery: (q) => void (q.replyModel = 'claude-sonnet-5-5') });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', model: 'opus' });
+    await until(() => t.infos.at(-1)?.fallbackRan === 'claude-sonnet-5-5');
+    const out = t.queries[0]!.out;
+    // A refusal makes Sonnet the session's own model: it is not the overload fallback any more.
+    out.push({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', scope: 'session', original_model: 'claude-opus-5-5', fallback_model: 'claude-sonnet-5-5', request_id: null, content: 'x', uuid: randomUUID(), session_id: id });
+    await until(() => t.infos.at(-1)?.model === 'claude-sonnet-5-5' && t.infos.at(-1)?.fallbackRan === null);
+    out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: null, message: { model: 'claude-sonnet-5-5', role: 'assistant', content: [{ type: 'text', text: 'Hi' }] }, session_id: id });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(t.infos.at(-1)!.fallbackRan).toBeNull();
+    t.manager.closeAll();
+  });
+
+  it('clears an API retry when a subagent or a tool result shows the call went through', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    const retry = () => out.push({ type: 'system', subtype: 'api_retry', attempt: 1, max_retries: 10, retry_delay_ms: 8000, error_status: 529, error: 'server_error', uuid: randomUUID(), session_id: id });
+    const retrying = () => t.infos.at(-1)?.apiRetry !== undefined;
+    const settled = async () => { await until(() => !retrying()); };
+
+    retry();
+    await until(retrying);
+    out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: 'toolu_1', message: { role: 'assistant', content: [{ type: 'text', text: 'sub' }] }, session_id: id });
+    await settled();
+
+    retry();
+    await until(retrying);
+    out.push({ type: 'stream_event', parent_tool_use_id: 'toolu_1', event: { type: 'message_start' }, uuid: randomUUID(), session_id: id });
+    await settled();
+
+    retry();
+    await until(retrying);
+    out.push({ type: 'user', uuid: randomUUID(), parent_tool_use_id: 'toolu_1', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_2', content: 'ok' }] }, session_id: id });
+    await settled();
+
+    // A prompt of yours is not a sign the call went through.
+    retry();
+    await until(retrying);
+    out.push({ type: 'user', uuid: randomUUID(), parent_tool_use_id: null, message: { role: 'user', content: 'hi' }, session_id: id });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(retrying()).toBe(true);
+    t.manager.closeAll();
+  });
+
+  it('starts the next turn without the last turn\u2019s API retry', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    // A retry that nothing cleared (a turn Claude Code dropped without a result), while the session sits idle.
+    out.push({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 10, retry_delay_ms: 8000, error_status: 529, error: 'server_error', uuid: randomUUID(), session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 2);
+    out.push({ type: 'system', subtype: 'session_state_changed', state: 'running', session_id: id });
+    await until(() => lastState(t.infos, id) === 'running');
+    expect(t.infos.at(-1)!.apiRetry).toBeUndefined();
+    // A retry during the turn is still shown: only the start of a turn clears.
+    out.push({ type: 'system', subtype: 'api_retry', attempt: 3, max_retries: 10, retry_delay_ms: 8000, error_status: 529, error: 'server_error', uuid: randomUUID(), session_id: id });
+    await until(() => t.infos.at(-1)?.apiRetry?.attempt === 3);
+    t.manager.closeAll();
+  });
+
   it('tracks background tasks and keeps their session open while they run', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
@@ -1659,6 +2058,55 @@ describe('buildOptions', () => {
     claudePath: '/bin/claude',
     canUseTool: async () => ({ behavior: 'deny', message: '' }),
   };
+  it("gives the session Seshboard's visualize server with its tools allowed, never a read-only one", () => {
+    const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    const options = buildOptions({ ...config, visualize }, () => {});
+    expect(options.mcpServers).toEqual({ visualize: { type: 'stdio', ...visualize } });
+    expect(options.allowedTools).toEqual(['mcp__visualize__read_me', 'mcp__visualize__show_widget']);
+    expect(buildOptions({ ...config, visualize, readOnly: true }, () => {}).mcpServers).toBeUndefined();
+    expect(buildOptions(config, () => {}).mcpServers).toBeUndefined();
+  });
+
+  it("appends Skim's instruction to Claude Code's prompt only when it is on", () => {
+    expect(buildOptions({ ...config, skimMarks: true }, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: SKIM_MARKS_PROMPT });
+    expect(buildOptions(config, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code' });
+  });
+
+  it("gives an orchestrator Seshboard's orchestrator server with its tools allowed, and its role after the prompt", () => {
+    const orchestrator = { command: '/Apps/Seshboard', args: ['/Apps/orchestrator-mcp.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    const options = buildOptions({ ...config, orchestrator, appendSystem: 'You are the orchestrator.', skimMarks: true }, () => {});
+    expect(options.mcpServers).toEqual({ orchestrator: { type: 'stdio', ...orchestrator } });
+    expect(options.allowedTools).toEqual(['mcp__orchestrator__start_session', 'mcp__orchestrator__list_sessions', 'mcp__orchestrator__read_session', 'mcp__orchestrator__message_session']);
+    expect(options.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: `${SKIM_MARKS_PROMPT}\n\nYou are the orchestrator.` });
+    expect(buildOptions({ ...config, appendSystem: 'Branch from dev.' }, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: 'Branch from dev.' });
+    expect(buildOptions({ ...config, orchestrator, readOnly: true }, () => {}).mcpServers).toBeUndefined();
+  });
+
+  it('passes the fallback model only when one is set and it is not the model', () => {
+    expect('fallbackModel' in buildOptions(config, () => {})).toBe(false);
+    expect(buildOptions({ ...config, fallbackModel: null }, () => {}).fallbackModel).toBeUndefined();
+    expect(buildOptions({ ...config, fallbackModel: 'sonnet' }, () => {}).fallbackModel).toBe('sonnet');
+    // A list, as the SDK takes it; the main model drops out of it.
+    expect(buildOptions({ ...config, fallbackModel: 'opus, sonnet,haiku' }, () => {}).fallbackModel).toBe('sonnet,haiku');
+    expect(buildOptions({ ...config, fallbackModel: 'Opus[1m]' }, () => {}).fallbackModel).toBeUndefined();
+    // With no model of its own (Claude Code's default), nothing to compare with.
+    expect(buildOptions({ ...config, model: null, fallbackModel: 'opus' }, () => {}).fallbackModel).toBe('opus');
+  });
+  it('recognises a reply from a fallback model by its id', () => {
+    expect(isFallbackModel('claude-sonnet-5-5-20260101', 'sonnet')).toBe(true);
+    expect(isFallbackModel('claude-sonnet-5-5-20260101', 'claude-sonnet-5-5')).toBe(true);
+    expect(isFallbackModel('claude-sonnet-5-5-20260101', 'haiku,sonnet[1m]')).toBe(true);
+    expect(isFallbackModel('claude-opus-5-5', 'sonnet')).toBe(false);
+    expect(isFallbackModel('claude-opus-5-5', null)).toBe(false);
+    expect(isFallbackModel('claude-opus-5-5', 'default')).toBe(false);
+  });
+  it("passes plan mode instructions trimmed, and nothing when they are empty", () => {
+    expect(buildOptions({ ...config, planModeInstructions: '  List the files.  ' }, () => {}).planModeInstructions).toBe('List the files.');
+    expect(buildOptions({ ...config, planModeInstructions: '   ' }, () => {})).not.toHaveProperty('planModeInstructions');
+    expect(buildOptions({ ...config, planModeInstructions: null }, () => {})).not.toHaveProperty('planModeInstructions');
+    expect(buildOptions(config, () => {})).not.toHaveProperty('planModeInstructions');
+  });
+
   it('maps a new worktree session onto Claude Code options', () => {
     const options = buildOptions(config, () => {});
     expect(options).toMatchObject({

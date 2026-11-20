@@ -14,7 +14,7 @@ describe('the ⋯ menu on Home', () => {
     expect(moreItems({ notifications: 'unavailable', archived: false })[1]).toEqual({ id: 'notifications', state: 'Off' });
   });
 
-  it('has Show archived only when the list can show them', () => {
+  it('has Done sessions only when a computer can list them', () => {
     expect(ids(moreItems({ notifications: 'on', archived: true }))).toEqual(['theme', 'notifications', 'separator', 'refresh', 'archived', 'separator', 'settings']);
   });
 

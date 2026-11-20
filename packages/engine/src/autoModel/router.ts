@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import type { DatabaseSync } from 'node:sqlite';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { AUTO_TIERS, estimateVsOpus, isAutoTier, type AutoModelPrefs, type AutoTier, type LogLevel, type RouteResult, type TokenCounts } from '@seshboard/protocol';
+import { AUTO_TIERS, estimateVsOpus, isAutoEffort, isAutoTier, type AutoEffort, type AutoModelPrefs, type AutoTier, type LogLevel, type RouteResult, type TokenCounts } from '@seshboard/protocol';
 import type { SdkRuntime } from '../host/hostManager.ts';
 import { routingSystemPrompt, routingUserMessage } from './routingRules.ts';
 
@@ -12,6 +12,9 @@ export const ROUTE_FAILURES = {
   unusable: "Haiku's answer wasn't usable",
   failed: "Haiku couldn't be reached",
 } as const;
+
+/** The reason when only one model is allowed, so Haiku wasn't asked. */
+export const ONLY_MODEL_REASON = (tier: AutoTier) => `The only model Auto may pick (${tier[0]!.toUpperCase()}${tier.slice(1)}).`;
 
 /** The longest reason kept from Haiku's answer. */
 const REASON_MAX = 200;
@@ -33,11 +36,22 @@ export function clampTier(tier: AutoTier, allowed: readonly AutoTier[]): AutoTie
   return best;
 }
 
+/** What Auto decided: the model, the effort it starts with, and why. */
+export interface Route {
+  model: AutoTier;
+  effort: AutoEffort;
+  reason: string;
+}
+
+/** The effort a pick starts with when Haiku leaves it out or names another: `medium`, the model guide's default. */
+export const DEFAULT_ROUTE_EFFORT: AutoEffort = 'medium';
+
 /**
- * Reads Haiku's answer: the first JSON object in it, `{"model":"haiku|sonnet|opus","reason":"…"}`, with the model
- * clamped to `allowed`. Anything else (no JSON, another model name, no allowed models) is null: unusable.
+ * Reads Haiku's answer: the first JSON object in it, `{"model":"haiku|sonnet|opus|fable","effort":"…","reason":"…"}`,
+ * with the model clamped to `allowed`. Anything else (no JSON, another model name, no allowed models) is null:
+ * unusable. A missing or unknown effort is `medium`, not a failure.
  */
-export function parseRoute(text: string, allowed: readonly AutoTier[]): { model: AutoTier; reason: string } | null {
+export function parseRoute(text: string, allowed: readonly AutoTier[]): Route | null {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -48,13 +62,14 @@ export function parseRoute(text: string, allowed: readonly AutoTier[]): { model:
     return null;
   }
   if (typeof raw !== 'object' || raw === null) return null;
-  const { model, reason } = raw as { model?: unknown; reason?: unknown };
+  const { model, effort, reason } = raw as { model?: unknown; effort?: unknown; reason?: unknown };
   const tier = typeof model === 'string' ? model.trim().toLowerCase() : null;
   if (!isAutoTier(tier)) return null;
   const picked = clampTier(tier, allowed);
   if (!picked) return null;
   const said = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
-  return { model: picked, reason: (said || 'Picked from your prompt.').slice(0, REASON_MAX) };
+  const level = typeof effort === 'string' ? effort.trim().toLowerCase() : null;
+  return { model: picked, effort: isAutoEffort(level) ? level : DEFAULT_ROUTE_EFFORT, reason: (said || 'Picked from your prompt.').slice(0, REASON_MAX) };
 }
 
 /** One routing call, as kept for Usage: on the profile's usage scope, in the hour it ran. */
@@ -117,7 +132,7 @@ export interface ModelRouterOptions {
   /** How long Claude Code has to start before the answer clock runs. */
   startMs?: number;
   /** Smoke runs and screenshots: answer from this instead of calling a model; `hold` never answers. */
-  stub?: (prompt: string, allowed: readonly AutoTier[]) => { model: AutoTier; reason: string } | 'hold' | null;
+  stub?: (prompt: string, allowed: readonly AutoTier[]) => Route | 'hold' | null;
 }
 
 export interface RouteParams {
@@ -139,10 +154,14 @@ export class ModelRouter {
 
   async route(params: RouteParams): Promise<RouteResult> {
     const { allowed, lean } = this.options.prefs();
-    const done = (routeId: string | null, outcome: { model: AutoTier; reason: string } | { failure: string }, tokens: number): RouteResult =>
+    const done = (routeId: string | null, outcome: Route | { failure: string }, tokens: number): RouteResult =>
       'failure' in outcome
         ? { ok: false, routeId, reason: outcome.failure, tokens, allowed: [...allowed] }
-        : { ok: true, routeId: routeId ?? randomUUID(), model: outcome.model, reason: outcome.reason, tokens, estimateVsOpus: estimateVsOpus(outcome.model), allowed: [...allowed] };
+        : { ok: true, routeId: routeId ?? randomUUID(), model: outcome.model, effort: outcome.effort, reason: outcome.reason, tokens, estimateVsOpus: estimateVsOpus(outcome.model), allowed: [...allowed] };
+
+    // With one model allowed there is nothing to ask: code picks it, and no tokens are spent. Its effort stays at
+    // medium, since nothing read the prompt.
+    if (allowed.length === 1) return done(null, { model: allowed[0]!, effort: DEFAULT_ROUTE_EFFORT, reason: ONLY_MODEL_REASON(allowed[0]!) }, 0);
 
     if (this.options.stub) {
       const answer = this.options.stub(params.prompt, allowed);
@@ -226,19 +245,28 @@ export class ModelRouter {
   }
 }
 
+const STUB_EFFORTS: Record<AutoTier, AutoEffort> = { haiku: 'low', sonnet: 'medium', opus: 'medium', fable: 'high' };
+
 /** A prompt with this in it keeps the stubbed router choosing for good (the smoke test stops the session). */
 export const SMOKE_HOLD = '[smoke: hold]';
 
 /**
- * The smoke run's and the screenshots' router: no model is called. Long prompts or ones that ask to plan or
- * refactor go to the strongest allowed model, short questions to the cheapest, the rest to the middle.
+ * The smoke run's and the screenshots' router: no model is called. Prompts about a whole codebase go to Fable, long
+ * prompts or ones that ask to plan or refactor to Opus, short questions to Haiku, the rest to Sonnet, each clamped
+ * to the allowed models. Hard work gets high effort, a quick question low.
  */
-export function stubRoute(prompt: string, allowed: readonly AutoTier[]): { model: AutoTier; reason: string } | 'hold' | null {
+export function stubRoute(prompt: string, allowed: readonly AutoTier[]): Route | 'hold' | null {
   if (prompt.includes(SMOKE_HOLD)) return 'hold';
   const text = prompt.toLowerCase();
-  const want: AutoTier = /\b(plan|refactor|design|architect|migrat)/.test(text) || prompt.length > 1_200 ? 'opus' : prompt.length < 60 && text.trim().endsWith('?') ? 'haiku' : 'sonnet';
+  const want: AutoTier = /\b(whole|entire) codebase\b/.test(text)
+    ? 'fable'
+    : /\b(plan|refactor|design|architect|migrat)/.test(text) || prompt.length > 1_200
+      ? 'opus'
+      : prompt.length < 60 && text.trim().endsWith('?')
+        ? 'haiku'
+        : 'sonnet';
   const model = clampTier(want, allowed);
   if (!model) return null;
-  const reason = { haiku: 'A quick question with a short answer.', sonnet: 'A small, local change: one setting and the code that reads it.', opus: 'Planning work across many files.' }[model];
-  return { model, reason };
+  const reason = { haiku: 'A quick question with a short answer.', sonnet: 'A small, local change: one setting and the code that reads it.', opus: 'Planning work across many files.', fable: 'A major change across the whole codebase.' }[model];
+  return { model, effort: STUB_EFFORTS[model], reason };
 }

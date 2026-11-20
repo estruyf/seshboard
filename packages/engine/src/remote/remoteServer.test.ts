@@ -46,6 +46,7 @@ async function setup(options: { backoff?: Backoff; onBlocked?: () => void } = {}
     log: (_level, message) => void logs.push(message),
     handlers: (device) => ({
       'sessions.list': () => ({ sessions: [], prompts: [{ requestId: 'r1', sessionId: 's1', toolName: 'Bash', input: { command: device.name }, title: null, description: null, alwaysLabel: null, createdAt: 1 }] }),
+      'sessions.archived': () => ({ sessions: [] }),
       'projects.list': () => ({ projects: [] }),
       'projects.branches': () => ({ current: null, branches: [], checkedOutElsewhere: [] }),
       'transcript.get': () => ({ messages: [], hasMore: false, reset: false }),
@@ -54,6 +55,7 @@ async function setup(options: { backoff?: Backoff; onBlocked?: () => void } = {}
       'session.send': () => ({ queued: false }),
       'session.queue.remove': () => ({}),
       'session.queue.sendNow': () => ({}),
+      'session.queue.move': () => ({}),
       'limits.get': () => ({ limit: null }),
       'limits.resume': () => ({}),
       'limits.arm': () => ({}),
@@ -74,14 +76,22 @@ async function setup(options: { backoff?: Backoff; onBlocked?: () => void } = {}
       'usage.get': () => ({ profiles: [] }),
       'usage.tokens': () => ({ breakdown: null }),
       'usage.sessionCost': () => ({ cost: null }),
+      'activity.range': () => ({ entries: [] }),
       'usage.windowCosts': () => ({ windows: null }),
       'session.setEffort': () => ({}),
       'session.ask': () => ({ threadId: 't', id: 'q', at: 1 }),
       'session.askThreads': () => ({ threads: [] }),
       'catchup.get': () => ({ catchUp: null }),
       'changes.get': () => ({ branch: null, files: [], error: null }),
+      'session.commands': () => ({ commands: [] }),
       'changes.diff': () => ({ diff: '', truncated: false }),
       'changes.commit': () => ({ ok: false, output: '' }),
+      'files.read': () => {
+        throw new RpcError('NOT_FOUND', 'That file is not one this session made');
+      },
+      'files.image': () => {
+        throw new RpcError('NOT_FOUND', 'That file is not one this session made');
+      },
       'projects.clonePlan': () => ({ state: 'off', repo: { owner: 'o', name: 'n', branch: null }, name: 'n', where: '' }),
       'projects.clone': () => ({}),
       'projects.cancelClone': () => ({}),
@@ -138,7 +148,7 @@ describe('Remote server', () => {
 
     const { frames, session } = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     const remote = client<RemoteContract>(frames, session!);
-    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens', 'branches', 'session.markUnread', 'push.vapid', 'projects.clone', 'costs', 'limits', 'pipelines', 'session.queue.sendNow', 'theme', 'sessions.startedBy', 'app.update'], appIcon: 'graphite' });
+    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens', 'activity.range', 'branches', 'worktree.base', 'session.markUnread', 'push.vapid', 'projects.clone', 'costs', 'limits', 'pipelines', 'session.queue.sendNow', 'session.send.attachmentsOnly', 'theme', 'sessions.startedBy', 'app.update', 'sessions.archived', 'files.read', 'session.commands', 'session.queue.move'], appIcon: 'graphite' });
     expect((await remote.call('sessions.list', {})).prompts[0]!.input).toEqual({ command: "Elio's iPhone" });
     expect(env.server.list()).toMatchObject([{ deviceId, name: "Elio's iPhone" }]);
     await expect(remote.call('session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

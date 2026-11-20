@@ -27,6 +27,13 @@ describe('push wording', () => {
     expect(needsYouLine({ toolName: 'Bash', input: { command: 'x'.repeat(300) } }).length).toBe(120);
   });
 
+  it("names another provider's session by its short name", () => {
+    expect(needsYouLine({ toolName: 'AskUserQuestion', input: {} }, 'Codex')).toBe('Codex has a question');
+    expect(needsYouLine({ toolName: 'ExitPlanMode', input: {} }, 'Codex')).toBe('Codex has a plan. Ready to start?');
+    expect(finishedLine(null, 'Codex')).toBe('Codex finished a turn.');
+    expect(finishedLine(null)).toBe('Claude finished a turn.');
+  });
+
   it('lets a tool prompt be answered from the notification, but not a question or a plan', () => {
     expect(promptAnswers({ requestId: 'r1', toolName: 'Bash', input: { command: 'npm test' } })).toEqual({ requestId: 'r1', answers: true });
     expect(promptAnswers({ requestId: 'r2', toolName: 'AskUserQuestion', input: {} })).toEqual({ requestId: 'r2', answers: false });

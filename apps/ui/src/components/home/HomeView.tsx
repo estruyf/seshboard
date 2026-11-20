@@ -1,3 +1,4 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { useMemo } from 'react';
 import { basename } from '../../lib/format.ts';
 import { startPass } from '../../state/catchUpPass.ts';
@@ -7,13 +8,14 @@ import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { inScope } from '../../state/sidebarRows.ts';
+import { YesterdayCard } from '../activity/YesterdayCard.tsx';
 import { useMinute } from '../focus/useMinute.ts';
 import { useQuickProjects } from '../quickStart/useQuickProjects.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SchedulesCard } from '../schedules/SchedulesCard.tsx';
 import { StartInProject, UpNext } from './HomeBelow.tsx';
 import { NeedsLane, ReviewLane, WorkingLane } from './HomeLanes.tsx';
+import { HOME_WIDTH } from '../newSession/newSessionLayout.ts';
 import { greeting, homeSessions, homeSummary, reviewSessions } from './homeModel.ts';
 import { HomeStartBox } from './HomeStartBox.tsx';
 import { HomeUsage } from './HomeUsage.tsx';
@@ -33,7 +35,7 @@ function Onboarding() {
 }
 
 /**
- * What the window shows when no session is open, using its width (up to 1400px, from the left): a start box, three
+ * What the window shows when no session is open, using its width (as far as New session does, centred): a start box, three
  * lanes (Needs you, Working, To review), then your projects with Up next, and usage on the right. A container, so it
  * follows the view: three lanes from 1200px, two from 760px (an empty Needs you left out, the line under the greeting
  * says it), one below; usage goes under the rest below 1100px. Without projects it asks you to add the first one.
@@ -58,13 +60,12 @@ export function HomeView() {
   if (loaded && addedProjects(projects).length === 0) {
     return (
       <div className="flex h-full flex-col">
-        <div className="drag flex h-13 shrink-0 items-center px-4">
-          <SidebarToggle />
-        </div>
-        {/* Queued prompts and schedules (in folders that aren't projects) still show, under the way to add the first project. */}
+        <ViewHeader title="Home" />
+        {/* Yesterday, queued prompts and schedules (in folders that aren't projects) still show, under the way to add the first project. */}
         <div className="@container flex flex-1 flex-col items-center justify-center gap-8 px-6 pb-16">
           <Onboarding />
           <div className="grid w-full max-w-3xl gap-7">
+            <YesterdayCard now={now} />
             <QueueCard now={now} />
             <SchedulesCard now={now} />
           </div>
@@ -75,15 +76,13 @@ export function HomeView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="drag flex h-13 shrink-0 items-center px-4">
-        <SidebarToggle />
-      </div>
+      <ViewHeader title="Home" />
       {/* The container: the breakpoints follow the view (beside the sidebar and panels), not the window. */}
       <div className="@container flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto grid w-full max-w-[1400px] grid-cols-[minmax(0,1fr)] gap-7 px-12 pt-2 pb-12 @max-[760px]:px-6" data-home>
+        <div className={`mx-auto grid w-full ${HOME_WIDTH} grid-cols-[minmax(0,1fr)] gap-7 pt-2 pb-12`} data-home>
           <header className="min-w-0">
-            {/* The view's hero heading, a little larger than text-title. */}
-            <h1 className="text-hero leading-tight font-semibold">{greeting(now)}</h1>
+            {/* The greeting, a little larger than text-title; the header names the view. */}
+            <h2 className="text-hero leading-tight font-semibold">{greeting(now)}</h2>
             <p className="mt-1 text-ui text-muted" data-home-summary>
               {homeSummary(needs.length, working.length, review.total)}
             </p>
@@ -100,8 +99,8 @@ export function HomeView() {
           <div className="grid grid-cols-1 items-start gap-7 @min-[1100px]:grid-cols-[2fr_1fr]" data-home-below>
             <div className="grid min-w-0 content-start gap-7">
               <StartInProject projects={quick} store={projects} />
-              {/* Yesterday (the day in short) joins Up next here once Activity is in. */}
               <div className="grid grid-cols-1 items-start gap-5 @min-[760px]:grid-cols-2">
+                <YesterdayCard now={now} />
                 <UpNext now={now} nameOf={nameOf} />
               </div>
               <UnsentCard now={now} />

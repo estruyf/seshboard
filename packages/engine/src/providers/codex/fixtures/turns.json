@@ -1,0 +1,323 @@
+[
+  {
+    "id": "019a0001-0000-7000-8000-000000000001",
+    "rootTurnId": null,
+    "itemsView": "full",
+    "status": "completed",
+    "error": null,
+    "startedAt": 1778592900,
+    "completedAt": 1778592960,
+    "durationMs": 60000,
+    "items": [
+      {
+        "type": "userMessage",
+        "id": "item-1",
+        "clientId": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "<environment_context>\n  <cwd>/repo</cwd>\n  <shell>zsh</shell>\n</environment_context>",
+            "text_elements": []
+          },
+          {
+            "type": "text",
+            "text": "Add logging to the worker\n",
+            "text_elements": []
+          },
+          {
+            "type": "localImage",
+            "path": "/repo/screenshot.png"
+          }
+        ],
+        "startedAtMs": null,
+        "completedAtMs": 1778592901000
+      },
+      {
+        "type": "reasoning",
+        "id": "rs_01",
+        "summary": [
+          "**Looking at the worker**"
+        ],
+        "content": [
+          "raw chain"
+        ],
+        "startedAtMs": null,
+        "completedAtMs": 1778592902000
+      },
+      {
+        "type": "commandExecution",
+        "id": "call_read",
+        "pluginId": null,
+        "scriptPath": null,
+        "command": "/bin/zsh -lc 'cat src/Worker.cs'",
+        "cwd": "/repo",
+        "processId": "22701",
+        "source": "unifiedExecStartup",
+        "status": "completed",
+        "commandActions": [
+          {
+            "type": "read",
+            "command": "cat src/Worker.cs",
+            "name": "Worker.cs",
+            "path": "src/Worker.cs"
+          }
+        ],
+        "aggregatedOutput": "using System;\nclass Worker {}\n",
+        "exitCode": 0,
+        "durationMs": 40,
+        "startedAtMs": 1778592903000,
+        "completedAtMs": 1778592903040
+      },
+      {
+        "type": "commandExecution",
+        "id": "call_test",
+        "pluginId": null,
+        "scriptPath": null,
+        "command": "/bin/zsh -lc 'dotnet test --filter '\"'\"'Worker'\"'\"''",
+        "cwd": "/repo",
+        "processId": "22702",
+        "source": "unifiedExecStartup",
+        "status": "completed",
+        "commandActions": [
+          {
+            "type": "unknown",
+            "command": "dotnet test --filter Worker"
+          }
+        ],
+        "aggregatedOutput": "Failed: 1\n",
+        "exitCode": 1,
+        "durationMs": 3000,
+        "startedAtMs": null,
+        "completedAtMs": 1778592910000
+      },
+      {
+        "type": "fileChange",
+        "id": "call_patch",
+        "changes": [
+          {
+            "path": "/repo/src/Worker.cs",
+            "kind": {
+              "type": "update",
+              "move_path": null
+            },
+            "diff": "@@ -1,2 +1,3 @@\n using System;\n+using Microsoft.Extensions.Logging;\n class Worker {}\n@@ -9,1 +10,1 @@\n-    Run();\n+    Run(logger);\n"
+          },
+          {
+            "path": "/repo/src/Log.cs",
+            "kind": {
+              "type": "add"
+            },
+            "diff": "static class Log {}\n"
+          },
+          {
+            "path": "/repo/src/Old.cs",
+            "kind": {
+              "type": "delete"
+            },
+            "diff": "class Old {}\n"
+          }
+        ],
+        "status": "completed",
+        "startedAtMs": null,
+        "completedAtMs": 1778592920000
+      },
+      {
+        "type": "fileChange",
+        "id": "call_rename",
+        "changes": [
+          {
+            "path": "/repo/src/Program.cs",
+            "kind": {
+              "type": "update",
+              "move_path": null
+            },
+            "diff": "@@ -7,2 +7,4 @@\n using Foo;\n+using Bar;\n \n"
+          }
+        ],
+        "status": "declined",
+        "startedAtMs": null,
+        "completedAtMs": 1778592921000
+      },
+      {
+        "type": "webSearch",
+        "id": "ws_01",
+        "query": "serilog worker service",
+        "action": {
+          "type": "search",
+          "query": "serilog worker service",
+          "queries": [
+            "serilog worker service",
+            "dotnet worker logging"
+          ]
+        },
+        "results": null,
+        "startedAtMs": null,
+        "completedAtMs": 1778592930000
+      },
+      {
+        "type": "webSearch",
+        "id": "ws_02",
+        "query": "",
+        "action": {
+          "type": "openPage",
+          "url": "https://example.com/logging"
+        },
+        "results": null,
+        "startedAtMs": null,
+        "completedAtMs": 1778592931000
+      },
+      {
+        "type": "mcpToolCall",
+        "id": "call_mcp",
+        "server": "docs",
+        "tool": "search",
+        "status": "completed",
+        "arguments": {
+          "q": "ILogger"
+        },
+        "appContext": null,
+        "mcpAppUi": null,
+        "pluginId": null,
+        "readOnlyHint": true,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "ILogger<T> is the generic logger."
+            }
+          ],
+          "structuredContent": null,
+          "_meta": null
+        },
+        "error": null,
+        "durationMs": 120
+      },
+      {
+        "type": "plan",
+        "id": "plan-1",
+        "text": "1. Add the logger\n2. Run the tests"
+      },
+      {
+        "type": "agentMessage",
+        "id": "item-2",
+        "text": "Done. I added a logger to the worker.",
+        "phase": "final_answer",
+        "memoryCitation": null,
+        "delivery": null,
+        "questions": null,
+        "startedAtMs": null,
+        "completedAtMs": 1778592959000
+      }
+    ]
+  },
+  {
+    "id": "019a0001-0000-7000-8000-000000000002",
+    "rootTurnId": null,
+    "itemsView": "full",
+    "status": "interrupted",
+    "error": null,
+    "startedAt": 1778593000,
+    "completedAt": 1778593010,
+    "durationMs": 10000,
+    "items": [
+      {
+        "type": "userMessage",
+        "id": "item-1",
+        "clientId": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "Ask a helper to review it",
+            "text_elements": []
+          }
+        ]
+      },
+      {
+        "type": "collabAgentToolCall",
+        "id": "call_spawn",
+        "tool": "spawnAgent",
+        "status": "completed",
+        "senderThreadId": "019a0000-0000-7000-8000-00000000aaaa",
+        "receiverThreadIds": [
+          "019a0000-0000-7000-8000-00000000bbbb"
+        ],
+        "prompt": "Review the logging change",
+        "model": "gpt-5.5",
+        "reasoningEffort": null,
+        "agentsStates": {
+          "019a0000-0000-7000-8000-00000000bbbb": {
+            "status": "running",
+            "message": null
+          }
+        }
+      },
+      {
+        "type": "collabAgentToolCall",
+        "id": "call_wait",
+        "tool": "wait",
+        "status": "completed",
+        "senderThreadId": "019a0000-0000-7000-8000-00000000aaaa",
+        "receiverThreadIds": [
+          "019a0000-0000-7000-8000-00000000bbbb"
+        ],
+        "prompt": null,
+        "model": null,
+        "reasoningEffort": null,
+        "agentsStates": {
+          "019a0000-0000-7000-8000-00000000bbbb": {
+            "status": "completed",
+            "message": "Looks good."
+          }
+        }
+      },
+      {
+        "type": "subAgentActivity",
+        "id": "sa-1",
+        "kind": "completed",
+        "agentThreadId": "019a0000-0000-7000-8000-00000000bbbb",
+        "agentPath": "/root/reviewer",
+        "model": "gpt-5.5",
+        "reasoningEffort": null
+      },
+      {
+        "type": "contextCompaction",
+        "id": "cc-1"
+      },
+      {
+        "type": "sleep",
+        "id": "sl-1",
+        "durationMs": 5000
+      },
+      {
+        "type": "somethingNew",
+        "id": "x-1"
+      }
+    ]
+  },
+  {
+    "id": "019a0001-0000-7000-8000-000000000003",
+    "rootTurnId": null,
+    "itemsView": "summary",
+    "status": "failed",
+    "error": {
+      "message": "Rate limit reached"
+    },
+    "startedAt": 1778593100,
+    "completedAt": null,
+    "durationMs": null,
+    "items": [
+      {
+        "type": "userMessage",
+        "id": "item-1",
+        "clientId": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "Try again",
+            "text_elements": []
+          }
+        ]
+      }
+    ]
+  }
+]

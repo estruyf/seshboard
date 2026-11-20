@@ -29,7 +29,7 @@ The menu groups the pages by what they are about:
 
 | Group | Pages |
 |---|---|
-| **App** | [General](#general), [Theme](#theme), [Sidebar](#sidebar), [Notifications](#notifications) and [Focus](#focus) |
+| **App** | [General](#general), [Browser](#browser-1), [Theme](#theme), [Sidebar](#sidebar), [Notifications](#notifications) and [Focus](#focus) |
 | **Claude** | [Conversation](#conversation), [Profiles](#profiles), [Usage](#usage) and [Memory](#memory) |
 | **Your work** | [Projects](#projects), [Sessions](#sessions), [Prompts](#prompts) and [Pipelines](#pipelines) |
 | **Connect** | [VS Code](#vs-code), [Remote](#remote) and [Mods](#mods) |
@@ -66,7 +66,9 @@ What Seshboard shows when it opens:
 
 ### New sessions
 
-**Global model** and **Global effort** are what new sessions start on where the project and profile set none, also when a session starts from a link or your phone. Leave them on **Claude Code's default** to keep what Claude Code picks. They are for Claude: a [GitHub Copilot](/settings/claude-profiles/#github-copilot-profiles) session without a model starts on Copilot's default.
+**Global model** and **Global effort** are what new sessions start on where the project and profile set none, also when a session starts from a link or your phone. Leave them on **Claude Code's default** to keep what Claude Code picks. They are for Claude: a session of [another agent](/settings/other-agents/), such as Copilot, without a model starts on that agent's default.
+
+**Global fallback model** (off by default) is the model Claude Code switches to when the main one is overloaded or unavailable, unless the Claude profile or project sets one. The main model is tried again on each turn. See [Fallback model](/new-session/models-and-options/#fallback-model).
 
 **Global permission mode** is what new sessions start in, unless their Claude profile or project sets a mode:
 
@@ -76,6 +78,8 @@ What Seshboard shows when it opens:
 A project's own mode (its [Settings tab](/projects/settings/#defaults-for-new-sessions)) comes first, then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions), then this one. A session can still change its mode. A session started by a link never starts in Auto mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
 
 **Use Claude in Chrome** (off by default) gives sessions the browser tools of the Claude in Chrome extension, so Claude can open pages, click and read them in your own Chrome. It needs the extension installed in Chrome. Claude Code's own **Enabled by default** for Claude in Chrome only works in a terminal, so turn it on here for Seshboard's sessions. It applies to sessions you start or resume after you change it: a session that is running keeps what it started with until you stop and resume it.
+
+**Allow browser previews** (on by default): when a session runs a dev server, its page shows beside the conversation. With the [browser](#browser) off, it shows in a Web preview, which opens only addresses on this computer. See [Web preview](/sessions/web-preview/).
 
 ### Quick start
 
@@ -94,9 +98,23 @@ On Windows this is **Notification area**.
 
 </OnlyOn>
 
+### Browser
+
+**Allow browser** (on by default) gives Seshboard its own browser: any web page beside a session or in the Browser view, in tabs. Off, a session shows only its dev server, in a Web preview, and the [Browser](#browser-1) page is hidden. See [The browser](/browser/overview/).
+
 ### Quitting
 
 **Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Seshboard, so it asks then too (but not while Windows shuts down or signs you out). With **Warn when quitting** on under [Large context](#large-context), quitting with a large session open asks even with Ask before quitting off.
+
+## Browser
+
+Shown while the browser is on.
+
+- **Allow Seshboard to control the browser** (on by default): the agent in a session (Claude Code, Copilot or Codex) can open, read and click pages in its Browser panel to check its work. See [Agents in the browser](/browser/agents/).
+- **Allow scripts in pages** (off by default): the agent can also run scripts in its page and read the page's requests. Other sites ask first. See [Scripts in pages](/browser/agents/#scripts-in-pages).
+- **Browser profiles**: the Default profile and yours, each with its own logins, site data and cache. See [Browser profiles](/browser/profiles/).
+
+Both switches apply to sessions you start or resume after you change them.
 
 ## Theme
 
@@ -224,7 +242,7 @@ See [Catch-up](/sessions/catch-up/) and [Why is Claude asking?](/permissions/#wh
 
 <Screenshot name="settings-profiles" alt="Settings on Profiles: two profiles, each with its name, colour, config folder and the account it is signed in with, the Default choice, Add profile, and How to set up another profile" />
 
-Use more than one account, for example a personal Claude plan and a work one, or [GitHub Copilot](/settings/claude-profiles/#github-copilot-profiles). Each profile is a config folder with its own login. When Seshboard finds Copilot CLI, this page offers to add it.
+Use more than one account, for example a personal Claude plan and a work one, or [another agent](/settings/other-agents/): GitHub Copilot, OpenAI Codex or Google Antigravity. Each profile is a config folder with its own login. When Seshboard finds one of their CLIs, this page offers to add it.
 
 For each profile:
 

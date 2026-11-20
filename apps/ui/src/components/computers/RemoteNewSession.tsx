@@ -1,6 +1,7 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { Folder, FolderDown, FolderGit2, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { AUTO_MODEL, bringsAnything, keptRunAs, modelWord, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsSteps, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, keptRunAs, modelWord, remoteBaseChoices, remoteBaseName, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_WORKTREE_BASE, runAsSteps, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { letterColor } from '../../lib/projectColor.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -17,6 +18,7 @@ import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
+import { editKey } from '../composer/editing.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { RunAsChip } from '../newSession/RunAsChip.tsx';
 import { RunAsSteps } from '../newSession/RunAsSteps.tsx';
@@ -26,7 +28,6 @@ import { moveInGrid, NEW_SESSION_COLUMN, PROJECT_GRID, ProjectListFooter, Projec
 import { COLUMN_BREAKPOINTS, quickCount, quickTiles } from '../newSession/projectTiles.ts';
 import { useColumns } from '../ui/useColumns.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { callComputer } from './callComputer.ts';
@@ -53,7 +54,7 @@ import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefault
  * focus limit are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
  * (`REMOTE_FEATURE_CLONE`), and the session starts in the clone there. Run as lists the pipelines the project can run
  * there (`REMOTE_FEATURE_PIPELINES`): picked, Start runs it on that computer with the prompt as its task, and its run
- * row opens here.
+ * row opens here. In a new worktree, Branch from picks where it starts there (`REMOTE_FEATURE_WORKTREE_BASE`).
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
@@ -221,6 +222,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
     };
   }, [client, computer.id, connected, takesBranch, projectId]);
   const checkoutBranch = remoteCheckoutBranch(branch, branches, worktree);
+  // Branch from, for a new worktree: only Claude Code's, on a computer that takes it.
+  const takesBase = computer.features.includes(REMOTE_FEATURE_WORKTREE_BASE) && !provider;
 
   // Run as: the pipelines the project can run there (its own, every project's and the built-ins, as that computer has
   // them). The one picked stays while the next project can run it too.
@@ -274,7 +277,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       const projectId = fresh?.projectId ?? project!.id;
       if (runAs) {
         // The prompt is the run's task; the box's choices go to the steps that don't set their own (the run makes its own worktree).
-        const { worktree: _worktree, ...choices } = options ? remoteChanges(choice, defaults, baseProfile) : {};
+        const { worktree: _worktree, worktreeBase: _base, ...choices } = options ? remoteChanges(choice, defaults, baseProfile) : {};
         const { state } = await callComputer(client, computer.id, 'pipelines.run', { pipelineId: runAs.id, projectId, task: text, images, files, ...choices });
         rememberPipeline(remoteProjectKey(computer.id, projectId), runAs.id);
         clearRemoteDraft(draftKey);
@@ -350,21 +353,20 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (savedPrompts.onMenuKey(event)) return;
+    if (editKey(event, setPrompt)) return;
     if ((event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) || matches(event.nativeEvent, 'new-session.start')) {
       event.preventDefault();
       void start();
     }
   };
   return (
-    <div className="flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-remote-new-session={computer.id} data-drop-zone>
-      <div className="drag flex h-13 shrink-0 items-center justify-between px-4">
-        <SidebarToggle />
-      </div>
+    <div role="main" className="flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-remote-new-session={computer.id} data-drop-zone>
+      <ViewHeader title="New session" />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className={`my-auto ${NEW_SESSION_COLUMN} pt-2 pb-12`} data-new-session-view>
           <div className="grid gap-3 text-center">
             {/* The keys that pick a project are under the list, as many as it shows. */}
-            <h1 className="text-hero leading-tight font-semibold">Where do we start?</h1>
+            <h2 className="text-hero leading-tight font-semibold">Where do we start?</h2>
             <RunOnSwitch />
           </div>
 
@@ -472,6 +474,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                   </span>
                   <ChoiceMenu
                     name="remote-workspace"
+                    fixed
                     value={worktree ? 'worktree' : 'current'}
                     onChange={(where) => change({ worktree: where === 'worktree' })}
                     // Another provider there without worktrees works in the folder as it is.
@@ -488,6 +491,25 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                     {worktree ? <FolderGit2 size={14} className="shrink-0" aria-hidden /> : <Folder size={14} className="shrink-0" aria-hidden />}
                     <span data-route-where>{worktree ? 'New worktree' : 'Current checkout'}</span>
                   </ChoiceMenu>
+                  {worktree && takesBase && branches && (
+                    <ChoiceMenu
+                      name="remote-base"
+                      value={choice.baseRef}
+                      onChange={(baseRef) => change({ baseRef })}
+                      title={`The branch the new worktree on ${name} starts from`}
+                      heading="Branch from"
+                      chevron
+                      mono
+                      search="Search branches"
+                      width={300}
+                      choices={remoteBaseChoices(branches, choice.baseRef)}
+                    >
+                      <GitBranch size={14} className="shrink-0" aria-hidden />
+                      <span className="truncate" data-route-base>
+                        {remoteBaseName(choice.baseRef, branches)}
+                      </span>
+                    </ChoiceMenu>
+                  )}
                   {!worktree && branches && (branches.current || branches.branches.length > 0) && (
                     <ChoiceMenu
                       name="remote-branch"

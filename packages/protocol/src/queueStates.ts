@@ -65,6 +65,8 @@ export interface QueueInputs {
   outcomeOf?(sessionId: string): SessionOutcome | null;
   /** Items the engine holds at the focus limit: ready, but waiting for a free slot. */
   focusHeld?: ReadonlySet<string>;
+  /** The focus limit is on and reached: an item that waits for a free slot waits. */
+  focusFull?: boolean;
 }
 
 export interface QueueSummary {
@@ -128,6 +130,8 @@ export function autoStartBlock(waitFor: QueueWaitFor, inputs: { cwd: string; ses
       ? `${quoted(sessionTitle(session))} runs ${session.elsewhere === 'terminal' ? 'in the terminal' : 'in another app'}, so Seshboard can't tell when it finishes. Start this one yourself.`
       : null;
   switch (waitFor.kind) {
+    case 'slot':
+      return null;
     case 'session':
       return outside(byId.get(waitFor.sessionId));
     case 'item': {
@@ -196,6 +200,11 @@ export function queueStates(inputs: QueueInputs): QueueSummary {
           const label = busy.length === 1 ? `${name} has a session working` : `${name} has ${busy.length} sessions working`;
           const detail = busy.length === 1 ? `Waits for ${quoted(sessionTitle(busy[0]))}` : `Waits for ${busy.length} sessions in ${name}`;
           return { state: 'waiting', label, detail, blockers, finished: null };
+        }
+        case 'slot': {
+          if (!inputs.focusFull) return ready('a slot is free');
+          const label = auto ? 'starts when a slot is free' : 'waits for a free slot';
+          return { state: 'waiting', label, detail: label[0]!.toUpperCase() + label.slice(1), blockers: [], finished: null };
         }
         case 'session':
           return onSession(wait.sessionId);

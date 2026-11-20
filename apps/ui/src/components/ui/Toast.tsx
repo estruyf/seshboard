@@ -3,7 +3,7 @@ import { TOAST_MS, useToasts, type Toast } from '../../state/toastStore.ts';
 import { UpdateToasts } from '../updates/UpdateToasts.tsx';
 import { Button } from './Button.tsx';
 import { Kbd } from './Kbd.tsx';
-import { ToastFrame, useToastCountdown } from './ToastFrame.tsx';
+import { ToastFrame, ToastText, useToastCountdown } from './ToastFrame.tsx';
 
 /** One toast: it counts down while visible, pauses while the pointer is on it or the window is in the background. */
 function ToastCard({ toast }: { toast: Toast }) {
@@ -77,7 +77,7 @@ function ToastCard({ toast }: { toast: Toast }) {
           <span className="line-clamp-3 break-words">{toast.message}</span>
         </span>
       ) : (
-        <span className="min-w-0 flex-1 truncate">{toast.message}</span>
+        <ToastText>{toast.message}</ToastText>
       )}
       {toast.undo && (
         // In the link colour, like the sidebar's Select all: the one thing to do with a toast.

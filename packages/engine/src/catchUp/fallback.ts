@@ -152,19 +152,22 @@ export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 
   return { did: [...said, ...did].slice(0, 5), skipped, need: needOf(kind, { signals, question, error: outcome.state === 'error' ? (outcome.error ?? 'The turn ended with an error.') : null }) };
 }
 
-/** What a waiting session asks, from the request itself (never a model): a question, a plan to approve, or a tool to allow. */
-export function waitingNeed(request: Pick<PermissionRequest, 'toolName' | 'input' | 'title'>): Need {
+/**
+ * What a waiting session asks, from the request itself (never a model): a question, a plan to approve, or a tool to
+ * allow. `agent`: who asks, by its short name (`agentName`: "Codex"); Claude by default.
+ */
+export function waitingNeed(request: Pick<PermissionRequest, 'toolName' | 'input' | 'title'>, agent = 'Claude'): Need {
   const input = (request.input ?? {}) as { questions?: Array<{ question?: unknown }>; command?: unknown };
   if (request.toolName === 'AskUserQuestion') {
     const questions = Array.isArray(input.questions) ? input.questions : [];
-    const first = typeof questions[0]?.question === 'string' ? questions[0].question : 'Claude has a question for you.';
+    const first = typeof questions[0]?.question === 'string' ? questions[0].question : `${agent} has a question for you.`;
     const more = questions.length > 1 ? ` (and ${plural(questions.length - 1, 'more question')})` : '';
     return { kind: 'question', title: 'Answer a question', text: oneLine(`${first}${more}`, 400) };
   }
-  if (request.toolName === 'ExitPlanMode') return { kind: 'permission', title: 'Approve the plan', text: 'Claude has a plan. Ready to start?' };
+  if (request.toolName === 'ExitPlanMode') return { kind: 'permission', title: 'Approve the plan', text: `${agent} has a plan. Ready to start?` };
   if (request.toolName === 'Bash') {
     const command = typeof input.command === 'string' ? input.command : null;
-    return { kind: 'permission', title: 'Allow a command', text: oneLine(request.title ?? (command ? `Claude wants to run ${command}` : 'Claude wants to run a command'), 400) };
+    return { kind: 'permission', title: 'Allow a command', text: oneLine(request.title ?? (command ? `${agent} wants to run ${command}` : `${agent} wants to run a command`), 400) };
   }
-  return { kind: 'permission', title: `Allow ${request.toolName}`, text: oneLine(request.title ?? `Claude wants to use ${request.toolName}`, 400) };
+  return { kind: 'permission', title: `Allow ${request.toolName}`, text: oneLine(request.title ?? `${agent} wants to use ${request.toolName}`, 400) };
 }

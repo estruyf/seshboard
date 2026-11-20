@@ -131,6 +131,15 @@ The **⋯** menu of a prompt has:
 
 Sharing a prompt, or taking it out of the shared ones, changes a file in the repository. The message says so ("Fix failing test is shared with acme-store"), with **Show the change**, which opens the file in [Changes](/terminal-changes-git/changes/), and **Undo**.
 
+### Suggestions
+
+Under **Every project**, **Suggestions** offers prompts worth having, each with an **Add** button:
+
+- **Use your best judgment** keeps a session from waiting on small decisions: Claude makes the calls it can undo itself, and tells you later which ones it made.
+- **Throwaway build** asks for a feature, then has Claude build it quickly in a separate worktree and tell you where the design got in the way.
+
+Nothing is added unless you press **Add**. The prompt then goes to **Every project**, and its suggestion goes away. When you have saved both, the list is gone.
+
 ## Shared prompts
 
 Shared prompts are kept in the project's `.seshboard.json`, next to its [shared actions](/projects/actions/#share-actions-with-your-team), under `prompts`. Commit the file and everyone on the project gets them. When the file changes, for example after a pull, the lists update.

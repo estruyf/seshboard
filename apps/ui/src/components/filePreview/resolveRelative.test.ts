@@ -28,6 +28,11 @@ describe('resolveRelative', () => {
     expect(resolveRelative('', '/work')).toBeNull();
     expect(resolveRelative(undefined, '/work')).toBeNull();
   });
+  it('never takes a share or another site for a path', () => {
+    expect(resolveRelative('//evil.example/x.png', '/work')).toBeNull();
+    expect(resolveRelative('\\\\evil\\x.png', 'C:\\Users')).toBeNull();
+    expect(resolveRelative('/\\evil/x.png', '/work')).toBeNull();
+  });
   it('cuts off a query and a fragment and decodes the name', () => {
     expect(resolveRelative('other.md#top', '/work')).toBe('/work/other.md');
     expect(resolveRelative('my%20file.md?x=1', '/work')).toBe('/work/my file.md');

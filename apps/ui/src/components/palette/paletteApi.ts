@@ -15,8 +15,16 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
+import { showWebPanel, useWebPreview } from '../../state/webPreviewStore.ts';
+import { currentPageTab, newBrowserTab, openBrowserView } from '../../state/browserViewStore.ts';
+import { toggleFavorite } from '../../state/browserFavoritesStore.ts';
+import { bookmarkPage } from '../../state/browserBookmarksStore.ts';
+import { openWebLink, runBrowserAction } from '../../state/browserActions.ts';
+import { sessionServerOffers } from '../webPreview/serverOffers.ts';
 import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
-import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
+import { useFilesPanel } from '../../state/filesPanelStore.ts';
+import { quickOpenTarget, useQuickOpen } from '../../state/quickOpenStore.ts';
+import { frontTab, toggleTerminalPanel } from '../../state/rightPanelStore.ts';
 import { readOnlyFork } from '../../state/githubOriginStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -26,9 +34,11 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from '../../state/sessionNav.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { popOut } from '../../state/popoutsStore.ts';
+import { popOutBrowser } from '../../state/browserWindow.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { openUpcoming } from '../../state/upcomingStore.ts';
+import { openActivity } from '../../state/activityStore.ts';
 import { openToSchedule } from '../../state/schedulesStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
@@ -36,6 +46,7 @@ import { ownerSession } from '../terminal/appTerminal.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
+import { submitReview as submitReviewComments } from '../changes/submitReview.ts';
 import { useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
 import { sameScope } from '../savedPrompts/fillModel.ts';
 
@@ -97,6 +108,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     goHome: () => useSessions.getState().goHome(),
     openUsage: () => openUsage(),
     openUpcoming: (kind) => openUpcoming({ kind }),
+    openActivity: () => openActivity(),
     showSearch: () => useOverlay.getState().show('search'),
     showMemorySearch: () => useOverlay.getState().searchMemory(),
     showShortcuts: () => useOverlay.getState().show('shortcuts'),
@@ -107,6 +119,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     setSidebar: (state) => useSidebar.getState().setState(state),
     toggleSidebar: () => useSidebar.getState().toggle(),
     goToSession: (direction) => goToAdjacentSession(direction),
+    openSession: (sessionId) => useSessions.getState().select(sessionId),
     goToNextNeedsYou: () => goToNextNeedsYou(),
     manageProjects: () => manage(),
     openProject: (root, tab) => openProject(root, tab),
@@ -212,6 +225,22 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       const id = useSessions.getState().selectedId;
       if (id) toggleChangesPanel(id, isAskOpen(id) || isAgentsOpen(id) || isCommandsOpen(id));
     },
+    toggleFiles: () => {
+      const id = useSessions.getState().selectedId;
+      if (!id) return;
+      const files = useFilesPanel.getState();
+      files.setOpen(id, !(files.get(id).open && frontTab(id) === 'files'));
+    },
+    // After the palette's own close, so Quick open takes focus.
+    quickOpen: () => setTimeout(() => useQuickOpen.getState().toggle(quickOpenTarget())),
+    searchInFiles: () => {
+      const id = useSessions.getState().selectedId;
+      if (!id) return;
+      const files = useFilesPanel.getState();
+      files.setOpen(id, true);
+      files.setMode(id, 'search');
+      setTimeout(() => files.command(id, 'search'));
+    },
     toggleAgents: () => {
       const id = useSessions.getState().selectedId;
       if (id) toggleAgentsPanel(id, isChangesOpen(id) || isAskOpen(id) || isCommandsOpen(id));
@@ -219,6 +248,30 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     toggleCommands: () => {
       const id = useSessions.getState().selectedId;
       if (id) toggleCommandsPanel(id, isChangesOpen(id) || isAskOpen(id) || isAgentsOpen(id));
+    },
+    openWeb: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) showWebPanel(id, sessionServerOffers(useTerminals.getState().terminals.values(), id)[0]?.url ?? null);
+    },
+    reloadWeb: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) useWebPreview.getState().reload(id);
+    },
+    openBrowserView: () => openBrowserView(),
+    browserAction: (action) => runBrowserAction(action),
+    toggleFavorite: () => {
+      const tab = currentPageTab();
+      if (tab) toggleFavorite(tab);
+    },
+    bookmarkPage: () => {
+      const tab = currentPageTab();
+      if (tab) bookmarkPage(tab);
+    },
+    newBrowserTab: () => {
+      const { view, selectedId } = useSessions.getState();
+      if (view === 'browser' || !selectedId) return newBrowserTab();
+      useWebPreview.getState().open(selectedId);
+      useWebPreview.getState().openTab(selectedId, null);
     },
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),
@@ -263,7 +316,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       }, 50);
     },
     sessionRequest: (kind) => usePaletteBus.getState().requestSession(kind),
-    openUrl: (url) => void window.open(url, '_blank'),
+    openUrl: (url) => openWebLink(url),
     syncWithRemote: () =>
       cwd &&
       call('sync with the remote', async (c) => {
@@ -280,6 +333,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
         // The checkout changed under the session view: its Changes panel and git button read it again.
         useCheckoutBranches.getState().switched();
       }),
+    submitReview: () => sessionId && submitReviewComments(sessionId, cwd),
     revertAll: () =>
       cwd &&
       call('read the changes', async (c) => {
@@ -310,6 +364,10 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     openInNewWindow: () => {
       const { selectedId } = useSessions.getState();
       if (selectedId) popOut(selectedId);
+    },
+    openBrowserInNewWindow: () => {
+      const { selectedId } = useSessions.getState();
+      if (selectedId) popOutBrowser(selectedId);
     },
     newSessionRequest: (kind) => usePaletteBus.getState().requestNewSession(kind),
     openNewSession: () => useSessions.getState().openNewSession(),

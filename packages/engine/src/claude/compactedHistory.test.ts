@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { joinParts } from './compactedHistory.ts';
+import { IDLE_COMPACTION_MAX_GAP_MS, IDLE_COMPACTION_MIN_GAP_MS, isIdleCompaction, joinParts } from './compactedHistory.ts';
 import { sdkSessionSource } from './sessionSource.ts';
 import type { RawSessionMessage } from './transcript.ts';
 
@@ -14,7 +14,7 @@ let n = 0;
 const uuid = () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`;
 
 /** A transcript in Claude Code's format: a conversation, compacted `compactions` times, a turn after each. */
-function transcript(compactions: number): { lines: object[]; prompts: string[] } {
+function transcript(compactions: number, boundaryAt: { trigger?: string; quietMs?: number; version?: string; preTokens?: number } = {}): { lines: object[]; prompts: string[] } {
   const lines: object[] = [];
   const prompts: string[] = [];
   const base = { isSidechain: false, sessionId: SESSION, cwd: '/tmp/project', version: '2.1.287', userType: 'external' };
@@ -35,7 +35,8 @@ function transcript(compactions: number): { lines: object[]; prompts: string[] }
     const boundary = uuid();
     const summary = uuid();
     lines.push({ type: 'last-prompt', sessionId: SESSION });
-    lines.push({ ...base, parentUuid: null, logicalParentUuid: parent, type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', uuid: boundary, timestamp: at(), compactMetadata: { trigger: 'manual', preTokens: 1000 } });
+    time += boundaryAt.quietMs ?? 0;
+    lines.push({ ...base, ...(boundaryAt.version ? { version: boundaryAt.version } : {}), parentUuid: null, logicalParentUuid: parent, type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', uuid: boundary, timestamp: at(), compactMetadata: { trigger: boundaryAt.trigger ?? 'manual', preTokens: boundaryAt.preTokens ?? 1000 } });
     lines.push({ ...base, parentUuid: boundary, type: 'user', uuid: summary, isCompactSummary: true, timestamp: at(), message: { role: 'user', content: 'This session is being continued from a previous conversation.' } });
     parent = summary;
     turn(`Task after compaction ${i + 1}`);
@@ -103,5 +104,55 @@ describe('compacted conversations', () => {
   it('shows what was kept through a compaction where it was first said', () => {
     const m = (id: string): RawSessionMessage => ({ type: 'user', uuid: id, message: {}, parent_tool_use_id: null });
     expect(joinParts([m('a'), m('b'), m('notice')], [m('summary'), m('b'), m('c')]).map((x) => x.uuid)).toEqual(['a', 'b', 'notice', 'summary', 'c']);
+  });
+});
+
+describe('idle compaction', () => {
+  const idleOf = async (lines: object[]) => (await sourceFor(configWith(lines)).messages(SESSION)).filter((m) => m.type === 'system').map((m) => (m.message as { idle?: boolean }).idle === true);
+
+  /** An automatic compaction by Claude Code 2.1.311, 54 minutes after the last message, over 100K tokens: what idle compaction writes. */
+  const idle = { trigger: 'auto', quietMs: 54 * 60_000, version: '2.1.311', preTokens: 150_000 };
+  const t = (minutes: number) => new Date(Date.parse('2026-10-11T10:00:00.000Z') + minutes * 60_000).toISOString();
+
+  it('marks an automatic compaction 54 minutes after the last message, of a big enough conversation', async () => {
+    expect(await idleOf(transcript(1, idle).lines)).toEqual([true]);
+  });
+
+  it('leaves a compaction as it was when it does not look like the idle timer', async () => {
+    // Inside a turn.
+    expect(await idleOf(transcript(1, { ...idle, quietMs: 30_000 }).lines)).toEqual([false]);
+    // Asked for.
+    expect(await idleOf(transcript(1, { ...idle, trigger: 'manual' }).lines)).toEqual([false]);
+    // Too long a pause: the timer is skipped when it is late.
+    expect(await idleOf(transcript(1, { ...idle, quietMs: 3 * 60 * 60_000 }).lines)).toEqual([false]);
+    // Too small a conversation.
+    expect(await idleOf(transcript(1, { ...idle, preTokens: 50_000 }).lines)).toEqual([false]);
+    // A Claude Code from before idle compaction.
+    expect(await idleOf(transcript(1, { ...idle, version: '2.1.287' }).lines)).toEqual([false]);
+  });
+
+  it('keeps the window to 45 to 62 minutes', () => {
+    const entries = (minutes: number) => [
+      { type: 'user', uuid: 'u1', timestamp: t(0) },
+      { type: 'assistant', uuid: 'a1', timestamp: t(1) },
+      { type: 'system', uuid: 'b1', subtype: 'compact_boundary', timestamp: t(1 + minutes), compactMetadata: { trigger: 'auto' } },
+    ];
+    expect(IDLE_COMPACTION_MIN_GAP_MS).toBe(45 * 60_000);
+    expect(IDLE_COMPACTION_MAX_GAP_MS).toBe(62 * 60_000);
+    expect([44, 45, 54, 62, 63].map((m) => isIdleCompaction(entries(m), 2))).toEqual([false, true, true, true, false]);
+  });
+
+  it('judges from what the boundary says, and says no when it cannot tell', () => {
+    const message = { type: 'assistant', uuid: 'a1', timestamp: t(0) };
+    const boundary = (patch: object) => ({ type: 'system', uuid: 'b1', subtype: 'compact_boundary', timestamp: t(54), compactMetadata: { trigger: 'auto' }, ...patch });
+    // Without a version or a token count there is nothing to rule it out.
+    expect(isIdleCompaction([message, boundary({})], 1)).toBe(true);
+    expect(isIdleCompaction([message, boundary({ version: '2.1.299', compactMetadata: { trigger: 'auto', preTokens: 100_000 } })], 1)).toBe(true);
+    expect(isIdleCompaction([message, boundary({ version: '2.1.298' })], 1)).toBe(false);
+    // No trigger, no earlier message to be quiet since, a time that isn't one, or no such entry.
+    expect(isIdleCompaction([message, boundary({ compactMetadata: {} })], 1)).toBe(false);
+    expect(isIdleCompaction([boundary({})], 0)).toBe(false);
+    expect(isIdleCompaction([message, boundary({ timestamp: 'not a date' })], 1)).toBe(false);
+    expect(isIdleCompaction([message], 5)).toBe(false);
   });
 });

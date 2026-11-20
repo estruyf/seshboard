@@ -3,6 +3,10 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
+  SKIM_MARKS_PROMPT,
+  ORCHESTRATOR_TOKEN_ENV,
+  writeStub,
+  agentName,
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
   PROVIDER_NAMES,
@@ -18,6 +22,10 @@ import {
   REMOTE_LOG_FILE,
   contract,
   isSameOrInside,
+  BROWSER_SCRIPTS_ENV,
+  withSite,
+  type BrowserToolRequest,
+  type BrowserToolResult,
   RpcError,
   serveRpc,
   type Contract,
@@ -30,6 +38,7 @@ import {
   type ModelOption,
   type RpcServer,
   type AskEvent,
+  type ApiRetry,
   type SessionHostInfo,
   type TerminalInfo,
   type SlashCommand,
@@ -39,6 +48,8 @@ import {
   type CloneProgress,
   type WorktreePullRequest,
   type WorktreeSize,
+  mergeFacts,
+  mergePullRequests,
   type Transport,
   type UsageSnapshot,
   type TokenCounts,
@@ -86,6 +97,7 @@ import {
   writeRunStub,
   PipelineRunState,
   projectPrBase,
+  fallbackModelFor,
   type PipelineNotice,
   type ProviderDetection,
   type RemoteAppUpdate,
@@ -98,8 +110,10 @@ import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSeshboard } from './git/githubStar.ts';
 import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { diffImages } from './git/diffImages.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
-import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
+import { WorktreeFactsRunner } from './git/worktreeFacts.ts';
+import { fetchPullRequests, ignoredFiles, measureSize, readWorktrees, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
@@ -140,6 +154,9 @@ import { HostProcesses } from './host/hostProcesses.ts';
 import { LinkService } from './links/linkService.ts';
 import { expandMessage, GithubExpander } from './links/githubExpand.ts';
 import { LinkStore } from './links/linkStore.ts';
+import { Orchestrator, type OrchestratorAgent } from './orchestrator/orchestrator.ts';
+import { OrchestratorBridge } from './orchestrator/orchestratorBridge.ts';
+import { OrchestratorStore } from './orchestrator/orchestratorStore.ts';
 import { lastTurn } from './catchUp/turn.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
@@ -151,6 +168,8 @@ import { UsageInsights } from './usage/usageInsights.ts';
 import { scopeOf } from './usage/usageScanner.ts';
 import { ModelRouter, RoutingStore, stubRoute } from './autoModel/router.ts';
 import { CatchUpService } from './catchUp/catchUpService.ts';
+import { ActivityService } from './activity/activityService.ts';
+import { stubDaySummary } from './activity/daySummary.ts';
 import { CatchUpStore, CatchUpUsageStore } from './catchUp/catchUpStore.ts';
 import { stubAnswer, Summarizer } from './catchUp/summary.ts';
 import { COMMIT_SYSTEM_PROMPT, commitContext, commitMessageInput, parseCommitMessage, stubCommitMessage } from './git/commitMessage.ts';
@@ -164,8 +183,16 @@ import { MultiProfileSource } from './profiles/profileSources.ts';
 import { copilotHome } from './providers/copilot/copilotSource.ts';
 import { ProviderProfiles } from './providers/providerProfiles.ts';
 import { createProvider, createProviderUpdater, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
+import { providerStatus, type ProviderDriver } from './providers/provider.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
+import { ProviderForks } from './providers/providerForks.ts';
+import { BrowserFavorites } from './browser/favorites.ts';
+import { BrowserHistory } from './browser/history.ts';
+import { BrowserBookmarks } from './browser/bookmarks.ts';
+import { BrowserProfileError, BrowserProfiles } from './browser/profiles.ts';
+import { PinnedTabs } from './browser/pinnedTabs.ts';
+import { BrowserBridge } from './browser/browserBridge.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
@@ -187,6 +214,7 @@ import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { readPreview, readPreviewImage } from './system/filePreview.ts';
+import { grep } from './system/grep.ts';
 import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
@@ -201,6 +229,7 @@ import { PipelineRunner, type StepHold } from './pipelines/runner.ts';
 import { findNamed, runActionsFirst, runCommand } from './pipelines/actionsFirst.ts';
 import { checkoutStamp, commitAndOpen, previewPush } from './pipelines/push.ts';
 import pkg from '../package.json' with { type: 'json' };
+import type { McpStdioServer } from './providers/provider.ts';
 
 export interface EngineOptions {
   /** Where the app keeps its own data (the cache database lives here). */
@@ -218,10 +247,21 @@ export interface EngineOptions {
    * while it does.
    */
   onKeepAwake?: (on: boolean) => void;
+  /**
+   * Browser control (docs/browser.md): drives a session's page in its Browser panel. Pages live in the desktop
+   * app's windows, so main answers each call. Without it sessions don't get the browser tools.
+   */
+  browser?: (request: BrowserToolRequest) => Promise<BrowserToolResult>;
   /** Where the built-in profile's sessions are read from. Defaults to the Claude Agent SDK (tests pass a fake). */
   sessionSource?: SessionSource;
   /** A fake Copilot SDK and `copilot` (tests, and the demo's `demoCopilot`). Defaults to the SDK and the user's own `copilot`. */
   copilot?: ProviderOptions['copilot'];
+  /** A fake `codex` and `codex app-server` (tests). Defaults to the user's own `codex`. */
+  codex?: ProviderOptions['codex'];
+  /** A fake `agy` and `agy acp` (tests, and the demo's `demoAntigravity`). Defaults to the user's own `agy`. */
+  antigravity?: ProviderOptions['antigravity'];
+  /** How long `worktrees.list` waits for the facts of the worktrees before it answers without them (tests set 0). Defaults to 1.5 seconds. */
+  worktreeFactsWaitMs?: number;
   /** Start watching ~/.claude immediately. Defaults to true. */
   watchSessions?: boolean;
   /** Claude Code itself. Defaults to the Agent SDK (tests pass a fake). */
@@ -351,8 +391,11 @@ export interface ArchivedCleanup {
 }
 
 /** Session files go by their config folder, a revert's files by their repository, memory files by their folder. */
-/** What may go to the Trash, which main checks again: a Claude profile's session files, a Copilot profile's session folders, new files in a repository, memory. */
-export type TrashScope = { configDir: string } | { copilotHome: string } | { repoRoot: string } | MemoryTrashScope;
+/**
+ * What may go to the Trash, which main checks again: a Claude profile's session files, a Copilot profile's session
+ * folders, a Codex profile's rollout files, new files in a repository, memory.
+ */
+export type TrashScope = { configDir: string } | { copilotHome: string } | { codexHome: string } | { agyHome: string } | { repoRoot: string } | MemoryTrashScope;
 
 export interface Engine {
   /** Serves the contract over a transport (one per window). Returns a detach function. */
@@ -364,12 +407,16 @@ export interface Engine {
   setAutoModel(prefs: AutoModelPrefs): void;
   /** Settings › Conversation › Catch-up: write the summaries with Haiku (else from the tool calls), from main. */
   setCatchUpSummaries(enabled: boolean): void;
+  /** Settings › Conversation › Activity: write the day in short with Haiku, from main. */
+  setActivitySummaries(enabled: boolean): void;
   /** Settings › Conversation › Resume after a usage limit resets, from main. */
   setResumeAtLimit(mode: ResumeAtLimit): void;
   /** Settings › General › Global permission mode, from main: what a phone's new session starts in where its profile and project set none. */
   setGlobalPermissionMode(mode: PermissionMode): void;
   /** Settings › General › Global model and Global effort, from main: what a phone's new session starts with where its profile and project set none. */
   setGlobalModel(globals: GlobalModel): void;
+  /** Settings › General › Global fallback model, from main (null: off): Claude Code sessions started or resumed after it changes use it where their project and profile set none. */
+  setGlobalFallbackModel(model: string | null): void;
   /**
    * Settings › Focus, from main: the focus limit (null when off) and whether terminal and IDE sessions count. A
    * queued item that starts by itself never asks at the limit; it waits for a free slot.
@@ -380,7 +427,7 @@ export interface Engine {
    * a turn, `idle` ends it with `outcome`, `closed` takes it away. `needs-you` holds a made-up permission prompt, which
    * goes when the session moves on, or when Allow or Deny answers it (the menu bar's Allow).
    */
-  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; fast?: { blocked: string | null; on?: boolean } }): void;
+  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; apiRetry?: ApiRetry | null; fast?: { blocked: string | null; on?: boolean } }): void;
   /**
    * The smoke test (`stubQueueStarts` only): while on, `session.create` starts a stand-in session (`smokeQueueHost`)
    * instead of Claude Code, and records what it got. For the menu bar's new work.
@@ -404,6 +451,25 @@ export interface Engine {
   setShowMods(enabled: boolean): void;
   /** Settings › General › Use Claude in Chrome, from main: sessions started or resumed after it changes get `--chrome`. */
   setChrome(enabled: boolean): void;
+  /** Settings › Conversation › Let the agent mark its key sentences: for sessions started or resumed from now on. */
+  setSkimMarks(enabled: boolean): void;
+  /** Visuals in replies: the `visualize` server new and resumed sessions get, or null when it is off. */
+  setVisuals(server: McpStdioServer | null): void;
+  /**
+   * Settings › Browser › Allow Seshboard to control the browser: the `browser` MCP server (Seshboard's binary
+   * and its script, from main) that sessions started or resumed from now on get, whatever their agent; null when off.
+   */
+  setBrowserControl(server: McpStdioServer | null): void;
+  /**
+   * The orchestrator's `orchestrator` MCP server (Seshboard's binary and its script, from main), which a session
+   * started or resumed as an orchestrator gets, whatever its agent (docs/orchestrator.md).
+   */
+  setOrchestratorServer(server: McpStdioServer | null): void;
+  /**
+   * The smoke test (`stubQueueStarts` only): makes a stand-in session an orchestrator of a project, and runs one of its
+   * tools as its agent would. Starts are stand-ins too, so no prompt reaches an agent.
+   */
+  smokeOrchestrator(call: { sessionId: string; projectRoot: string; tool?: string; args?: Record<string, unknown> }): Promise<{ text: string; error?: boolean } | null>;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
   /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
@@ -523,7 +589,30 @@ export function createEngine(options: EngineOptions): Engine {
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
   // --- Providers: other agents' sessions, through profiles of theirs ----------------------------------------------------
   // Profiles of other providers (Settings › Profiles): one adapter each, with its own folder, runtime and login.
-  const providerOptions: ProviderOptions = { env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, ...(options.copilot ? { copilot: options.copilot } : {}) };
+  /** Forks made here of another provider's sessions (Codex's), which its own list leaves out until they have a turn. */
+  const providerForks = new ProviderForks(cache.db);
+  const pinnedTabs = new PinnedTabs(cache.db);
+  const browserFavorites = new BrowserFavorites(cache.db);
+  const browserHistory = new BrowserHistory(cache.db);
+  const browserBookmarks = new BrowserBookmarks(cache.db);
+  const browserProfiles = new BrowserProfiles(cache.db);
+  const providerOptions: ProviderOptions = {
+    env: process.env,
+    home: homedir(),
+    shellEnv: async () => (await shell.ready).env,
+    log,
+    forks: (profileId) => providerForks.of(profileId),
+    // A Codex thread's new name, which no file the watcher sees carries: the sidebar reads the session again.
+    onSessionChanged: (sessionId) => void sessions.reread(sessionId).catch((error: Error) => log('warn', `Reading ${sessionId} again failed: ${error.message}`)),
+    ...(options.copilot ? { copilot: options.copilot } : {}),
+    ...(options.codex ? { codex: options.codex } : {}),
+    ...(options.antigravity ? { antigravity: options.antigravity } : {}),
+    // Antigravity has no fork: Ask about this session's throwaway is a session of its own, which goes to the Trash after.
+    // Without a Trash (tests), it stays.
+    discard: async (_provider, home, paths) => {
+      if (options.trash && paths.length) await options.trash(paths, { agyHome: home });
+    },
+  };
   const providerProfiles = new ProviderProfiles(() => profiles.providerProfiles(), (profile) => createProvider(profile, providerOptions));
   // GitHub Copilot allowed in Settings › Providers (before providers were profiles) is a Copilot profile on its own folder.
   const ALLOWED_PROVIDERS_KEY = 'providers.allowed';
@@ -847,6 +936,20 @@ export function createEngine(options: EngineOptions): Engine {
   providerUpdates = providerChecks;
   providerChecks.sync();
   const files = new FileIndex();
+  /** The search running for each `searchId` (one per window), so a newer one can cancel it. */
+  const grepSearches = new Map<string, AbortController>();
+  /**
+   * Throws NOT_FOUND unless `cwd` is a folder Seshboard knows: a session's folder (indexed, live or started here) or a
+   * project's root. The Files panel lists and searches only those, never any folder a caller names.
+   */
+  function assertKnownFolder(cwd: string): void {
+    const known =
+      sessions.snapshot().sessions.some((s) => s.cwd === cwd || s.projectRoot === cwd) ||
+      liveList().some((l) => l.cwd === cwd) ||
+      hosts.list().hosts.some((h) => h.cwd === cwd) ||
+      listProjects().some((p) => p.root === cwd);
+    if (!known) throw new RpcError('NOT_FOUND', `Not a session's folder or a project: ${cwd}`);
+  }
 
   const sdk = options.sdk ?? (() => import('@anthropic-ai/claude-agent-sdk'));
   /** The login shell's environment, pointed at a profile's config folder. */
@@ -891,10 +994,44 @@ export function createEngine(options: EngineOptions): Engine {
     }
     return monitor;
   };
+  /** The provider drivers whose plan usage changes are broadcast, by profile (the driver of a profile can be made anew). */
+  const providerUsageWatch = new Map<string, { driver: ProviderDriver; off: () => void }>();
+  /**
+   * A profile's plan usage, as `usage.get` answers: Claude Code's for a Claude profile, the driver's for a provider that
+   * has plan usage of its own (Codex's rate limits; `ProviderDriver.planUsage`), each followed by `usage.changed`. Null
+   * for a provider without (Copilot's premium requests are `providers.quota`): never Claude Code's under its name.
+   */
+  /** The last plan usage a provider's driver reported (Codex's windows), for the cost of its windows. */
+  const providerSnapshots = new Map<string, UsageSnapshot | null>();
+  const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
+    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh);
+    const driver = providerProfiles.adapter(profileId)?.driver;
+    if (!driver?.planUsage) return null;
+    if (providerUsageWatch.get(profileId)?.driver !== driver) {
+      providerUsageWatch.get(profileId)?.off();
+      const off =
+        driver.onPlanUsage?.((usage) => {
+          providerSnapshots.set(profileId, usage);
+          broadcast('usage.changed', { profileId, usage });
+        }) ?? (() => {});
+      providerUsageWatch.set(profileId, { driver, off });
+    }
+    return driver
+      .planUsage(refresh)
+      .then((result) => {
+        if (result.usage) providerSnapshots.set(profileId, result.usage);
+        return result;
+      })
+      .catch((error: Error) => ({ usage: null, error: error.message }));
+  };
   /** Where each profile's tokens went (from its transcripts) and its plan % over time, for the Usage view. */
   const insights = new UsageInsights({
     db: cache.db,
-    profiles: () => profiles.runtimes().map((p) => ({ id: p.id, configDir: p.configDir })),
+    // Other providers' profiles too: their session files have tokens (Copilot and Codex count in the Usage view).
+    profiles: () => [
+      ...profiles.runtimes().map((p) => ({ id: p.id, configDir: p.configDir, provider: 'claude' as const })),
+      ...profiles.providerProfiles().map((p) => ({ id: p.id, configDir: p.home, provider: p.provider })),
+    ],
     lookup: {
       session: (id) => {
         const summary = sessions.get(id);
@@ -903,7 +1040,7 @@ export function createEngine(options: EngineOptions): Engine {
       projectOf: (cwd) => resolver.resolve(cwd).root,
       projectName: (root) => projects.addedEntries().find((p) => p.root === root)?.name ?? basename(root),
     },
-    snapshot: (profileId) => usageMonitors.get(profileId)?.current() ?? null,
+    snapshot: (profileId) => usageMonitors.get(profileId)?.current() ?? providerSnapshots.get(profileId) ?? null,
     onTokens: (profileIds, scan) => broadcast('usage.tokens', { profileIds, scan }),
     log,
   });
@@ -942,8 +1079,9 @@ export function createEngine(options: EngineOptions): Engine {
     }
   }
   /** A pick as kept with the session. */
-  const autoPickOf = (pick: { model: AutoPick['model']; reason: string; tokens: number; allowed: AutoPick['allowed'] }): AutoPick => ({
+  const autoPickOf = (pick: { model: AutoPick['model']; effort: AutoPick['effort']; reason: string; tokens: number; allowed: AutoPick['allowed'] }): AutoPick => ({
     model: pick.model,
+    effort: pick.effort ?? null,
     reason: pick.reason,
     tokens: pick.tokens,
     allowed: pick.allowed,
@@ -957,6 +1095,10 @@ export function createEngine(options: EngineOptions): Engine {
   let resumeAtLimit: ResumeAtLimit = 'ask';
   let globalPermissionMode: PermissionMode = 'default';
   let globalModel: GlobalModel = NO_GLOBAL_MODEL;
+  // Auto, while it is off in Settings, starts on Claude Code's default, as in New session.
+  const currentGlobalModel = (): GlobalModel => ({ ...globalModel, model: globalModel.model === AUTO_MODEL && !autoModel.enabled ? null : globalModel.model });
+  /** Settings › General › Global fallback model, from main: null is off. */
+  let globalFallbackModel: string | null = null;
   const limits = new UsageLimits({
     store: new LimitStore(cache.db),
     // A session that is already working again (you sent something yourself) needs no nudge.
@@ -1012,7 +1154,7 @@ export function createEngine(options: EngineOptions): Engine {
    * What hosts report, the same for Claude Code's (`HostManager`) and other providers' (`ProviderHosts`): the windows,
    * the transcript, catch-up, pipelines, triggers and the queue treat both alike.
    */
-  const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
+  const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onNotice' | 'onRetract' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
     onInfo: (info) => {
       if (info.state === 'idle') transcripts.settled(info.sessionId);
       awake.update(info.sessionId, info);
@@ -1031,6 +1173,8 @@ export function createEngine(options: EngineOptions): Engine {
       transcripts.pushLive(id, messages, held);
       catchUp.messages(id, messages);
     },
+    onNotice: (id, message) => transcripts.notice(id, message),
+    onRetract: (id, uuids) => transcripts.retract(id, uuids),
     onClosed: (id) => transcripts.dropHeld(id),
     onPermission: (request) => {
       broadcast('session.permission', request);
@@ -1052,6 +1196,8 @@ export function createEngine(options: EngineOptions): Engine {
       if (!outcome.superseded) {
         const ended = outcome.stopped ? 'stopped' : outcome.ok ? 'clean' : 'error';
         void card.catch(() => null).then((made) => runner?.turnEnded(sessionId, ended, made)).catch((error: Error) => log('warn', `Pipelines: ${error.message}`));
+        // A session an orchestrator started tells it how the turn ended.
+        void card.catch(() => null).then((made) => orchestrator.turnEnded(sessionId, ended, made)).catch((error: Error) => log('warn', `Orchestrator: ${error.message}`));
       }
     },
     onCreated: (id) => {
@@ -1074,7 +1220,171 @@ export function createEngine(options: EngineOptions): Engine {
       await Promise.all([links.warmText(text), githubContext.warm(text)]);
     },
   };
+  /**
+   * The added project a folder is in (its own, or the deepest one above it: a project can be a subfolder of a repository
+   * or of a folder that isn't one). Null outside an added project.
+   */
+  const addedProjectOfCwd = (cwd: string): string | null => {
+    const inside = projects.addedEntries().filter((p) => isSameOrInside(cwd, p.root));
+    return inside.sort((a, b) => b.root.length - a.root.length)[0]?.root ?? null;
+  };
+  /**
+   * The added project a session belongs to, for its browser sites: its own, or the one its folder is in (a session that
+   * isn't indexed yet, a worktree inside the repository). Null outside an added project.
+   */
+  const addedProjectOf = (sessionId: string): string | null => {
+    const summary = sessions.get(sessionId);
+    const added = listProjects().filter((p) => p.added);
+    if (summary?.projectRoot && added.some((p) => p.root === summary.projectRoot)) return summary.projectRoot;
+    const cwd = summary?.cwd ?? liveList().find((l) => l.sessionId === sessionId)?.cwd ?? null;
+    return cwd ? addedProjectOfCwd(cwd) : null;
+  };
+  /** The sites a session's added project allows the browser tools, and their scripts (none outside an added project). */
+  const browserSitesOf = (sessionId: string) => {
+    const root = addedProjectOf(sessionId);
+    const defaults = root ? projects.defaultsOf(root) : null;
+    return { sites: defaults?.browserSites ?? [], scriptSites: defaults?.browserScriptSites ?? [], project: root !== null };
+  };
+  /** "Always allow" on a browser card: the session's project keeps the site, for the tools or for their scripts. */
+  const keepBrowserSite = (sessionId: string, kind: 'site' | 'scripts', site: string) => {
+    const root = addedProjectOf(sessionId);
+    if (!root) return log('info', `Allowed ${kind === 'scripts' ? 'scripts on ' : ''}${site} for this session: it is not in an added project`);
+    const defaults = projects.defaultsOf(root);
+    if (kind === 'scripts') projects.setDefaults(root, { ...defaults, browserScriptSites: withSite(defaults.browserScriptSites ?? [], site) });
+    else projects.setDefaults(root, { ...defaults, browserSites: withSite(defaults.browserSites ?? [], site) });
+  };
+  /**
+   * A browser profile changed (docs/browser.md, Browser profiles): every window gets the list. A refused change (a
+   * name that clashes) reaches the window as its message.
+   */
+  const browserProfileChange = <T,>(change: () => T): T => {
+    let result: T;
+    try {
+      result = change();
+    } catch (error) {
+      if (error instanceof BrowserProfileError) throw new RpcError('INVALID', error.message);
+      throw error;
+    }
+    broadcast('browser.profiles.changed', { profiles: browserProfiles.list() });
+    return result;
+  };
+  /** The project a session's browser profiles come from: its added project, else its own project root. */
+  const browserProjectOf = (sessionId: string): string | null => addedProjectOf(sessionId) ?? sessions.get(sessionId)?.projectRoot ?? null;
+  const browserProfileName = (profileId: string | null | undefined): string | null => (profileId ? (browserProfiles.list().find((p) => p.id === profileId)?.name ?? null) : null);
+  // The browser tools (docs/browser.md): every agent's `browser` server reaches this bridge, which checks the site,
+  // asks you for one the project doesn't allow, and has main drive the page. Off until main sends the server to start.
+  let browserBase: McpStdioServer | null = null;
+  const browserBridge = new BrowserBridge({
+    run: (request) => options.browser?.(request) ?? Promise.resolve({ text: 'The browser is not available here.', error: true }),
+    // `open`'s browser profile, by name among the ones the session's project can use.
+    profile: (sessionId, name) => {
+      const found = browserProfiles.find(name, browserProjectOf(sessionId));
+      return 'error' in found ? found : { id: found.profile?.id ?? null, name: found.profile?.name ?? null };
+    },
+    // A call works on the address it opens, or the session's page: with no page yet, the call itself says so.
+    where: async (sessionId, tool, args) => {
+      if (tool === 'open') return { url: String(args.url ?? ''), profile: typeof args.profileName === 'string' ? args.profileName : null };
+      const where = await options.browser?.({ sessionId, tool: 'where', args: {} });
+      return { url: where?.url ?? null, profile: browserProfileName(where?.profileId) };
+    },
+    sites: browserSitesOf,
+    // Main starts the server with the scripts flag while Settings › Browser › Allow scripts in pages is on.
+    scripts: () => browserBase?.env[BROWSER_SCRIPTS_ENV] === '1',
+    ask: (sessionId, ask) => hosts.askBrowser(sessionId, ask),
+    keep: keepBrowserSite,
+    log,
+  });
+  const browserServer = (sessionId: () => string | null) => (browserBase && options.browser ? browserBridge.serverFor(browserBase, sessionId) : Promise.resolve(null));
+  // The orchestrator (docs/orchestrator.md): a session that hands work to other sessions. Its tools reach this bridge
+  // from whatever agent runs it; a start goes through the same holds as a scheduled run.
+  const orchestratorStore = new OrchestratorStore(cache.db);
+  const orchestratorsChanged = () => broadcast('orchestrator.changed', { orchestrators: orchestrator.infos() });
+  /** The profiles a session can start with, the project's own first: Claude Code's, and providers that can start sessions. */
+  const orchestratorAgents = (projectRoot: string): OrchestratorAgent[] => {
+    const startable = new Set<string>(providerCatalog(providerOptions).filter((p) => p.canStart).map((p) => p.id));
+    const own = profiles.forProject(projectRoot);
+    return profiles
+      .exportEntries()
+      .filter((p) => p.provider === 'claude' || startable.has(p.provider))
+      .map((p) => ({ profileId: p.id, name: p.name, agent: PROVIDER_NAMES[p.provider], worktree: p.provider === 'claude' || providerSupports(p.provider, 'worktree') }))
+      .sort((a, b) => Number(b.profileId === own) - Number(a.profileId === own));
+  };
+  /** What the smoke test's orchestrator sent and started (`stubQueueStarts` only), a JSON line each in the data folder. */
+  const smokeOrchestratorLog = join(options.dataDir, 'smoke-orchestrator.jsonl');
+  const orchestrator = new Orchestrator({
+    store: orchestratorStore,
+    session: (id) => sessions.get(id) ?? null,
+    defaults: (root) => projects.defaultsOf(root),
+    profileDefaults: (profileId) => profiles.defaultsOf(profileId),
+    globals: () => currentGlobalModel(),
+    inRepo: (folder) => !!resolver.resolve(folder).gitDir,
+    agents: orchestratorAgents,
+    hold: (draft) => scheduleHold(draft),
+    queue: (draft) => queueHeld(draft),
+    start: async (draft, title, instructions) => {
+      // The smoke test never sends a prompt to an agent: the session is a stand-in that works.
+      if (options.stubQueueStarts) {
+        const sessionId = `smoke-worker-${randomUUID()}`;
+        appendFileSync(smokeOrchestratorLog, `${JSON.stringify({ kind: 'start', sessionId, title, cwd: draft.cwd, workspace: draft.workspace, permissionMode: draft.permissionMode, instructions })}\n`);
+        standInHost({ sessionId, cwd: draft.cwd, state: 'running' });
+        return sessionId;
+      }
+      const { sessionId } = await createSession(
+        {
+          cwd: draft.cwd,
+          prompt: draft.prompt,
+          attachments: [],
+          model: draft.model ?? null,
+          permissionMode: draft.permissionMode ?? 'default',
+          effort: draft.effort ?? null,
+          worktree: draft.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
+          profileId: draft.profileId && profiles.has(draft.profileId) ? draft.profileId : null,
+          checkoutBranch: null,
+        },
+        { appendSystem: instructions },
+      );
+      pendingTitles.set(sessionId, title);
+      applyTitles([sessionId]);
+      return sessionId;
+    },
+    setParent: (sessionId, orchestratorId) => {
+      runStore.setParent(sessionId, orchestratorId, null);
+      sessions.republish(sessionId);
+    },
+    status: (id) => {
+      const state = (hosts.list().hosts.find((h) => h.sessionId === id) ?? smokeHosts.get(id))?.state ?? liveList().find((l) => l.sessionId === id)?.status;
+      return state === 'running' || state === 'starting' ? 'working' : state === 'needs-you' ? 'needsYou' : state === 'error' ? 'failed' : state ? 'idle' : null;
+    },
+    info: (id) => links.info(id),
+    pr: (id) => {
+      const rows = linkStore.prsOf(id);
+      const pick = rows.find((r) => r.source === 'opened' && r.state === 'open') ?? rows[0];
+      return pick ? { number: pick.number, url: pick.url, state: pick.state } : null;
+    },
+    catchUp: (id) => catchUpStore.get(id),
+    brief: async (from, id, label) => {
+      await links.warm(id);
+      return links.expand(from, writeStub(label, id));
+    },
+    send: async (sessionId, text) => {
+      if (options.stubQueueStarts) {
+        appendFileSync(smokeOrchestratorLog, `${JSON.stringify({ kind: 'send', sessionId, text })}\n`);
+        return;
+      }
+      await hosts.send({ sessionId, text, attachments: [], fork: false, mode: 'queue' });
+      sessions.wake(sessionId);
+    },
+    changed: orchestratorsChanged,
+    log,
+  });
+  let orchestratorBase: McpStdioServer | null = null;
+  const orchestratorBridge = new OrchestratorBridge({ run: (sessionId, tool, args) => orchestrator.run(sessionId, tool, args), isOrchestrator: (id) => orchestrator.isOrchestrator(id), log });
+  const orchestratorServer = (sessionId: () => string | null) => (orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId) : Promise.resolve(null));
+  /** The smoke test calls a tool as the session's own server would: with a token the bridge gave out for that session. */
+  const smokeOrchestratorToken = async (sessionId: string) => (await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId)).env[ORCHESTRATOR_TOKEN_ENV] ?? '';
   const hosts = new RoutedHostManager({
+    // The project's, else its profile's, else the global one: for every Claude Code process Seshboard starts.
+    fallbackModel: (cwd, profileId) => fallbackModelFor(projects.defaultsOf(resolver.resolve(cwd).root), profiles.defaultsOf(profileId), globalFallbackModel),
     limits,
     signIns,
     sdk,
@@ -1127,6 +1437,11 @@ export function createEngine(options: EngineOptions): Engine {
     readOnly: (id) => runner?.isReadOnly(id) ?? false,
     planApproved: (id, plan) => runner?.planApproved(id, plan) ?? null,
     autoAnswer: (request) => runner?.autoAnswer(request) ?? null,
+    browserServer,
+    orchestratorServer,
+    isOrchestrator: (id) => orchestrator.isOrchestrator(id),
+    appendSystemFor: (id) => orchestrator.systemTextFor(id),
+    planModeInstructionsFor: (cwd) => projects.defaultsOf(addedProjectOfCwd(cwd) ?? resolver.resolve(cwd).root).planModeInstructions?.trim() || null,
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -1158,8 +1473,15 @@ export function createEngine(options: EngineOptions): Engine {
     return profileId ? providerProfiles.adapter(profileId) : undefined;
   };
   /** Other providers' sessions (GitHub Copilot), run through their drivers, reporting like Claude Code's hosts. */
+  /** Main sends Settings › Conversation › Let the agent mark its key sentences at start and after each change. */
+  let skimMarksOn = true;
   const providerHosts = new ProviderHosts({
     providers: () => providerProfiles.adapters(),
+    browserServer,
+    orchestratorServer,
+    isOrchestrator: (id) => orchestrator.isOrchestrator(id),
+    appendSystemFor: (id) => orchestrator.systemTextFor(id),
+    appendSystem: () => (skimMarksOn ? SKIM_MARKS_PROMPT : null),
     profileOf: providerProfileOf,
     sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
     openElsewhere: async (adapter, id) => (await adapter.inUse?.(id)) ?? false,
@@ -1212,7 +1534,7 @@ export function createEngine(options: EngineOptions): Engine {
    * Starts a session with another provider in `cwd` (a worktree `createSession` made, or the folder as it checked it
    * out): only the message, the model (with its effort), the mode and the worktree's setup apply.
    */
-  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'effort' | 'permissionMode'> & { profileId: string; readOnly?: boolean; beforeFirstMessage?: (sessionId: string) => Promise<void> }) => {
+  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'effort' | 'permissionMode'> & { profileId: string; readOnly?: boolean; orchestrator?: boolean; appendSystem?: string | null; beforeFirstMessage?: (sessionId: string) => Promise<void> }) => {
     // A model or mode from Claude Code's defaults (a project's, a schedule's) is left out when the provider has no such one.
     const driver = providerProfiles.adapter(params.profileId)?.driver;
     const models = params.model && driver ? await driver.models().catch(() => []) : [];
@@ -1220,7 +1542,7 @@ export function createEngine(options: EngineOptions): Engine {
     const model = picked?.value ?? null;
     // An effort only for a model that takes it, and at a level it has.
     const effort = picked?.supportsEffort && params.effort && (picked.efforts ?? [params.effort]).includes(params.effort) ? params.effort : null;
-    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, effort, permissionMode: params.permissionMode, ...(params.readOnly ? { readOnly: true } : {}), ...(params.beforeFirstMessage ? { beforeFirstMessage: params.beforeFirstMessage } : {}) });
+    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, effort, permissionMode: params.permissionMode, ...(params.readOnly ? { readOnly: true } : {}), ...(params.orchestrator ? { orchestrator: true } : {}), ...(params.appendSystem ? { appendSystem: params.appendSystem } : {}), ...(params.beforeFirstMessage ? { beforeFirstMessage: params.beforeFirstMessage } : {}) });
     void sessions.refresh();
     return { sessionId };
   };
@@ -1311,6 +1633,43 @@ export function createEngine(options: EngineOptions): Engine {
     answerMs: 30_000,
     ...(options.stubCatchUp ? { stub: stubCommitMessage } : {}),
   });
+  // --- Activity -----------------------------------------------------------------------------------------------------
+  /** Main sends Settings › Conversation › Activity's "Write the day in short with Haiku" at start and after each change. */
+  let activitySummaries = true;
+  /** The day in short: a few sentences from many sessions, so it has longer than a catch-up. */
+  const dayWriter = new Summarizer({
+    sdk,
+    env: envFor,
+    claudePath: async () => (await claude)?.path,
+    ephemeral,
+    record: (profileId, entry) => {
+      catchUpUsage.record({ ...entry, scope: scopeOf(profiles.runtime(profileId).configDir) });
+      broadcast('usage.tokens', { profileIds: [profileId], scan: null });
+    },
+    log,
+    what: 'Day in short',
+    startMs: 15_000,
+    answerMs: 30_000,
+    ...(options.stubCatchUp ? { stub: stubDaySummary } : {}),
+  });
+  const activity = new ActivityService({
+    db: cache.db,
+    session: (id) => sessions.get(id),
+    providerSessions: () => sessions.snapshot().sessions.filter(isOtherProviderSession),
+    projectOf: (cwd) => resolver.resolve(cwd).root,
+    projectName: (root) => projects.addedEntries().find((p) => p.root === root)?.name ?? basename(root),
+    prsOf: (id) => linkStore.prsOf(id),
+    git: (cwd, args) => git(cwd, args, { timeout: 10_000 }),
+    refresh: () => insights.refresh(),
+    // On the profile of the day's busiest session it can find, so the tokens count where the work did.
+    ask: (sessionIds, input, system) => {
+      const runtimes = new Set(profiles.runtimes().map((p) => p.id));
+      const fallback = runtimes.has(profiles.defaultId()) ? profiles.defaultId() : profiles.runtimes()[0]?.id;
+      const profileId = sessionIds.map((id) => sessions.get(id)?.profileId).find((id) => id && runtimes.has(id)) ?? fallback;
+      return profileId ? dayWriter.ask(profileId, 'activity', input, system) : Promise.resolve(null);
+    },
+    useModel: () => activitySummaries,
+  });
   /** Where a session works now: its process's folder (a worktree once it has one), else what its transcript says. */
   const sessionCwd = (id: string) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null;
   const catchUpStore = new CatchUpStore(cache.db);
@@ -1320,6 +1679,7 @@ export function createEngine(options: EngineOptions): Engine {
     transcript: (id) => source.messages(id),
     cwd: (id) => sessionCwd(id),
     profileOf: sessionProfile,
+    agentOf: (id) => agentName(providerAdapterOf(id)?.id),
     changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
     summarize: (profileId, sessionId, input, system) => summarizer.ask(profileId, sessionId, input, system),
     useModel: () => catchUpSummaries,
@@ -1452,22 +1812,27 @@ export function createEngine(options: EngineOptions): Engine {
   /** Starts a queued item, as Start does and as an item that starts by itself does. */
   const startQueued = async (item: LaterItem) => {
     // The same path as New session: its folder, choices and route, and a worktree with a made-up name.
-    const { sessionId } = await createSession({
-      cwd: item.cwd,
-      prompt: item.prompt,
-      attachments: item.attachments,
-      model: item.model,
-      permissionMode: item.permissionMode,
-      effort: item.effort,
-      worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(item.baseRef) } : null,
-      profileId: item.profileId,
-      // A queued prompt on Auto is routed now, when it starts, not when it was added.
-      checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
-    });
+    const { sessionId } = await createSession(
+      {
+        cwd: item.cwd,
+        prompt: item.prompt,
+        attachments: item.attachments,
+        model: item.model,
+        permissionMode: item.permissionMode,
+        effort: item.effort,
+        worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(item.baseRef) } : null,
+        profileId: item.profileId,
+        // A queued prompt on Auto is routed now, when it starts, not when it was added.
+        checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
+      },
+      // An orchestrator's start that waited: the project's instructions go with it, as with one that started at once.
+      { appendSystem: orchestrator.itemInstructions(item.id) },
+    );
     later.started(item.id, sessionId);
     laterChanged();
-    // A trigger's event that waited in the queue gets its title now, as one that started at once does.
-    const title = triggerWatcher?.queuedStarted(item.id, sessionId);
+    // A trigger's event that waited in the queue gets its title now, as one that started at once does; so does an
+    // orchestrator's start, which goes under it.
+    const title = triggerWatcher?.queuedStarted(item.id, sessionId) ?? orchestrator.itemStarted(item.id, sessionId);
     if (title) {
       pendingTitles.set(sessionId, title);
       applyTitles([sessionId]);
@@ -1482,6 +1847,7 @@ export function createEngine(options: EngineOptions): Engine {
         later.started(item.id, sessionId);
         laterChanged();
         triggerWatcher?.queuedStarted(item.id, sessionId);
+        orchestrator.itemStarted(item.id, sessionId);
         return sessionId;
       }
     : startQueued;
@@ -1503,7 +1869,7 @@ export function createEngine(options: EngineOptions): Engine {
    * A stand-in session this app "runs" (`stubQueueStarts` only): the smoke test drives one through a turn, and the
    * screenshots' demo shows a session queued items start after (`DemoUsage.queueHosts`).
    */
-  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, fast }) => {
+  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, apiRetry, fast }) => {
     if (!options.stubQueueStarts) return;
     const before = smokeHosts.get(sessionId);
     const info: HostInfo = {
@@ -1526,11 +1892,14 @@ export function createEngine(options: EngineOptions): Engine {
       }),
       state,
       ...(compacting !== undefined ? { compacting } : {}),
+      ...(apiRetry !== undefined ? { apiRetry: apiRetry ?? undefined } : {}),
       // A model that has fast mode, whatever this computer's Claude Code lists.
       ...(fast ? { model: SMOKE_FAST_MODEL.value, fastModeBlocked: fast.blocked, ...(fast.on ? { fastMode: 'on' as const } : {}) } : {}),
       promptedAt: state === 'running' ? Date.now() : (before?.promptedAt ?? null),
     };
     if (state === 'idle' && outcome) autoStarter?.turnEnded(sessionId, { ok: outcome === 'clean', stopped: outcome === 'stopped' });
+    // A stand-in an orchestrator started tells it how the turn ended, as a real session's does.
+    if (state === 'idle' && outcome) orchestrator.turnEnded(sessionId, outcome, null);
     if (state === 'closed') smokeHosts.delete(sessionId);
     else smokeHosts.set(sessionId, info);
     if (fast || before?.model === SMOKE_FAST_MODEL.value) broadcast('models.changed', { models: withStandInModel(hosts.listModels()) });
@@ -1655,9 +2024,9 @@ export function createEngine(options: EngineOptions): Engine {
     applyTitles([sessionId]);
     return sessionId;
   };
-  /** At a limit, a run or a triggered session goes to the queue as an item that starts by itself (#172). */
+  /** At a limit, a run or a triggered session goes to the queue as an item that starts by itself (#172), once a slot is free. */
   const queueHeld = (draft: LaterDraft) => {
-    const item = later.add({ ...draft, autoStart: true }, { waitFor: { kind: 'project' } });
+    const item = later.add({ ...draft, autoStart: true }, { waitFor: { kind: 'slot' } });
     laterBroadcast();
     autoStarter?.armForLimit(item.id);
     return item.id;
@@ -2100,8 +2469,8 @@ export function createEngine(options: EngineOptions): Engine {
   memoryWatcher.watch(null, [memory.personal().dir]);
 
   /** Runs an action's command in a terminal tab of the session and returns the terminal id. */
-  const runShellAction = async (sessionId: string, cwd: string, name: string, command: string) =>
-    (await terminals.open({ sessionId, cwd, kind: 'action', command, title: name, cols: 100, rows: 20, fork: false, env: profileEnv(sessionProfile(sessionId)) })).id;
+  const runShellAction = async (sessionId: string, cwd: string, name: string, command: string, actionId?: string) =>
+    (await terminals.open({ sessionId, cwd, kind: 'action', command, title: name, cols: 100, rows: 20, fork: false, env: profileEnv(sessionProfile(sessionId)), ...(actionId ? { actionId } : {}) })).id;
   /** Terminals started by `actions.run`, so Restart can look the action up again. */
   const actionRuns = new Map<string, { sessionId: string; projectRoot: string; cwd: string; id: string }>();
   /** Terminals whose runs report back to their session when they end: a code block run with its output, or an action set to. */
@@ -2224,6 +2593,11 @@ export function createEngine(options: EngineOptions): Engine {
     }
   };
 
+  /** Worktree facts (changes, ahead and behind, merged, unpushed) read in the background after `worktrees.list`; they go out with `worktrees.facts`. */
+  const worktreeFacts = new WorktreeFactsRunner({ emit: (root, facts) => broadcast('worktrees.facts', { root, facts }) });
+  /** How long `worktrees.list` waits for the facts and pull requests before it answers without them: a few worktrees are read in that time, dozens aren't. */
+  const WORKTREE_FACTS_WAIT_MS = options.worktreeFactsWaitMs ?? 1500;
+
   /** Finds a project action and refuses an unapproved one. */
   const findAction = (projectRoot: string, id: string) => {
     const action = actions.list(projectRoot).actions.find((a) => a.id === id);
@@ -2252,7 +2626,7 @@ export function createEngine(options: EngineOptions): Engine {
   const profileEnv = (profileId: string): Record<string, string> => {
     // A provider profile's terminal runs its CLI with the profile's own folder and login.
     const provider = providerProfiles.adapter(profileId);
-    if (provider) return provider.id === 'copilot' ? { COPILOT_HOME: provider.home } : {};
+    if (provider) return provider.homeEnv ?? {};
     const { envDir } = profiles.runtime(profileId);
     return envDir ? { CLAUDE_CONFIG_DIR: envDir } : {};
   };
@@ -2313,11 +2687,15 @@ export function createEngine(options: EngineOptions): Engine {
   type CreateSessionParams = Parameters<Handlers<Contract>['session.create']>[0];
   /** `smokeStubCreate`: the starts the smoke test asked for, while it is on. */
   let stubCreate = false;
-  const createSession = async (params: CreateSessionParams) => {
+  const createSession = async (params: CreateSessionParams, extra: { appendSystem?: string | null } = {}) => {
+    // An orchestrator belongs to a project: the folder's repository, or the folder itself outside git.
+    if (params.orchestrator && questions.contains(params.cwd)) throw new RpcError('INVALID', 'A quick question can\'t be an orchestrator');
+    const orchestratorRoot = params.orchestrator ? resolver.resolve(params.cwd).root : null;
     if (stubCreate && options.stubQueueStarts) {
       const sessionId = `smoke-new-${randomUUID()}`;
       appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null, fastMode: params.fastMode ?? false })}\n`);
       standInHost({ sessionId, cwd: params.cwd, state: 'running', ...(params.fastMode ? { fast: { blocked: null, on: true } } : {}) });
+      if (orchestratorRoot) orchestrator.mark(sessionId, orchestratorRoot);
       return { sessionId };
     }
     // A profile of another provider (the project's, or the one picked) starts that provider: its own model and mode.
@@ -2342,7 +2720,7 @@ export function createEngine(options: EngineOptions): Engine {
     }
     // Before a branch is switched or a worktree made, so starting again after the question doesn't do it twice.
     assertTrusted(params.cwd);
-    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, ...create } = params;
+    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, orchestrator: _orchestrator, ...create } = params;
     // Claude Code's profile, checked before any git step, so a missing one never leaves a branch switched.
     const profileId = provider === 'claude' ? requireProfile(chosenProfile ?? folderProfile(params.cwd)) : chosen!;
     if (checkoutBranch) {
@@ -2395,10 +2773,20 @@ export function createEngine(options: EngineOptions): Engine {
       const baseRef = asked.baseRef as ClaudeWorktreeRequest['baseRef'];
       await made((root, env) => makeWorktree(root, asked.name, baseRef, { env }));
     } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
-    const setup = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
+    const worktreeSetupFor = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
+    // An orchestrator is one before its first message goes, so its first tool call already finds it.
+    const setup = orchestratorRoot
+      ? (id: string) => {
+          orchestrator.mark(id, orchestratorRoot);
+          return worktreeSetupFor?.(id) ?? Promise.resolve();
+        }
+      : worktreeSetupFor;
+    // What it reads after its agent's system prompt: an orchestrator its role, a session one started the project's instructions.
+    const appendSystem = orchestratorRoot ? orchestrator.systemTextForNew(orchestratorRoot) : (extra.appendSystem ?? null);
+    const own = { ...(orchestratorRoot ? { orchestrator: true } : {}), ...(appendSystem ? { appendSystem } : {}) };
     let sessionId: string;
     if (provider !== 'claude') {
-      ({ sessionId } = await createProviderSession({ ...create, cwd, profileId, ...(setup ? { beforeFirstMessage: setup } : {}) }));
+      ({ sessionId } = await createProviderSession({ ...create, ...own, cwd, profileId, ...(setup ? { beforeFirstMessage: setup } : {}) }));
     } else {
       // Auto routes once the session is open, so starting doesn't wait for it; the session says Auto is choosing until
       // it has picked. With Auto off it starts on the default model.
@@ -2407,9 +2795,11 @@ export function createEngine(options: EngineOptions): Engine {
       const pickModel = async (id: string) => {
         const route = await router.route({ profileId, prompt: params.prompt, imageCount: params.attachments.length });
         if (route.routeId) routing.attach(route.routeId, id);
-        return { model: route.ok ? route.model : null, autoPick: autoPickOf(route.ok ? route : { ...route, model: null }) };
+        // Auto sets the effort only when you didn't: one from New session, the project or Settings stays.
+        const effort = route.ok && !create.effort ? route.effort : null;
+        return { model: route.ok ? route.model : null, effort, autoPick: autoPickOf(route.ok ? { ...route, effort } : { ...route, model: null, effort: null }) };
       };
-      sessionId = await hosts.create({ ...create, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
+      sessionId = await hosts.create({ ...create, ...own, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
     }
     if (origin) {
       // Where it works on the pull request (the checkout's top folder, as git status reports it), and on which branch.
@@ -2471,8 +2861,14 @@ export function createEngine(options: EngineOptions): Engine {
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
       profiles: () => {
         const tags = new Map(profiles.accounts().map((p) => [p.id, accountTag(p.account)]));
-        return { profiles: profiles.exportEntries().map((p) => ({ ...p, account: tags.get(p.id) ?? null })), defaultId: profiles.defaultId() };
+        // A profile of a provider that can't start sessions (Codex, read-only for now) is never offered for a new one.
+        const startable = new Set(providerCatalog(providerOptions).filter((p) => p.canStart).map((p) => p.id));
+        return {
+          profiles: profiles.exportEntries().map((p) => ({ ...p, account: tags.get(p.id) ?? null, ...(p.provider !== 'claude' && !startable.has(p.provider) ? { readOnly: true } : {}) })),
+          defaultId: profiles.defaultId(),
+        };
       },
+      readOnlyProviders: () => new Map(providerCatalog(providerOptions).filter((p) => !p.canStart).map((p) => [p.id, p.resumeCommand])),
       readTranscript: (sessionId) => transcripts.readWithHeld(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
       send: async (sessionId, text, mode, images) => {
@@ -2488,6 +2884,7 @@ export function createEngine(options: EngineOptions): Engine {
         await hosts.sendQueuedNow(sessionId, id);
         sessions.wake(sessionId);
       },
+      moveQueued: (sessionId, id, toIndex) => hosts.moveQueued(sessionId, id, toIndex),
       upNext: (sessionId) => upNext.list(sessionId).map(summarise),
       limit: (sessionId) => remoteLimit(limits.state(), sessionId, sessionProfile(sessionId)),
       resumeLimit: (sessionId) => limits.resumeNow(sessionId),
@@ -2497,6 +2894,8 @@ export function createEngine(options: EngineOptions): Engine {
         return hosts.interrupt(sessionId, 'continue');
       },
       stopTask: (sessionId, taskId) => hosts.stopTask(sessionId, taskId),
+      // As the session's / menu here asks: its folder and profile, so project skills and commands are in it.
+      commands: (sessionId) => hosts.commands(sessionId, sessions.get(sessionId)?.cwd ?? undefined, sessionProfile(sessionId)),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
       providerOfProfile: (profileId) => {
         const adapter = providerProfiles.adapter(profileId);
@@ -2526,7 +2925,13 @@ export function createEngine(options: EngineOptions): Engine {
           profileId: choice.profileId,
           checkoutBranch: choice.checkoutBranch,
         }),
-      branches: async (root) => (resolver.resolve(root).gitDir ? listBranches(root) : { current: null, branches: [], checkedOutElsewhere: [] }),
+      // The remote branches and what `fresh` starts from go with them, for a new worktree's Branch from.
+      branches: async (root) => {
+        if (!resolver.resolve(root).gitDir) return { current: null, branches: [], checkedOutElsewhere: [], remoteBranches: [], remote: null, baseBranch: null };
+        const [local, remoteBranches, remotes, base] = await Promise.all([listBranches(root), listRemoteBranches(root), git(root, ['remote']).catch(() => ''), baseBranch(root).catch(() => null)]);
+        const names = remotes.split('\n').filter(Boolean);
+        return { ...local, remoteBranches, remote: names.includes('origin') ? 'origin' : (names[0] ?? null), baseBranch: base };
+      },
       queue: (root, prompt, choice) => {
         const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef, branch: choice.checkoutBranch, profileId: choice.profileId }, {});
         laterChanged();
@@ -2545,14 +2950,14 @@ export function createEngine(options: EngineOptions): Engine {
       models: () => hosts.listModels(),
       autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
       globalPermissionMode: () => globalPermissionMode,
-      // Auto, while it is off in Settings, starts on Claude Code's default, as in New session.
-      globalModel: () => ({ ...globalModel, model: globalModel.model === AUTO_MODEL && !autoModel.enabled ? null : globalModel.model }),
-      usage: (profileId, refresh) => usageFor(profileId).get(refresh),
+      globalModel: currentGlobalModel,
+      usage: (profileId, refresh) => planUsage(profileId, refresh),
       tokens: (account, params) => {
         const match = profileOfAccount(account);
         return match ? insights.breakdown(match, params) : null;
       },
       sessionCost: (sessionId) => insights.sessionCost(sessions.get(sessionId)?.profileId ?? profiles.defaultId(), sessionId),
+      activity: (params) => activity.range(params),
       windowCosts: (account, windows) => {
         const match = profileOfAccount(account);
         return match ? insights.windowCostsFrom(match, windows) : null;
@@ -2633,6 +3038,9 @@ export function createEngine(options: EngineOptions): Engine {
   /** Main sends the settings when the engine starts and after each change; until then, the defaults (deleting off). */
   let retention: RetentionPolicy = DEFAULT_RETENTION;
   /** Session files only ever go to the Trash: without a way to put them there, nothing is deleted. */
+  /** The scope main checks another provider's session files against: its folder, named for its provider. */
+  const providerTrashScope = (provider: OptionalProvider, home: string): TrashScope =>
+    provider === 'codex' ? { codexHome: home } : provider === 'antigravity' ? { agyHome: home } : { copilotHome: home };
   const sessionTrash = () => {
     if (!options.trash) throw new RpcError('NO_TRASH', "Seshboard can't move sessions to the Trash here, so it won't delete them.");
     return options.trash;
@@ -2804,7 +3212,7 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.release(sessionId);
       const paths = adapter.trashPaths(sessionId).filter((p) => existsSync(p));
       if (!paths.length) throw new RpcError('NOT_FOUND', 'No files found for this session');
-      await toTrash(paths, { copilotHome: adapter.home });
+      await toTrash(paths, providerTrashScope(adapter.id, adapter.home));
     } else {
       if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
         throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');
@@ -2821,10 +3229,13 @@ export function createEngine(options: EngineOptions): Engine {
     limits.forget(sessionId);
     signIns.forget(sessionId);
     triggerWatcher?.released(sessionId);
+    orchestrator.sessionRemoved(sessionId);
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
     providerNotes.forget(sessionId);
+    providerForks.forget(sessionId);
+    pinnedTabs.forget(sessionId);
     owned.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
@@ -2880,6 +3291,11 @@ export function createEngine(options: EngineOptions): Engine {
     cleanupInBackground();
   };
   scanCompleteHook = () => {
+    // Pinned tabs of sessions this computer no longer knows go once, at the first full scan of a run.
+    if (!scanned) {
+      const gone = pinnedTabs.prune((id) => sessions.get(id) !== undefined);
+      if (gone.length) log('info', `Dropped the pinned browser tabs of ${gone.length} session${gone.length === 1 ? '' : 's'} that are gone: ${gone.join(', ')}`);
+    }
     scanned = true;
     maybeRunOnLaunch();
     // Reminders that came due while Seshboard was closed.
@@ -3113,9 +3529,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'providers.list': () => ({ providers: providerCatalog(providerOptions) }),
     'providers.status': async ({ profileId }) => {
-      const driver = providerProfiles.adapter(profileId)?.driver;
-      if (!driver) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: 'This profile is not one of a provider that can start sessions.' };
-      return driver.status();
+      const adapter = providerProfiles.adapter(profileId);
+      const status = adapter && providerStatus(adapter);
+      if (!status) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: 'This profile is not one of a provider that can start sessions.' };
+      return status;
     },
     'providers.detect': async ({ refresh }) => ({ providers: await detectProviders(refresh) }),
     'providers.openInCli': async ({ sessionId }) => {
@@ -3125,7 +3542,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (providerHosts.has(sessionId)) throw new RpcError('SESSION_RUNNING_HERE', `Stop it here first: ${PROVIDER_NAMES[adapter.id]} can't run it in two places`);
       const cwd = sessionCwd(sessionId) ?? homedir();
       try {
-        const env = { ...(await shell.ready).env, ...(adapter.id === 'copilot' ? { COPILOT_HOME: adapter.home } : {}) };
+        const env = { ...(await shell.ready).env, ...adapter.homeEnv };
         const command = adapter.resumeCommand.replaceAll('{sessionId}', sessionId);
         return await terminals.open({ sessionId, cwd, kind: 'action', command, title: `${PROVIDER_NAMES[adapter.id]} CLI`, cols: 100, rows: 20, fork: false, env });
       } catch (error) {
@@ -3154,7 +3571,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (!adapter?.signInCommand) throw new RpcError('NOT_FOUND', 'This profile has no sign in of its own');
       try {
         // The provider's own sign in, in its own CLI, with the profile's folder: Seshboard never sees the credential.
-        const env = { ...(await shell.ready).env, ...(adapter.id === 'copilot' ? { COPILOT_HOME: adapter.home } : {}) };
+        const env = { ...(await shell.ready).env, ...adapter.homeEnv };
         return await terminals.open({ sessionId: null, cwd: homedir(), kind: 'action', command: adapter.signInCommand, title: `Sign in to ${PROVIDER_NAMES[adapter.id]}`, cols: 100, rows: 20, fork: false, env });
       } catch (error) {
         throw new RpcError('TERMINAL_FAILED', (error as Error).message);
@@ -3162,7 +3579,13 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'projects.setDefaults': ({ root, defaults }) => {
       questions.assertNotProject(root);
-      projects.setDefaults(root, defaults);
+      // The orchestrator's and plan mode's instructions have their own editors: a save that doesn't name them (the
+      // defaults editor, Save as project default) keeps them, and an empty text takes them away.
+      const { orchestratorInstructions: named, planModeInstructions: namedPlan, ...rest } = defaults;
+      const saved = projects.defaultsOf(root);
+      const instructions = (named === undefined ? saved.orchestratorInstructions : named)?.trim();
+      const planInstructions = (namedPlan === undefined ? saved.planModeInstructions : namedPlan)?.trim();
+      projects.setDefaults(root, { ...rest, ...(instructions ? { orchestratorInstructions: instructions } : {}), ...(planInstructions ? { planModeInstructions: planInstructions } : {}) });
       return {};
     },
     'projects.reorder': ({ roots }) => {
@@ -3234,7 +3657,7 @@ export function createEngine(options: EngineOptions): Engine {
       const list = hosts.list();
       return { ...list, hosts: [...list.hosts, ...smokeHosts.values()].map(withAwake), permissions: [...list.permissions, ...[...smokePermissions].map(smokePermission)] };
     },
-    'session.create': createSession,
+    'session.create': (params) => createSession(params),
     'session.send': async (params) => {
       // Another provider's session that can run here goes to its driver (`RoutedHostManager`); one that can't is refused.
       if (!providerHosts.handles(params.sessionId)) assertClaudeSession(params.sessionId, 'Sending');
@@ -3261,6 +3684,29 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'upNext.list': () => ({ queues: hosts.upNextLists() }),
+    'browser.pinned.list': () => ({ tabs: pinnedTabs.list() }),
+    'browser.pinned.save': ({ tab }) => (pinnedTabs.save(tab), {}),
+    'browser.pinned.remove': ({ id }) => (pinnedTabs.remove(id), {}),
+    'browser.pinned.reorder': ({ owner, ids }) => (pinnedTabs.reorder(owner, ids), {}),
+    'browser.favorites.list': () => ({ favorites: browserFavorites.list() }),
+    'browser.favorites.save': ({ favorite }) => (browserFavorites.save(favorite), {}),
+    'browser.favorites.remove': ({ id }) => (browserFavorites.remove(id), {}),
+    'browser.history.visit': ({ url, title, counted, profileId }) => (browserHistory.visit(url, title, counted, Date.now(), profileId ?? null), {}),
+    'browser.history.search': ({ query, limit, profileId }) => ({ entries: browserHistory.search(query, limit, profileId ?? null) }),
+    'browser.bookmarks.list': () => ({ bookmarks: browserBookmarks.list() }),
+    'browser.bookmarks.save': ({ bookmark }) => (browserBookmarks.save(bookmark), {}),
+    'browser.bookmarks.remove': ({ id }) => (browserBookmarks.remove(id), {}),
+    'browser.profiles.list': () => ({ profiles: browserProfiles.list() }),
+    'browser.profiles.create': ({ name, color, projectRoot }) => {
+      const profile = browserProfileChange(() => browserProfiles.create({ name, color, projectRoot }));
+      return { profile };
+    },
+    'browser.profiles.update': ({ id, ...change }) => (browserProfileChange(() => browserProfiles.update(id, change)), {}),
+    'browser.profiles.delete': ({ id }) => (browserProfileChange(() => browserProfiles.remove(id)), {}),
+    'browser.profiles.reset': ({ id, history }) => {
+      if (history) browserHistory.forget(id);
+      return {};
+    },
     'limits.state': () => limits.state(),
     'limits.resume': async ({ sessionId }) => {
       await limits.resumeNow(sessionId);
@@ -3294,12 +3740,12 @@ export function createEngine(options: EngineOptions): Engine {
       await continueAfterSignIn(sessionProfile(sessionId));
       return {};
     },
-    'session.forkAt': async ({ sessionId, messageUuid }) => {
+    'session.forkAt': async ({ sessionId, messageUuid, editOf }) => {
       assertClaudeSession(sessionId, 'Forking', 'fork');
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');
       let forked: string;
       try {
-        forked = await source.fork(sessionId, messageUuid);
+        forked = await source.fork(sessionId, messageUuid, editOf ? { editing: editOf } : undefined);
       } catch (error) {
         throw new RpcError('FORK_FAILED', (error as Error).message);
       }
@@ -3438,6 +3884,8 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.mcp(sessionId, server, action);
       return {};
     },
+    'mcpApp.resource': async ({ sessionId, server, uri, callId }) => ({ contents: (await hosts.mcpAppResource(sessionId, server, uri, callId)) as never[] }),
+    'mcpApp.callTool': async ({ sessionId, server, tool, arguments: args, confirmed }) => (await hosts.mcpAppCall(sessionId, server, tool, args, confirmed)) as never,
     'session.prewarm': ({ cwd, profileId, effort }) => {
       if (questions.contains(cwd)) questions.ensure();
       const profile = profileId && profiles.has(profileId) ? profileId : folderProfile(cwd);
@@ -3445,15 +3893,20 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),
-    'usage.get': ({ refresh, profileId }) => {
-      // Plan usage is Claude Code's: another provider's profile has its own (`providers.quota`), never a Claude profile's.
-      if (profileId && profiles.has(profileId) && profiles.providerOf(profileId) !== 'claude') throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId)]} has premium requests, not plan usage`);
-      return usageFor(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()).get(refresh);
+    'usage.get': async ({ refresh, profileId }) => {
+      // Plan usage is Claude Code's, and a provider's whose driver reports windows of its own (Codex's rate limits).
+      // Copilot's premium requests are `providers.quota`.
+      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh);
+      if (!usage) throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId!)]} has premium requests, not plan usage`);
+      return usage;
     },
     'usage.breakdown': ({ profileId, ...params }) => insights.breakdown(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.cost': ({ profileId }) => ({ windows: insights.windowCosts(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()) }),
     'usage.sessionCost': ({ sessionId, profileId }) => ({ cost: insights.sessionCost(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), sessionId) }),
+
+    'activity.range': async (params) => ({ entries: await activity.range(params) }),
+    'activity.summary': (params) => activity.summary(params),
 
     'questions.folder': () => ({ path: questions.ensure() }),
     'projects.inspect': ({ path }) => {
@@ -3467,6 +3920,24 @@ export function createEngine(options: EngineOptions): Engine {
     'files.search': async ({ cwd, query, limit }) => ({ files: await files.search(cwd, query, limit) }),
     'files.resolve': async ({ cwd, paths }) => ({ paths: await files.resolve(cwd, paths) }),
     'files.read': ({ path }) => readPreview(path),
+    'files.list': ({ cwd }) => {
+      assertKnownFolder(cwd);
+      return files.listAll(cwd);
+    },
+    'files.grep': async ({ cwd, searchId, ...query }) => {
+      assertKnownFolder(cwd);
+      // A newer search from the same window replaces this one: stop it rather than let two `git grep`s run.
+      const controller = new AbortController();
+      if (searchId) {
+        grepSearches.get(searchId)?.abort();
+        grepSearches.set(searchId, controller);
+      }
+      try {
+        return await grep({ cwd, ...query, git: resolver.resolve(cwd).gitDir !== null, files: () => files.list(cwd), signal: controller.signal });
+      } finally {
+        if (searchId && grepSearches.get(searchId) === controller) grepSearches.delete(searchId);
+      }
+    },
     'files.image': ({ path }) => readPreviewImage(path),
     'editors.list': async () => {
       const editors = detectEditors(await editorEnv());
@@ -3474,7 +3945,7 @@ export function createEngine(options: EngineOptions): Engine {
       const defaultId = typeof stored === 'string' && editors.some((e) => e.id === stored) ? stored : (editors.find((e) => e.kind === 'editor')?.id ?? null);
       return { editors, defaultId };
     },
-    'editors.open': async ({ path, line, editorId }) => {
+    'editors.open': async ({ path, line, editorId, keepDefault }) => {
       const env = await editorEnv();
       const stored = appState.get(defaultEditorKey);
       const id = editorId ?? (typeof stored === 'string' ? stored : detectEditors(env).find((e) => e.kind === 'editor')?.id);
@@ -3484,7 +3955,7 @@ export function createEngine(options: EngineOptions): Engine {
       const location = resolver.resolve(dirname(path));
       const folder = location.gitDir ? (location.worktree?.path ?? location.root) : undefined;
       openInEditor(id, path, line, env, folder);
-      if (editorId && (detectEditors(env).find((e) => e.id === editorId)?.kind === 'editor')) appState.set(defaultEditorKey, editorId);
+      if (editorId && !keepDefault && detectEditors(env).find((e) => e.id === editorId)?.kind === 'editor') appState.set(defaultEditorKey, editorId);
       return {};
     },
     'editors.setDefault': ({ editorId }) => {
@@ -3564,7 +4035,7 @@ export function createEngine(options: EngineOptions): Engine {
       }
       const runIn = action.cwd === 'project-root' ? projectRoot : cwd;
       const command = expandCommand(action.command, vars, await terminals.shell());
-      const terminalId = await runShellAction(sessionId, runIn, action.name, command);
+      const terminalId = await runShellAction(sessionId, runIn, action.name, command, action.id);
       actionRuns.set(terminalId, { sessionId, projectRoot, cwd, id });
       if (action.sendOutput) runReports.set(terminalId, { sessionId, command, action: action.name });
       return { kind: 'terminal' as const, terminalId };
@@ -3573,13 +4044,15 @@ export function createEngine(options: EngineOptions): Engine {
     'later.add': ({ draft, id, createdAt, index, waitFor }) => {
       const item = later.add(draft, { id, createdAt, index, waitFor });
       laterChanged();
+      // Queued for a free slot: it starts once one is free, even when one already is by the time it is seen.
+      if (item.autoStart && item.waitFor.kind === 'slot') autoStarter?.armForLimit(item.id);
       return { item };
     },
     'later.remove': ({ id, startedAs }) => {
       if (startedAs) {
         later.started(id, startedAs);
         // Started from New session: a trigger's event follows the session, as when the queue starts it.
-        const title = triggerWatcher?.queuedStarted(id, startedAs);
+        const title = triggerWatcher?.queuedStarted(id, startedAs) ?? orchestrator.itemStarted(id, startedAs);
         if (title) {
           pendingTitles.set(startedAs, title);
           applyTitles([startedAs]);
@@ -3587,6 +4060,7 @@ export function createEngine(options: EngineOptions): Engine {
       } else {
         later.remove(id);
         triggerWatcher?.queueRemoved(id);
+        orchestrator.itemRemoved(id);
       }
       laterChanged();
       return {};
@@ -3600,8 +4074,10 @@ export function createEngine(options: EngineOptions): Engine {
       const item = later.update(id, { waitFor, autoStart, draft });
       if (!item) throw new RpcError('NOT_FOUND', 'That item is no longer in the queue');
       laterChanged();
+      if (item.autoStart && item.waitFor.kind === 'slot') autoStarter?.armForLimit(item.id);
       return { item };
     },
+    'orchestrator.list': () => ({ orchestrators: orchestrator.infos() }),
     'later.start': async ({ id }) => {
       const item = later.get(id);
       if (!item) throw new RpcError('NOT_FOUND', 'That item is no longer in the queue');
@@ -3778,6 +4254,13 @@ export function createEngine(options: EngineOptions): Engine {
     'git.diff': async ({ cwd, base, path }) => {
       try {
         return await fileDiff(cwd, base, path);
+      } catch (error) {
+        throw new RpcError('GIT_FAILED', (error as Error).message);
+      }
+    },
+    'git.diffImages': async ({ cwd, base, path }) => {
+      try {
+        return await diffImages(cwd, base, path);
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
       }
@@ -3985,20 +4468,37 @@ export function createEngine(options: EngineOptions): Engine {
       }
       return { terminalId: null };
     },
-    'worktrees.list': async ({ root, fetch }) => {
+    'worktrees.list': async ({ root, fetch, facts }) => {
       if (!resolver.resolve(root).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
-      if (fetch) {
-        // Merged and pushed are only as current as the last fetch. Offline or signed out, the list still comes.
-        await updateCheckout(root, 'fetch', (await shell.ready).env).catch((error: Error) => log('warn', `worktrees: fetch in ${root} failed: ${error.message}`));
-      }
-      // gh and git at the same time; the pull requests are matched to branches afterwards.
-      const pullRequests = pullRequestsFor(root, fetch);
-      const list = await listWorktrees(root, { sessions: sessionPlaces() }).catch((error: Error) => {
+      // The list never waits for what is slow. The fetch runs beside it (offline or signed out, the list still comes),
+      // and the facts are read once it is done, so merged and pushed are as current as it made them.
+      let fetchDone = !fetch;
+      const fetched = fetch
+        ? (async () => updateCheckout(root, 'fetch', (await shell.ready).env))()
+            .then(
+              () => {},
+              (error: Error) => log('warn', `worktrees: fetch in ${root} failed: ${error.message}`),
+            )
+            .then(() => void (fetchDone = true))
+        : undefined;
+      const listing = await readWorktrees(root, { sessions: sessionPlaces() }).catch((error: Error) => {
         throw new RpcError('GIT_FAILED', error.message);
       });
-      const prs = await pullRequests;
-      if (!prs) return list;
-      return { ...list, pullRequests: true, worktrees: list.worktrees.map((w) => (w.branch && !w.isMain ? { ...w, pr: prs.get(w.branch) ?? null } : w)) };
+      // Nothing else is read for a caller that only wants names and branches.
+      if (!facts) return listing.list;
+      // Facts and pull requests that come in while we wait go out in the answer; the rest follow as events. With a
+      // fetch, what was read before it is dropped by `fill` once it is done, and isn't in the answer either.
+      const filled = worktreeFacts.fill(root, listing, { after: fetched });
+      const gh: { done: boolean; prs: Map<string, WorktreePullRequest> | null } = { done: false, prs: null };
+      const answered = pullRequestsFor(root, fetch).then((found) => {
+        Object.assign(gh, { done: true, prs: found });
+        broadcast('worktrees.pullRequests', { root, pullRequests: found ? Object.fromEntries(found) : null });
+      });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([Promise.all([filled, answered]), new Promise((done) => (timer = setTimeout(done, WORKTREE_FACTS_WAIT_MS)))]);
+      clearTimeout(timer);
+      const list = fetchDone ? mergeFacts(listing.list, worktreeFacts.known(listing.list.worktrees)) : listing.list;
+      return gh.done ? mergePullRequests(list, gh.prs) : { ...list, pullRequestsPending: true };
     },
     'worktrees.size': async ({ paths, refresh }) => {
       const known: WorktreeSize[] = [];
@@ -4019,6 +4519,8 @@ export function createEngine(options: EngineOptions): Engine {
         },
       });
       for (const result of results) if (result.removed) worktreeSizes.delete(result.path);
+      // What was read of the removed worktrees is gone with them; the others' facts are unchanged by a removal.
+      worktreeFacts.invalidate(results.filter((r) => r.removed).map((r) => r.path));
       for (const result of results) {
         if (result.ok) log('info', `worktrees: removed ${result.path}${result.branchDeleted ? ' and its branch' : ''}${result.recoveryRef ? ` (kept ${result.recoveryRef})` : ''}`);
       }
@@ -4047,6 +4549,8 @@ export function createEngine(options: EngineOptions): Engine {
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
       }
+      // What is pushed changed: the list read right after must not get the facts from before.
+      worktreeFacts.invalidate([path, status.path]);
       return {};
     },
     'worktrees.ignoredFiles': async ({ path }) => {
@@ -4467,6 +4971,9 @@ export function createEngine(options: EngineOptions): Engine {
     setCatchUpSummaries: (enabled) => {
       catchUpSummaries = enabled;
     },
+    setActivitySummaries: (enabled) => {
+      activitySummaries = enabled;
+    },
     setResumeAtLimit: (mode) => {
       resumeAtLimit = mode;
     },
@@ -4475,6 +4982,9 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setGlobalModel: (globals) => {
       globalModel = globals;
+    },
+    setGlobalFallbackModel: (model) => {
+      globalFallbackModel = model;
     },
     smokeQueueHost: standInHost,
     smokeStubCreate: (on) => {
@@ -4510,6 +5020,24 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setShowMods: (enabled) => hosts.setShowMods(enabled),
     setChrome: (enabled) => hosts.setChrome(enabled),
+    setSkimMarks: (enabled) => {
+      skimMarksOn = enabled;
+      hosts.setSkimMarks(enabled);
+    },
+    setVisuals: (server) => hosts.setVisuals(server),
+    setBrowserControl: (server) => {
+      if (JSON.stringify(server) === JSON.stringify(browserBase)) return;
+      browserBase = server;
+      hosts.browserChanged();
+    },
+    setOrchestratorServer: (server) => {
+      orchestratorBase = server;
+    },
+    smokeOrchestrator: async ({ sessionId, projectRoot, tool, args }) => {
+      if (!options.stubQueueStarts) return null;
+      if (!orchestrator.isOrchestrator(sessionId)) orchestrator.mark(sessionId, projectRoot);
+      return tool ? orchestratorBridge.handle({ id: 0, token: await smokeOrchestratorToken(sessionId), tool, args: args ?? {} }) : null;
+    },
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setAppUpdate: (update) => remote?.setAppUpdate(update),
@@ -4547,6 +5075,8 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      browserBridge.close();
+      orchestratorBridge.close();
       clearInterval(providerLiveTimer);
       // Providers' runtimes (a headless `copilot`) stop with the engine.
       providerProfiles.dispose();
@@ -4575,6 +5105,7 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.closeAll();
       awake.dispose();
       for (const monitor of usageMonitors.values()) monitor.stop();
+      for (const watch of providerUsageWatch.values()) watch.off();
       insights.close();
       checksWatcher.close();
       looseEnds?.close();

@@ -67,10 +67,85 @@ function setup(stored: StoredUpNext[] = [], extra: Partial<ProviderHostsDeps> = 
   });
   const last = () => infos.at(-1)!;
   const turn = { start: () => events!.state('running'), end: () => events!.state('idle') };
-  return { hosts, calls, saved, settings, last, turn, turns, events: () => events!, elsewhere: (on: boolean) => (busyElsewhere = on) };
+  return { hosts, driver, calls, saved, settings, last, turn, turns, events: () => events!, elsewhere: (on: boolean) => (busyElsewhere = on) };
 }
 
 const send = (hosts: ProviderHosts, text: string, mode?: 'queue' | 'steer' | 'now') => hosts.send({ sessionId: ID, text, attachments: [], ...(mode ? { mode } : {}) });
+
+describe('ProviderHosts visuals', () => {
+  it("starts and resumes sessions with the visualize server while it is on, and read-only ones without", async () => {
+    const started: Array<Record<string, unknown> | undefined> = [];
+    const { hosts, driver } = setup();
+    const start = driver.start.bind(driver);
+    driver.start = (config, events) => (started.push(config.mcpServers), start(config, events));
+    const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    hosts.setVisuals(visualize);
+    await send(hosts, 'draw it');
+    expect(started).toEqual([{ visualize }]);
+  });
+});
+
+describe('ProviderHosts orchestrator', () => {
+  it('starts and resumes an orchestrator with the orchestrator server and its role, and other sessions without', async () => {
+    const started: Array<{ servers: unknown; instructions: unknown }> = [];
+    const server = { command: '/Apps/Seshboard', args: ['/Apps/orchestrator-mcp.js'], env: { SESHBOARD_ORCHESTRATOR_TOKEN: 'secret' } };
+    const { hosts, driver } = setup([], {
+      orchestratorServer: async () => server,
+      isOrchestrator: (id) => id === ID,
+      appendSystemFor: (id) => (id === ID ? 'You are the orchestrator.' : null),
+    });
+    const start = driver.start.bind(driver);
+    driver.start = (config, events) => (started.push({ servers: config.mcpServers, instructions: config.instructions }), start(config, events));
+    // Resumed: the engine says it is one.
+    await send(hosts, 'go on');
+    // New: the start says so, and a plain new session gets neither.
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'Split this', attachments: [], model: null, orchestrator: true, appendSystem: 'You are the orchestrator.' });
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'Fix it', attachments: [], model: null });
+    expect(started).toEqual([
+      { servers: { orchestrator: server }, instructions: 'You are the orchestrator.' },
+      { servers: { orchestrator: server }, instructions: 'You are the orchestrator.' },
+      { servers: undefined, instructions: undefined },
+    ]);
+  });
+});
+
+describe('ProviderHosts MCP Apps', () => {
+  const tools: Record<string, unknown> = {
+    list_items: { annotations: { readOnlyHint: true } },
+    create_item: { annotations: { title: 'Create item' } },
+    delete_all: { _meta: { ui: { visibility: ['model'] } } },
+  };
+  const withApps = () => {
+    const ran: string[] = [];
+    const { hosts, driver } = setup();
+    driver.mcpApps = {
+      resource: async ({ uri, callId }) => [{ uri, mimeType: 'text/html;profile=mcp-app', text: `<p>${callId}</p>` }],
+      tools: async () => tools,
+      callTool: async ({ tool }) => (ran.push(tool), { content: [] }),
+    };
+    return { hosts, ran };
+  };
+
+  it("reads an app's page from its server", async () => {
+    const { hosts } = withApps();
+    expect(await hosts.mcpAppResource(ID, 'items', 'ui://items/list', 'call-1')).toEqual([{ uri: 'ui://items/list', mimeType: 'text/html;profile=mcp-app', text: '<p>call-1</p>' }]);
+  });
+
+  it('runs a read-only tool at once, asks first for one that changes things, and never runs one apps may not call', async () => {
+    const { hosts, ran } = withApps();
+    await hosts.mcpAppCall(ID, 'items', 'list_items', {}, false);
+    await expect(hosts.mcpAppCall(ID, 'items', 'create_item', {}, false)).rejects.toMatchObject({ code: 'NEEDS_CONFIRMATION', message: 'Create item' });
+    await hosts.mcpAppCall(ID, 'items', 'create_item', {}, true);
+    await expect(hosts.mcpAppCall(ID, 'items', 'delete_all', {}, true)).rejects.toMatchObject({ code: 'NOT_ALLOWED' });
+    await expect(hosts.mcpAppCall(ID, 'items', 'missing', {}, true)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(ran).toEqual(['list_items', 'create_item']);
+  });
+
+  it('says a provider without MCP Apps has none', async () => {
+    const { hosts } = setup();
+    await expect(hosts.mcpAppResource(ID, 'items', 'ui://items/list', null)).rejects.toMatchObject({ code: 'UNSUPPORTED' });
+  });
+});
 
 describe('ProviderHosts session actions', () => {
   it('keeps the effort while it is not running and resumes with it; another model drops it', async () => {
@@ -92,6 +167,20 @@ describe('ProviderHosts session actions', () => {
     const { hosts, calls } = setup();
     await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'hi', attachments: [], model: null, effort: 'high' });
     expect(calls[0]).toBe('start:new:default');
+  });
+
+  it("asks the driver what a session not running here can use, read-only, else shows its commands only", async () => {
+    const { hosts, driver } = setup();
+    expect(await hosts.capabilities(ID, '/work')).toEqual({ live: false, mcp: [], agents: [], commands: [{ name: 'init', description: '', argumentHint: '' }], plugins: [] });
+    const asked: string[] = [];
+    driver.capabilities = async (cwd) => (asked.push(cwd), { live: true, mcp: [{ name: 'docs', status: 'pending', scope: null, tools: [], error: null, version: null }], agents: [], commands: [], plugins: [], mcpToggle: false });
+    expect(await hosts.capabilities(ID, '/work')).toMatchObject({ live: false, mcp: [{ name: 'docs' }], mcpToggle: false });
+    expect(asked).toEqual(['/work']);
+    driver.capabilities = async () => Promise.reject(new Error('Codex is not installed'));
+    expect((await hosts.capabilities(ID, '/work')).commands).toEqual([{ name: 'init', description: '', argumentHint: '' }]);
+    // Once it runs here, its own lists.
+    await send(hosts, 'hi');
+    expect((await hosts.capabilities(ID, '/work')).live).toBe(true);
   });
 
   it('renames a running session through it, and leaves a stopped one to the source', async () => {

@@ -72,7 +72,7 @@ Group the tokens by **Session**, **Project**, **Model** or **Day**, and filter t
 
 - The session rows show the turns, output, cache write, cache read, the largest context of one turn, and the share. A bolt marks sessions with fast mode turns, which use the plan faster.
 - Click a session to open it.
-- With [Auto model](/new-session/auto-model/), each model's row says how many of its sessions Auto picked ("11 by Auto"), and Haiku's routing calls get their own row, **Auto routing**, with how many picks it made.
+- With [Auto model](/new-session/auto-model/), each model's row says how many of its sessions Auto picked, and how many of those you moved to another model ("11 by Auto, 2 changed"). Haiku's routing calls get their own row, **Auto routing**, with how many picks it made.
 - Questions you ask with [Ask about this session](/sessions/ask/) get their own row, **Side questions**, with how many there were. Claude answers them from a short-lived copy of the session, which leaves no transcript, so Seshboard counts their tokens itself.
 - The Haiku calls that write [catch-up](/sessions/catch-up/) summaries get their own row too, **Catch-up summaries**, with how many there were.
 - Click a model for its tokens, sessions, fast mode turns, largest context, and its cache hit rate over the period.
@@ -143,7 +143,7 @@ Seshboard shows what your tokens would cost at Anthropic's API prices. Your plan
 How it is counted:
 
 - Each window counts from when it started: 5 hours before the 5-hour window resets, 7 days before the weekly one resets. A model's own weekly limit, such as **Weekly · Opus**, counts only that model's tokens.
-- Every model is priced at its own list price: input, output, cache writes and cache reads. A write to the hour-long prompt cache costs more than one to the 5-minute cache, and each reply says which it used. Fast mode's higher price isn't counted.
+- Every model is priced at Anthropic's current list price: input, output, cache writes and cache reads. A model newer than Seshboard knows is priced like the newest model of its family. Where a model costs more for a long prompt, such as Claude Haiku 5.5 over 100,000 tokens, the higher price counts. A write to the hour-long prompt cache costs more than one to the 5-minute cache, and each reply says which it used. Fast mode's higher price isn't counted.
 - The calls Seshboard makes itself, such as [Auto model](/new-session/auto-model/) routing and [catch-up](/sessions/catch-up/) summaries, are counted too.
 - Your plan counts every computer you use it on, so the plan usage under the message box and the Limits cards add up the same windows on your [paired computers](/other-computers/) that sign in to the same account. Hover a window to see which computers count, such as *Counts This PC and mystic*, and which don't and why, such as *Not counted: studio is offline.* A computer counts once it runs this version of Seshboard. The Tokens tab adds up your other computers with **All computers**.
 - Totals are kept per hour, so the window's first hour counts whole. The estimate can be a little high early in a window.
@@ -151,6 +151,18 @@ How it is counted:
 - With **All computers**, a computer on an older Seshboard sends no cost: its rows stay blank, and the **Cost (est.)** tile says which computer is left out, such as *at API prices, without mystic*.
 
 Turn it off, hide it on the usage bars only (**Show it on the usage bars**), or pick the currency, in [Settings › Usage](/settings/#usage). Other currencies are converted from US dollars at fixed exchange rates.
+
+## Other agents
+
+Pick a [GitHub Copilot, Codex or Antigravity profile](/settings/other-agents/) in the header's profile menu to see its usage. Each profile shows its agent's mark.
+
+**Limits** shows what the agent reports, without periods, since its numbers are the account's now:
+
+- **GitHub Copilot**: **Premium requests**, with how many are left, how many you used of how many, and when they reset. Copilot counts them per account, for every session it runs, in Seshboard or elsewhere. An account billed per token in AI credits shows **AI credits** instead: what its sessions on this computer used in the last 30 days. One credit is US$0.01, and a session counts once it ends.
+- **OpenAI Codex**: its 5-hour and weekly windows, like Claude's, with the estimated cost of each. The same cost shows after the windows under a Codex session's message box.
+- **Google Antigravity**: no limits Seshboard can read.
+
+**Tokens** works as for Claude: the agent's tokens by session, project, model and day, with the estimated cost. Copilot's cost is what it charged in AI credits. Codex's is at OpenAI's API prices. The session's cost also shows under its message box. Copilot writes its tokens when a session ends, so a running Copilot session counts once it stops.
 
 ## Where the numbers come from
 
@@ -164,4 +176,4 @@ The first time, Seshboard reads all your transcripts to count their tokens: *Rea
 
 ## Related
 
-<Related pages={['settings/claude-profiles', 'new-session/auto-model', 'focus-limit', 'new-session/models-and-options']} />
+<Related pages={['settings/claude-profiles', 'settings/other-agents', 'new-session/auto-model', 'focus-limit']} />

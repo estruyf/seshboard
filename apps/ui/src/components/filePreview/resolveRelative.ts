@@ -9,7 +9,8 @@ import { isAbsolutePath, joinPath } from '@seshboard/protocol/client';
 export function resolveRelative(href: string | undefined, baseDir: string): string | null {
   if (!href) return null;
   const value = href.trim();
-  if (!value || value.startsWith('#') || value.startsWith('//')) return null;
+  // `//host/x` and `\\host\x` are a share (or another site), never a path of this file's folder.
+  if (!value || value.startsWith('#') || /^[\\/]{2}/.test(value)) return null;
   let path = value.replace(/[?#].*$/, '');
   if (/^file:/i.test(path)) path = path.replace(/^file:(\/\/)?/i, '').replace(/^\/(?=[A-Za-z]:[\\/])/, '');
   else if (/^[a-z][a-z\d+.-]*:/i.test(path) && !/^[A-Za-z]:[\\/]/.test(path)) return null;

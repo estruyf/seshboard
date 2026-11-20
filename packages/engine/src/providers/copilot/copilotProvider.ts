@@ -62,6 +62,7 @@ export function copilotProvider({ profileId, copilotHome, userHome, shellEnv = a
     id: 'copilot',
     profileId,
     home: copilotHome,
+    homeEnv: { COPILOT_HOME: copilotHome },
     folder: dir,
     source: {
       ...source,

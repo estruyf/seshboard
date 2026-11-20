@@ -22,3 +22,4 @@ website/public/remote/
 brag-output*/
 
 Claude outputs/
+.claude/hooks/*.log

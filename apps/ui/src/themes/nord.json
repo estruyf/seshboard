@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/estruyf/switchboard/main/docs/switchboard-theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/estruyf/seshboard/main/docs/switchboard-theme.schema.json",
   "$comment": "Nord (github.com/nordtheme/visual-studio-code), dark only. Aurora red, orange and purple are a little lighter here so they read as text on Polar Night. Code colours are Shiki's nord, the same theme.",
   "name": "Nord",
   "author": "Sven Greb (ported by Elio Struyf)",
@@ -42,7 +42,11 @@
       "profile-purple": "#b48ead",
       "profile-red": "#dc858d",
       "profile-orange": "#d08770",
-      "profile-gray": "#8891a3"
+      "profile-gray": "#8891a3",
+      "working-plug-a": "#b48ead",
+      "working-plug-b": "#bf616a",
+      "working-plug-c": "#ebcb8b",
+      "working-plug-d": "#d08770"
     },
     "terminal": {
       "background": "#242933",

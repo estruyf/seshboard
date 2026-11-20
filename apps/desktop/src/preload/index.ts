@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState } from '@seshboard/protocol/bridge';
+import { BROWSER_POPOUT_QUERY, ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type BrowserMessageItem, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -26,6 +26,7 @@ const bridge: SeshboardBridge = {
   chooseImportFile: () => ipcRenderer.invoke(IpcChannel.chooseImportFile) as Promise<string | null>,
   chooseMemoryExport: () => ipcRenderer.invoke(IpcChannel.chooseMemoryExport) as Promise<string[]>,
   saveImage: (request: SaveImageRequest) => ipcRenderer.invoke(IpcChannel.saveImage, request) as Promise<string | null>,
+  saveTextFile: (request: { fileName: string; content: string }) => ipcRenderer.invoke(IpcChannel.saveTextFile, request) as Promise<string | null>,
   showSavedImage: (path: string) => ipcRenderer.send(IpcChannel.showSavedImage, path),
   showRemoteLog: () => ipcRenderer.send(IpcChannel.showRemoteLog),
   // File.path is gone from Electron; webUtils is how a sandboxed page learns where a dropped file lives.
@@ -91,9 +92,11 @@ const bridge: SeshboardBridge = {
   removeTheme: (id) => theme({ kind: 'remove', id }) as Promise<void>,
   duplicateTheme: (id) => theme({ kind: 'duplicate', id }) as Promise<string>,
   exportTheme: (fileName, content) => theme({ kind: 'export', fileName, content }) as Promise<string | null>,
+  mcpAppDocument: (html, csp) => ipcRenderer.invoke(IpcChannel.mcpAppDocument, html, csp) as Promise<string>,
   openThemesFolder: () => void theme({ kind: 'open-folder' }),
   showThemeFile: (id) => void theme({ kind: 'show-file', id }),
   listSounds: () => ipcRenderer.invoke(IpcChannel.listSounds) as Promise<SoundList>,
+  appIcon: (path: string) => ipcRenderer.invoke(IpcChannel.appIcon, path) as Promise<string | null>,
   playSound: (id, volume) => ipcRenderer.send(IpcChannel.playSound, id, volume),
   notificationPermission: () => ipcRenderer.invoke(IpcChannel.notificationPermission) as Promise<NotificationPermission>,
   openNotificationSettings: () => ipcRenderer.send(IpcChannel.openNotificationSettings),
@@ -119,6 +122,33 @@ const bridge: SeshboardBridge = {
     return () => ipcRenderer.off(IpcChannel.viewReturned, handler);
   },
   popIn: () => ipcRenderer.send(IpcChannel.popIn),
+  browserPopout: new URLSearchParams(window.location.search).get(BROWSER_POPOUT_QUERY),
+  browserPopouts: ipcRenderer.sendSync(IpcChannel.getBrowserPopouts) as Record<string, number>,
+  onBrowserPopoutsChanged(listener) {
+    const handler = (_event: unknown, tabs: Record<string, number>) => listener(tabs);
+    ipcRenderer.on(IpcChannel.browserPopoutsChanged, handler);
+    return () => ipcRenderer.off(IpcChannel.browserPopoutsChanged, handler);
+  },
+  popOutBrowser: (sessionId, tabs, url) => ipcRenderer.send(IpcChannel.popOutBrowser, sessionId, tabs ?? null, url ?? null),
+  browserPopoutTabs: new URLSearchParams(window.location.search).get(BROWSER_POPOUT_QUERY) === null ? null : (ipcRenderer.sendSync(IpcChannel.getBrowserPopoutTabs) as BrowserTabsHandoff | null),
+  reportBrowserTabs: (tabs) => ipcRenderer.send(IpcChannel.reportBrowserTabs, tabs),
+  popInBrowser: () => ipcRenderer.send(IpcChannel.popInBrowser),
+  onBrowserReturned(listener) {
+    const handler = (_event: unknown, message: { sessionId: string; tabs: BrowserTabsHandoff; show: boolean }) => listener(message.sessionId, message.tabs, message.show);
+    ipcRenderer.on(IpcChannel.browserReturned, handler);
+    return () => ipcRenderer.off(IpcChannel.browserReturned, handler);
+  },
+  onBrowserOpenUrl(listener) {
+    const handler = (_event: unknown, url: string) => listener(url);
+    ipcRenderer.on(IpcChannel.browserOpenUrl, handler);
+    return () => ipcRenderer.off(IpcChannel.browserOpenUrl, handler);
+  },
+  browserToMessage: (item) => ipcRenderer.send(IpcChannel.browserToMessage, item),
+  onBrowserMessage(listener) {
+    const handler = (_event: unknown, message: { sessionId: string; item: BrowserMessageItem }) => listener(message.sessionId, message.item);
+    ipcRenderer.on(IpcChannel.browserMessage, handler);
+    return () => ipcRenderer.off(IpcChannel.browserMessage, handler);
+  },
   menuBar: new URLSearchParams(window.location.search).has(MENU_BAR_QUERY),
   menuBarCommand: (command: MenuBarCommand) => ipcRenderer.send(IpcChannel.menuBarCommand, command),
   menuBarResize: (height) => ipcRenderer.send(IpcChannel.menuBarResize, height),
@@ -153,6 +183,33 @@ const bridge: SeshboardBridge = {
     ipcRenderer.on(IpcChannel.keysForwarded, handler);
     return () => ipcRenderer.off(IpcChannel.keysForwarded, handler);
   },
+  onWebPreviewKeys(listener) {
+    const handler = (_event: unknown, keys: WebPreviewKeys) => listener(keys);
+    ipcRenderer.on(IpcChannel.webPreviewKeys, handler);
+    return () => ipcRenderer.off(IpcChannel.webPreviewKeys, handler);
+  },
+  onWebPreviewEvent(listener) {
+    const handler = (_event: unknown, event: WebPreviewEvent) => listener(event);
+    ipcRenderer.on(IpcChannel.webPreviewEvent, handler);
+    return () => ipcRenderer.off(IpcChannel.webPreviewEvent, handler);
+  },
+  onBrowserAgentTarget(listener) {
+    const handler = (_event: unknown, request: BrowserAgentTargetRequest) => {
+      const reply = (target: BrowserAgentTarget) => ipcRenderer.send(IpcChannel.browserAgentTargetReply, { ...target, requestId: request.requestId });
+      listener(request).then(reply, (error: Error) => reply({ contentsId: null, url: null, error: error.message }));
+    };
+    ipcRenderer.on(IpcChannel.browserAgentTarget, handler);
+    return () => ipcRenderer.off(IpcChannel.browserAgentTarget, handler);
+  },
+  setAddressFocus: (focused) => ipcRenderer.send(IpcChannel.webPreviewAddressFocus, focused === true),
+  keysToWindow: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewKeysToWindow, typeof contentsId === 'number' ? contentsId : null),
+  markSessionPage: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewSessionPage, contentsId),
+  pickElement: (contentsId) => ipcRenderer.invoke(IpcChannel.webPreviewPickElement, contentsId) as Promise<PickedElement | null>,
+  cancelPick: (contentsId) => ipcRenderer.send(IpcChannel.webPreviewCancelPick, contentsId),
+  showDownload: (path) => ipcRenderer.send(IpcChannel.webPreviewShowDownload, path),
+  clearBrowsingData: (origin, partition) => ipcRenderer.invoke(IpcChannel.webPreviewClearData, typeof origin === 'string' ? origin : null, typeof partition === 'string' ? partition : null) as Promise<void>,
+  resetBrowserPartition: (partition, parts) =>
+    ipcRenderer.invoke(IpcChannel.webPreviewResetPartition, partition, { cookies: parts?.cookies === true, siteData: parts?.siteData === true, cache: parts?.cache === true }) as Promise<void>,
   showInMain: (request) => ipcRenderer.send(IpcChannel.showInMain, request),
   onMainRequest(listener) {
     const handler = (_event: unknown, request: MainWindowRequest) => listener(request);

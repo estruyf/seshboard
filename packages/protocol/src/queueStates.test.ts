@@ -27,7 +27,7 @@ const item = (id: string, overrides: Partial<LaterItem> = {}): LaterItem => ({
 
 const session = (id: string, busy: boolean, overrides: Partial<QueueSession> = {}): QueueSession => ({ id, title: id, projectRoot: '/work/switchboard', busy, ...overrides });
 
-const states = (items: LaterItem[], sessions: QueueSession[], options: { outcomes?: Record<string, SessionOutcome>; focusHeld?: string[]; started?: Array<{ itemId: string; sessionId: string }> } = {}) =>
+const states = (items: LaterItem[], sessions: QueueSession[], options: { outcomes?: Record<string, SessionOutcome>; focusHeld?: string[]; focusFull?: boolean; started?: Array<{ itemId: string; sessionId: string }> } = {}) =>
   queueStates({
     items,
     sessions,
@@ -35,6 +35,7 @@ const states = (items: LaterItem[], sessions: QueueSession[], options: { outcome
     projectName: (root) => root.split('/').pop()!,
     outcomeOf: (id) => options.outcomes?.[id] ?? null,
     focusHeld: new Set(options.focusHeld ?? []),
+    focusFull: options.focusFull,
     now: NOW,
   });
 const brief = (entries: QueueEntry[]) => entries.map((e) => [e.item.id, e.state, e.label]);
@@ -107,6 +108,20 @@ describe('queue states, shared by the UI and the engine', () => {
     });
     expect(limited.entries[0]).toMatchObject({ state: 'waiting', hold: 'limit', baseState: 'ready' });
     expect(limited.entries[0]!.label).toMatch(/^usage limit until /);
+  });
+
+  it('waits for a free slot whatever works in its project, and can start by itself', () => {
+    const items = [item('a', { waitFor: { kind: 'slot' }, autoStart: true }), item('b', { waitFor: { kind: 'slot' } })];
+    const busy = [session('fix', true)];
+    expect(brief(states(items, busy, { focusFull: true }).entries)).toEqual([
+      ['a', 'waiting', 'starts when a slot is free'],
+      ['b', 'waiting', 'waits for a free slot'],
+    ]);
+    expect(brief(states(items, busy).entries)).toEqual([
+      ['a', 'ready', 'a slot is free'],
+      ['b', 'ready', 'a slot is free'],
+    ]);
+    expect(states(items, busy).entries[0]!.autoStart).toBe(true);
   });
 
   it("can't start by itself while it waits for nothing, or for a session Seshboard doesn't run", () => {

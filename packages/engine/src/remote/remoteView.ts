@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
+import { skimMarks,
   inheritedDefault,
   inheritedPermissionMode,
   isAbsolutePath,
@@ -12,6 +12,7 @@ import {
   type PermissionRequest,
   type ProfileDefaults,
   type ProjectDefaults,
+  type RemoteArchivedSession,
   type RemoteBlock,
   type RemoteMessage,
   type RemotePrompt,
@@ -29,7 +30,7 @@ import {
   type WorktreeBase,
   otherProviderOf,
 } from '@seshboard/protocol';
-import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
+import { companionSessions, doneSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
 /**
  * What a phone sees, made from what the engine knows: pure functions, so what leaves the computer is easy to check.
@@ -55,6 +56,8 @@ export interface ListOptions {
   starters?: ReadonlyMap<string, string>;
   /** The sessions and runs triggers started (by session or run id): the bolt and "Started by …" on the phone too. */
   triggers?: readonly TriggerSession[];
+  /** Providers whose sessions are read-only here (Codex), with the command that continues one (`{sessionId}` in it). */
+  readOnlyProviders?: ReadonlyMap<string, string>;
   now?: number;
 }
 
@@ -93,9 +96,14 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     profile: profileOf(running.get(s.id)?.profileId ?? flags.get(s.id)?.profileId ?? live.get(s.id)?.profileId),
     auto: autoOf(running.get(s.id)),
     background: running.get(s.id)?.backgroundTasks ?? [],
+    ...(running.get(s.id)?.apiRetry ? { apiRetry: running.get(s.id)!.apiRetry } : {}),
     parentId: flags.get(s.id)?.parentId ?? stepParent.get(s.id) ?? null,
   }));
   // Who started it: the device that did, or the one that started what it sits under (a pipeline's step, an agent).
+  for (const session of sessions) {
+    const resume = session.provider ? options.readOnlyProviders?.get(session.provider) : undefined;
+    if (resume) session.readOnly = { resumeCommand: resume.replaceAll('{sessionId}', session.id) };
+  }
   if (options.starters) {
     const starters = options.starters;
     for (const session of sessions) session.startedBy = starters.get(session.id) ?? (session.parentId ? starters.get(session.parentId) : undefined) ?? null;
@@ -110,6 +118,48 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
   const now = options.now ?? Date.now();
   const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, origins, ...(sources.kept ? { kept: sources.kept } : {}) });
   return { sessions, prompts, runs };
+}
+
+/** The most sessions in Done a phone gets. */
+export const REMOTE_ARCHIVED_LIMIT = 50;
+
+/**
+ * The sessions in Done (the sidebar's Archived), most recently done first, so a phone can reopen one it archived by
+ * mistake. A pipeline step's session whose parent is in Done too goes with it: reopening the parent brings it back.
+ */
+export function remoteArchived(sources: SessionSources, options: Pick<ListOptions, 'archiveAfterDays' | 'scope' | 'projectNames' | 'profiles' | 'runs' | 'now'>): RemoteArchivedSession[] {
+  const done = doneSessions(sources, { scope: options.scope, archiveAfterDays: options.archiveAfterDays, ...(options.now ? { now: options.now } : {}) });
+  const ids = new Set(done.map((d) => d.summary.id));
+  const stepParent = new Map<string, string>();
+  const steps = new Map<string, Set<string>>();
+  for (const { run, steps: runSteps } of options.runs ?? []) {
+    if (!run.parentSessionId) continue;
+    const parent = run.parentSessionId;
+    for (const step of runSteps) {
+      if (!step.sessionId) continue;
+      stepParent.set(step.sessionId, parent);
+      steps.set(parent, (steps.get(parent) ?? new Set()).add(step.sessionId));
+    }
+  }
+  const profiles = options.profiles && options.profiles.length > 1 ? new Map(options.profiles.map(({ id, name, color }) => [id, { id, name, color }])) : null;
+  return done
+    .filter((d) => {
+      const parent = d.summary.parentId ?? stepParent.get(d.summary.id);
+      return !parent || !ids.has(parent);
+    })
+    .slice(0, REMOTE_ARCHIVED_LIMIT)
+    .map((d) => ({
+      id: d.summary.id,
+      title: d.title,
+      projectId: projectIdOf(d.summary.projectRoot),
+      projectName: options.projectNames.get(d.summary.projectRoot) ?? lastSegment(d.summary.projectRoot),
+      branch: d.branch,
+      updatedAt: d.summary.updatedAt,
+      archivedAt: d.archivedAt,
+      inactive: d.inactive,
+      profile: profiles?.get(d.summary.profileId) ?? null,
+      steps: steps.get(d.summary.id)?.size ?? 0,
+    }));
 }
 
 /** The most runs a phone gets. */
@@ -190,7 +240,7 @@ export const remoteMessage = (message: TranscriptMessage, device?: string): Remo
 
 const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1]?.trim() ?? null;
 const SYSTEM_REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
-const NOTICE_LABELS: Record<string, string> = { compact_boundary: 'Conversation compacted', informational: 'Information' };
+const NOTICE_LABELS: Record<string, string> = { compact_boundary: 'Conversation compacted', compact_boundary_idle: 'Compacted while idle', informational: 'Information' };
 
 /**
  * A turn as a phone shows it, the way the app's transcript reads the markup Claude Code writes into user turns
@@ -202,6 +252,8 @@ function remoteTurn(role: RemoteMessage['role'], blocks: RemoteBlock[]): Pick<Re
   if (role === 'system') {
     return { role, blocks: blocks.map((b) => (b.type === 'unknown' ? { type: 'text' as const, text: NOTICE_LABELS[b.kind] ?? b.kind.replace(/_/g, ' ') } : b)) };
   }
+  // Skim's keep line is for the desktop's fade; the phone shows the reply without it.
+  if (role === 'assistant') return { role, blocks: blocks.map((b) => (b.type === 'text' ? { ...b, text: skimMarks(b.text).text } : b)) };
   if (role !== 'user' || blocks.some((b) => b.type === 'tool_result')) return { role, blocks };
   const text = blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n\n');
   const trimmed = text.trimStart();
@@ -296,7 +348,7 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
     effort: options.effort !== undefined ? options.effort : (inheritedDefault('effort', project, profile.defaults) ?? globals.effort),
     permissionMode: options.permissionMode ?? inheritedPermissionMode(project, profile.defaults) ?? globalMode,
     worktree: options.worktree ?? workspace === 'worktree',
-    baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
+    baseRef: options.worktreeBase ?? project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
     checkoutBranch: options.checkoutBranch ?? null,
   };
 }
@@ -306,11 +358,12 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
  * the global mode comes in where it applies: a profile without a mode, and a project that skips its profile's. The
  * global model and effort (`globals`) come in the same way; a project's unset ones fall to its profile.
  */
-export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'>, globalMode: PermissionMode | null, globals: GlobalModel = NO_GLOBAL_MODEL) => ({
+export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'> & { baseRef?: WorktreeBase | null }, globalMode: PermissionMode | null, globals: GlobalModel = NO_GLOBAL_MODEL) => ({
   model: defaults.model ?? globals.model,
   effort: defaults.effort ?? globals.effort,
   permissionMode: defaults.permissionMode ?? globalMode,
   worktree: defaults.workspace === null ? null : defaults.workspace === 'worktree',
+  baseRef: defaults.baseRef ?? null,
 });
 
 /** A token breakdown as another computer gets it: each project as its id and name, never its folder. */

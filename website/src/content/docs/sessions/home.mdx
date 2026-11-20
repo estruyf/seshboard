@@ -9,14 +9,14 @@ import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
 
-Home is what the window shows when no session is open. It uses the whole window: a box to start new work, lanes for what needs you, what is working and what to review, and under them your projects and usage.
+Home is what the window shows when no session is open. It uses the whole window: a box to start new work, lanes for what needs you, what is working and what to review, and under them your projects and usage. On a large screen it grows as wide as [New session](/new-session/form/), with the same margins, so nothing jumps when you go from one to the other.
 
 <Screenshot name="home" alt="Home: a greeting and a start box, the lanes Needs you, Working and To review, then the projects with Up next, and usage on the right" eager />
 
 ## Open it
 
 - Press <Kbd shortcut="home" />.
-- Click **Home** under the search field in the sidebar (the house button in the minimal sidebar).
+- Click the house in the row of icons at the top of the sidebar (also in the minimal sidebar).
 - Choose *Home* in the command palette.
 - Close the session you have open with the **×** in its header, or *Close session* in the command palette.
 
@@ -39,6 +39,7 @@ In a narrower window the lanes stack. When an empty Needs you doesn't fit, the l
 ## Under the lanes
 
 - **Start in a project:** your projects as rows, in New session's order and with the same keys. Click one to open New session on that project.
+- **Yesterday:** your sessions and time on the last day you worked (it says the weekday when that wasn't yesterday), with the day in short and **See the day**, which opens [Activity](/sessions/activity/) on it.
 - **Up next:** the one thing Upcoming has next, with when. Click it to open [Upcoming](/sessions/upcoming/) on it.
 - **Unsent:** the messages you typed and didn't send, each with **Open**. See [Unsent messages](/sessions/unsent-drafts/).
 - **Queue:** your first queued prompts, with **Start** on the ones that are ready. **See all in Upcoming** opens the whole queue. See [Queue](/new-session/queue/).
@@ -56,4 +57,4 @@ Without projects, Home says *Add your first project* with an **Add a project** b
 
 ## Related
 
-<Related pages={['sessions/upcoming', 'sessions/catch-up', 'new-session/queue', 'new-session/schedules', 'sessions/unsent-drafts', 'usage']} />
+<Related pages={['sessions/upcoming', 'sessions/activity', 'sessions/catch-up', 'new-session/queue', 'new-session/schedules', 'sessions/unsent-drafts', 'usage']} />

@@ -1,9 +1,13 @@
 import { marked, type Token, type Tokens } from 'marked';
+import { findSessionFiles } from '@seshboard/protocol/remote-client';
 
 /**
  * Markdown in Claude's answers, as plain data for React to draw: never HTML. `marked`'s lexer reads the text; this
  * maps its tokens to a few node types, so raw HTML in a transcript stays text (React escapes it) and a link only works
  * for `http:` and `https:`. Pure, so what can and can't come out of it is easy to check.
+ *
+ * An absolute path to a file that previews (`findSessionFiles`) is a `file` node: the session view opens it through
+ * the computer (`files.read`), which gives only files the session made.
  */
 
 export type Inline =
@@ -12,6 +16,8 @@ export type Inline =
   | { type: 'code'; text: string }
   /** `href` null: not a web address, so it shows as text. */
   | { type: 'link'; href: string | null; children: Inline[] }
+  /** A path to a file on the computer; `code`: it was inline code. */
+  | { type: 'file'; path: string; code: boolean }
   | { type: 'br' };
 
 export type Block =
@@ -57,13 +63,30 @@ function merge(nodes: Inline[]): Inline[] {
   return out;
 }
 
-function inline(tokens: readonly Token[] | undefined): Inline[] {
+/** A text node with its paths as `file` nodes. */
+function withFiles(node: Inline): Inline[] {
+  if (node.type !== 'text') return [node];
+  const found = findSessionFiles(node.text);
+  if (!found.length) return [node];
+  const out: Inline[] = [];
+  let at = 0;
+  for (const { start, end, path } of found) {
+    if (start > at) out.push({ type: 'text', text: node.text.slice(at, start) });
+    out.push({ type: 'file', path, code: false });
+    at = end;
+  }
+  if (at < node.text.length) out.push({ type: 'text', text: node.text.slice(at) });
+  return out;
+}
+
+/** `files`: paths become `file` nodes (not inside a link, whose text is the link's). */
+function inline(tokens: readonly Token[] | undefined, files = true): Inline[] {
   const out: Inline[] = [];
   for (const token of tokens ?? []) {
     switch (token.type) {
       case 'text': {
         const t = token as Tokens.Text;
-        if (t.tokens?.length) out.push(...inline(t.tokens));
+        if (t.tokens?.length) out.push(...inline(t.tokens, files));
         else out.push({ type: 'text', text: decodeEntities(t.text) });
         break;
       }
@@ -73,14 +96,17 @@ function inline(tokens: readonly Token[] | undefined): Inline[] {
       case 'strong':
       case 'em':
       case 'del':
-        out.push({ type: token.type, children: inline((token as Tokens.Strong).tokens) });
+        out.push({ type: token.type, children: inline((token as Tokens.Strong).tokens, files) });
         break;
-      case 'codespan':
-        out.push({ type: 'code', text: (token as Tokens.Codespan).text });
+      case 'codespan': {
+        const text = decodeEntities((token as Tokens.Codespan).text);
+        const [found] = files ? findSessionFiles(text) : [];
+        out.push(found && found.start === 0 && found.end === text.length ? { type: 'file', path: found.path, code: true } : { type: 'code', text: (token as Tokens.Codespan).text });
         break;
+      }
       case 'link': {
         const t = token as Tokens.Link;
-        out.push({ type: 'link', href: safeHref(t.href), children: inline(t.tokens) });
+        out.push({ type: 'link', href: safeHref(t.href), children: inline(t.tokens, false) });
         break;
       }
       case 'image': {
@@ -99,7 +125,8 @@ function inline(tokens: readonly Token[] | undefined): Inline[] {
         out.push({ type: 'text', text: token.raw });
     }
   }
-  return merge(out);
+  const merged = merge(out);
+  return files ? merged.flatMap(withFiles) : merged;
 }
 
 function blocks(tokens: readonly Token[]): Block[] {

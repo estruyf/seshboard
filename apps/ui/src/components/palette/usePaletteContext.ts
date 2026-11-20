@@ -12,6 +12,8 @@ import { useQueue } from '../../state/useQueue.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
+import { goToOrchestrator } from '../../state/orchestrator.ts';
+import { useOrchestrators } from '../../state/orchestratorStore.ts';
 import { pipelinesFor } from '../../state/pipelines.ts';
 import { listedSchedules } from '../../state/upcoming.ts';
 import { useLastWritten } from '../../state/lastWrittenStore.ts';
@@ -31,6 +33,7 @@ import { useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { activeComposer, useComposerTargets } from '../../state/composerTargets.ts';
 import { draftRoot } from '../../state/drafts.ts';
+import { useDiffComments } from '../../state/diffCommentsStore.ts';
 import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { APP_TERMINAL, appTerminalFolder, ownerSession, terminalOwner } from '../terminal/appTerminal.ts';
@@ -41,6 +44,12 @@ import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './
 import { useComputers } from '../../state/computersStore.ts';
 import { localSessionId } from '../../state/remoteSelection.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
+import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { useBrowserFavorites, useFavoriteOf } from '../../state/browserFavoritesStore.ts';
+import { useBookmarkOf, useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
+import { usePageState } from '../webPreview/webPreviewPages.ts';
+import { pageOwner } from '../../state/browserViewStore.ts';
+import { frontTab } from '../webPreview/browserTabs.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
 function useGitState(cwd: string | null, busy: boolean, readOnly: boolean): PaletteGit | null {
@@ -111,6 +120,7 @@ export function usePaletteContext(): PaletteContext {
   const scheduleCount = useSchedules((s) => listedSchedules(s.schedules, Date.now()).length);
   const triggerCount = useTriggers((s) => s.triggers.length);
   const pipelines = usePipelines((s) => s.pipelines);
+  const orchestrators = useOrchestrators((s) => s.orchestrators);
   const unsent = useUnsent().length;
   const digest = usePaletteBus((s) => s.digest);
   const newSessionInfo = usePaletteBus((s) => s.newSessionInfo);
@@ -124,11 +134,25 @@ export function usePaletteContext(): PaletteContext {
   const editors = useHosts((s) => s.editors);
   const computers = useComputers((s) => s.status?.computers);
   const lastWritten = useLastWritten((s) => s.paths);
+  const comments = useDiffComments((s) => s.comments);
 
   const pageRoot = useProjectPage((s) => s.root);
-  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
+  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'activity' ? 'activity' : mainView === 'browser' ? 'browser' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
   // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
   const id = view === 'session' ? localSessionId(selectedId) : null;
+  const webOpen = useWebPreview((s) => (id ? s.panels.has(id) : false));
+  const pageTab = useWebPreview((s) => {
+    const owner = pageOwner(view, id, s.panels);
+    return owner ? (frontTab(s, owner) ?? null) : null;
+  });
+  const pageFull = useWebPreview((s) => (id ? s.full.has(id) : false));
+  const pageState = usePageState(pageTab?.id ?? null);
+  const pageFavorite = useFavoriteOf(pageTab?.url ?? null) !== undefined;
+  const pageBookmarked = useBookmarkOf(pageTab ?? null) !== undefined;
+  const bookmarks = useBrowserBookmarks((s) => s.bookmarks.length);
+  const browserTabs = useWebPreview((s) => s.tabs.length);
+  const browserClosed = useWebPreview((s) => s.closed.length > 0);
+  const favorites = useBrowserFavorites((s) => s.favorites.length);
 
   const catchUps = useCatchUp((s) => s.cards);
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
@@ -159,8 +183,9 @@ export function usePaletteContext(): PaletteContext {
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
       unsent: host?.state === 'error' ? (host.unsent ?? 0) : 0,
+      web: webOpen,
     };
-  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded]);
+  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded, webOpen]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);
@@ -198,6 +223,16 @@ export function usePaletteContext(): PaletteContext {
     paneWays: paneCount > 1 && selectedId ? WAYS.filter((way) => neighbour(layout, selectedId, way) !== null) : [],
     focusLimit: prefs.focusLimit,
     notifications: prefs.notifications.enabled,
+    browser: prefs.browserEnabled,
+    webPreview: prefs.webPreview,
+    browserPage:
+      prefs.browserEnabled && pageTab
+        ? { url: !!pageTab.url, favorite: pageFavorite, bookmarked: pageBookmarked, pinned: pageTab.pinned, back: pageState.back, forward: pageState.forward, loading: pageState.loading, owner: view === 'browser' ? 'view' : 'session', full: pageFull, muted: pageTab.muted }
+        : null,
+    browserTabs,
+    browserClosed,
+    favorites,
+    bookmarks,
     sounds: prefs.sounds.enabled,
     catchUpFolded: prefs.catchUpSummaries ? prefs.catchUpFolded : null,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },
@@ -205,6 +240,7 @@ export function usePaletteContext(): PaletteContext {
     triggers: triggerCount,
     pipelines: pipelines.length,
     sessionPipelines: session ? pipelinesFor(pipelines, session.projectRoot).length : 0,
+    orchestratorId: goToOrchestrator(orchestrators, session?.projectRoot ? { id: session.id, projectRoot: session.projectRoot } : null, (id) => sessions.has(id)),
     unsent,
     projectCount: added.length,
     projects: added.map((p) => ({ root: p.root, name: p.name })),
@@ -215,11 +251,14 @@ export function usePaletteContext(): PaletteContext {
     themes: themes.map((t) => ({ id: t.id, name: t.file.name })),
     themeId: activeTheme,
     sidebarStyle: prefs.sidebarStyle,
+    sidebarGroup: prefs.sidebarGroup,
+    conversationView: prefs.conversationView,
     sidebar,
     settingsSection,
     newSession: view === 'new-session' ? newSessionInfo : null,
     questionsDir,
     composer,
+    reviewComments: id ? (comments[id]?.length ?? 0) : 0,
     prompts: composer ? savedPrompts.map((p) => ({ id: p.id, name: p.name, scope: p.scope })) : [],
     canContinueInVSCode: editors.some((e) => e.id === 'vscode'),
     cloneEnabled,

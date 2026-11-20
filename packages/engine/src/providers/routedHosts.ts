@@ -1,7 +1,8 @@
-import { RpcError, type Capabilities, type Effort, type ImageAttachment, type PermissionDecision, type PermissionMode, type PermissionRequest, type QueuedMessage, type RewindResult, type SendMode, type SessionHostInfo, type SlashCommand } from '@seshboard/protocol';
+import { RpcError, type BrowserAnswer, type BrowserAsk, type Capabilities, type Effort, type ImageAttachment, type PermissionDecision, type PermissionMode, type PermissionRequest, type QueuedMessage, type RewindResult, type SendMode, type SessionHostInfo, type SlashCommand } from '@seshboard/protocol';
 import { HostManager } from '../host/hostManager.ts';
 import type { AskResult, AskText } from '../host/sideQuestions.ts';
 import type { ProviderHosts } from './providerHosts.ts';
+import type { McpStdioServer } from './provider.ts';
 
 /**
  * Claude Code's host manager, with the session-level methods routed: a provider's session (GitHub Copilot) goes to
@@ -41,6 +42,11 @@ export class RoutedHostManager extends HostManager {
 
   override respond(requestId: string, decision: PermissionDecision): void {
     if (!this.providers?.respond(requestId, decision)) super.respond(requestId, decision);
+  }
+
+  override askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
+    const other = this.providerRunning(sessionId);
+    return other ? other.askBrowser(sessionId, ask) : super.askBrowser(sessionId, ask);
   }
 
   override async setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
@@ -111,12 +117,31 @@ export class RoutedHostManager extends HostManager {
 
   override async capabilities(sessionId: string | undefined, cwd: string, refresh: boolean, profileId: string, reload = false): Promise<Capabilities> {
     const other = sessionId ? this.providerFor(sessionId) : null;
-    return other ? other.capabilities(sessionId!) : super.capabilities(sessionId, cwd, refresh, profileId, reload);
+    return other ? other.capabilities(sessionId!, cwd) : super.capabilities(sessionId, cwd, refresh, profileId, reload);
   }
 
   override async mcp(sessionId: string, server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void> {
     const other = this.providerRunning(sessionId);
     return other ? other.mcp(sessionId, server, action) : super.mcp(sessionId, server, action);
+  }
+
+  /** Visuals in replies: Claude Code's sessions and the providers' get the server alike. */
+  override setVisuals(server: McpStdioServer | null): void {
+    super.setVisuals(server);
+    this.providers?.setVisuals(server);
+  }
+
+  /** MCP Apps are a provider's (Codex's): Claude Code's sessions have none yet. */
+  mcpAppResource(sessionId: string, server: string, uri: string, callId: string | null): Promise<unknown[]> {
+    const other = this.providerFor(sessionId);
+    if (!other) throw new RpcError('UNSUPPORTED', 'This session has no MCP Apps');
+    return other.mcpAppResource(sessionId, server, uri, callId);
+  }
+
+  mcpAppCall(sessionId: string, server: string, tool: string, args: unknown, confirmed: boolean): Promise<unknown> {
+    const other = this.providerFor(sessionId);
+    if (!other) throw new RpcError('UNSUPPORTED', 'This session has no MCP Apps');
+    return other.mcpAppCall(sessionId, server, tool, args, confirmed);
   }
 
   override upNextLists(): Array<{ sessionId: string; queue: QueuedMessage[] }> {

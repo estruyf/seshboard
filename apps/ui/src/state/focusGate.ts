@@ -16,7 +16,7 @@ export interface FocusSummary {
   level: FocusLevel;
 }
 
-/** What counts right now, for the counter, the note in New session and the gate. Follows every store it reads. */
+/** What counts right now, for the counter, the line in New session and the gate. Follows every store it reads. */
 export function useFocus(): FocusSummary {
   const hosts = useHosts((s) => s.hosts);
   const permissions = useHosts((s) => s.permissions);

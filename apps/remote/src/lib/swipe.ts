@@ -1,5 +1,5 @@
 /**
- * Swipe actions on a session row: right for Mark as read, left for Archive. A short swipe shows the action's button,
+ * Swipe actions on a session row: right for Mark as read (Mark as unread on a read row), left for Archive. A short swipe shows the action's button,
  * a long one (past 60% of the row) does it at once. Pure, with tests; `SwipeRow.tsx` follows the finger.
  */
 
@@ -12,12 +12,13 @@ export const FLICK = 0.4;
 
 export type SwipeAction = 'read' | 'archive';
 
-/** Right is Mark as read, left is Archive. */
+/** Right is Mark as read (or unread), left is Archive. */
 export const actionFor = (dx: number): SwipeAction | null => (dx > 0 ? 'read' : dx < 0 ? 'archive' : null);
 
 /**
  * Where the row sits for a finger `dx` px from where it started (plus where it was, `start`, when a button showed).
- * Towards an action the row can't take (Mark as read on a read session), it barely moves, so it reads as stuck.
+ * Towards an action the row can't take (Mark as unread, when the computer is too old for it), it barely moves, so it
+ * reads as stuck.
  */
 export function swipeOffset(start: number, dx: number, width: number, allowed: Record<SwipeAction, boolean>): number {
   const raw = start + dx;

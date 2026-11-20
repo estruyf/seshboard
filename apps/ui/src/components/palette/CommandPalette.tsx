@@ -1,7 +1,7 @@
 import { FolderDown, GitBranchPlus, PencilLine, Search, SquarePen } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN } from '@seshboard/protocol/bridge';
-import { parseGithubRepo, repoLabel } from '@seshboard/protocol/client';
+import { parseGithubRepo, repoLabel, shortUrl } from '@seshboard/protocol/client';
 import { useClone } from '../../state/cloneStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -30,6 +30,11 @@ import { addedProjects } from '../../state/projectList.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { goToTab, openFavoriteHere } from '../../state/browserActions.ts';
+import { useBrowserFavorites } from '../../state/browserFavoritesStore.ts';
+import { useBrowserBookmarks } from '../../state/browserBookmarksStore.ts';
+import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { BROWSER_OWNER, tabName } from '../webPreview/browserTabs.ts';
 import { markFromOthers } from '../../state/remoteRows.ts';
 import { openRow, useRemoteRowSplit } from '../../state/useRemoteRows.ts';
 import { GROUP_LABEL, inScope } from '../../state/sidebarRows.ts';
@@ -114,6 +119,9 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
   'trigger-action': 'What to do with it',
   pipelines: 'Pick a pipeline',
   'run-pipeline': 'Pick a pipeline to run',
+  'browser-tabs': 'Pick a tab',
+  favorites: 'Pick a favourite',
+  bookmarks: 'Pick a bookmark',
 };
 /** Run pipeline…'s last choice, Edit pipelines… (pipeline ids never start with a line break). */
 const EDIT_PIPELINES = '\nedit';
@@ -184,6 +192,12 @@ export function CommandPalette() {
   const schedules = useMemo(() => listedSchedules(allSchedules, Date.now()), [allSchedules]);
   const triggers = useTriggers((s) => s.triggers);
   const pipelines = usePipelines((s) => s.pipelines);
+  const browserTabs = useWebPreview((s) => s.tabs);
+  const favorites = useBrowserFavorites((s) => s.favorites);
+  const bookmarks = useBrowserBookmarks((s) => s.bookmarks);
+  const pageProject = useSessions((s) => (s.view === 'session' && s.selectedId ? (s.sessions.get(s.selectedId)?.projectRoot ?? null) : null));
+  const rank = (root: string | null) => (root !== null && root === pageProject ? 0 : root === null ? 1 : 2);
+  const sessionSummaries = useSessions((s) => s.sessions);
   // The current project's memories, read when the Share memory step shows.
   const memoryRoot = step?.kind === 'pick' && step.list === 'memory' ? (ctx.currentProject?.root ?? null) : null;
   const { list: memoryList } = useMemoryList(memoryRoot);
@@ -296,7 +310,7 @@ export function CommandPalette() {
       return rows.length ? [{ id: list, label: PICK_PLACEHOLDER[list].replace(/^Pick (a |an )?/, ''), rows }] : [];
     }
     // The pick lists and project rows read these; the functions above are only called from here.
-  }, [state, step, ctx, sessionRows, othersFound, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers, pipelines]);
+  }, [state, step, ctx, sessionRows, othersFound, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers, pipelines, browserTabs, favorites, bookmarks, pageProject, sessionSummaries]);
 
   /** The choices of a pick step, the current one marked. */
   function pickOptions(list: PickList): Option[] {
@@ -375,6 +389,22 @@ export function CommandPalette() {
           title: pipeline.name,
           detail: [pipeline.builtIn ? 'Built-in' : pipeline.scope.kind === 'all' ? 'Every project' : nameOf(pipeline.scope.root), pipeline.steps.map((step) => step.name).join(', ')].join(' · '),
         }));
+      case 'browser-tabs':
+        // The Browser view's first, then each session's, with where they are and their address.
+        return [...browserTabs]
+          .sort((a, b) => Number(b.owner === BROWSER_OWNER) - Number(a.owner === BROWSER_OWNER))
+          .map((tab) => ({
+            value: tab.id,
+            title: tabName(tab),
+            detail: [tab.owner === BROWSER_OWNER ? 'Browser' : (sessionSummaries.get(tab.owner)?.title ?? 'A session'), tab.url ? shortUrl(tab.url) : null].filter(Boolean).join(' · '),
+          }));
+      case 'favorites':
+        return favorites.map((favorite) => ({ value: favorite.url, title: favorite.title, detail: shortUrl(favorite.url) }));
+      case 'bookmarks':
+        // This project's first, then everywhere's, then other projects'; the folder and the address as the detail.
+        return [...bookmarks]
+          .sort((a, b) => rank(a.projectRoot) - rank(b.projectRoot) || a.position - b.position)
+          .map((bookmark) => ({ value: bookmark.url, title: bookmark.title, detail: [bookmark.folder, shortUrl(bookmark.url)].filter(Boolean).join(' · ') }));
       case 'run-pipeline':
         // The ones the session's project can run, then the way to change them.
         return [
@@ -471,6 +501,12 @@ export function CommandPalette() {
       case 'pipelines':
         openPipelinesSettings(value);
         return;
+      case 'browser-tabs':
+        return goToTab(value);
+      case 'favorites':
+        return openFavoriteHere(value);
+      case 'bookmarks':
+        return openFavoriteHere(value);
       case 'run-pipeline': {
         if (value === EDIT_PIPELINES) return openPipelinesSettings(null);
         const pipeline = pipelines.find((p) => p.id === value);

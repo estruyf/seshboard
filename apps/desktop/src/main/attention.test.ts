@@ -95,6 +95,18 @@ describe('Attention', () => {
     expect(a.onHost(host('error'))).toEqual([]);
   });
 
+  it("names another provider in its session's news, and keeps Claude Code's words", () => {
+    const a = new Attention();
+    a.onHost(host('running', { sessionId: 'c1', provider: 'codex' }));
+    expect(a.onPermission(request('r1', 'c1', 'AskUserQuestion'))[0]!.title).toBe('Codex has a question');
+    expect(a.onPermission(request('r2', 'c1'))[0]!.title).toBe('Codex wants to use Bash');
+    expect(a.onHost(host('idle', { sessionId: 'c1', provider: 'codex' }))).toMatchObject([{ kind: 'finished', title: 'Codex finished' }]);
+    expect(a.onHost(host('error', { sessionId: 'c1', provider: 'codex' }))).toMatchObject([{ kind: 'failed', title: 'OpenAI Codex stopped with an error' }]);
+    a.onHost(host('running'));
+    expect(a.onHost(host('idle'))).toMatchObject([{ title: 'Claude finished' }]);
+    expect(a.onHost(host('error'))).toMatchObject([{ title: 'Claude Code stopped with an error' }]);
+  });
+
   it('asks for attention on permission prompts and counts waiting sessions in the badge', () => {
     const a = new Attention();
     expect(a.onPermission(request('r1'))).toMatchObject([{ kind: 'needs-you', title: 'Claude wants to use Bash' }]);

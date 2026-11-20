@@ -44,7 +44,7 @@ if [ -z "${ZIP:-}" ]; then
   else
     ZIP="$(mktemp -d)/$NAME"
     echo "==> Downloading $NAME from the release"
-    curl -fsSL -o "$ZIP" "https://github.com/estruyf/switchboard/releases/download/v$VERSION/$NAME"
+    curl -fsSL -o "$ZIP" "https://github.com/estruyf/seshboard/releases/download/v$VERSION/$NAME"
   fi
 fi
 

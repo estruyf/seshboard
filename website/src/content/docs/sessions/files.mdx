@@ -1,0 +1,107 @@
+---
+title: Files
+description: Browse a session's project, read any file and search in all of them, beside the conversation.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
+
+You want to check a file before you answer Claude, or find where something is used. **Files** shows the session's project as a tree, with a viewer for any text file and a search in all of them, next to the conversation. Lines you select go straight into your message.
+
+Files is for reading. To change a file, **Open in editor** is one click away.
+
+## Open it
+
+- Click **Files** on the session's [tool rail](/sessions/tool-rail/), or press <Kbd shortcut="files.toggle" />.
+- Choose *Toggle Files* in the [command palette](/command-palette/).
+- Click a file link in Claude's reply: it opens in Files as a tab (see [Preview files](/sessions/file-preview/)).
+
+Files shares the right side with **Changes**, the terminal and the other tools. **Close Files** (the **X**) or <Kbd keys="escape" /> closes it.
+
+### Size
+
+The size switch in the header is the same as the browser's:
+
+- **Side**: beside the conversation, at the width you drag its left edge to.
+- **Half**: half of the session, with the conversation in the other half.
+- **Full**: the whole session. **Hide the file tree** gives the file all the room. **Conversation** or <Kbd keys="escape" /> goes back.
+
+In a narrow panel, the tree and the file take turns: a file opens over the tree, and **Files** at the top of the file brings the tree back.
+
+## The tree
+
+The tree shows the files of the session's folder, folders first. In a git repository it leaves out what your `.gitignore` leaves out.
+
+- Click a folder to open or close it, and a file to open it.
+- Type in **Filter files** to show only the files whose path matches. <Kbd keys="enter" /> opens the first one, <Kbd keys="escape" /> clears the filter.
+- A dot after a file says Claude touched it in this session: the accent colour for a file it changed, grey for one it only read.
+- With the tree focused, <Kbd keys="arrowup|arrowdown" /> move, <Kbd keys="arrowright|arrowleft" /> open and close a folder, and <Kbd keys="enter" /> opens a file.
+
+Drag the line between the tree and the file to make the tree wider. The tree shows up to 50,000 files. In a larger project, use Quick open or Search for the rest.
+
+## The viewer
+
+The file you open shows on the right, read-only, with line numbers and syntax colours. Each file you open gets a tab. Click a tab to bring it to the front, and its **X** to close it.
+
+- **The path** at the top: click a folder in it to show that folder in the tree.
+- **Rendered** and **Source**: a Markdown or HTML file opens rendered, the way [Preview files](/sessions/file-preview/) shows it. **Source** shows its text. A Markdown file has an **Outline** of its headings beside it when there is room.
+- **Images**: a PNG, JPEG, GIF or WebP file shows as the image.
+- **Find in file** (<Kbd shortcut="files.find" />) finds text in the file, with **Previous match** and **Next match**.
+- **Go to line** (<Kbd shortcut="files.go-to-line" />) jumps to a line number.
+- **Wrap lines**, **Reload**, **Open in editor**, **Show in <Os mac="Finder" windows="File Explorer" />** and **Copy path** are in the toolbar too. **Open in a dialog** moves the file over the window.
+
+The file is read again when Claude writes it, so you always see the current version.
+
+### What Claude changed
+
+When the file is in [Changes](/terminal-changes-git/changes/), a bar in the gutter marks each line Claude changed, and the top says how many, such as **changed by Claude · 12 lines**. Hover a marked line for the text it had before. **Show diff** opens the file's diff in Changes.
+
+## Lines into your message
+
+Select lines in the viewer and a small toolbar shows above them:
+
+- **Ask about** the lines (such as **Ask about lines 12–20**) adds them to the message and puts the cursor in the message box, so you can type your question.
+- **Add to message** (<Kbd shortcut="files.add-lines" />) adds them and stays in Files.
+- **Copy** copies the lines.
+
+The lines go in the message box as a chip with the file, the line numbers and the code. With nothing selected, <Kbd shortcut="files.add-lines" /> or the speech bubble in the toolbar adds the whole file.
+
+### Right-click
+
+Right-click (or press <Kbd shortcut="context-menu" />) for more:
+
+- **On a file** in the tree or the search results: **Add file to message**, **Open**, **Open full size**, **Open in editor**, **Show in <Os mac="Finder" windows="File Explorer" />**, **Copy path** and **Copy relative path**.
+- **On a folder**: **Add folder to message**, **Search in folder**, **Show in <Os mac="Finder" windows="File Explorer" />** and the two copies.
+- **In the open file**: **Add lines … to message** and **Ask about lines …** for the lines you selected, **Add file to message**, **Find in file**, **Go to line** and the rest.
+- **On a tab**: **Add file to message**, **Add open files to message**, **Close**, **Close others** and **Close all**.
+
+The files go to this session's message box, as the [VS Code companion](/vscode-companion/) sends them from your editor. A toast says what was added.
+
+## Quick open
+
+Press <Kbd shortcut="files.quick-open" /> (or *Go to file…* in the command palette) and type part of a file's name. Before you type, the list shows the files Claude changed or read in this session, then the files you opened lately.
+
+- <Kbd keys="enter" /> opens the file in Files.
+- <Kbd keys="mod+enter" /> opens it at **Full** size.
+- <Kbd keys="alt+enter" /> adds it to the message instead.
+- End with a line number, such as `app.ts:42`, to open the file at that line.
+
+Quick open works outside a session too: it looks in the project you selected, and the file opens in a dialog.
+
+## Search in files
+
+Press <Kbd shortcut="files.search" />, choose *Search in files* in the command palette, or click **Search** at the top of Files. With text selected in the viewer, it searches for that.
+
+- Type in **Search**. **Match case** (`Aa`), **Whole word** (`ab`) and **Regular expression** (`.*`) are next to it.
+- **Include** and **Leave out** take globs separated by commas, such as `src/**, *.ts` and `*.snap`. **Search in folder** on a folder fills in **Include** for you.
+- The results are grouped by file. Click a match, or use <Kbd keys="arrowup|arrowdown" /> and <Kbd keys="enter" />, to see it in the file, with every match in that file marked.
+- **Ask Claude about these results** adds the matches to the message and puts the cursor in the message box.
+
+In a git repository the search follows your `.gitignore`. It shows the first 2,000 matches.
+
+## Related
+
+<Related pages={['sessions/file-preview', 'terminal-changes-git/changes', 'sessions/conversation', 'vscode-companion']} />

@@ -54,13 +54,13 @@ async function onPhone(run: (js: (code: string) => Promise<unknown>, win: Browse
   const win = await remotePhone();
   if (typeof win === 'string') return win;
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  await js("document.querySelector('[data-remote-drawer-close]')?.click(); document.querySelector('[data-remote-settings-back]')?.click()");
+  await js("document.querySelector('[data-remote-drawer-close]')?.click(); document.querySelector('[data-remote-settings-back]')?.click(); document.querySelector('[data-remote-done-back]')?.click()");
   // A session, a run or New session (with a sheet over it, maybe): the list again, from a reload on its history entry.
   if (await js("Boolean(document.querySelector('[data-remote-session-view], [data-remote-run-view], [data-remote-new-session]'))")) {
     await js("history.replaceState({ kind: 'list' }, ''); location.reload()");
     if (!(await waitInPage(win, "document.querySelector('[data-remote-computer-title][data-remote-connection=\"connected\"]')", 15_000))) return 'the phone did not come back to Home';
   }
-  if (!(await waitInPage(win, "document.querySelector('[data-remote-menu-button]') && !document.querySelector('[data-remote-drawer]') && !document.querySelector('[data-remote-settings]')", 5_000))) return 'the phone is not back on Home';
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-menu-button]') && !document.querySelector('[data-remote-drawer]') && !document.querySelector('[data-remote-settings]') && !document.querySelector('[data-remote-done]')", 5_000))) return 'the phone is not back on Home';
   return run(js, win);
 }
 
@@ -138,13 +138,42 @@ export function runPhoneMoreStep(): Promise<string> {
     await js("document.querySelector('[data-remote-more]').click()");
     if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remote-menu-item=\"settings\"]')", 3_000))) return '⋯ has no All settings';
     const items = (await js("[...document.querySelectorAll('[role=menu] [data-remote-menu-item]')].map((el) => el.dataset.remoteMenuItem).join(',')")) as string;
-    if (items !== 'theme,notifications,refresh,settings') return `⋯ has ${items}`;
+    if (items !== 'theme,notifications,refresh,done,settings') return `⋯ has ${items}`;
     if ((await js("document.querySelectorAll('[role=menu] [data-remote-menu-item=\"theme\"] [role=menuitemradio]').length")) !== 3) return 'Theme in ⋯ has no Auto, Dark and Light';
     await js("document.querySelector('[data-remote-menu-item=\"settings\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-remote-settings]')", 3_000))) return 'All settings did not open Settings';
     await js('history.back()');
     if (!(await waitInPage(win, "!document.querySelector('[data-remote-settings]')", 3_000))) return 'Back did not leave Settings';
     return `ok: ⋯ has ${items.replaceAll(',', ', ')}; All settings opened Settings`;
+  });
+}
+
+/**
+ * Done from a row's menu takes a session out of the list ("Upgrade to Node 24", which no other step uses); ⋯ › Done
+ * sessions lists it, and Reopen puts it back in the list and off the page.
+ */
+export function runPhoneDoneStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const title = 'Upgrade to Node 24';
+    const row = `[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((r) => r.innerText.includes(${JSON.stringify(title)}))`;
+    if (!(await waitInPage(win, `Boolean(${row})`, 5_000))) return `"${title}" is not in the list`;
+    await js(`${row}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 300 }))`);
+    const done = "[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((item) => item.innerText.trim() === 'Done')";
+    if (!(await waitInPage(win, `Boolean(${done})`, 3_000))) return "the row's menu has no Done";
+    await js(`${done}.click()`);
+    if (!(await waitInPage(win, `!${row}`, 5_000))) return `Done did not take "${title}" out of the list`;
+    await js("document.querySelector('[data-remote-more]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remote-menu-item=\"done\"]')", 3_000))) return '⋯ has no Done sessions';
+    await js("document.querySelector('[data-remote-menu-item=\"done\"]').click()");
+    const listed = `[...document.querySelectorAll('[data-remote-done-session]')].find((r) => r.innerText.includes(${JSON.stringify(title)}))`;
+    if (!(await waitInPage(win, `Boolean(${listed})`, 5_000))) return `the Done page does not list "${title}": ${(await js("document.querySelector('[data-remote-done]')?.innerText.replace(/\\s+/g, ' ').slice(0, 160)")) as string}`;
+    const line = (await js(`${listed}.innerText.replace(/\\s+/g, ' ')`)) as string;
+    if (!line.includes('done just now')) return `its row says "${line}"`;
+    await js(`${listed}.querySelector('[data-remote-reopen]').click()`);
+    if (!(await waitInPage(win, `!${listed}`, 5_000))) return 'Reopen left it on the Done page';
+    await js('history.back()');
+    if (!(await waitInPage(win, `Boolean(${row})`, 5_000))) return `Reopen did not put "${title}" back in the list`;
+    return `ok: Done took "${title}" out of the list, the Done page listed it ("${line}"), Reopen put it back`;
   });
 }
 
@@ -189,6 +218,53 @@ async function openFinished(js: (code: string) => Promise<unknown>, win: Browser
   if (!opened) return 'the finished session did not open';
   if (!(await waitInPage(win, "document.querySelector('[data-remote-catchup-title]')", 5_000))) return 'the finished session has no catch-up';
   return null;
+}
+
+/**
+ * A session's message box: ⇧↵ on a list item starts the next one (and on an empty one ends the list), and a pasted
+ * image alone makes Send ready, as on the computer. Nothing is sent: the image is removed and the box emptied after.
+ */
+export function runPhoneComposerStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    const box = '[data-remote-session-view] [data-remote-message]';
+    const set = (text: string) => js(`(() => {
+      const box = document.querySelector('${box}');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    })()`);
+    const newLine = `document.querySelector('${box}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))`;
+    const value = () => js(`document.querySelector('${box}').value`) as Promise<string>;
+    try {
+      await set('- one');
+      await js(newLine);
+      if (!(await waitInPage(win, `document.querySelector('${box}').value === '- one\\n- '`, 2_000))) return `⇧↵ after "- one" left ${JSON.stringify(await value())}`;
+      await js(newLine);
+      if (!(await waitInPage(win, `document.querySelector('${box}').value === '- one\\n'`, 2_000))) return `⇧↵ on an empty item left ${JSON.stringify(await value())}`;
+      await set('1. one');
+      await js(newLine);
+      if (!(await waitInPage(win, `document.querySelector('${box}').value === '1. one\\n2. '`, 2_000))) return `⇧↵ after "1. one" left ${JSON.stringify(await value())}`;
+      await set('');
+      if ((await js("document.querySelector('[data-remote-session-view] [data-remote-send]')?.dataset.remoteSend")) !== 'empty') return 'Send is ready with an empty box';
+      // A 1×1 PNG pasted the way a screenshot is.
+      await js(`(() => {
+        const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
+        const data = new DataTransfer();
+        data.items.add(new File([bytes], 'screen.png', { type: 'image/png' }));
+        document.querySelector('${box}').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+      })()`);
+      if (!(await waitInPage(win, "document.querySelector('[data-remote-session-view] [data-remote-image-remove]')", 5_000))) return 'the pasted image did not show in the box';
+      if (!(await waitInPage(win, "document.querySelector('[data-remote-session-view] [data-remote-send]')?.dataset.remoteSend === 'ready'", 2_000))) return 'Send is not ready with only an image';
+      return 'ok: ⇧↵ continues "- " and "1." and ends the list on an empty item; Send ready with only a pasted image';
+    } finally {
+      await js("document.querySelectorAll('[data-remote-session-view] [data-remote-image-remove]').forEach((b) => b.click())");
+      await set('');
+      await js(`document.querySelector('${box}')?.blur()`);
+    }
+  });
 }
 
 /** A finished session's catch-up says what you asked as the prompt's title, without its Markdown `#`. */
@@ -272,6 +348,29 @@ export function runPhoneQuoteStep(): Promise<string> {
       await js('window.getSelection().removeAllRanges()');
       await js(`document.querySelector('${box}') && ${empty}`).catch(() => {});
     }
+  });
+}
+
+/**
+ * A path in a finished reply to a file Claude wrote on the computer (scripts/remote-demo.ts writes `review.md`) is a
+ * link: a tap opens the file in a sheet, read by the computer (`files.read`), and the back gesture closes it.
+ */
+export function runPhoneFileStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    const view = '[data-remote-session-view]';
+    await js(`document.querySelector('${view} [data-remote-unfold]')?.click()`);
+    const link = `[...document.querySelectorAll('${view} [data-remote-file-link]')].find((el) => el.dataset.remoteFileLink.endsWith('review.md'))`;
+    if (!(await waitInPage(win, `Boolean(${link})`, 5_000))) return 'the path of the file Claude wrote is not a link';
+    await js(`${link}.scrollIntoView({ block: 'center' }); ${link}.click()`);
+    const sheet = '[data-remote-sheet="file"]';
+    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-file="markdown"]')?.innerText.includes('No changes needed')`, 10_000))) {
+      return `the file did not open in a sheet: ${await js(`document.querySelector('${sheet}')?.innerText.replace(/\\s+/g, ' ').slice(0, 160) ?? 'no sheet'`)}`;
+    }
+    await js('history.back()');
+    if (!(await waitInPage(win, `!document.querySelector('${sheet}')`, 3_000))) return 'the back gesture did not close the file';
+    return 'ok: the path in the reply opened review.md in a sheet, read by the computer, and Back closed it';
   });
 }
 
@@ -359,8 +458,8 @@ export function runPhoneStartStep(): Promise<string> {
 
 /**
  * New session with a provider profile (#199): picking the demo computer's Copilot profile in Options leaves Copilot's
- * models and modes (Auto mode), the box asks Copilot, Start gets ready with a task, and Reset goes back to the
- * project's Claude Code profile. Nothing is started.
+ * models and modes (Auto mode), the box asks Copilot, Start gets ready with a task; its Codex profile (#276) leaves
+ * Codex's (Plan mode), and the box asks Codex. Reset goes back to the project's Claude Code profile. Nothing is started.
  */
 export function runPhoneProviderStep(): Promise<string> {
   return onPhone(async (js, win) => {
@@ -391,12 +490,29 @@ export function runPhoneProviderStep(): Promise<string> {
     await js(TYPE('Add a health check'));
     if (!(await waitInPage(win, "document.querySelector('[data-remote-start]').dataset.remoteStartState === 'ready'", 5_000))) return 'Start did not get ready with Copilot and a task';
     await js(TYPE(''));
+    // The Codex profile (#276) the same way: Codex's models and modes, and a box that asks Codex.
+    await js("document.querySelector('[data-remote-new-options]').click()");
+    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="profile"]')`, 3_000))) return 'the Options sheet did not open again';
+    const codex = await pick('profile', 'Codex');
+    if (codex) return codex;
+    const codexRows = (await js(`[...document.querySelectorAll('${sheet} [data-remote-choice]')].map((el) => el.dataset.remoteChoice).join(',')`)) as string;
+    // Codex runs in a worktree or on a branch too (its `supports`), so those rows stay.
+    if (codexRows !== 'profile,model,mode,worktree,branch') return `with the Codex profile, Options has ${codexRows}`;
+    const codexModel = await pick('model', 'GPT-5.3 Codex Mini');
+    if (codexModel) return codexModel;
+    const codexMode = await pick('mode', 'Plan mode');
+    if (codexMode) return codexMode;
+    await js("document.querySelector('[data-remote-sheet-done]').click()");
+    if (!(await waitInPage(win, `!document.querySelector('${sheet}')`, 3_000))) return 'Done did not close Options';
+    const codexSummary = (await js("document.querySelector('[data-remote-new-options]').getAttribute('aria-label')")) as string;
+    if (!codexSummary.includes('OpenAI Codex') || !codexSummary.includes('Plan mode')) return `with Codex, the summary reads "${codexSummary}"`;
+    if ((await js("document.querySelector('[data-remote-new-prompt]').placeholder")) !== 'What should OpenAI Codex do?') return "the box doesn't ask Codex";
     // Back to Claude Code for the steps after this one.
     await js("document.querySelector('[data-remote-new-options]').click()");
     await waitInPage(win, `document.querySelector('${sheet} [data-remote-options-reset]')`, 3_000);
     await js(`document.querySelector('${sheet} [data-remote-options-reset]').click()`);
     if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="profile"], ${sheet} [data-remote-choice="effort"]')`, 3_000))) return "Reset didn't bring Claude Code's options back";
     await js("document.querySelector('[data-remote-sheet-done]').click()");
-    return `ok: the Copilot profile left Copilot's models and modes ("${summary.replace('Options: ', '')}"), Start ready with a task, Reset back to Claude Code`;
+    return `ok: the Copilot profile left Copilot's models and modes ("${summary.replace('Options: ', '')}"), Start ready with a task; the Codex profile Codex's ("${codexSummary.replace('Options: ', '')}"); Reset back to Claude Code`;
   });
 }

@@ -10,6 +10,7 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { STAR_AFTER_SESSIONS, starPrompt, type StarPrompt } from './starPrompt.ts';
+import { openWebLink } from '../../state/browserActions.ts';
 
 interface StarState {
   /** Null until gh has answered (asked once per window, and only once the button may show). */
@@ -21,7 +22,7 @@ const useStar = create<StarState>()(() => ({ status: null, starring: false }));
 let asked = false;
 
 const done = () => usePreferences.getState().update({ githubStar: 'done' });
-const openPage = () => void window.open(REPO_URL, '_blank');
+const openPage = () => openWebLink(REPO_URL);
 
 /** Asks gh once whether Seshboard is starred; starred elsewhere means the button never needs to ask again. */
 function askStatus(client: EngineClient): void {

@@ -3,8 +3,11 @@
  * reads them) and the renderer (which decides what a click on a file link does). Plain TypeScript, no `node:path`.
  */
 
-/** What a previewable file is, which decides how it is shown. */
-export type PreviewKind = 'markdown' | 'html' | 'code';
+/**
+ * What a previewable file is, which decides how it is shown. `text` is any other file that reads as text (no NUL byte
+ * near its start): `.env.example`, `Dockerfile`, `LICENSE`. Only `files.read` decides it, by looking at the file.
+ */
+export type PreviewKind = 'markdown' | 'html' | 'code' | 'text';
 
 /** Lower-case extensions (with the dot) that can be previewed, and what each is. */
 export const PREVIEW_EXTENSIONS: Readonly<Record<string, PreviewKind>> = {

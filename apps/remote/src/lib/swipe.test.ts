@@ -28,7 +28,7 @@ describe('swipe actions', () => {
     expect(swipeOutcome(-80, ROW, 0.6, BOTH)).toEqual({ kind: 'close' });
   });
 
-  it("doesn't take an action the row can't do: Mark as read on a read session", () => {
+  it("doesn't take an action the row can't do: Mark as unread on a computer too old for it", () => {
     const readOnly = { read: false, archive: true };
     expect(swipeOutcome(300, ROW, 0, readOnly)).toEqual({ kind: 'close' });
     expect(Math.abs(swipeOffset(0, 200, ROW, readOnly))).toBeLessThanOrEqual(16);

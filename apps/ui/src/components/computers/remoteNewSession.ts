@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AUTO_MODEL, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions } from '@seshboard/protocol/client';
+import { AUTO_MODEL, remoteOnlyBranches, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions, type WorktreeBase } from '@seshboard/protocol/client';
 import { autoDescription } from '../../lib/autoModel.ts';
 import type { Choice } from '../newSession/ChoiceMenu.tsx';
 import { filterBranches } from '../worktree/branchMenu.ts';
@@ -53,6 +53,8 @@ export interface RemoteChoice {
   effort: Effort | null;
   permissionMode: PermissionMode;
   worktree: boolean;
+  /** Where a new worktree starts there (`REMOTE_FEATURE_WORKTREE_BASE`); `fresh` from a computer that doesn't say. */
+  baseRef: WorktreeBase;
 }
 
 /** That computer's profiles, also from a Seshboard that doesn't send them yet. */
@@ -75,6 +77,7 @@ export function remoteDefaultChoice(options: RemoteOptions | null, projectId: st
     effort: project?.effort ?? profile?.effort ?? null,
     permissionMode: project?.permissionMode ?? profile?.permissionMode ?? 'default',
     worktree: project?.worktree ?? profile?.worktree ?? false,
+    baseRef: project?.baseRef ?? profile?.baseRef ?? 'fresh',
   };
 }
 
@@ -91,6 +94,8 @@ export function remoteChanges(choice: RemoteChoice, defaults: RemoteChoice, proj
     ...(choice.effort !== defaults.effort ? { effort: choice.effort } : {}),
     ...(choice.permissionMode !== defaults.permissionMode && isRemoteMode(choice.permissionMode) ? { permissionMode: choice.permissionMode } : {}),
     ...(choice.worktree !== defaults.worktree ? { worktree: choice.worktree } : {}),
+    // Only for a worktree: in the current checkout there is nothing to start from.
+    ...(choice.worktree && choice.baseRef !== defaults.baseRef ? { worktreeBase: choice.baseRef } : {}),
   };
 }
 
@@ -105,23 +110,26 @@ export interface RemoteBranchChoice {
 
 /**
  * The branch chip's menu on another computer, as the local one: the branch checked out there first (`current`), then
- * the most recent. One checked out in another worktree shows but can't be picked. Detached, the first choice keeps it so.
+ * the most recent, then those only a remote has (noted with it). One checked out in another worktree shows but can't be
+ * picked. Detached, the first choice keeps it so.
  */
-export function remoteBranchChoices({ current, branches, checkedOutElsewhere }: RemoteBranches): RemoteBranchChoice[] {
+export function remoteBranchChoices({ current, branches, checkedOutElsewhere, remoteBranches }: RemoteBranches): RemoteBranchChoice[] {
+  const onRemote = remoteOnlyBranches(branches, remoteBranches ?? []);
   const ordered = filterBranches(branches, current, '');
   return [
     ...(current ? [] : [{ value: '', label: 'Stay on the current checkout' }]),
     ...ordered.map((b) => ({ value: b, label: b, ...(b === current ? { note: 'current' } : {}), ...(checkedOutElsewhere.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
+    ...onRemote.map((b) => ({ value: b.name, label: b.name, note: b.remote })),
   ];
 }
 
 /**
  * The branch `session.create` checks out first: only another one than is checked out, only in the current checkout,
- * and only one that computer still lists. Null starts on what is checked out.
+ * and only one that computer still lists, here or on a remote. Null starts on what is checked out.
  */
 export function remoteCheckoutBranch(picked: string | null, branches: RemoteBranches | null, worktree: boolean): string | null {
   if (worktree || !picked || !branches || picked === branches.current) return null;
-  return branches.branches.includes(picked) ? picked : null;
+  return branches.branches.includes(picked) || remoteOnlyBranches(branches.branches, branches.remoteBranches ?? []).some((b) => b.name === picked) ? picked : null;
 }
 
 /** A model's name as that computer's list has it ("Opus"); a full id the list doesn't know, by its family; null is the default. */

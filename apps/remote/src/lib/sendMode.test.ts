@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sendKey } from './sendMode.ts';
+import { newLineKey, sendKey } from './sendMode.ts';
 
 const key = (k: string, mods: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean }> = {}) => ({ key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods });
 
@@ -22,5 +22,21 @@ describe('sendKey', () => {
 
   it('leaves a key that finishes composing a character alone', () => {
     expect(sendKey(key('Enter', { isComposing: true }), true)).toBeNull();
+  });
+});
+
+describe('newLineKey', () => {
+  it('is Shift+Enter where Enter sends, and Return where it does not', () => {
+    expect(newLineKey(key('Enter', { shiftKey: true }), true)).toBe(true);
+    expect(newLineKey(key('Enter'), true)).toBe(false);
+    expect(newLineKey(key('Enter'), false)).toBe(true);
+    expect(newLineKey(key('a', { shiftKey: true }), true)).toBe(false);
+  });
+
+  it('leaves the keys that send and composing alone', () => {
+    expect(newLineKey(key('Enter', { metaKey: true, shiftKey: true }), true)).toBe(false);
+    expect(newLineKey(key('Enter', { ctrlKey: true }), false)).toBe(false);
+    expect(newLineKey(key('Enter', { altKey: true }), false)).toBe(false);
+    expect(newLineKey(key('Enter', { isComposing: true }), false)).toBe(false);
   });
 });

@@ -54,7 +54,7 @@ function LimitCard({ limit, now, cost, costWhere }: { limit: UsageLimit; now: nu
         )}
       </p>
       {cost && (
-        <p className="text-meta text-muted" data-tooltip={`What this window's tokens ${costWhere} would cost at Anthropic's API prices. Your plan is not billed per token.`} data-usage-limit-cost>
+        <p className="text-meta text-muted" data-tooltip={`What this window's tokens ${costWhere} would cost at API prices. Your plan is not billed per token.`} data-usage-limit-cost>
           <span className="font-semibold text-text tabular-nums">{cost}</span> at API prices
         </p>
       )}
@@ -244,6 +244,35 @@ function WindowSessions({ profileId }: { profileId: string }) {
 }
 
 /** The Limits tab: a card per plan window, % used over time, and which sessions used the current window. */
+/**
+ * The Usage view for a profile whose windows are all Seshboard has (Codex's rate limits): a card per window with its
+ * estimated cost, without the history that reads Claude Code's recorded readings.
+ */
+export function PlanWindows({ profileId }: { profileId: string }) {
+  const entry = useUsageFor(profileId);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
+  // Each window's estimated cost, from the profile's session files (Codex's rollout files).
+  const cost = useCostFormat();
+  const priced = useWindowCosts(profileId, cost !== null && limits.length > 0);
+  const costWhere = priced.counted.length > 0 ? `on ${[thisComputerName(), ...priced.counted.map((c) => c.name)].join(' and ')}` : 'on this computer';
+  return limits.length === 0 ? (
+    <p className="rounded-xl border border-border bg-card p-4 text-ui text-muted" data-tooltip={entry?.error ?? undefined} data-usage-status>
+      {usageMessage(entry)}
+    </p>
+  ) : (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4" data-usage-plan-windows>
+      {limits.map((limit) => (
+        <LimitCard key={`${limit.kind}:${limit.scope ?? ''}`} limit={limit} now={now} costWhere={costWhere} cost={cost && windowCostOf(limit, priced.windows) ? cost(windowCostOf(limit, priced.windows)!.usd) : null} />
+      ))}
+    </div>
+  );
+}
+
 export function LimitsTab({ profileId, period }: { profileId: string; period: UsagePeriod }) {
   const entry = useUsageFor(profileId);
   const history = usePlanHistory(profileId, period);

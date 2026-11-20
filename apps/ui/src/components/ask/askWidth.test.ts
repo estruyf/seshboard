@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ASK_DEFAULT_WIDTH, ASK_MIN_WIDTH, askWidthForKey, clampAskWidth, readTab, rightPanel } from './askWidth.ts';
+import { ASK_DEFAULT_WIDTH, ASK_MIN_WIDTH, askWidthForKey, clampAskWidth, panelWidthFor, readTab, rightPanel } from './askWidth.ts';
 
 describe('Ask panel width', () => {
   it('starts at 380px and stays between the minimum and 70% of the window', () => {
@@ -21,7 +21,7 @@ describe('Ask panel width', () => {
 });
 
 describe('the right panel', () => {
-  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false, preview = false) => ({ changes, ask, agents, commands, preview, terminal });
+  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false, files = false, web = false, note = false) => ({ files, changes, ask, agents, commands, note, web, terminal });
 
   it('shows tabs only when more than one panel is open, on the tab picked last', () => {
     expect(rightPanel(open(true, true), 'ask')).toEqual({ tab: 'ask', tabs: true, open: ['changes', 'ask'] });
@@ -47,18 +47,42 @@ describe('the right panel', () => {
     expect(rightPanel(open(false, false, false, false, true), 'changes')).toEqual({ tab: 'commands', tabs: false, open: ['commands'] });
   });
 
-  it('puts a file preview after Commands and before the terminal', () => {
-    expect(rightPanel(open(true, false, false, true, true, true), 'preview')).toEqual({ tab: 'preview', tabs: true, open: ['changes', 'commands', 'preview', 'terminal'] });
-    expect(rightPanel(open(false, false, false, false, false, true), 'changes')).toEqual({ tab: 'preview', tabs: false, open: ['preview'] });
+  it('puts Files first and the Note after Commands', () => {
+    expect(rightPanel(open(false, false, false, false, true, true, false, true), 'note')).toEqual({ tab: 'note', tabs: true, open: ['files', 'commands', 'note'] });
+    expect(rightPanel(open(false, false, false, false, false, false, false, true), 'changes')).toEqual({ tab: 'note', tabs: false, open: ['note'] });
+  });
+
+  it('puts Files before Changes, and the terminal last', () => {
+    expect(rightPanel(open(true, false, false, true, true, true), 'files')).toEqual({ tab: 'files', tabs: true, open: ['files', 'changes', 'commands', 'terminal'] });
+    expect(rightPanel(open(false, false, false, false, false, true), 'changes')).toEqual({ tab: 'files', tabs: false, open: ['files'] });
+  });
+
+  it('puts the web preview before the terminal', () => {
+    expect(rightPanel(open(true, false, false, true, false, true, true), 'web')).toEqual({ tab: 'web', tabs: true, open: ['files', 'changes', 'web', 'terminal'] });
+    expect(rightPanel(open(false, false, false, false, false, false, true), 'changes')).toEqual({ tab: 'web', tabs: false, open: ['web'] });
   });
 
   it('reads a stored tab', () => {
-    expect(readTab('preview')).toBe('preview');
+    expect(readTab('files')).toBe('files');
+    expect(readTab('preview')).toBe('changes');
+    expect(readTab('web')).toBe('web');
     expect(readTab('ask')).toBe('ask');
     expect(readTab('agents')).toBe('agents');
     expect(readTab('terminal')).toBe('terminal');
     expect(readTab('commands')).toBe('commands');
+    expect(readTab('note')).toBe('note');
     expect(readTab(null)).toBe('changes');
     expect(readTab('junk')).toBe('changes');
+  });
+});
+
+describe('Half', () => {
+  it('splits the session area 50/50, and keeps the dragged width at Side or before the area is measured', () => {
+    expect(panelWidthFor('half', 480, 1400)).toBe(700);
+    expect(panelWidthFor('half', 480, 1401)).toBe(700);
+    expect(panelWidthFor('side', 480, 1400)).toBe(480);
+    expect(panelWidthFor('half', 480, null)).toBe(480);
+    // A narrow area still gives the panel its minimum.
+    expect(panelWidthFor('half', 480, 400)).toBe(ASK_MIN_WIDTH);
   });
 });

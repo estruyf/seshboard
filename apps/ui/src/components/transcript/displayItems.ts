@@ -1,4 +1,4 @@
-import type { ImageRef, TranscriptMessage } from '@seshboard/protocol/client';
+import { skimMarks, VISUAL_TOOL, type ImageRef, type McpAppCall, type TranscriptMessage } from '@seshboard/protocol/client';
 import { answeredQuestions } from './questionAnswers.ts';
 
 export interface ToolResultView {
@@ -33,7 +33,7 @@ export interface ReplyUsage {
 export type DisplayItem =
   | { kind: 'user'; key: string; at: number | null; text: string; images: ImageRef[]; subagent: boolean }
   | { kind: 'command'; key: string; at: number | null; name: string; args: string }
-  | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean; usage?: ReplyUsage; failed?: true }
+  | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean; usage?: ReplyUsage; failed?: true; /** What the reply's keep line quoted (Skim's marks); `text` is without the line. */ marks?: string[] }
   | { kind: 'thinking'; key: string; at: number | null; text: string; usage?: ReplyUsage }
   | {
       kind: 'tool';
@@ -46,6 +46,8 @@ export type DisplayItem =
       result: ToolResultView | null;
       subagent: boolean;
       usage?: ReplyUsage;
+      /** The MCP App that draws this call (Codex's), when it has one. */
+      app?: McpAppCall;
     }
   | { kind: 'notice'; key: string; at: number | null; text: string }
   /**
@@ -59,6 +61,7 @@ const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</$
 
 const NOTICE_LABELS: Record<string, string> = {
   compact_boundary: 'Conversation compacted',
+  compact_boundary_idle: 'Compacted while idle',
   informational: 'Information',
 };
 
@@ -169,7 +172,10 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
       const key = `${message.uuid}:${i}`;
       switch (block.type) {
         case 'text':
-          if (block.text.trim()) items.push({ kind: 'text', key, at, text: block.text, subagent, ...extra, ...(API_ERROR.test(block.text) ? failed : {}) });
+          if (block.text.trim()) {
+            const { text, quotes } = skimMarks(block.text);
+            items.push({ kind: 'text', key, at, text, subagent, ...extra, ...(API_ERROR.test(block.text) ? failed : {}), ...(quotes?.length ? { marks: quotes } : {}) });
+          }
           break;
         case 'thinking':
           if (block.text.trim()) items.push({ kind: 'thinking', key, at, text: block.text, ...extra });
@@ -185,6 +191,7 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
             inputTruncated: block.truncated,
             result: results.get(block.id) ?? null,
             subagent,
+            ...(block.app ? { app: block.app } : {}),
             ...extra,
           });
           break;
@@ -201,27 +208,33 @@ export type ActivityGroup = { kind: 'activity'; key: string; items: DisplayItem[
 export type RenderItem = DisplayItem | ActivityGroup;
 
 /**
- * Plans and questions you answered stay visible; everything else Claude does between messages can be summarised. A
- * question still waiting for you is a step until you answer: its card is under the conversation meanwhile.
+ * Plans, questions you answered, Claude's visuals and MCP Apps stay visible; everything else Claude does between messages can be
+ * summarised. A question still waiting for you is a step until you answer: its card is under the conversation meanwhile.
  */
 const isActivity = (item: DisplayItem) =>
   item.kind === 'thinking' ||
   item.kind === 'agent-report' ||
-  (item.kind === 'tool' && item.name !== 'ExitPlanMode' && answeredQuestions(item) === null) ||
+  (item.kind === 'tool' && item.name !== 'ExitPlanMode' && item.name !== VISUAL_TOOL && !(item.app && !item.subagent) && answeredQuestions(item) === null) ||
   ((item.kind === 'text' || item.kind === 'user') && item.subagent);
+
+const NO_FOLDED: ReadonlySet<string> = new Set();
+
+/** A message of Claude's that was folded into an activity group: only Skim puts one there. */
+export const isFoldedMessage = (item: DisplayItem): item is Extract<DisplayItem, { kind: 'text' }> => item.kind === 'text' && !item.subagent;
 
 /**
  * Collapses each run of activity (tool calls, thinking, subagent output) into one
  * group, like Claude Code does. Claude's messages, your prompts, commands, notices
  * and plans break a run and stay as they are. The group's key is its first item's,
- * so it stays stable while the run grows.
+ * so it stays stable while the run grows. `folded`: Claude's messages that go in the
+ * group too (Skim, for a finished turn).
  */
-export function groupActivity(items: readonly DisplayItem[], standalone: (item: DisplayItem) => boolean = () => false): RenderItem[] {
+export function groupActivity(items: readonly DisplayItem[], standalone: (item: DisplayItem) => boolean = () => false, folded: ReadonlySet<string> = NO_FOLDED): RenderItem[] {
   const out: RenderItem[] = [];
   let group: ActivityGroup | null = null;
   for (const item of items) {
     // A memory Claude saved stays a line of its own, between runs.
-    if (!isActivity(item) || standalone(item)) {
+    if ((!isActivity(item) && !folded.has(item.key)) || standalone(item)) {
       group = null;
       out.push(item);
       continue;

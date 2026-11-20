@@ -25,17 +25,22 @@ import {
   type ModPromptAnswer,
   type ModPromptAsk,
   type ModsSnapshot,
+  browserAnswerOf,
+  browserPromptText,
+  type BrowserAnswer,
+  type BrowserAsk,
 } from '@seshboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import type { ModsEvents, ModsSurface } from './modsSurface.ts';
-import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
+import { buildOptions, SessionHost, systemPromptFor, toModelOption, usableFallback, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
 import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 import { limitPrefixes, type LimitStop } from '../usageLimit/usageLimit.ts';
+import type { McpStdioServer } from '../providers/provider.ts';
 
 /** The two SDK entry points the manager needs; injected so tests can fake Claude Code. */
 export interface SdkRuntime {
@@ -64,6 +69,10 @@ export interface HostManagerDeps {
   onStream: (delta: StreamDelta) => void;
   /** `held`: a message Claude Code doesn't have yet (see `HostEvents.messages`). */
   onMessages: (sessionId: string, messages: RawSessionMessage[], held?: boolean) => void;
+  /** A line Claude Code didn't write to the transcript (see `HostEvents.notice`). */
+  onNotice?: (sessionId: string, message: RawSessionMessage) => void;
+  /** Messages Claude Code took back (see `HostEvents.retract`). */
+  onRetract?: (sessionId: string, uuids: string[]) => void;
   /** A session this app ran was stopped: a message it still held back will never be sent. */
   onClosed?: (sessionId: string) => void;
   onPermission: (request: PermissionRequest) => void;
@@ -98,6 +107,12 @@ export interface HostManagerDeps {
   installedPlugins?: (profileId: string) => PluginInfo[];
   /** What each session last ran with; without it, resumes only remember it until the engine restarts. */
   sessionSettings?: SessionSettingsStore;
+  /**
+   * The fallback model for a session in `cwd` under `profileId` (project, then profile, then Settings › General), or
+   * null for none. Asked each time a Claude Code process starts, whoever starts it (a window, a phone, a schedule, a
+   * pipeline step, an orchestrator): they all come through here.
+   */
+  fallbackModel?: (cwd: string, profileId: string) => string | null;
   /** The model list saved last time, until Claude Code reports a fresh one. */
   models?: ModelOption[] | null;
   /** Claude Code reported a (new) model list. */
@@ -142,6 +157,21 @@ export interface HostManagerDeps {
    * without you); null shows it as usual.
    */
   autoAnswer?: (request: PermissionRequest) => PermissionDecision | null;
+  /**
+   * The browser tools (docs/browser.md): Seshboard's `browser` MCP server for one process, tied to the session
+   * `sessionId` names when a call comes; null while Settings › Browser has them off.
+   */
+  browserServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
+  /**
+   * The orchestrator (docs/orchestrator.md): its `orchestrator` MCP server for one process, tied to the session
+   * `sessionId` names when a call comes (null while main has not sent the server), whether a session being resumed is
+   * one, and what a resumed session reads after Claude Code's prompt (an orchestrator's role, its sessions' instructions).
+   */
+  orchestratorServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
+  isOrchestrator?: (sessionId: string) => boolean;
+  appendSystemFor?: (sessionId: string) => string | null;
+  /** The project's own plan mode instructions for a session in `cwd`; null for none. Read when a process starts. */
+  planModeInstructionsFor?: (cwd: string) => string | null;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -163,6 +193,8 @@ interface Pending {
   suggestions: PermissionUpdate[] | undefined;
   /** A user's ask rule forced this prompt, so no mode answers it. */
   matchedAskRule: boolean;
+  /** A browser card (`askBrowser`): hears which of its choices you picked; its "Always allow" is the bridge's to keep. */
+  browser?: (answer: BrowserAnswer) => void;
   resolve: (result: PermissionResult) => void;
 }
 
@@ -171,10 +203,14 @@ interface Warm {
   profileId: string;
   /** The effort it started with: Claude Code reads it only at startup. */
   effort: Effort | null;
+  /** The fallback model it started with, fixed at startup like the effort. */
+  fallbackModel: string | null;
+  /** The project's plan mode instructions it started with (also read only at startup), null for none. */
+  planInstructions: string | null;
   sessionId: string;
   warm: Promise<WarmQuery>;
-  /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process. */
-  route: { canUseTool: CanUseTool | null };
+  /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process, as do the browser tools. */
+  route: { canUseTool: CanUseTool | null; sessionId: (() => string) | null };
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -199,11 +235,16 @@ export interface CreateParams {
   autoPick?: AutoPick | null;
   /** Only tools that read: a read-only pipeline step (#179). */
   readOnly?: boolean;
+  /** Start it as an orchestrator (docs/orchestrator.md): it gets the `orchestrator` MCP server. */
+  orchestrator?: boolean;
+  /** Text for after Claude Code's prompt: an orchestrator's role, a project's instructions for a session one starts. */
+  appendSystem?: string | null;
   /**
    * Auto picks the model after the session has opened: it starts on `model`, shows your message and that Auto is
    * choosing, and the message goes once the pick is in (and setup has finished). Null model: the default model.
+   * `effort`: the effort Auto picked with it, null to keep the session's own.
    */
-  pickModel?: (sessionId: string) => Promise<{ model: string | null; autoPick: AutoPick }>;
+  pickModel?: (sessionId: string) => Promise<{ model: string | null; effort?: Effort | null; autoPick: AutoPick }>;
 }
 
 const NOT_RUNNING_MESSAGE = 'This session is not running in Seshboard';
@@ -246,6 +287,9 @@ export class HostManager {
   private showMods = true;
   /** Use Claude in Chrome (Settings › General): sessions, and the pre-warmed process, start with `--chrome`. */
   private chrome = false;
+  /** Visuals in replies (Settings › General): the `visualize` server sessions, and the pre-warmed process, start with. */
+  private visualize: McpStdioServer | null = null;
+  private skimMarks = true;
   private readonly modAsks = new Map<string, (answer: ModPromptAnswer | null) => void>();
 
   constructor(private readonly deps: HostManagerDeps) {
@@ -268,8 +312,8 @@ export class HostManager {
 
   async create(params: CreateParams): Promise<string> {
     await this.deps.links?.warm(params.prompt);
-    // A warm process started without the read-only hook.
-    const warm = params.readOnly ? undefined : this.takeWarm(params);
+    // A warm process started without the read-only hook, the orchestrator's tools and any text after the prompt.
+    const warm = params.readOnly || params.orchestrator || params.appendSystem ? undefined : this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
       {
@@ -282,6 +326,8 @@ export class HostManager {
         effort: params.effort,
         worktree: params.worktree,
         ...(params.readOnly ? { readOnly: true } : {}),
+        ...(params.orchestrator ? { orchestrate: true } : {}),
+        ...(params.appendSystem ? { appendSystem: params.appendSystem } : {}),
       },
       warm,
     );
@@ -346,7 +392,9 @@ export class HostManager {
     // A fork gets its own id up front, so it is never stored or reported under the original's id
     // (which would show the original as starting, or replace it in the map while it runs here).
     if (fork) return this.spawn({ ...common, sessionId: randomUUID(), forkFrom: sessionId, mode: 'fork' });
-    return this.spawn({ ...common, sessionId, mode: 'resume' });
+    // An orchestrator resumes with its tools and its role, a session one started with the project's instructions; a
+    // fork of either is an ordinary session.
+    return this.spawn({ ...common, sessionId, mode: 'resume', ...(this.deps.isOrchestrator?.(sessionId) ? { orchestrate: true } : {}), appendSystem: this.deps.appendSystemFor?.(sessionId) ?? null });
   }
 
   /**
@@ -572,11 +620,12 @@ export class HostManager {
     this.choosing.add(sessionId);
     this.deps.onInfo(this.withPick(host.info));
     try {
-      const { model, autoPick } = await pick(sessionId);
+      const { model, effort, autoPick } = await pick(sessionId);
       if (!this.choosing.has(sessionId)) return;
       if (model) await host.setModel(model).catch(() => {});
+      if (effort) await host.setEffort(effort).catch(() => {});
       this.picks.set(sessionId, autoPick);
-      this.settings.set(sessionId, { model, autoPick });
+      this.settings.set(sessionId, { model, ...(effort ? { effort } : {}), autoPick });
     } catch (error) {
       this.deps.log('warn', `Auto couldn't pick a model: ${(error as Error).message}`);
     } finally {
@@ -662,7 +711,8 @@ export class HostManager {
         behavior: 'allow',
         updatedInput: decision.updatedInput ?? pending.input,
       };
-      if (decision.always && pending.suggestions) result.updatedPermissions = pending.suggestions;
+      if (decision.always && pending.suggestions && !pending.browser) result.updatedPermissions = pending.suggestions;
+      pending.browser?.(browserAnswerOf(decision));
       this.settle(requestId, result);
       // "Always" can switch the mode too (Accept edits for this session), which the other waiting prompts miss.
       const mode = result.updatedPermissions?.findLast((u) => u.type === 'setMode');
@@ -796,6 +846,7 @@ export class HostManager {
     const settings = this.settings.get(sessionId);
     const model = running?.model ?? settings?.model ?? null;
     const effort = running?.effort ?? settings?.effort ?? null;
+    const fallback = usableFallback(this.deps.fallbackModel?.(cwd, profileId), model);
     this.deps.assertTrusted?.(cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
     const helperId = randomUUID();
@@ -821,7 +872,7 @@ export class HostManager {
         env,
         pathToClaudeCodeExecutable: claudePath,
         settingSources: ['user', 'project', 'local'],
-        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        systemPrompt: systemPromptFor(this.skimMarks, this.deps.appendSystemFor?.(sessionId)),
         includePartialMessages: true,
         maxTurns: ASK_MAX_TURNS,
         permissionMode: 'default',
@@ -830,6 +881,8 @@ export class HostManager {
         canUseTool: async (name, toolInput) => (isReadOnlyTool(name, toolInput) ? { behavior: 'allow', updatedInput: toolInput } : { behavior: 'deny', message: READ_ONLY_REASON }),
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),
+        // So the question is answered while the main model is overloaded.
+        ...(fallback ? { fallbackModel: fallback } : {}),
         stderr: (data) => this.deps.log('debug', `[claude ask] ${data.trimEnd()}`),
       },
     });
@@ -926,6 +979,32 @@ export class HostManager {
     this.discardWarm();
   }
 
+  /**
+   * Visuals in replies on (with the server to start) or off. As with Chrome, Claude Code reads its MCP servers at
+   * startup: running sessions keep what they started with, and the warm process is dropped.
+   */
+  setVisuals(server: McpStdioServer | null): void {
+    if (JSON.stringify(server) === JSON.stringify(this.visualize)) return;
+    this.visualize = server;
+    this.discardWarm();
+  }
+
+  /** The browser tools on or off (`browserServer`). As with the visualize server, running sessions keep what they started with. */
+  browserChanged(): void {
+    this.discardWarm();
+  }
+
+
+  /**
+   * Let the agent mark its key sentences, on or off. Claude Code reads its system prompt at startup, so running
+   * sessions keep what they started with, and the warm process is dropped.
+   */
+  setSkimMarks(enabled: boolean): void {
+    if (enabled === this.skimMarks) return;
+    this.skimMarks = enabled;
+    this.discardWarm();
+  }
+
   /** The mods surface of a running session (NOT_RUNNING otherwise). */
   mods(sessionId: string): ModsSurface {
     return this.require(sessionId).mods;
@@ -976,7 +1055,7 @@ export class HostManager {
   /** Bumped whenever the warm process is replaced or discarded, so a pre-warm that finishes late knows it lost. */
   private warmGeneration = 0;
   /** The folder, profile and effort a pre-warm is starting for, until it has stored its process. */
-  private warming: { cwd: string; profileId: string; effort: Effort | null } | undefined;
+  private warming: { cwd: string; profileId: string; effort: Effort | null; fallbackModel: string | null; planInstructions: string | null } | undefined;
 
   /**
    * Starts a Claude Code process for `cwd` so a new session there answers about a second faster. `effort` is the one
@@ -984,7 +1063,9 @@ export class HostManager {
    */
   async prewarm(cwd: string, profileId: string, effort: Effort | null = null): Promise<void> {
     const target = this.warm ?? this.warming;
-    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort) return;
+    const planInstructions = this.deps.planModeInstructionsFor?.(cwd) ?? null;
+    const fallbackModel = this.deps.fallbackModel?.(cwd, profileId) ?? null;
+    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort && target.fallbackModel === fallbackModel && target.planInstructions === planInstructions) return;
     try {
       this.deps.assertTrusted?.(cwd);
     } catch {
@@ -993,7 +1074,7 @@ export class HostManager {
     }
     this.discardWarm();
     const generation = this.warmGeneration;
-    this.warming = { cwd, profileId, effort };
+    this.warming = { cwd, profileId, effort, fallbackModel, planInstructions };
     let env: Record<string, string>, claudePath: string | undefined, sdk: SdkRuntime;
     try {
       [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
@@ -1005,7 +1086,10 @@ export class HostManager {
     const sessionId = randomUUID();
     // Until a new session takes it over, the waiting process is no session: keep its registry entry out of the list.
     this.deps.ephemeral?.add(sessionId);
-    const route: Warm['route'] = { canUseTool: null };
+    const route: Warm['route'] = { canUseTool: null, sessionId: null };
+    const browser = (await this.deps.browserServer?.(() => route.sessionId?.() ?? null)) ?? null;
+    // Settings changed while the server started: this process would start with the old ones.
+    if (generation !== this.warmGeneration) return;
     const options = buildOptions(
       {
         sessionId,
@@ -1015,8 +1099,13 @@ export class HostManager {
         model: null,
         permissionMode: 'default',
         effort,
+        fallbackModel,
         worktree: null,
+        planModeInstructions: planInstructions,
         chrome: this.chrome,
+        visualize: this.visualize,
+        browser,
+        skimMarks: this.skimMarks,
         env,
         claudePath,
         canUseTool: (...args) => (route.canUseTool ? route.canUseTool(...args) : Promise.resolve({ behavior: 'deny', message: 'Not ready' })),
@@ -1026,7 +1115,7 @@ export class HostManager {
     const warm = sdk.startup({ options });
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    const entry: Warm = { cwd, profileId, effort, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, effort, fallbackModel, planInstructions, sessionId, warm, route, timer };
     this.warm = entry;
     // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
     warm.catch((error: unknown) => {
@@ -1069,6 +1158,11 @@ export class HostManager {
   private takeWarm(params: CreateParams): Warm | undefined {
     const warm = this.warm;
     if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || (params.effort ?? null) !== warm.effort) return undefined;
+    // The fallback is fixed at startup too: a settings change since, or a model that is the fallback itself, needs a fresh process.
+    const fallback = this.deps.fallbackModel?.(params.cwd, params.profileId) ?? null;
+    if (fallback !== warm.fallbackModel || usableFallback(fallback, params.model) !== usableFallback(warm.fallbackModel, null)) return undefined;
+    // The project's instructions changed since it started: Claude Code reads them only at startup.
+    if ((this.deps.planModeInstructionsFor?.(params.cwd) ?? null) !== warm.planInstructions) return undefined;
     clearTimeout(warm.timer);
     this.warm = undefined;
     this.deps.ephemeral?.delete(warm.sessionId);
@@ -1087,7 +1181,7 @@ export class HostManager {
     setTimeout(() => this.deps.ephemeral?.delete(warm.sessionId), 30_000).unref?.();
   }
 
-  private async spawn(config: Omit<HostConfig, 'env' | 'claudePath' | 'canUseTool'>, warm?: Warm): Promise<SessionHost> {
+  private async spawn({ orchestrate, ...config }: Omit<HostConfig, 'env' | 'claudePath' | 'canUseTool' | 'orchestrator'> & { orchestrate?: boolean }, warm?: Warm): Promise<SessionHost> {
     this.deps.assertTrusted?.(config.cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(config.profileId), this.deps.claudePath(), this.deps.sdk()]);
     // The session id can change (forks), so permission prompts look it up through the host.
@@ -1096,6 +1190,7 @@ export class HostManager {
     const startQuery: StartQuery = warm
       ? async (args) => {
           warm.route.canUseTool = canUseTool;
+          warm.route.sessionId = () => hostRef!.sessionId;
           // It failed after this session took it: start a fresh process, which fails with its own reason if Claude Code can't run.
           const started = await warm.warm.catch((error: Error) => {
             this.deps.log('info', `Pre-warmed process failed (${error.message}); starting a fresh one`);
@@ -1104,12 +1199,30 @@ export class HostManager {
           return started ? started.query(args.prompt) : sdk.query(args);
         }
       : (args) => sdk.query(args);
+    const fallbackModel = config.fallbackModel !== undefined ? config.fallbackModel : (this.deps.fallbackModel?.(config.cwd, config.profileId) ?? null);
     const host = new SessionHost(
-      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods, chrome: this.chrome },
+      {
+        ...config,
+        fallbackModel,
+        env,
+        claudePath,
+        canUseTool,
+        limitPrefixes: limitPrefixes(sdk),
+        showMods: this.showMods,
+        chrome: this.chrome,
+        visualize: this.visualize,
+        // A pre-warmed process has its tools already; a new one gets them here.
+        browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
+        orchestrator: orchestrate ? ((await this.deps.orchestratorServer?.(() => hostRef?.sessionId ?? null)) ?? null) : null,
+        skimMarks: this.skimMarks,
+        planModeInstructions: this.deps.planModeInstructionsFor?.(config.cwd) ?? null,
+      },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
         messages: (id, messages, held) => this.deps.onMessages(id, messages, held),
+        notice: (id, message) => this.deps.onNotice?.(id, message),
+        retract: (id, uuids) => this.deps.onRetract?.(id, uuids),
         log: this.deps.log,
         usageHint: () => this.deps.onUsageHint?.(config.profileId),
         rateLimit: (sessionId, info) => this.deps.onRateLimit?.(config.profileId, sessionId, info),
@@ -1165,6 +1278,30 @@ export class HostManager {
   }
 
   private ask(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2]): Promise<PermissionResult> {
+    return this.prompt(sessionId, toolName, input, options);
+  }
+
+  /**
+   * The browser tools want a site this session's project doesn't allow, or to run scripts on one (the bridge,
+   * `BrowserBridge`): asks in the session's permission card, naming the site. Your answer: once, for this session, or
+   * always (which the bridge keeps for the project); 'deny' when you said no.
+   */
+  async askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
+    const host = this.hosts.get(sessionId);
+    host?.waitingOnYou(true);
+    let answer: BrowserAnswer = 'deny';
+    try {
+      const result = await this.prompt(sessionId, `mcp__browser__${ask.tool}`, ask.input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], {
+        ask,
+        answer: (picked) => (answer = picked),
+      });
+      return result.behavior === 'allow' ? answer : 'deny';
+    } finally {
+      host?.waitingOnYou(false);
+    }
+  }
+
+  private prompt(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2], browser?: { ask: BrowserAsk; answer(picked: BrowserAnswer): void }): Promise<PermissionResult> {
     // Once per call: Claude's new attempt has a new id, so it can't come back here again.
     const before = this.callsBeforeMode.get(sessionId);
     if (before?.toolUseIds.delete(options.toolUseID) && recheckAfterModeChange({ toolName, matchedAskRule: Boolean(options.matchedAskRule) }, before.mode)) {
@@ -1188,8 +1325,10 @@ export class HostManager {
         alwaysLabel: describeSuggestions(options.suggestions),
         agentId: str(options.agentID),
         createdAt: Date.now(),
+        // A browser card: the site (or its scripts) in its words, and Allow for this session.
+        ...(browser ? { ...browserPromptText('Claude Code', browser.ask), sessionAllow: true } : {}),
       };
-      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), resolve });
+      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), ...(browser ? { browser: browser.answer } : {}), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });
       // Answered for you: through `respond`, so an approved plan goes through `planApproved` as a click would.
       const auto = this.deps.autoAnswer?.(request) ?? null;

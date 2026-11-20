@@ -148,5 +148,5 @@ protocols:
 publish:
   provider: github
   owner: estruyf
-  repo: switchboard
+  repo: seshboard
   releaseType: release

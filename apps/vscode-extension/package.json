@@ -9,13 +9,13 @@
   "icon": "assets/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/estruyf/switchboard",
+    "url": "https://github.com/estruyf/seshboard",
     "directory": "apps/vscode-extension"
   },
   "bugs": {
-    "url": "https://github.com/estruyf/switchboard/issues"
+    "url": "https://github.com/estruyf/seshboard/issues"
   },
-  "homepage": "https://github.com/estruyf/switchboard/blob/main/docs/vscode-companion.md",
+  "homepage": "https://github.com/estruyf/seshboard/blob/main/docs/vscode-companion.md",
   "type": "module",
   "engines": {
     "vscode": "^1.95.0"

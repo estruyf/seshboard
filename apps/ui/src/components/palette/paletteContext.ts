@@ -1,5 +1,5 @@
 import type { PromptScope } from '@seshboard/protocol/client';
-import type { ColorScheme, SidebarStyle } from '@seshboard/protocol/bridge';
+import type { ColorScheme, ConversationView, SidebarGroup, SidebarStyle } from '@seshboard/protocol/bridge';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import type { ActionIcon, HostState } from '@seshboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
@@ -9,7 +9,7 @@ import type { Way } from '../../state/tilingGeometry.ts';
 
 /** Where you are: what the main area shows. */
 /** `projects` is the list of projects; `project` one project's page. */
-export type PaletteView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage' | 'upcoming';
+export type PaletteView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage' | 'upcoming' | 'activity' | 'browser';
 
 /** The session in the active pane, as far as the palette's commands care. */
 export interface PaletteSession {
@@ -37,6 +37,8 @@ export interface PaletteSession {
   hasReply: boolean;
   /** Claude Code failed before it got this many of your messages: Try again sends them. */
   unsent: number;
+  /** Its web preview's tab is open (Reload web preview). */
+  web: boolean;
 }
 
 /** The session's checkout, once read (null outside git, or until it has been read). */
@@ -71,6 +73,25 @@ export interface PaletteTerminal {
   action: { running: boolean } | null;
 }
 
+/** The browser's tab on screen, for the palette's page commands. */
+export interface BrowserPageContext {
+  /** It shows a page (a new tab has none yet). */
+  url: boolean;
+  favorite: boolean;
+  /** Its page has a bookmark (Bookmark this page says Edit bookmark). Optional for older callers. */
+  bookmarked?: boolean;
+  pinned: boolean;
+  back: boolean;
+  forward: boolean;
+  loading: boolean;
+  /** A session's panel, or the Browser view. */
+  owner: 'session' | 'view';
+  /** The session's panel takes the whole session area (Full). */
+  full: boolean;
+  /** The tab is muted. */
+  muted: boolean;
+}
+
 /** What the palette knows about where you are; every command's `when()` reads it. Built from the stores. */
 export interface PaletteContext {
   /**
@@ -96,6 +117,20 @@ export interface PaletteContext {
   /** Settings › Notifications: notifications and sounds on or off. */
   notifications: boolean;
   sounds: boolean;
+  /** Settings › General › Enable browser: any web page, tabs and the Browser view. */
+  browser?: boolean;
+  /** Settings › General › New sessions › Allow browser previews; on unless it says false. */
+  webPreview?: boolean;
+  /** The browser's tab on screen (the Browser view's, or the session's open panel); null for none. */
+  browserPage?: BrowserPageContext | null;
+  /** How many browser tabs this window has (Go to tab…). */
+  browserTabs?: number;
+  /** A closed browser tab can come back (Reopen closed tab). */
+  browserClosed?: boolean;
+  /** How many favourites there are (Open favourite…). */
+  favorites?: number;
+  /** How many bookmarks there are (Open bookmark…). */
+  bookmarks?: number;
   /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
   catchUpFolded: boolean | null;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */
@@ -108,6 +143,11 @@ export interface PaletteContext {
   pipelines: number;
   /** How many of them the open session's project can run; 0 without a session. */
   sessionPipelines: number;
+  /**
+   * The orchestrator to go to (docs/orchestrator.md): the open session's project's, or the newest one with no session
+   * open; null when there is none, or the open session is it.
+   */
+  orchestratorId: string | null;
   /** Unsent messages (sessions and New session prompts) that count. */
   unsent: number;
   projectCount: number;
@@ -124,6 +164,9 @@ export interface PaletteContext {
   themes: Array<{ id: string; name: string }>;
   themeId: string;
   sidebarStyle: SidebarStyle;
+  /** The sidebar's grouping (its View button): by state or by project. */
+  sidebarGroup: SidebarGroup;
+  conversationView: ConversationView;
   /** Open, the minimal rail, or closed. */
   sidebar: SidebarState;
   settingsSection: SettingsSection;
@@ -135,6 +178,8 @@ export interface PaletteContext {
   prompts: Array<{ id: string; name: string; scope: PromptScope }>;
   /** The message box Add context… adds to (the session's, or New session's), once its folder is known. */
   composer: { key: string; cwd: string } | null;
+  /** Review comments on lines in the open session's Changes, not submitted yet. */
+  reviewComments: number;
   /** VS Code is installed, so a session can continue in its Claude Code extension. */
   canContinueInVSCode: boolean;
   /** Clone from GitHub is on (Settings › Projects): "New session from a GitHub repository…". */

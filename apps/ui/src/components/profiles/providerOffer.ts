@@ -12,8 +12,22 @@ export function shouldOffer(detection: ProviderDetection | null, profiles: reado
 /** "38 sessions", "1 session". */
 export const sessionCount = (count: number) => `${count} ${count === 1 ? 'session' : 'sessions'}`;
 
-/** The offer's line under its title; the count only when the folder has sessions. */
-export const offerText = (count: number) => (count > 0 ? `Add it as a profile to see its ${sessionCount(count)} here and start new ones.` : 'Add it as a profile to start sessions with it here.');
+/**
+ * The offer's line under its title; the count only when the folder has sessions. `canStart`: Seshboard can start its
+ * sessions too (a read-only provider's are only shown).
+ */
+export function offerText(count: number, canStart = true): string {
+  if (!canStart) return count > 0 ? `Add it as a profile to see its ${sessionCount(count)} here.` : 'Add it as a profile to see its sessions here.';
+  return count > 0 ? `Add it as a profile to see its ${sessionCount(count)} here and start new ones.` : 'Add it as a profile to start sessions with it here.';
+}
+
+/**
+ * The offers to make: each provider found on this computer that `shouldOffer` allows, in the catalog's order (one per
+ * provider, so Copilot and Codex can both be offered).
+ */
+export function offersToMake(detected: readonly ProviderDetection[] | null, profiles: readonly Pick<ClaudeProfile, 'provider'>[], dismissed: readonly string[]): ProviderDetection[] {
+  return (detected ?? []).filter((d) => shouldOffer(d, profiles, dismissed));
+}
 
 /**
  * Copilot is ready's line about the sidebar: how many of its sessions now show there (when Add profile used the folder

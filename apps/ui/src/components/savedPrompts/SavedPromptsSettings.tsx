@@ -1,5 +1,5 @@
-import { useState, type MouseEvent, type ReactNode } from 'react';
-import { Folder, Globe, MoreHorizontal, Plus, User, Users, type LucideIcon } from 'lucide-react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
+import { Folder, Globe, Loader2, MoreHorizontal, Plus, Sparkles, User, Users, type LucideIcon } from 'lucide-react';
 import type { PromptScope, SavedPrompt } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
@@ -10,9 +10,10 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { promptMeta, sameScope } from './fillModel.ts';
-import { deletePrompt, duplicatePrompt, movePrompt } from './promptActions.ts';
+import { addStarterPrompt, deletePrompt, duplicatePrompt, movePrompt } from './promptActions.ts';
 import { useSavedPrompts, useSavedPromptsStore } from './savedPromptsStore.ts';
 import { PromptIcon } from './ScopeTag.tsx';
+import { pendingStarters, type StarterPrompt } from './starterPrompts.ts';
 
 /**
  * The project "just for you" and "Share" mean for a prompt kept for every project, and for a new one: the one you typed
@@ -49,6 +50,7 @@ export function SavedPromptsSettings() {
   return (
     <div className="flex flex-col gap-5" data-saved-prompts-settings>
       <PromptGroup heading={<GroupHeading Icon={Globe} tone="text-muted" name="Every project" />} prompts={global.filter((p) => p.scope.kind === 'global')} empty="No prompts for every project yet." contextRoot={contextRoot} nameOf={nameOf} onEdit={open} />
+      <StarterPrompts />
       {/* Your projects, and the folder you typed in last when it isn't one of them (a session in another folder). */}
       {[...added.map((project) => project.root), ...(lastRoot && !projects.has(lastRoot) ? [lastRoot] : [])].map((root) => (
         <ProjectGroups key={root} root={root} nameOf={nameOf} onEdit={open} />
@@ -58,6 +60,54 @@ export function SavedPromptsSettings() {
         Shared prompts are saved with the project's actions. Commit that change so your team gets them.
       </p>
     </div>
+  );
+}
+
+/**
+ * Prompts worth having, each added with one click and never on their own. One that is saved already (in any place,
+ * same text) is left out, and so is the whole list once they all are, or while the prompts are still being read.
+ */
+function StarterPrompts() {
+  const lists = useSavedPromptsStore((s) => s.lists);
+  const [adding, setAdding] = useState<string | null>(null);
+  const loaded = !!lists[''];
+  const pending = pendingStarters(Object.values(lists).flatMap((list) => list.prompts));
+  // The button stays disabled until the saved prompt shows up and the suggestion is gone, so a quick second click can't save it twice.
+  useEffect(() => {
+    if (adding && loaded && !pending.some((s) => s.id === adding)) setAdding(null);
+  });
+  // Without the global list read, every starter would show for a moment and then disappear.
+  if (!loaded || pending.length === 0) return null;
+  const add = async (starter: StarterPrompt) => {
+    if (adding) return;
+    setAdding(starter.id);
+    if (!(await addStarterPrompt(starter))) setAdding(null);
+  };
+  return (
+    <section className="flex flex-col gap-1.5" data-saved-prompts-starters>
+      <GroupHeading Icon={Sparkles} tone="text-muted" name="Suggestions" place="for every project" />
+      <ul className="border-t border-border">
+        {pending.map((starter) => (
+          <li key={starter.id} className="flex items-center gap-3 border-b border-border px-1 py-2" data-saved-prompt-starter={starter.id}>
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-ui text-text">{starter.name}</span>
+              <span className="block truncate text-meta text-muted">{starter.description}</span>
+            </div>
+            <Button
+              size="sm"
+              icon={adding === starter.id ? <Loader2 size={12} className="animate-spin motion-reduce:animate-none" aria-hidden /> : <Plus size={12} aria-hidden />}
+              aria-label={`Add ${starter.name}`}
+              aria-busy={adding === starter.id}
+              disabled={adding !== null}
+              onClick={() => void add(starter)}
+              data-saved-prompt-starter-add={starter.id}
+            >
+              {adding === starter.id ? 'Adding…' : 'Add'}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -1,6 +1,6 @@
 ---
 title: Project settings
-description: The Claude profile and the choices new sessions in a project start with, and its name and icon in Seshboard.
+description: The Claude profile and the choices new sessions in a project start with, the instructions its orchestrator and plan mode follow, and its name and icon in Seshboard.
 sidebar:
   label: Settings tab
 ---
@@ -34,15 +34,29 @@ With more than one [Claude profile](/settings/claude-profiles/), **Claude profil
 | Row | Choices |
 |---|---|
 | **Model** | A model, **Auto** (Haiku picks from the first prompt, see [Auto model](/new-session/auto-model/)), or *Global default*. Next to it, an effort level, or *Global effort*. Queued prompts on Auto are routed when they start, not when you add them. |
+| **Fallback model** | The model Claude Code switches to when the main one is overloaded or unavailable: *Profile default*, *Global default*, or a model. Each shows the model it comes to, or *Off*. See [Fallback model](/new-session/models-and-options/#fallback-model). Not for another agent's profile. |
 | **Permissions** | *Profile default* (the mode of the project's [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), the default), *Global default* (skips the profile's mode and uses **Global permission mode** in [Settings › General](/settings/#new-sessions)), or a permission mode. Each shows the mode it comes to, such as *Profile default (Plan mode)*. Under an inherited choice, a line says where the mode is set, with **Change** to go there. |
 | **Workspace** | *Current folder*, *New worktree*, or *Global default*. Outside git, a new worktree can't be chosen. |
 | **Worktree base** | What a new worktree branches from: *Worktree from origin*, *Worktree from HEAD*, *Worktree from &lt;branch&gt;* for any local or remote branch, or the global default. Shown unless the workspace is the current folder. With a branch here, pull requests go into that branch, and queued items, scheduled sessions and triggers in the project start from it too. |
 | **Default branch** | The branch the project develops on, when it isn't the one GitHub calls the default (`dev` instead of `main`). New worktrees from origin start from it, pull requests go into it, and [Changes](/terminal-changes-git/changes/) compares against it. *The remote's default branch* follows GitHub. Only in a git repository. |
-| **Branch** | For the current folder: *Keep what is checked out*, or *Check out &lt;branch&gt;* first. Only in a git repository, and not for a new worktree. |
+| **Branch** | For the current folder: *Keep what is checked out*, or *Check out &lt;branch&gt;* first. The list has the branches on the remote too, with the remote's name. Only in a git repository, and not for a new worktree. |
 
 A field you leave unset uses the defaults of the project's [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), and else Claude Code's own defaults, and for **Permissions** the global permission mode in [Settings › General](/settings/#new-sessions). When the profile sets that field, the choice says so, for example *Profile default (Opus)* instead of *Global default*. See [Models and options](/new-session/models-and-options/) and [Worktrees](/new-session/worktrees/).
 
 The project's [Overview](/projects/overview/) shows a summary of these defaults under **How sessions start here** ("Opus · high effort · worktree"), or, when none are set, *Profile defaults* or *Global defaults*, depending on whether the project's profile has any.
+
+### Instructions
+
+Two fields hold text that sessions in this project read when they start. Each saves with **Save**, and applies to sessions started from then on.
+
+- **Orchestrator instructions**: what the project's [orchestrator](/sessions/orchestrator/) and every session it starts read first, such as which branch to start from, how to check the work and what needs your go-ahead. Up to 16,000 characters. Rules about the code itself belong in the repository's own instructions file.
+- **Plan mode instructions**: replaces the steps Claude Code follows in [plan mode](/new-session/models-and-options/#permission-mode): what to read, what the plan lists and when to ask. Its read-only rules stay. Up to 8,000 characters, for Claude Code sessions only.
+
+### Browser sites
+
+With the [browser](/browser/overview/) on, **Browser sites** lists the sites the agent can use in the session's browser without asking. Type a site, such as `app.example.com` or `*.example.com` (every subdomain), and click **Allow**. **Any site** lets the agent use every site without asking. **Always allow** on a browser permission card adds a site here.
+
+**Scripts in pages** lists the sites where the agent can run scripts and read requests without asking. It shows with **Allow scripts in pages** on in Settings › Browser, or while it has sites. See [Agents in the browser](/browser/agents/#browser-sites).
 
 ### Name, icon and folder
 

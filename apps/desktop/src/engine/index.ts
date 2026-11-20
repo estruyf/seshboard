@@ -3,8 +3,9 @@
  * one MessagePort per window; everything the UI needs goes over those ports.
  */
 import { readFileSync } from 'node:fs';
-import { createEngine, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
-import { RemoteAppUpdate } from '@seshboard/protocol';
+import { homedir } from 'node:os';
+import { createEngine, demoAntigravity, demoCodex, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { ApiRetry, RemoteAppUpdate, type BrowserToolRequest, type BrowserToolResult } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -31,6 +32,16 @@ const trash = (paths: string[], scope: TrashScope) =>
 
 const appVersion = argValue('--app-version') ?? '0.0.0';
 
+/** The browser tools: the pages live in the app's windows, so main drives them (main/browserAgent.ts). */
+let nextBrowserId = 1;
+const pendingBrowser = new Map<number, (result: BrowserToolResult) => void>();
+const browser = (request: BrowserToolRequest) =>
+  new Promise<BrowserToolResult>((resolve) => {
+    const id = nextBrowserId++;
+    pendingBrowser.set(id, resolve);
+    process.parentPort.postMessage({ type: 'browser-tool', id, request });
+  });
+
 /** Remote's keys, from main, which keeps them in the system's keychain (see main/remoteIdentity.ts). */
 let nextIdentityId = 1;
 const pendingIdentity = new Map<number, (secret: Uint8Array | null) => void>();
@@ -56,6 +67,7 @@ function demoUsage(): DemoUsage | undefined {
 const engine = createEngine({
   dataDir,
   trash,
+  browser,
   // The VS Code companion connects over a socket; SESHBOARD_NO_COMPANION=1 leaves it closed.
   ...(process.env.SESHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion } }),
   // Remote, for a paired phone. SESHBOARD_REMOTE_APP_URL points it at a development build of the remote app
@@ -87,6 +99,12 @@ const engine = createEngine({
   stubQueueStarts: process.env.SESHBOARD_STUB_QUEUE === '1',
   // The smoke test and the screenshots: a made-up Copilot CLI, signed in, that never starts a session.
   ...(process.env.SESHBOARD_STUB_COPILOT === '1' ? { copilot: demoCopilot() } : {}),
+  // The smoke test and the screenshots: a made-up Codex CLI, signed in, whose app-server answers in the process from the
+  // demo home's rollout files. Nothing reaches a real Codex.
+  ...(process.env.SESHBOARD_STUB_CODEX === '1' ? { codex: demoCodex() } : {}),
+  // The smoke test and the screenshots: a made-up Antigravity CLI, signed in, whose `agy acp` answers in the process from
+  // the demo home's step logs. Nothing reaches a real Antigravity.
+  ...(process.env.SESHBOARD_STUB_AGY === '1' ? { antigravity: demoAntigravity(homedir()) } : {}),
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
   ...(process.env.SESHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SESHBOARD_CLONE_SOURCE } : {}),
 });
@@ -126,6 +144,11 @@ process.parentPort.on('message', (event) => {
     engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
+  // Settings › Conversation › Activity's "Write the day in short with Haiku".
+  if (data?.type === 'activity') {
+    engine.setActivitySummaries((data as { summaries?: unknown }).summaries !== false);
+    return;
+  }
   // The smoke run's menu bar step: New work starts a stand-in session instead of Claude Code.
   if (data?.type === 'smokeStubCreate') {
     engine.smokeStubCreate((data as { on?: unknown }).on === true);
@@ -139,9 +162,17 @@ process.parentPort.on('message', (event) => {
   }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
-    const { sessionId, cwd, state, outcome, compacting, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; fast?: { blocked: string | null; on?: boolean } };
+    const { sessionId, cwd, state, outcome, compacting, apiRetry, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; apiRetry?: unknown; fast?: { blocked: string | null; on?: boolean } };
     if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'needs-you' || state === 'idle' || state === 'closed')) {
-      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(fast ? { fast } : {}) });
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(apiRetry === null ? { apiRetry: null } : ApiRetry.safeParse(apiRetry).success ? { apiRetry: apiRetry as ApiRetry } : {}), ...(fast ? { fast } : {}) });
+    }
+    return;
+  }
+  // The smoke run's orchestrator step: a stand-in session becomes an orchestrator and calls one of its tools.
+  if (data?.type === 'smokeOrchestrator') {
+    const { sessionId, projectRoot, tool, args } = data as { sessionId?: unknown; projectRoot?: unknown; tool?: unknown; args?: unknown };
+    if (typeof sessionId === 'string' && typeof projectRoot === 'string') {
+      void engine.smokeOrchestrator({ sessionId, projectRoot, ...(typeof tool === 'string' ? { tool } : {}), ...(args && typeof args === 'object' ? { args: args as Record<string, unknown> } : {}) });
     }
     return;
   }
@@ -193,6 +224,38 @@ process.parentPort.on('message', (event) => {
     engine.setRemotePreview((data as { enabled?: unknown }).enabled === true);
     return;
   }
+  // Settings › General › Visuals in replies: the `visualize` server to start, or null.
+  if (data?.type === 'visuals') {
+    const server = (data as { server?: { command?: unknown; args?: unknown; env?: unknown } | null }).server;
+    const valid = server && typeof server.command === 'string' && Array.isArray(server.args) && server.args.every((a) => typeof a === 'string') && server.env && typeof server.env === 'object';
+    engine.setVisuals(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
+    return;
+  }
+  // Settings › Conversation › Let the agent mark its key sentences.
+  if (data?.type === 'skimMarks') {
+    engine.setSkimMarks((data as { enabled?: unknown }).enabled !== false);
+    return;
+  }
+  // Settings › Browser › Allow Seshboard to control the browser: the `browser` server to start, or null.
+  if (data?.type === 'browserControl') {
+    const server = (data as { server?: { command?: unknown; args?: unknown; env?: unknown } | null }).server;
+    const valid = server && typeof server.command === 'string' && Array.isArray(server.args) && server.args.every((a) => typeof a === 'string') && server.env && typeof server.env === 'object';
+    engine.setBrowserControl(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
+    return;
+  }
+  // The orchestrator's `orchestrator` server (docs/orchestrator.md), for sessions started or resumed as one.
+  if (data?.type === 'orchestratorServer') {
+    const server = (data as { server?: { command?: unknown; args?: unknown; env?: unknown } | null }).server;
+    const valid = server && typeof server.command === 'string' && Array.isArray(server.args) && server.args.every((a) => typeof a === 'string') && server.env && typeof server.env === 'object';
+    engine.setOrchestratorServer(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
+    return;
+  }
+  if (data?.type === 'browser-tool-result' && typeof data.id === 'number') {
+    const result = (data as { result?: BrowserToolResult }).result;
+    pendingBrowser.get(data.id)?.(result && typeof result.text === 'string' ? result : { text: 'The browser did not answer.', error: true });
+    pendingBrowser.delete(data.id);
+    return;
+  }
   // Settings › General › Use Claude in Chrome.
   if (data?.type === 'chrome') {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);
@@ -205,6 +268,12 @@ process.parentPort.on('message', (event) => {
       model: typeof model === 'string' && model ? model : null,
       effort: effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max' ? effort : null,
     });
+    return;
+  }
+  // Settings › General › Global fallback model: Claude Code sessions use it where their project and profile set none.
+  if (data?.type === 'fallbackModel') {
+    const model = (data as { model?: unknown }).model;
+    engine.setGlobalFallbackModel(typeof model === 'string' && model ? model : null);
     return;
   }
   // Settings › General › Global permission mode, for sessions started from a phone.

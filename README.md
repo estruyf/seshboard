@@ -7,7 +7,7 @@
 <p align="center">A fast app for Mac, Windows and Linux to run and keep track of your Claude Code sessions, across all your Claude accounts.</p>
 
 <p align="center">
-  <a href="https://github.com/estruyf/switchboard/releases/latest"><b>Download for Mac, Windows or Linux</b></a> · <a href="https://seshboard.app/">Docs</a> · <code>brew install --cask estruyf/tap/seshboard</code>
+  <a href="https://github.com/estruyf/seshboard/releases/latest"><b>Download for Mac, Windows or Linux</b></a> · <a href="https://seshboard.app/">Docs</a> · <code>brew install --cask estruyf/tap/seshboard</code>
 </p>
 
 <p align="center">
@@ -136,7 +136,7 @@ What works differently on Windows is in [Windows support](docs/windows-support.m
 
 ## Install
 
-Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest), open it and drag Seshboard to Applications.
+Download the `.dmg` from the [latest release](https://github.com/estruyf/seshboard/releases/latest), open it and drag Seshboard to Applications.
 
 On Windows, download `Seshboard-<version>-setup.exe` from the same release and run it. It installs for you only, without admin rights, and updates itself.
 
@@ -215,6 +215,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧H | Home |
 | ⌘1 to ⌘9 | Start in a project (on Home; with what you typed in the start box as the prompt) |
 | ⌘⇧Y | Upcoming: queued and scheduled |
+| ⌘⇧T | Activity: what you did per day |
 |  | Open usage (No key by default: use the command palette, or click a usage bar) |
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
@@ -233,6 +234,16 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘L | Add to Later instead (in the quick start panel) |
 | ⌘O | Open the new session (in the quick start panel) |
 | ⌘Q then ⌘Q | Quit (Seshboard asks first; Press once if you turned that off) |
+| ⌘⇧B | Browser: your tabs outside a session (Outside a session, with the browser on) |
+| ⌘T | New tab (in a session or the Browser view, with the browser on) |
+| ⌘L | Go to the address bar (with a browser on screen) |
+| ⌘F | Find in the page (while a page or its address bar has focus, or in the Browser view) |
+| ⌘⇧T | Reopen the closed tab (in the Browser view, or while a page has focus; Elsewhere it opens Activity) |
+| ⌥↑ or ⌥↓ or ⌥← or ⌥→ | Move the tab up or down, or left or right (on a tab, in the Browser view's list or a session's tab strip; Or drag it. Pinned tabs stay before the others) |
+| ⌘W | Close the tab (while a page or its address bar has focus) |
+| ⌘D | Bookmark the page, or edit its bookmark (while a page or its address bar has focus) |
+| ⌘[ | Back in the page (while a page has focus) |
+| ⌘] | Forward in the page (while a page has focus) |
 | ⌘J or ⌃` | Show or hide the terminal |
 | ⌘⇧J | Maximize or restore the terminal |
 | ⌘S | Save the memory or instructions you are editing (on a project's Memory tab, or Settings › Memory) |
@@ -262,6 +273,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘Z | Undo the last quick action (in the sidebar) |
 | ← or → | Close or open a section, or a pipeline's steps (on a section header or a pipeline's row in the sidebar) |
 | ⌥-click | Close or open every section (on a section header in the sidebar) |
+| ⌘⌥[ | Collapse or expand all projects (while the sidebar groups sessions by project) |
 | ⌘↩ | Start a queued item now (on a queued item, in the sidebar or Home) |
 | ⌘E | Edit a queued item in New session (on a queued item, in the sidebar or Home) |
 | ⌥↑ or ⌥↓ | Move a queued item up or down (on a queued item, in the sidebar or Home) |
@@ -285,6 +297,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌥↑ or ⌥↓ | Move a message in Up next up or down (on a message in Up next, above the message box) |
 | ⌫ | Remove a message from Up next (on a message in Up next, above the message box; Undo puts it back) |
 | ⌘⌥R | Read the last reply, or close reading mode (in a session) |
+| ⌘A | Select all of the text you are in (in the conversation, reading mode and a file preview; with this only that text is selected, so a copy has no colours. The conversation is drawn a screenful at a time: it selects the replies drawn.) |
 | ← | Go to the previous reply (in reading mode) |
 | → | Go to the next reply (in reading mode) |
 | K | Go to the previous heading (in reading mode) |
@@ -299,9 +312,18 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧↓ | Next prompt (After the last prompt, it goes to the end of the conversation) |
 | ⌥-click | Run a code block and give Claude its output (on a code block's Run button; It runs in a tab of its own; when it ends, Claude gets the exit code and the end of what it printed) |
 | ⇧-click | Open a file link the other way (on a file in the conversation; A click does what Settings › Conversation sets; this does the other) |
+| ⌘⌥E | Show or hide Files (The project's files: browse, read and search them beside the conversation) |
+| ⌘⌥P | Quick open a file (Type part of a name; name:42 opens it at line 42. Outside a session, in the selected project) |
+| ⌘⌥F | Search in files (with text selected in the viewer, it searches for that) |
+| ⌘⌥M | Add the selected lines, or the file, to the message (in the Files viewer) |
+| ⌘⌥L | Go to line (in the Files viewer) |
+| ⌘F | Find in the file (in the Files viewer) |
 | ⌘⇧D | Show or hide Changes |
+| ⌘⇧M | Comment on the selected lines (in a diff in Changes; Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box) |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |
 | ⌘⇧E | Show or hide Commands (The commands Claude runs in the background, with their output) |
+| ⌥↑ or ⌥↓ | Move a tool or an app on the rail up or down (on a button on the rail at the session's right edge; Or drag it. A button moves only inside its group) |
+| ⌘⇧B | Show or hide the session's browser (Your running dev server, or with the browser on any page, beside the conversation) |
 |  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |
 | Esc | Restore the terminal (while it fills the view, outside the shell) |
 | ⌘K | Clear the terminal (in the terminal) |

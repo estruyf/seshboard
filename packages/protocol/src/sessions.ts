@@ -3,6 +3,8 @@ import { SESSION_NOTE_MAX } from './sessionNote.ts';
 import { AbsolutePath } from './absolutePath.ts';
 import { Effort, PermissionMode, WorktreeBaseSchema } from './host.ts';
 import { SESSION_PROVIDERS } from './providerConstants.ts';
+import { MAX_ORCHESTRATOR_INSTRUCTIONS } from './orchestrator.ts';
+import { MAX_PLAN_MODE_INSTRUCTIONS } from './projectConstants.ts';
 
 /** Where a session was started, derived from Claude Code's `entrypoint`. */
 export const SessionOrigin = z.enum(['cli', 'desktop', 'ide', 'sdk', 'app', 'unknown']);
@@ -94,6 +96,10 @@ export const ProjectDefaults = z.object({
   effort: Effort.nullable().default(null),
   /** With no `effort`: skip the profile's effort and start with the global one (see `inheritedDefault`). */
   globalEffort: z.boolean().optional(),
+  /** The model Claude Code switches to when `model` is overloaded or unavailable (Claude Code sessions only); null follows the profile's, then the global one. */
+  fallbackModel: z.string().max(200).nullable().optional(),
+  /** With no `fallbackModel`: skip the profile's and follow the global one (see `inheritedDefault`). */
+  globalFallbackModel: z.boolean().optional(),
   permissionMode: PermissionMode.nullable().default(null),
   /** With no `permissionMode`: skip the profile's mode and start in the global one (see `inheritedPermissionMode`). */
   globalPermissionMode: z.boolean().optional(),
@@ -107,6 +113,23 @@ export const ProjectDefaults = z.object({
    * start from it, pull requests go into it and changes compare against it. Null follows the remote.
    */
   defaultBranch: z.string().min(1).max(250).nullable().default(null),
+  /** Sites the browser tools may use without asking in this project, as origins (docs/browser.md); this computer always may. */
+  browserSites: z.array(z.string().min(1).max(500)).max(50).optional(),
+  /**
+   * What the project's orchestrator and every session it starts read after the agent's own system prompt
+   * (docs/orchestrator.md): which branch to start from, how to check the work, what needs your go-ahead.
+   */
+  orchestratorInstructions: z.string().max(MAX_ORCHESTRATOR_INSTRUCTIONS).optional(),
+  /**
+   * Replaces the workflow text Claude Code shows in plan mode (the SDK's `planModeInstructions`); its read-only rules
+   * stay. Claude Code sessions only, read when a session starts. Empty is not saved.
+   */
+  planModeInstructions: z.string().max(MAX_PLAN_MODE_INSTRUCTIONS).optional(),
+  /**
+   * Sites where the browser tools' scripts (evaluate, network) may run without asking in this project, as origins
+   * (docs/browser.md, the script guard); this computer always may. Apart from `browserSites`: a script reaches more.
+   */
+  browserScriptSites: z.array(z.string().min(1).max(500)).max(50).optional(),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
 
@@ -114,7 +137,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, globalFallbackModel: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true, planModeInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({
@@ -183,6 +206,14 @@ export const ImageRef = z.object({
 });
 export type ImageRef = z.infer<typeof ImageRef>;
 
+/**
+ * A tool call that has an MCP App (a page the MCP server draws for it, `ui://…`): the server, the page, the
+ * provider's own id of the call (for reading the page it scopes), and the call's result as the server sent it
+ * (`content`, `structuredContent`), which the page gets. Codex's sessions have it.
+ */
+export const McpAppCall = z.object({ server: z.string(), resourceUri: z.string(), callId: z.string().nullable(), result: z.json().nullable() });
+export type McpAppCall = z.infer<typeof McpAppCall>;
+
 export const TranscriptBlock = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
   z.object({ type: z.literal('thinking'), text: z.string() }),
@@ -193,6 +224,7 @@ export const TranscriptBlock = z.discriminatedUnion('type', [
     /** Tool input with long strings shortened (see `truncated`). */
     input: z.json(),
     truncated: z.boolean(),
+    app: McpAppCall.optional(),
   }),
   z.object({
     type: z.literal('tool_result'),

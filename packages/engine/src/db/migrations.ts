@@ -853,4 +853,202 @@ export const migrations: readonly string[] = [
     started_at  INTEGER NOT NULL
   );
   `,
+
+  // v52: Activity (#270). Your prompts' times and first words, read from the transcripts like the tokens (every
+  // transcript is read once more, without counting anything twice), so a day knows its turns even after Claude Code
+  // deleted the transcript. `catchup_turns` keeps what each turn's catch-up said, as `catchup` only has the latest turn,
+  // starting from the cards there are now. `activity_summaries` is the day in short, one Haiku call each. Nothing can
+  // read back the last two: keep them when rebuilding.
+  `
+  CREATE TABLE usage_prompts (
+    key        TEXT PRIMARY KEY,
+    scope      TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    text       TEXT NOT NULL
+  ) WITHOUT ROWID;
+  CREATE INDEX usage_prompts_at ON usage_prompts (at);
+  CREATE INDEX usage_messages_at ON usage_messages (at);
+  CREATE INDEX session_usage_hour ON session_usage (hour);
+  UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;
+  CREATE TABLE catchup_turns (
+    session_id TEXT NOT NULL,
+    turn_id    TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    did_json   TEXT NOT NULL,
+    PRIMARY KEY (session_id, turn_id)
+  );
+  CREATE INDEX catchup_turns_at ON catchup_turns (at);
+  INSERT INTO catchup_turns (session_id, turn_id, at, did_json)
+    SELECT session_id, turn_id, json_extract(json, '$.generatedAt'), json_extract(json, '$.did') FROM catchup
+    WHERE json_valid(json) AND json_extract(json, '$.state') != 'waiting' AND json_extract(json, '$.generatedAt') IS NOT NULL AND json_extract(json, '$.did') IS NOT NULL;
+  CREATE TABLE activity_summaries (
+    day          TEXT PRIMARY KEY,
+    text         TEXT NOT NULL,
+    generated_at INTEGER NOT NULL,
+    sessions     INTEGER NOT NULL,
+    input_hash   TEXT NOT NULL,
+    final        INTEGER NOT NULL
+  );
+  `,
+  `
+  CREATE TABLE skim_highlights (
+    session_id TEXT NOT NULL,
+    reply_key  TEXT NOT NULL,
+    total      INTEGER NOT NULL,
+    keep_json  TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    PRIMARY KEY (session_id, reply_key)
+  );
+  CREATE TABLE skim_usage (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    at          INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    session_id  TEXT,
+    input       INTEGER NOT NULL,
+    output      INTEGER NOT NULL,
+    cache_read  INTEGER NOT NULL,
+    cache_write INTEGER NOT NULL
+  );
+  CREATE INDEX skim_usage_scope_at ON skim_usage (scope, at);
+  `,
+
+  // v54: Forks Seshboard made of another provider's sessions (Codex, #276). Codex's own list leaves out a fork without a
+  // turn of its own, so this is the only record that it exists until something is sent to it: keep it when rebuilding.
+  `
+  CREATE TABLE provider_forks (
+    session_id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX provider_forks_profile ON provider_forks (profile_id);
+  `,
+  // Skim's fade by Haiku gave way to the agent's own keep line: its answers and usage go.
+  `
+  DROP TABLE IF EXISTS skim_highlights;
+  DROP TABLE IF EXISTS skim_usage;
+  `,
+  // v56: Pinned browser tabs, a session's or the Browser view's, so they come back after a restart. They are your own
+  // choices and nothing else has them: keep them when rebuilding.
+  `
+  CREATE TABLE browser_tabs (
+    id         TEXT PRIMARY KEY,
+    owner      TEXT NOT NULL,
+    url        TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    position   INTEGER NOT NULL,
+    pinned_at  INTEGER NOT NULL
+  );
+  CREATE INDEX browser_tabs_owner ON browser_tabs (owner);
+  `,
+  // v57: A pinned tab's name of your own (Rename tab), which the page's title doesn't replace. Null: the page's title.
+  `
+  ALTER TABLE browser_tabs ADD COLUMN name TEXT;
+  `,
+  // v58: Browser favourites, the sites you open often. Your own choices that nothing else has: keep them when rebuilding.
+  `
+  CREATE TABLE browser_favorites (
+    id         TEXT PRIMARY KEY,
+    url        TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    favicon    TEXT,
+    position   INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  `,
+  // v59: A pinned tab's icon (a small `data:` image), so it shows at start before the page loads again.
+  `
+  ALTER TABLE browser_tabs ADD COLUMN favicon TEXT;
+  `,
+  // v60: The browser's history, the pages you opened, for the address bar's suggestions. Nothing else has it: keep it when rebuilding.
+  `
+  CREATE TABLE browser_history (
+    url        TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    visits     INTEGER NOT NULL,
+    last_visit INTEGER NOT NULL
+  );
+  CREATE INDEX browser_history_last_visit ON browser_history (last_visit);
+  `,
+  // v61: Browser bookmarks: links to find again, in folders, for one project (its root) or everywhere (null). Your own
+  // choices that nothing else has: keep them when rebuilding.
+  `
+  CREATE TABLE browser_bookmarks (
+    id           TEXT PRIMARY KEY,
+    url          TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    favicon      TEXT,
+    folder       TEXT NOT NULL DEFAULT '',
+    project_root TEXT,
+    position     INTEGER NOT NULL,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX browser_bookmarks_project ON browser_bookmarks (project_root);
+  `,
+  // v62: The orchestrator (docs/orchestrator.md): which sessions are orchestrators, and the sessions each started. A
+  // start that waits in the queue has an item and no session yet. Nothing else has this: keep it when rebuilding.
+  `
+  CREATE TABLE orchestrators (
+    session_id   TEXT PRIMARY KEY,
+    project_root TEXT NOT NULL,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE TABLE orchestrator_workers (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    orchestrator_id TEXT NOT NULL,
+    session_id      TEXT,
+    item_id         TEXT,
+    title           TEXT NOT NULL,
+    created_at      INTEGER NOT NULL
+  );
+  CREATE INDEX orchestrator_workers_orchestrator ON orchestrator_workers (orchestrator_id);
+  CREATE INDEX orchestrator_workers_session ON orchestrator_workers (session_id);
+  `,
+  // v63: Browser profiles (docs/browser.md): pages with their own cookies and storage, for one project (its root) or
+  // everywhere (null). Your own choices that nothing else has: keep them when rebuilding. A pinned tab keeps its profile
+  // (null: the built-in Default one), and the history is kept per profile ('' for Default, so the key is never null).
+  `
+  CREATE TABLE browser_profiles (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    color        TEXT NOT NULL,
+    project_root TEXT,
+    position     INTEGER NOT NULL,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX browser_profiles_project ON browser_profiles (project_root);
+  ALTER TABLE browser_tabs ADD COLUMN profile_id TEXT;
+  CREATE TABLE browser_history_by_profile (
+    url        TEXT NOT NULL,
+    profile_id TEXT NOT NULL DEFAULT '',
+    title      TEXT NOT NULL,
+    visits     INTEGER NOT NULL,
+    last_visit INTEGER NOT NULL,
+    PRIMARY KEY (url, profile_id)
+  );
+  INSERT INTO browser_history_by_profile (url, profile_id, title, visits, last_visit) SELECT url, '', title, visits, last_visit FROM browser_history;
+  DROP TABLE browser_history;
+  ALTER TABLE browser_history_by_profile RENAME TO browser_history;
+  CREATE INDEX browser_history_last_visit ON browser_history (last_visit);
+  `,
+
+  // v64: A Haiku 5.5 request whose prompt is over 100k tokens costs five times as much, so the cost estimate needs the
+  // tokens of those requests apart (`long_*`, a part of the totals). Responses counted before have no such part yet
+  // (`long` 0): if Haiku 5.5 was used, every transcript is read once more to add it, without counting anything twice.
+  `
+  ALTER TABLE session_usage ADD COLUMN long_input INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session_usage ADD COLUMN long_output INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session_usage ADD COLUMN long_cache_read INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session_usage ADD COLUMN long_cache_write INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session_usage ADD COLUMN long_cache_write_1h INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE usage_messages ADD COLUMN long INTEGER NOT NULL DEFAULT 0;
+  UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL WHERE EXISTS (SELECT 1 FROM session_usage WHERE model LIKE '%haiku-5%');
+  `,
+
+  // v65: Tokens of other providers' sessions (Copilot, Codex) count in the Usage view too, under their profile's folder.
+  // Copilot says what its tokens cost (AI credits): `usd`, null where the price table prices them.
+  `
+  ALTER TABLE session_usage ADD COLUMN usd REAL;
+  `,
 ];

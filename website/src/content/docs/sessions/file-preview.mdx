@@ -10,7 +10,7 @@ import Os from '../../../components/Os.astro';
 import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 
-Claude often writes a plan, a README, a small web page or a piece of code. Click the file in its reply and it opens in the side panel, next to the conversation, rendered the way you would read it. No editor, no browser.
+Claude often writes a plan, a README, a small web page or a piece of code. Click the file in its reply and it opens in [Files](/sessions/files/), next to the conversation, rendered the way you would read it. No editor, no browser.
 
 <Screenshot name="file-preview" alt="A session with a Markdown plan open in the side panel: a heading, a Note alert, a table of steps, a code block and a folded Open questions block" eager />
 
@@ -18,13 +18,15 @@ Claude often writes a plan, a README, a small web page or a piece of code. Click
 
 Markdown files (`.md` and `.markdown`), HTML files (`.html` and `.htm`) and code and text files preview in Seshboard. Code and text files are the usual ones: TypeScript, JavaScript, JSON, YAML, TOML, CSS, shell, Python, Go, Rust, SQL, XML, CSV, `.txt` and `.log`, among others. Any other file shows in <Os mac="Finder" windows="File Explorer" />, as before.
 
-The window has a **Preview** and a **Source** switch. **Source** shows the file's text with syntax colours. Markdown opens on **Preview**. HTML opens on **Source**, because a page can fail to render and its text always shows. Code and text files have no preview, so they are always their source. Seshboard remembers your choice for each kind of file in that window.
+In [Files](/sessions/files/), PNG, JPEG, GIF and WebP images show as the image too.
+
+The window has a **Preview** and a **Source** switch (**Rendered** and **Source** in Files). **Source** shows the file's text with syntax colours. Markdown opens on **Preview**. HTML opens on **Source**, because a page can fail to render and its text always shows. Code and text files have no preview, so they are always their source. Seshboard remembers your choice for each kind of file in that window.
 
 Long lines wrap by default. **Wrap lines** in the header turns that off, so a line scrolls sideways instead. The choice holds for every file in that window.
 
 ## Side panel or dialog
 
-A file opens in the session's side panel, as a tab next to **Changes** and **Ask**. **Open in a dialog** (the arrows in the header) moves it over the window, and files open there from then on. **Dock to the side** in the dialog brings it back. A file opened outside a session always opens in the dialog.
+A file opens in the session's [Files](/sessions/files/) panel, as a tab in front of the files you opened before. **Open in a dialog** (the arrows in the toolbar) moves it over the window, and files open there from then on. **Dock to the side** in the dialog brings it back to Files. A file opened outside a session always opens in the dialog.
 
 A link to a line or a range, such as `src/app.ts:10`, `src/app.ts:10-14` or `#L10-L14`, opens the file on its source with those lines marked and scrolled into view.
 
@@ -36,8 +38,7 @@ A preview reads like Claude's replies, with a few things more:
 - GitHub's alerts show as coloured blocks with a title: `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` and `> [!CAUTION]`.
 - Images next to the file show, with a path that is relative to the file (`./diagram.png`) or absolute. Pictures from the web don't load; their description shows instead.
 - A link to a web page opens in your browser. A link to another file on your computer is a file link: a Markdown file opens in the same window, and any other file does what **Clicking a file link** says.
-
-Mermaid diagrams and maths are not drawn yet.
+- [Mermaid diagrams](/sessions/replies/#mermaid-diagrams) are drawn in your theme's colours, and [maths](/sessions/replies/#maths) is drawn instead of shown as source.
 
 ## HTML
 
@@ -67,4 +68,4 @@ Sessions on another computer don't have file links, so there is nothing to previ
 
 ## Related
 
-<Related pages={['sessions/conversation', 'command-palette', 'settings']} />
+<Related pages={['sessions/files', 'sessions/replies', 'sessions/conversation', 'settings']} />

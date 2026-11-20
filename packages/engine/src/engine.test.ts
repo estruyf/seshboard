@@ -3,9 +3,10 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
+import { createRpcClient, mergeFacts, messagePortTransport, ProfileDefaults, ProjectDefaults,type WorktreeFacts, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
-import { createEngine, type EngineOptions } from './engine.ts';
+import { createEngine, type EngineOptions, type TrashScope } from './engine.ts';
+import { fakeAppServer, thread } from './providers/codex/codexFakes.ts';
 import type { CopilotSdkClient, CopilotSdkSession, CopilotSessionOptions } from './providers/copilot/copilotDriver.ts';
 import type { CopilotEvent } from './providers/copilot/copilotEvents.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
@@ -31,7 +32,7 @@ const fakeSource: SessionSource = {
 };
 
 /** A Claude Code stand-in that only records how sessions were started; they never answer. */
-function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?: string; worktree?: string | null }>): SdkRuntime {
+function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?: string; worktree?: string | null; fallbackModel?: string; planModeInstructions?: string }>): SdkRuntime {
   const quiet = () => ({
     async *[Symbol.asyncIterator]() {
       await new Promise(() => {});
@@ -58,7 +59,7 @@ function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?:
   });
   return {
     query: ({ prompt, options }) => {
-      created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode, worktree: options.extraArgs?.worktree });
+      created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode, worktree: options.extraArgs?.worktree, ...(options.fallbackModel ? { fallbackModel: options.fallbackModel } : {}), ...(options.planModeInstructions ? { planModeInstructions: options.planModeInstructions } : {}) });
       return (options.forkSession && options.persistSession === false ? answer(prompt) : quiet()) as never;
     },
     startup: async ({ options }) => ({ query: () => (created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode }), quiet()), close: () => {} }) as never,
@@ -71,7 +72,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
+function connect(extra: { worktreeFactsWaitMs?: number; trashed?: string[][]; trashScopes?: TrashScope[]; codex?: EngineOptions['codex']; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -79,17 +80,20 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
   writeFileSync(join(projectDir, `${SESSION_ID}.jsonl`), '{"entrypoint":"cli"}\n');
   mkdirSync(join(projectDir, SESSION_ID, 'subagents'), { recursive: true });
   const engine = createEngine({
-    ...(extra.noTrash ? {} : { trash: async (paths: string[]) => void extra.trashed?.push(paths) }),
+    ...(extra.noTrash ? {} : { trash: async (paths: string[], scope: TrashScope) => void (extra.trashed?.push(paths), extra.trashScopes?.push(scope)) }),
     dataDir,
     claudeConfigDir: join(dataDir, 'claude'),
     // No login shell and an empty PATH, so the test never depends on the machine (a test that runs git with it passes its own).
     shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: extra.path ?? '' }, resolved: false, durationMs: 0 }),
     claudeBinary: '/nonexistent/claude',
+    ...(extra.worktreeFactsWaitMs !== undefined ? { worktreeFactsWaitMs: extra.worktreeFactsWaitMs } : {}),
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
     ...(extra.onKeepAwake ? { onKeepAwake: extra.onKeepAwake } : {}),
     // Never the machine's own `copilot`: without a fake, Copilot CLI isn't installed.
     copilot: extra.copilot ?? { binary: async () => null },
+    // Never the machine's own `codex`, nor its `~/.codex`.
+    codex: extra.codex ?? { binary: async () => null },
   });
   const { port1, port2 } = new MessageChannel();
   const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -100,7 +104,8 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     engine.close();
     port1.close();
     port2.close();
-    rmSync(dataDir, { recursive: true, force: true });
+    // The engine may still be writing its last files after close; retry instead of failing on ENOTEMPTY.
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
   return { engine, client, dataDir, projectDir };
 }
@@ -139,7 +144,7 @@ describe('engine over a MessagePort', () => {
     ];
     writeFileSync(join(folder, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
 
-    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true })]);
+    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true }), expect.objectContaining({ id: 'codex', canStart: true }), expect.objectContaining({ id: 'antigravity', name: 'Google Antigravity', canStart: true })]);
     await client.call('sessions.refresh', {});
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
 
@@ -162,6 +167,54 @@ describe('engine over a MessagePort', () => {
     // Delete moves the session's whole folder to the Trash, named with its Copilot home for main's check.
     await client.call('session.delete', { sessionId: id });
     expect(trashed).toEqual([[folder]]);
+    expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
+  });
+
+  it("reads, continues and starts a Codex profile's sessions through its app-server, and trashes a rollout file", async () => {
+    const trashed: string[][] = [];
+    const trashScopes: TrashScope[] = [];
+    const id = '019a0000-0000-7000-8000-00000000000a';
+    let codexHome = '';
+    let rollout = '';
+    const server = fakeAppServer({
+      // As Codex does: a thread whose rollout file is gone is left out.
+      'thread/list': () => ({ data: existsSync(rollout) ? [thread(id, { name: 'Parser fix', cwd: PARSER, path: rollout })] : [], nextCursor: null }),
+      'thread/read': () => ({ thread: thread(id, { name: 'Parser fix', cwd: PARSER, path: rollout }) }),
+      'account/read': () => ({ account: { type: 'chatgpt', email: 'me@example.com', planType: 'plus', workspaceName: null }, requiresOpenaiAuth: true }),
+      'thread/resume': ({ threadId }) => ({ thread: thread(threadId, { cwd: PARSER }), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
+      'thread/start': () => ({ thread: thread(NEW, { cwd: PARSER }), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
+      'turn/start': () => ({ turn: { id: `turn-${server.calls.length}`, items: [], itemsView: 'notLoaded', status: 'inProgress', error: null, startedAt: null, completedAt: null, durationMs: null } }),
+      'thread/unsubscribe': () => ({}),
+      'model/list': () => ({ data: [{ id: 'gpt-5-mini', model: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', hidden: false, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }], defaultReasoningEffort: 'low', inputModalities: ['text'], isDefault: true }], nextCursor: null }),
+    });
+    const NEW = '019a0000-0000-7000-8000-00000000000c';
+    const { client, dataDir } = connect({ trashed, trashScopes, codex: { binary: async () => ({ path: '/fake/codex', version: '0.167.0' }), createAppServer: () => server } });
+    // A Codex profile's folder in the test's own folder, never the machine's ~/.codex.
+    codexHome = join(dataDir, 'codex');
+    rollout = join(codexHome, 'sessions', '2026', '11', '06', `rollout-2026-11-06T10-00-00-${id}.jsonl`);
+    mkdirSync(join(codexHome, 'sessions', '2026', '11', '06'), { recursive: true });
+    writeFileSync(rollout, '{}\n');
+
+    const { id: profileId } = await client.call('profiles.add', { name: 'Codex', color: 'green', configDir: codexHome, provider: 'codex' });
+    await client.call('sessions.refresh', {});
+    expect((await client.call('sessions.list', {})).sessions.find((s) => s.id === id)).toMatchObject({ provider: 'codex', profileId, title: 'Parser fix', cwd: PARSER, origin: 'cli' });
+    // The driver's status, through `account/read`.
+    expect(await client.call('providers.status', { profileId })).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: 'me@example.com', login: 'me@example.com', problem: null });
+    expect((await client.call('providers.models', { profileId })).models).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true, efforts: ['low'] }]);
+    // Sending resumes the thread here, in the mode's sandbox.
+    await client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false });
+    expect(server.calls.filter((c) => c.method !== 'thread/list' && c.method !== 'thread/read' && c.method !== 'account/read' && c.method !== 'model/list').map((c) => c.method)).toEqual(['thread/resume', 'turn/start']);
+    expect(server.calls.find((c) => c.method === 'turn/start')!.params).toMatchObject({ threadId: id, input: [{ type: 'text', text: 'hi' }], sandboxPolicy: { type: 'readOnly' }, approvalPolicy: 'on-request' });
+
+    // New session with the Codex profile starts a thread in the folder, with the model picked.
+    const created = await client.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini', permissionMode: 'acceptEdits' });
+    expect(created.sessionId).toBe(NEW);
+    expect(server.calls.find((c) => c.method === 'thread/start')!.params).toMatchObject({ sandbox: 'workspace-write', approvalPolicy: 'on-request', model: 'gpt-5-mini' });
+    expect(server.calls.filter((c) => c.method === 'turn/start').at(-1)!.params).toMatchObject({ threadId: NEW, model: 'gpt-5-mini', sandboxPolicy: { type: 'workspaceWrite' } });
+
+    await client.call('session.delete', { sessionId: id });
+    expect(trashed).toEqual([[rollout]]);
+    expect(trashScopes).toEqual([{ codexHome }]);
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
   });
 
@@ -564,7 +617,8 @@ describe('engine over a MessagePort', () => {
     // Only the text went to Haiku.
     expect(routed).toEqual(['<request>\nMake the update check a setting\n</request>']);
     const { autoPick } = await client.call('session.autoPick', { sessionId });
-    expect(autoPick).toMatchObject({ model: 'sonnet', reason: 'A small, local change.', tokens: 1_040, allowed: ['haiku', 'sonnet', 'opus'] });
+    // Haiku named no effort and the queued prompt set none: Auto starts it at medium.
+    expect(autoPick).toMatchObject({ model: 'sonnet', effort: 'medium', reason: 'A small, local change.', tokens: 1_040, allowed: ['haiku', 'sonnet', 'opus'] });
     const usage = await client.call('usage.breakdown', { period: 'day', groupBy: 'model' });
     expect(usage.rows).toContainEqual(expect.objectContaining({ key: 'auto-routing', label: 'Auto routing', model: 'claude-haiku-4-5', autoRouting: { picks: 1 } }));
     expect(usage.totals.tokens.input).toBe(1_000);
@@ -630,6 +684,29 @@ describe('engine over a MessagePort', () => {
     expect(ran).toEqual([`started:${run.title}`, 'skipped:null']);
   });
 
+  it("starts a session with the plan mode instructions of the project its folder is in, the deepest one, and none outside", async () => {
+    const created: Array<{ cwd?: string; planModeInstructions?: string }> = [];
+    const { client, dataDir } = connect({ sdk: fakeSdk(created) });
+    const inner = join(dataDir, 'pkg');
+    mkdirSync(join(inner, 'app'), { recursive: true });
+    mkdirSync(join(dataDir, 'docs'), { recursive: true });
+    const defaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
+    await client.call('projects.add', { path: dataDir });
+    await client.call('projects.add', { path: inner });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...defaults, planModeInstructions: 'List the files.' } });
+    await client.call('projects.setDefaults', { root: inner, defaults: { ...defaults, planModeInstructions: 'Package rules.' } });
+    // A subfolder of a project that isn't a repository takes the project's text.
+    await client.call('session.create', { cwd: join(dataDir, 'docs'), prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).toMatchObject({ cwd: join(dataDir, 'docs'), planModeInstructions: 'List the files.' });
+    // A project that is itself a subfolder wins over the one above it.
+    await client.call('session.create', { cwd: join(inner, 'app'), prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).toMatchObject({ cwd: join(inner, 'app'), planModeInstructions: 'Package rules.' });
+    await client.call('projects.setDefaults', { root: inner, defaults: { ...defaults, planModeInstructions: '' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...defaults, planModeInstructions: '' } });
+    await client.call('session.create', { cwd: inner, prompt: 'Plan it', permissionMode: 'plan' });
+    expect(created.at(-1)).not.toHaveProperty('planModeInstructions');
+  });
+
   it('pauses the schedules of a project removed from Seshboard, and a run whose folder is gone', async () => {
     const { client, dataDir } = connect({ sdk: fakeSdk([]) });
     const folder = join(dataDir, 'web');
@@ -670,6 +747,43 @@ describe('engine over a MessagePort', () => {
     const { item: missing } = await client.call('later.add', { draft: { cwd: join(dataDir, 'gone'), prompt: 'Nowhere' } });
     await expect(client.call('later.start', { id: missing.id })).rejects.toThrow(/Folder not found/);
     expect((await client.call('later.list', {})).items.map((i) => i.id)).toEqual([next.id, missing.id]);
+  });
+
+  it('starts every Claude Code session with the fallback model of its project, else its profile, else the global one', async () => {
+    const created: Array<{ cwd?: string; model?: string; fallbackModel?: string }> = [];
+    const { engine, client, dataDir } = connect({ sdk: fakeSdk(created) });
+    const folder = join(dataDir, 'shop');
+    const workHome = join(dataDir, 'work-claude');
+    mkdirSync(folder);
+    mkdirSync(workHome);
+    await client.call('projects.add', { path: folder });
+    const start = async (extra: { model?: string; profileId?: string } = {}) => {
+      created.length = 0;
+      await client.call('session.create', { cwd: folder, prompt: 'Hello', ...extra });
+      return created.at(-1)?.fallbackModel;
+    };
+    const none = ProjectDefaults.parse({});
+    // Off by default.
+    expect(await start()).toBeUndefined();
+    // Settings › General, for a folder without defaults of its own.
+    engine.setGlobalFallbackModel('haiku');
+    expect(await start()).toBe('haiku');
+    // A profile's wins over the global one; a session started on that profile (a profile switch) gets it.
+    const { id: work } = await client.call('profiles.add', { name: 'Work', color: 'blue', configDir: workHome });
+    await client.call('profiles.setDefaults', { id: work, defaults: ProfileDefaults.parse({ fallbackModel: 'sonnet' }) });
+    expect(await start()).toBe('haiku');
+    expect(await start({ profileId: work })).toBe('sonnet');
+    // The project's wins over its profile's, found by the folder's root.
+    await client.call('projects.setDefaults', { root: folder, defaults: { ...none, fallbackModel: 'opus' } });
+    expect(await start({ profileId: work })).toBe('opus');
+    // Or it skips the profile's for the global one.
+    await client.call('projects.setDefaults', { root: folder, defaults: { ...none, globalFallbackModel: true } });
+    expect(await start({ profileId: work })).toBe('haiku');
+    // A fallback that is the session's own model is left out.
+    expect(await start({ profileId: work, model: 'haiku' })).toBeUndefined();
+    // Off again.
+    engine.setGlobalFallbackModel(null);
+    expect(await start({ profileId: work })).toBeUndefined();
   });
 
   it('starts a queued worktree from a saved branch, and lets Claude Code make the others', async () => {
@@ -755,6 +869,21 @@ describe('engine over a MessagePort', () => {
       { root: PARSER, added: false },
     ]);
     await expect(client.call('projects.setDefaults', { root: PARSER, defaults: {} })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // The orchestrator's instructions have their own editor: a save of the other defaults keeps them, an empty text removes them.
+    const defaultsOf = async () => (await client.call('projects.list', {})).projects.find((p) => p.root === dataDir)!.defaults;
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), orchestratorInstructions: '  Branch from dev.  ' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { model: 'sonnet', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } });
+    expect(await defaultsOf()).toMatchObject({ model: 'sonnet', orchestratorInstructions: 'Branch from dev.' });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), orchestratorInstructions: '' } });
+    expect(await defaultsOf()).not.toHaveProperty('orchestratorInstructions');
+    // Plan mode's instructions work the same way, apart from the orchestrator's.
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '  List the files.  ' } });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { model: 'haiku', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } });
+    expect(await defaultsOf()).toMatchObject({ model: 'haiku', planModeInstructions: 'List the files.' });
+    await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '' } });
+    expect(await defaultsOf()).not.toHaveProperty('planModeInstructions');
+    // No session is an orchestrator yet.
+    expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [] });
     await client.call('projects.remove', { root: dataDir });
     expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual([PARSER]);
   });
@@ -1418,4 +1547,70 @@ describe('Claude profiles', () => {
     await expect(client.call('worktree.finish', { sessionId: SESSION_ID, cwd: tree, action: 'remove' })).rejects.toMatchObject({ code: 'SESSION_BUSY' });
     expect(existsSync(tree)).toBe(true);
   });
+});
+
+describe('worktrees.list in a repository with many worktrees', () => {
+  it('answers without the slow facts, then sends them as they are read', async () => {
+    const { client } = connect({ worktreeFactsWaitMs: 0 });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-many-worktrees-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    const run = (cwd: string, ...args: string[]) => git(cwd, args);
+    await run(repo, 'init', '-q', '-b', 'main');
+    await run(repo, 'config', 'user.email', 'test@example.com');
+    await run(repo, 'config', 'user.name', 'Test');
+    writeFileSync(join(repo, 'a.txt'), 'one\n');
+    await run(repo, 'add', '.');
+    await run(repo, 'commit', '-qm', 'initial');
+    const trees: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      const tree = join(repo, '.worktrees', `wt-${i}`);
+      await run(repo, 'worktree', 'add', '-q', '-b', `wt-${i}`, tree);
+      trees.push(tree);
+    }
+    // One with a file nobody committed, one with a commit of its own.
+    writeFileSync(join(trees[3]!, 'wip.txt'), 'wip\n');
+    writeFileSync(join(trees[5]!, 'b.txt'), 'b\n');
+    await run(trees[5]!, 'add', '.');
+    await run(trees[5]!, 'commit', '-qm', 'own');
+
+    const facts: WorktreeFacts[] = [];
+    const pullRequests: Array<unknown> = [];
+    client.on('worktrees.facts', (event) => event.root === repo && facts.push(...event.facts));
+    client.on('worktrees.pullRequests', (event) => event.root === repo && pullRequests.push(event.pullRequests));
+
+    const list = await client.call('worktrees.list', { root: repo });
+    expect(list.worktrees).toHaveLength(41);
+    // Rows and what is cheap are there at once; every slow fact is still to come, and says so.
+    expect(list.worktrees.every((w) => w.factsPending)).toBe(true);
+    expect(list.worktrees[0]).toMatchObject({ isMain: true, branch: 'main' });
+    expect(list.worktrees.find((w) => w.name === 'wt-5')).toMatchObject({ branch: 'wt-5', missing: false, underClaudeDir: false });
+    // No gh here (the test's PATH is empty): that is answered at once, with none known.
+    expect(list.pullRequests).toBe(false);
+    expect(list.pullRequestsPending).toBeUndefined();
+
+    await vi.waitFor(() => expect(new Set(facts.map((f) => f.path)).size).toBe(41), { timeout: 60_000, interval: 50 });
+    await vi.waitFor(() => expect(pullRequests).toEqual([null]));
+    const full = mergeFacts(list, facts);
+    expect(full.worktrees.some((w) => w.factsPending)).toBe(false);
+    expect(full.worktrees.find((w) => w.name === 'wt-3')).toMatchObject({ uncommitted: 1, ahead: 0 });
+    expect(full.worktrees.find((w) => w.name === 'wt-5')).toMatchObject({ uncommitted: 0, ahead: 1, unpushed: 1, merged: false });
+    expect(full.worktrees.find((w) => w.name === 'wt-7')).toMatchObject({ uncommitted: 0, ahead: 0 });
+
+    // Asked again, whatever it leaves pending (that depends on how long ago the facts were read) is told by events,
+    // and nothing it does carry is a placeholder.
+    const again = await client.call('worktrees.list', { root: repo });
+    const asked = mergeFacts(again, facts);
+    expect(asked.worktrees.some((w) => w.factsPending)).toBe(false);
+    for (const w of again.worktrees.filter((x) => !x.factsPending)) {
+      const { uncommitted, ahead, unpushed, merged } = full.worktrees.find((x) => x.path === w.path)!;
+      expect(w).toMatchObject({ uncommitted, ahead, unpushed, merged });
+    }
+
+    // A caller that only needs names reads nothing in the background.
+    const before = facts.length;
+    const names = await client.call('worktrees.list', { root: repo, facts: false });
+    expect(names.worktrees.every((w) => w.factsPending)).toBe(true);
+    await new Promise((done) => setTimeout(done, 100));
+    expect(facts.length).toBe(before);
+  }, 120_000);
 });

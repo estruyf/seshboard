@@ -33,7 +33,9 @@ export function wantsLabel(request: PermissionRequest | null): string {
   const command = request.input && typeof request.input === 'object' && !Array.isArray(request.input) ? (request.input as Record<string, unknown>).command : undefined;
   if (request.toolName === 'Bash' && typeof command === 'string' && command.trim()) return `Wants to run ${command.trim().split('\n')[0]}`;
   const title = request.title?.trim();
-  if (title?.startsWith('Claude wants to ')) return `Wants to ${title.slice('Claude wants to '.length).replace(/[?.]$/, '')}`;
+  // "Claude wants to …", "Codex wants to …", "GitHub Copilot wants to …": who asks is the row's own.
+  const wants = title ? /^\S+(?: \S+)? wants to (.+)$/.exec(title) : null;
+  if (wants) return `Wants to ${wants[1]!.replace(/[?.]$/, '')}`;
   return `Wants to use ${request.toolName}`;
 }
 

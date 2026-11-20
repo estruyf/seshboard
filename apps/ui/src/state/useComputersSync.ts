@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
-import type { ComputersStatus, RemoteSessions } from '@seshboard/protocol/client';
+import { REMOTE_FEATURE_ARCHIVED, type ComputersStatus, type RemoteSessions } from '@seshboard/protocol/client';
 import { callComputer } from '../components/computers/callComputer.ts';
 import { newProblems } from '../components/computers/computerSessions.ts';
 import { toast } from './toastStore.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useComputers } from './computersStore.ts';
+import { doneKey } from './remoteRows.ts';
 
 /**
  * Mirrors the paired computers and the session list of each connected one, for the dock and the Computer view. After
@@ -15,8 +16,11 @@ export function useComputersSync(): void {
   const client = connection.status === 'connected' ? connection.client : null;
   const computers = useComputers((s) => s.status?.computers);
   const asks = useComputers((s) => s.updateAsks);
+  const lists = useComputers((s) => s.lists);
   /** The computers whose list was fetched since they last connected. */
   const fetched = useRef(new Set<string>());
+  /** Each computer's list when its Done was read last (`doneKey`): Done changes when a session leaves or joins it. */
+  const doneRead = useRef(new Map<string, string>());
 
   useEffect(() => {
     if (!client) return;
@@ -63,6 +67,27 @@ export function useComputersSync(): void {
       );
     }
   }, [client, computers]);
+
+  // A computer's Done (`sessions.archived`), for the sidebar's Done: when it connects, and when a session leaves its
+  // list or comes back. An offline computer keeps the last one, dimmed, as its list.
+  useEffect(() => {
+    if (!client || !computers) return;
+    for (const computer of computers) {
+      if (computer.state !== 'connected' || !computer.features.includes(REMOTE_FEATURE_ARCHIVED)) {
+        doneRead.current.delete(computer.id);
+        continue;
+      }
+      const list = lists.get(computer.id);
+      if (!list) continue;
+      const key = doneKey(list);
+      if (doneRead.current.get(computer.id) === key) continue;
+      doneRead.current.set(computer.id, key);
+      void callComputer(client, computer.id, 'sessions.archived', {}).then(
+        ({ sessions }) => useComputers.getState().setDone(computer.id, sessions),
+        () => doneRead.current.delete(computer.id),
+      );
+    }
+  }, [client, computers, lists]);
 
   // An update asked from this window: once the computer is back on another version, its row says Updated for the rest
   // of the app session, and a toast says so wherever you are.

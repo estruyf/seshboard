@@ -102,6 +102,15 @@ describe('copilotMessages', () => {
     expect(claudeTool('github-mcp-server-get_file_contents', { owner: 'o' })).toEqual({ name: 'github-mcp-server-get_file_contents', input: { owner: 'o' } });
   });
 
+  it("names an MCP server's tool as Claude Code does, so a visual draws", () => {
+    expect(claudeTool('github-mcp-server-get_file_contents', { owner: 'o' }, { mcpServerName: 'github-mcp-server', mcpToolName: 'get_file_contents' })).toEqual({ name: 'mcp__github-mcp-server__get_file_contents', input: { owner: 'o' } });
+    const code = '<svg viewBox="0 0 680 80"></svg>';
+    const blocks = copilotMessages([
+      { type: 'assistant.message', id: 'a1', data: { content: 'Here is the flow.', toolRequests: [{ toolCallId: 'v1', name: 'visualize-show_widget', mcpServerName: 'visualize', mcpToolName: 'show_widget', arguments: { title: 'flow', loading_messages: ['Drawing'], widget_code: code } }] } },
+    ]).flatMap((m) => normaliseMessage(m).blocks);
+    expect(blocks.find((b) => b.type === 'tool_use')).toMatchObject({ name: 'mcp__visualize__show_widget', input: { widget_code: code }, truncated: false });
+  });
+
   it('keeps what was typed when there is no request wrapper', () => {
     expect(userText('Fix the build <reminder>\nctx\n</reminder>')).toBe('Fix the build');
     expect(userText('Plain prompt')).toBe('Plain prompt');

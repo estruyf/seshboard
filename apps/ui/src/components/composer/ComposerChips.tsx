@@ -1,4 +1,4 @@
-import { Cpu, WandSparkles, Zap, ZapOff } from 'lucide-react';
+import { Cpu, Sparkles, WandSparkles, Zap, ZapOff } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
 import { useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode } from '@seshboard/protocol/client';
@@ -6,7 +6,8 @@ import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import type { FastModeFace } from '../../lib/fastMode.ts';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
-import { useProfiles } from '../../state/profilesStore.ts';
+import { useProviders, useStartableProfiles } from '../../state/providersStore.ts';
+import { providerCanStart, startLabel } from '../providers/startable.ts';
 import type { BoxChoiceUse } from '../../state/pipelines.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
@@ -37,13 +38,15 @@ export interface ComposerChipRowProps {
   /**
    * `auto`: a session on the model Auto picked ("Sonnet", or "Default model" when picking failed); the chip reads
    * "Auto · Sonnet". `actions` go under the models (the session's "Why Auto picked Sonnet").
+   * `fallback`: the model the last turn ran on when that was the fallback model ("Sonnet"); the chip reads "Opus → Sonnet".
    */
-  model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
+  model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[]; fallback?: string | null };
   /**
    * Null when the model has no effort setting. `levels`: the ones the model takes (another provider's model says);
-   * every level otherwise. `defaultDescription`: what Default means, in its provider's words.
+   * every level otherwise. `defaultDescription`: what Default means, in its provider's words. `ultrathink`: a Claude Code
+   * session's "Ultrathink this turn", which adds the word to the next message only; `armed` while it will.
    */
-  effort: { value: Effort | ''; onChange(effort: Effort | ''): void; levels?: readonly Effort[]; defaultDescription?: string } | null;
+  effort: { value: Effort | ''; onChange(effort: Effort | ''): void; levels?: readonly Effort[]; defaultDescription?: string; ultrathink?: { armed: boolean; onToggle(): void } } | null;
   /** The fast mode toggle of a running session on a model that has it. Stays a chip of its own in a folded tray. */
   fast?: { face: FastModeFace; onToggle(on: boolean): void } | null;
   /**
@@ -96,7 +99,9 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
 export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, names = NEW_SESSION_NAMES, pipeline, lead }: ComposerChipRowProps) {
-  const profiles = useProfiles((s) => s.profiles);
+  // Only profiles that can start a session (not a read-only provider's), and the one it has.
+  const profiles = useStartableProfiles(profile?.value);
+  const catalog = useProviders((s) => s.providers);
   const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
   const fixed = !profile?.onChange;
   // A mode set elsewhere (bypass, say) is listed too, so the checked one is always there.
@@ -126,6 +131,18 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
 
   const modelName = shortModelName(model.label);
   const effortLabel = effort ? (effort.value ? EFFORT_LABEL[effort.value] : 'Default effort') : '';
+  const ultrathink = effort?.ultrathink;
+  /** The effort menu's one-turn option: it says what it does now, so it reads the same as the chip's state. */
+  const ultrathinkAction: ChoiceAction[] | undefined = ultrathink
+    ? [
+        {
+          label: 'Ultrathink this turn',
+          checked: ultrathink.armed,
+          data: { 'data-ultrathink-toggle': ultrathink.armed ? 'on' : 'off', 'data-tooltip': 'The next message runs at xhigh effort, then it goes back' },
+          onSelect: ultrathink.onToggle,
+        },
+      ]
+    : undefined;
   const modeDot = mode ? (MODE_DOT[mode.value] ?? 'bg-faint') : 'bg-faint';
   const effortChoices: Array<Choice<Effort | ''>> = effort ? [{ value: '', label: 'Default', description: effort.defaultDescription ?? 'What Claude Code would pick' }, ...(effort.levels ?? EFFORTS).map((e) => ({ value: e, label: EFFORT_LABEL[e] }))] : [];
   const modeChoices: Array<Choice<PermissionMode>> = modes.map((m) => ({ value: m, label: modeChoice(m)?.label ?? MODE_LABEL[m], description: modeChoice(m)?.description ?? MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }));
@@ -161,7 +178,8 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
           placement="auto"
           choices={byTool(profiles).map((p) => ({
             value: p.id,
-            label: profile.labelFor?.(p) ?? p.name,
+            // One that can't start (a stale project default) stays listed while picked, marked read-only.
+            label: providerCanStart(p.provider, catalog) ? (profile.labelFor?.(p) ?? p.name) : startLabel(p, catalog),
             // Another provider's profile says who runs it; a Claude Code one, its account.
             description: p.provider !== 'claude' ? PROVIDER_NAMES[p.provider] : (p.account?.email ?? undefined),
             dot: PROFILE_DOT[p.color],
@@ -183,7 +201,8 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
   }
   const autoPicked = model.auto ?? null;
   const isAuto = autoPicked !== null || model.value === AUTO_MODEL;
-  const modelTitle = autoPicked !== null ? `Model: Auto picked ${autoPicked}` : `Model: ${model.label}`;
+  const ranOn = model.fallback ?? null;
+  const modelTitle = autoPicked !== null ? `Model: Auto picked ${autoPicked}` : ranOn !== null ? `Model: ${model.label}. The last turn ran on ${ranOn}: ${model.label} was busy or unavailable` : `Model: ${model.label}`;
   chips.push({
     key: 'model',
     face: (l) =>
@@ -206,6 +225,16 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
         <>
           <Cpu size={13} className="shrink-0" aria-hidden />
           <span>{chipShape(l).modelVersion ? modelName : modelFamily(model.label)}</span>
+          {ranOn !== null && (
+            <>
+              <span aria-hidden className="text-faint" data-model-fallback-arrow>
+                →
+              </span>
+              <span className="font-semibold text-text" data-model-fallback={ranOn}>
+                {chipShape(l).modelVersion ? shortModelName(ranOn) : modelFamily(ranOn)}
+              </span>
+            </>
+          )}
         </>
       ),
     menu: (face) => (
@@ -244,8 +273,8 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
       key: 'effort',
       face: (l) => (
         <>
-          <EffortBars effort={effort.value} />
-          {chipShape(l).effortLabel && <span>{effortLabel}</span>}
+          {ultrathink?.armed ? <Sparkles size={13} className="shrink-0 text-accent-ink" aria-hidden data-ultrathink-armed /> : <EffortBars effort={effort.value} />}
+          {chipShape(l).effortLabel && (ultrathink?.armed ? <span className="ultrathink-word font-semibold">Ultrathink</span> : <span>{effortLabel}</span>)}
         </>
       ),
       menu: (face) => (
@@ -254,12 +283,13 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
           value={effort.value}
           onChange={effort.onChange}
           disabled={disabled}
-          label={`Effort: ${effortLabel}`}
-          title={withNote(`Effort: ${effortLabel}`, pipeline?.effort)}
+          label={`Effort: ${effortLabel}${ultrathink?.armed ? ', ultrathink for the next message' : ''}`}
+          title={withNote(`Effort: ${effortLabel}${ultrathink?.armed ? '. The next message runs at xhigh with ultrathink.' : ''}`, pipeline?.effort)}
           heading="Effort"
           placement="auto"
           choices={effortChoices}
-          width={200}
+          actions={ultrathinkAction}
+          width={ultrathink ? 230 : 200}
         >
           {face}
         </ChoiceMenu>
@@ -297,10 +327,10 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
     return use?.dim ?? false;
   };
 
-  const modelShown = autoPicked !== null ? `Auto · ${shortModelName(autoPicked)}` : isAuto ? 'Auto' : modelName;
+  const modelShown = autoPicked !== null ? `Auto · ${shortModelName(autoPicked)}` : isAuto ? 'Auto' : ranOn !== null ? `${modelName} → ${shortModelName(ranOn)}` : modelName;
   const sections: FoldedSection[] = [
     { key: 'model', heading: 'Model', shown: modelShown, value: model.value, choices: model.choices, onChange: model.onChange, actions: model.actions, name: names.model },
-    ...(effort ? [{ key: 'effort' as const, heading: 'Effort', shown: effortLabel, value: effort.value, choices: effortChoices, onChange: (v: string) => effort.onChange(v as Effort | ''), name: names.effort }] : []),
+    ...(effort ? [{ key: 'effort' as const, heading: 'Effort', shown: ultrathink?.armed ? `${effortLabel} + ultrathink` : effortLabel, value: effort.value, choices: effortChoices, onChange: (v: string) => effort.onChange(v as Effort | ''), actions: ultrathinkAction, name: names.effort }] : []),
     ...(mode ? [{ key: 'mode' as const, heading: 'Mode', shown: modeShort, value: mode.value, choices: modeChoices, onChange: (v: string) => mode.onChange(v as PermissionMode), name: names.mode }] : []),
   ];
   const shownChips = tray.folded ? chips.filter((chip) => chip.key === 'profile' || chip.key === 'fast') : chips;

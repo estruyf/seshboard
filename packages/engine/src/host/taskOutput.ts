@@ -1,7 +1,11 @@
 import { closeSync, fstatSync, openSync, readSync, realpathSync } from 'node:fs';
+import { plainText } from '../terminals/outputMessage.ts';
+import { serverUrls } from '../terminals/serverUrls.ts';
 
 /** How much of the end of a task's output the panel gets: enough for a build log's tail, small enough to poll. */
 export const TASK_OUTPUT_TAIL_BYTES = 64 * 1024;
+/** How much of the start is read too, for a dev server's banner that has scrolled out of the end. */
+export const TASK_OUTPUT_HEAD_BYTES = 16 * 1024;
 
 /**
  * Claude Code writes what a background command prints to `<its temp folder>/claude…/<project>/<session>/tasks/<id>.output`.
@@ -21,9 +25,11 @@ export interface TaskOutput {
   truncated: boolean;
   /** No such file (yet, or any more: the temp folder was cleaned). */
   missing: boolean;
+  /** Local addresses a server printed (`serverUrls`), from the start of the file as well as the end. */
+  urls: string[];
 }
 
-const MISSING: TaskOutput = { text: '', size: 0, truncated: false, missing: true };
+const MISSING: TaskOutput = { text: '', size: 0, truncated: false, missing: true, urls: [] };
 
 /**
  * The end of a background task's output file. Anything that isn't a task output file (by its path, also once links are
@@ -52,7 +58,12 @@ export function readTaskOutput(path: string, maxBytes = TASK_OUTPUT_TAIL_BYTES):
       const newline = text.indexOf('\n');
       if (newline !== -1) text = text.slice(newline + 1);
     }
-    return { text, size: stat.size, truncated, missing: false };
+    let head = '';
+    if (truncated) {
+      const start = Buffer.alloc(Math.min(TASK_OUTPUT_HEAD_BYTES, stat.size - length));
+      head = start.subarray(0, readSync(fd, start, 0, start.length, 0)).toString('utf8');
+    }
+    return { text, size: stat.size, truncated, missing: false, urls: serverUrls(plainText(head ? `${head}\n${text}` : text)) };
   } finally {
     closeSync(fd);
   }

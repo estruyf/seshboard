@@ -15,7 +15,7 @@ A fast macOS desktop control surface for Claude Code: start sessions, see what's
 - **Keyboard-first.** A command palette, quick session switching, and shortcuts for approve, deny, and interrupt.
 
 **Non-goals (v1)**
-- Driving other agents (Codex, Cursor and so on) the way Seshboard drives Claude Code. That's t3code's job. **Providers (#199)** are the exception: a profile can be another agent's (GitHub Copilot CLI first, in Settings › Profiles), and Seshboard lists, starts and steers its sessions through that agent's own CLI and login. Copilot forks, rewinds, renames, deletes and sets effort through its own APIs, starts from the queue, schedules, triggers, worktrees, branches and other computers, runs pipeline steps, answers Ask about this session, and shows its premium requests in Usage, and the plan for the rest is on #199.
+- Driving other agents (Cursor and so on) the way Seshboard drives Claude Code. That's t3code's job. **Providers (#199)** are the exception: a profile can be another agent's (GitHub Copilot CLI first, in Settings › Profiles), and Seshboard lists, starts and steers its sessions through that agent's own CLI and login. OpenAI Codex CLI's sessions are read, started and continued the same way (#276). Copilot forks, rewinds, renames, deletes and sets effort through its own APIs, starts from the queue, schedules, triggers, worktrees, branches and other computers, runs pipeline steps, answers Ask about this session, and shows its premium requests in Usage, and the plan for the rest is on #199.
 - A mobile app or a web UI. The desktop app is the product; the one exception is **Remote** (below).
 
 **Remote (in progress, #93).** Follow and steer sessions from a paired phone's browser, from anywhere: the session list, the live transcript, sending a prompt, answering a permission prompt, stopping a turn, starting a session in a known project. The engine listens on `127.0.0.1` behind a tunnel (Cloudflare, Tailscale, ngrok or your own), and the phone app is served from Seshboard's site. Pairing needs you at the computer, and every connection is a Noise handshake with the key from the QR code, encrypted end to end through the tunnel. Phase 2: Cloudflare Access in front of a named tunnel (the engine serving the remote app on that hostname) and push notifications. Design, threat model and phase 2: [docs/remote-access.md](docs/remote-access.md).
@@ -216,21 +216,21 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - **"Open PR"** appears when the transcript has a `pr-link` record (seen in the spike data), and opens the PR in the browser.
 
 
-### 5.4 Projects ✅ ([#13](https://github.com/estruyf/switchboard/issues/13))
+### 5.4 Projects ✅ ([#13](https://github.com/estruyf/seshboard/issues/13))
 
 - **Added by hand.** The sidebar filter, the New session folder list and the palette only offer projects you added. *Add project* lists the folders Claude Code has sessions for (most recent first, filterable), or opens the folder dialog. A session started in another folder offers to add it. Upgrading keeps every folder with a session started or continued in Seshboard (migration v8); a new install starts empty, with a prompt to add a project.
 - **Defaults per project** (`project_settings.defaults_json`): model, effort, permission mode, workspace (current folder or worktree, and its base), and a branch to check out for current-folder sessions. Unset fields use the choices last made in the New session view. Changing a decided field there applies to that session only, until *Save as project default*.
 - **Projects view** (sidebar footer, palette, a project's menu): add, remove (from Seshboard only), reorder, defaults, actions, icon, and a warning when the folder is gone.
 - ✅ The Claude profile per project (#11, see 5.5). Later: Remote Control (#9), environment variables, additional directories.
 
-### 5.5 Claude profiles ✅ ([#11](https://github.com/estruyf/switchboard/issues/11))
+### 5.5 Claude profiles ✅ ([#11](https://github.com/estruyf/seshboard/issues/11))
 
 - **A profile is a Claude Code config folder** (one login, settings, plugins, sessions each). The built-in profile is Claude Code's own folder ($CLAUDE_CONFIG_DIR or `~/.claude`) and runs Claude Code with the environment unchanged; Claude Code keys its global config and keychain entry on whether CLAUDE_CONFIG_DIR is set, so setting it to `~/.claude` would act like another login. Profiles live in `claude_profiles` (migration v9), the default in `app_state`, a project's link in `project_settings.profile_id`.
 - **Processes** (sessions, pre-warm, command and Tools helpers, usage, terminals) get `CLAUDE_CONFIG_DIR` through `env`. Resume and fork use the profile the transcript lives in, whatever the project's link says now.
 - **Reading:** the SDK's transcript readers take the folder from `process.env.CLAUDE_CONFIG_DIR` only, so `ConfigDirLane` runs calls for one folder at a time. `MultiProfileSource` merges the profiles' sessions and routes each read to the folder it was found in; the index, search and live registry cover every folder, and every session records its `profileId`.
 - **UI:** Settings → Claude profiles (add with a folder, colour, default, sign-in command; the account comes from Claude Code's `.claude.json`). With more than one profile: a dot on sidebar rows, a tag in the session header and Tools, a profile picker in New session, per-project links, and the usage band for the session's profile. With one, nothing shows outside Settings.
 
-### 5.6 Links ✅ ([#5](https://github.com/estruyf/switchboard/issues/5))
+### 5.6 Links ✅ ([#5](https://github.com/estruyf/seshboard/issues/5))
 
 - **`seshboard://new-session?prompt=…&cwd=…|project=name|repo=owner/name[&autostart=1]`** fills in New session (`cwd` > `project` > `repo`); **`seshboard://session/<id>`** opens a session. By default nothing is sent and the message box says the prompt came from a link until it is sent or cleared; `autostart=1` starts it once the folder and the project's defaults are in place, only when the link names the folder, and without adding the folder to your projects. A link naming no folder leaves it empty and opens the project list. `project` matches your projects' names (then folder names) in the renderer, before anything changes. Format and examples in [docs/deep-links.md](docs/deep-links.md).
 - **Main** validates the URL in a pure module (`deepLink.ts`): prompt ≤ 5,000 characters without control or invisible characters, `cwd` absolute and local without `.`/`..`, `repo` as `owner/name`. Unknown parameters are ignored, a bad value refuses the link with a short message. Links arriving before the renderer is ready (cold start via `open-url`, engine restart) are queued and handed over on `rendererReady`.
@@ -238,7 +238,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - **Registration:** `protocols` in `electron-builder.yml` (Info.plist) plus `setAsDefaultProtocolClient` in packaged builds only; development and smoke builds don't touch the system's handlers.
 - Later: `model` and `permissionMode` from a link, limited to safe values (never `bypassPermissions`).
 
-### 5.7 Focus limit ✅ ([#24](https://github.com/estruyf/switchboard/issues/24))
+### 5.7 Focus limit ✅ ([#24](https://github.com/estruyf/seshboard/issues/24))
 
 - **Preferences** (main): `focusLimit` (1–10, null is off), `focusMode` (`nudge` | `strict`), `focusCountExternal`, `focusCountRemote` (on by default). They travel with settings backups like every preference.
 - **Counting** is a pure module (`apps/ui/src/state/focus.ts`): active hosts that are working, need you, or are idle with an unread turn, minus sessions archived since (needs you always counts); with `focusCountExternal`, live registry entries from the terminal and IDEs too (never SDK processes, which are Seshboard's own); with `focusCountRemote`, sessions on connected paired computers that are working, need you or are unread. `focusVerdict` answers `allowed`, `ask` (Nudge) or `blocked` (Strict); a message to a session that already counts is always allowed.
@@ -253,7 +253,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - Ready logic is a pure module (now `packages/protocol/src/queueStates.ts`, see 5.8.1): busy means starting, running or needs you, measured on the rows the sidebar lists. The toast and the notification say an item is ready; only items with Start by itself start (5.8.1).
 - Sidebar sections close (`sidebarSections.ts`, saved in app state as `ui.sidebarSections`); the open session's row stays under a closed header.
 
-### 5.8.1 Start by itself ✅ ([#172](https://github.com/estruyf/switchboard/issues/172))
+### 5.8.1 Start by itself ✅ ([#172](https://github.com/estruyf/seshboard/issues/172))
 
 - `autoStart` on `LaterItem`, kept in `settings_json` (no migration); waiting for nothing turns it off. `later.update` takes it.
 - The ready rules moved to `packages/protocol/src/queueStates.ts`, shared by the UI (what rows say) and the engine (what starts), with how the session waited on ended (`SessionOutcome`: clean, error, stopped, quit) and the items held at the focus limit, sent with `later.changed` as `auto`.
@@ -261,7 +261,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - Sessions Claude Code runs outside Seshboard (the terminal, other apps) show in the registry as busy or idle, but not how a turn ended, so Start by itself is off for them (`autoStartBlock`).
 - Not yet: other computers' sessions are counted by the window's focus count but not the engine's.
 
-### 5.8.2 Scheduled sessions ✅ ([#173](https://github.com/estruyf/switchboard/issues/173))
+### 5.8.2 Scheduled sessions ✅ ([#173](https://github.com/estruyf/seshboard/issues/173))
 
 - The rules are a pure module (`packages/protocol/src/schedules.ts`: `nextRuns`, `describe`, `formatNext`), in local time: a time DST skips runs at the jump, one it repeats runs once, day 31 runs on a shorter month's last day. The zod side is `scheduleSchema.ts`.
 - `schedules` and `schedule_runs` (migration v34) are user choices that survive a rebuild. `checked_at` is the moment up to which a schedule's runs were dealt with, so runs missed while closed are found at the next start.
@@ -277,7 +277,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - A schedule keeps its last 20 runs (`runs`) and the single runs you skipped (`skippedRuns`, ISO times), both on its row (migration v35). `schedules.skipRun` / `unskipRun`; the timer records a skipped time as `skipped`, "Skipped by you", without a notification.
 - Reached from Home and Upcoming rows under the sidebar's search, the rail's Upcoming button (in place of the queue button), ⌘⇧Y, *Go to Upcoming*, *Queue…* and *Schedules…*, Home's See all in Upcoming, and notifications of runs that didn't start.
 
-### 5.8.4 Event triggers, phase 1 ✅ ([#180](https://github.com/estruyf/switchboard/issues/180))
+### 5.8.4 Event triggers, phase 1 ✅ ([#180](https://github.com/estruyf/seshboard/issues/180))
 
 - CI fails on a branch and issues for you (a label, an assignee, or both), set up on a project's Triggers tab. The design and what changed while building it are in [docs/event-triggers.md](docs/event-triggers.md).
 - Rules in `packages/protocol/src/triggers.ts` (`issueQuery`, `eventKey`, `newEvents`, `slots`, `nextStateLabel`, `fillTriggerPrompt`), zod in `triggerSchema.ts`; `triggers`, `trigger_events` and `trigger_sessions` (migration v36) are user data.
@@ -285,7 +285,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - UI: the Triggers tab and editor (`components/triggers/`), Start ▾ › Start when…, Triggers… in the project menu, *New trigger…* and *Triggers: pick one…*, Upcoming's Triggers filter, the bolt and the header line on triggered sessions, notifications from main.
 - Not yet: Changes requested and A command (phase 2), pipelines (phase 3), suggested triggers in `.seshboard.json` (phase 4).
 
-### 5.9 VS Code companion and context tray ([#42](https://github.com/estruyf/switchboard/issues/42))
+### 5.9 VS Code companion and context tray ([#42](https://github.com/estruyf/seshboard/issues/42))
 
 - **Context tray** ✅: chips above the message box, kept in the drafts store with the draft (`context`), from drops, the `@` list, the Add context picker (⌘⇧A) and the companion. Sending turns them into `@path#L12-40` mentions and fenced text (`promptWithContext`).
 - **Socket and contract** ✅: `packages/engine/src/companion/` listens on a Unix socket with a token in `engine.json` (`0600` in `0700`); the contract is `packages/protocol/src/companion.ts` (`hello`, `sessions.list`, `sessions.watch`, `context.add`, `session.reveal`, `sessions.changed`). Windows report focus (`companion.focus`), receive `companion.context` and confirm with `companion.received`.
@@ -309,6 +309,13 @@ Mention another session with `@` in the message box, and Claude gets a brief abo
 - **Phase 2:** New worktree from a linked session's branch, **Builds on …** in the session header, the stacked base in Create pull request.
 - **Phase 3:** `ask_session`, an in-process tool that asks a linked session through a read-only fork.
 - **Phase 4:** a stack view.
+
+### 5.12 Orchestrator
+
+A session that hands work to other sessions: you send it tasks, it starts a session for each and tracks them. Borrowed from Claude's Projects, run on this computer, with Claude Code, Copilot or Codex. Design in [docs/orchestrator.md](docs/orchestrator.md), how to try it in [docs/orchestrator-testing.md](docs/orchestrator-testing.md).
+
+- ✅ **Core:** Run as › Orchestrator in New session (`session.create`'s `orchestrator`); the `orchestrator` MCP server every agent starts (`apps/desktop/src/orchestratorMcp/`), its bridge and tools (`packages/engine/src/orchestrator/`: `start_session`, `list_sessions`, `read_session`, `message_session`); starts held by the focus and usage limits in the queue; `orchestrators` and `orchestrator_workers` (migration v62, user data); a Session update to the orchestrator when a started session's turn ends; the overview above its conversation, its sessions under its row, the way back in a started session's header; Orchestrator instructions per project (`ProjectDefaults.orchestratorInstructions`); *Go to orchestrator*.
+- Not yet: Ready for review and Landing from the pull request's review state, pausing a project, marking a session resolved, a pipeline as one of its tasks, the overview on other computers and the phone, and a check against a real Codex.
 
 ### v0.2: power features
 - ✅ **Embedded terminal** per session (xterm.js on node-pty), plus a raw `claude` TUI tab for anything the GUI doesn't cover (including mods). Built ahead of schedule; project actions will reuse it.

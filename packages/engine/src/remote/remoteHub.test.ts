@@ -109,7 +109,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean } = {}) {
+async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean; transcript?: TranscriptMessage[] } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -189,26 +189,32 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
         { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, workspace: 'worktree', baseRef: null } },
         // A GitHub Copilot profile, for the tests that ask for one.
         ...(options.copilotProfile ? [{ id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } }] : []),
+        // An OpenAI Codex profile: read-only, so it can't start a session.
+        ...(options.codexProfile ? [{ id: 'codex', name: 'Codex', color: 'green' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null }, readOnly: true }] : []),
       ],
-      defaultId: 'default',
+      defaultId: options.codexProfile ? 'codex' : 'default',
     }),
-    readTranscript: async () => ['a', 'b', 'c'].map(message),
+    readTranscript: async () => options.transcript ?? ['a', 'b', 'c'].map(message),
+    // No scratchpads: the tests of `sessionFiles.ts` cover them.
+    scratchpadRoots: async () => [],
     watchTranscript: (sessionId) => (watching.add(sessionId), () => void watching.delete(sessionId)),
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
     sendQueuedNow: async (sessionId, id) => void calls.push(`send now ${sessionId} ${id}`),
+    moveQueued: (sessionId, id, toIndex) => void calls.push(`move ${sessionId} ${id} ${toIndex}`),
     limit: (sessionId) => limitOf[sessionId] ?? null,
     resumeLimit: async (sessionId) => void calls.push(`resume ${sessionId}`),
     armLimit: (sessionId, armed) => void calls.push(`arm ${sessionId} ${armed}`),
     upNext: (sessionId) => (sessionId === SESSION ? [{ id: 'q1', text: 'Then the tests', attachments: [], createdAt: 1 }] : []),
     interrupt: async () => {},
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
+    commands: async (sessionId) => [{ name: 'review', description: `Review ${sessionId}`, argumentHint: '[pr]' }],
     respond: (requestId) => void answered.push(requestId),
     create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
     // The Copilot profile is GitHub Copilot's, with its own modes.
     providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }], supports: [] } : null),
     providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
-    branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] } : { current: null, branches: [], checkedOutElsewhere: [] }),
+    branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'], remoteBranches: ['origin/main', 'origin/dev'], remote: 'origin', baseBranch: 'main' } : { current: null, branches: [], checkedOutElsewhere: [] }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
     markUnread: (sessionId) => void calls.push(`unread ${sessionId}`),
@@ -223,8 +229,11 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
       if (profileId === 'work') return { usage: null, error: 'Not logged in' };
+      // Copilot has premium requests, not plan usage.
+      if (profileId === 'copilot') return null;
       return { usage: { fetchedAt: 1, limits: [{ kind: 'session', group: 'session', percent: 44, resetsAt: 2, scope: null, severity: 'normal', isActive: true }], extraUsage: null }, error: null };
     },
+    activity: async () => [{ day: '2026-11-02', sessionId: SESSION, title: 'A session', parentId: null, projectRoot: '/secret/folder/shop', projectName: 'shop', firstAt: 1, lastAt: 2, activeMs: 1, turns: 1, costUsd: null, hours: new Array<number>(24).fill(0), commits: 0, files: 0, prs: [], did: [], asks: [], available: true }],
     sessionCost: (sessionId) => {
       calls.push(`sessionCost ${sessionId}`);
       return { usd: 4.2, partial: false };
@@ -417,6 +426,13 @@ describe('Remote hub', () => {
     await expect(remote.call('session.send', { sessionId: SESSION, text: 'look', images: Array(REMOTE_MAX_IMAGES + 1).fill(image) })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     await expect(remote.call('session.send', { sessionId: SESSION, text: 'look', images: [{ ...image, data: 'a'.repeat(REMOTE_IMAGE_BYTES + 1) }] })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(sentImages).toHaveLength(2);
+    // An image alone is a message too; nothing at all is refused.
+    await remote.call('session.send', { sessionId: SESSION, text: '', images: [image] });
+    expect(sent.at(-1)).toBe('');
+    expect(sentImages.at(-1)).toEqual([image]);
+    await expect(remote.call('session.send', { sessionId: SESSION, text: ' ' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    sent.pop();
+    sentImages.pop();
     // Files are kept on this computer and mentioned by path; together with the images they must fit one message.
     await remote.call('session.send', { sessionId: SESSION, text: 'read these', files: [{ name: 'notes.txt', data: 'aGVsbG8=' }, { name: 'notes.txt', data: 'd29ybGQ=' }] });
     const mentions = [...sent.at(-1)!.matchAll(/@"([^"]+)"|@(\S+)/g)].map((m) => m[1] ?? m[2]!);
@@ -459,6 +475,19 @@ describe('Remote hub', () => {
     expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'add a test', model: 'gpt-5-mini', choice: expect.objectContaining({ profileId: 'copilot', permissionMode: 'auto' }) });
     // A mode the provider doesn't have is refused, not passed on.
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'copilot', permissionMode: 'plan' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+  });
+
+  it("never offers a read-only provider's profile for a new session, even as the default", async () => {
+    const { hub, port, on, created } = await setup({ codexProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const options = await remote.call('options.get', {});
+    expect(options.profiles.map((p) => p.id)).toEqual(['default', 'work']);
+    expect(options.defaultProfileId).toBe('default');
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'codex' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // Its being the default leaves the first profile that can start one.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'y' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'default' });
   });
 
   it("starts a provider profile's session on its own default model, not the global one", async () => {
@@ -514,27 +543,41 @@ describe('Remote hub', () => {
     await expect(remote.call('later.add', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     // A branch to check out first: only one of the folder's own, free, and not with a worktree.
-    expect(await remote.call('projects.branches', { projectId: projectIdOf(ROOT) })).toEqual({ current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] });
+    expect(await remote.call('projects.branches', { projectId: projectIdOf(ROOT) })).toEqual({ current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'], remoteBranches: ['origin/main', 'origin/dev'], remote: 'origin', baseBranch: 'main' });
     await expect(remote.call('projects.branches', { projectId: projectIdOf(SEEN_ONLY) })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'f', worktree: false, checkoutBranch: 'feat/login' });
     expect(created.at(-1)!.choice).toMatchObject({ worktree: false, checkoutBranch: 'feat/login' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'g', worktree: false, checkoutBranch: 'origin/main' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // Only on the remote: checked out as a new branch that tracks it.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'g2', worktree: false, checkoutBranch: 'dev' });
+    expect(created.at(-1)!.choice).toMatchObject({ worktree: false, checkoutBranch: 'dev' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'h', worktree: false, checkoutBranch: 'taken' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'i', worktree: true, checkoutBranch: 'feat/login' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(await remote.call('later.add', { projectId: projectIdOf(ROOT), prompt: 'j', worktree: false, checkoutBranch: 'feat/login' })).toEqual({ id: 'later-1' });
     expect(queued.at(-1)!.choice.checkoutBranch).toBe('feat/login');
+
+    // Where a new worktree starts: a local or remote branch the repository has, and only for a worktree.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'k', worktree: true, worktreeBase: 'refs/remotes/origin/dev' });
+    expect(created.at(-1)!.choice).toMatchObject({ worktree: true, baseRef: 'refs/remotes/origin/dev' });
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'l', worktree: true, worktreeBase: 'head' });
+    expect(created.at(-1)!.choice).toMatchObject({ worktree: true, baseRef: 'head' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'm', worktree: true, worktreeBase: 'refs/heads/gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'n', worktree: false, worktreeBase: 'refs/heads/feat/login' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'o', worktree: true, worktreeBase: 'dev' as never })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await remote.call('later.add', { projectId: projectIdOf(ROOT), prompt: 'p', worktree: true, worktreeBase: 'refs/heads/feat/login' });
+    expect(queued.at(-1)!.choice.baseRef).toBe('refs/heads/feat/login');
 
     const options = await remote.call('options.get', {});
     expect(options.models).toEqual([{ value: 'opus', displayName: 'Opus', description: 'Most capable', supportsEffort: true }]);
     expect(options.modes).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
     expect(options.efforts).toContain('medium');
     expect(options.auto).toEqual({ enabled: true, allowed: ['sonnet', 'opus'] });
-    expect(options.projects.find((p) => p.id === projectIdOf(ROOT))).toEqual({ id: projectIdOf(ROOT), profileId: null, defaults: { model: 'opus', effort: null, permissionMode: null, worktree: null } });
+    expect(options.projects.find((p) => p.id === projectIdOf(ROOT))).toEqual({ id: projectIdOf(ROOT), profileId: null, defaults: { model: 'opus', effort: null, permissionMode: null, worktree: null, baseRef: null } });
     expect(options.projects.find((p) => p.id === projectIdOf(FIRST))?.profileId).toBe('work');
     expect(options.profiles).toEqual([
       // A profile without a mode starts in the global one.
-      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: 'default', worktree: null } },
-      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: 'default', worktree: true } },
+      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: 'default', worktree: null, baseRef: null } },
+      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: 'default', worktree: true, baseRef: null } },
     ]);
     expect(options.defaultProfileId).toBe('default');
     expect(JSON.stringify(options)).not.toContain(ROOT);
@@ -594,19 +637,38 @@ describe('Remote hub', () => {
     await remote.call('session.setFlags', { sessionId: SESSION, archived: true });
     archived.add(SESSION);
     expect((await remote.call('sessions.list', {})).sessions.map((s) => s.id)).not.toContain(SESSION);
-    // Gone from the list: nothing but Undo may touch it.
+    // Gone from the list: nothing but Undo and Reopen may touch it.
     await expect(remote.call('session.markRead', { sessionId: SESSION })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(remote.call('session.setFlags', { sessionId: SESSION, archived: false, pinned: true })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    // Only the phone that archived it: another paired phone may not bring it back.
-    const other = await pair(hub, port);
-    await expect(other.remote.call('session.setFlags', { sessionId: SESSION, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
     expect(calls.at(-1)).toBe(`flags ${SESSION} {"archived":false}`);
-    // Once only.
-    await expect(remote.call('session.setFlags', { sessionId: SESSION, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    // A session the phone never archived stays out of reach.
+    // A session out of the sidebar's scope stays out of reach, in Done or not.
     archived.add(HIDDEN);
     await expect(remote.call('session.setFlags', { sessionId: HIDDEN, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('lists the sessions in Done and reopens one, from any paired phone, but reads none of them', async () => {
+    const archived = new Set([SESSION, HIDDEN]);
+    const { hub, port, on, calls } = await setup({ archived });
+    await on();
+    const { remote } = await pair(hub, port);
+    // Only what the sidebar's scope has (HIDDEN wasn't started in Seshboard), and no folder.
+    const done = (await remote.call('sessions.archived', {})).sessions;
+    expect(done).toEqual([expect.objectContaining({ id: SESSION, title: 'Fix the login form', projectId: projectIdOf(ROOT), projectName: 'Web', branch: 'main', inactive: false, steps: 0 })]);
+    expect(JSON.stringify(done)).not.toContain(ROOT);
+    // In Done, it can't be read, only reopened.
+    await expect(remote.call('transcript.get', { sessionId: SESSION, limit: 10 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
+    expect(calls.at(-1)).toBe(`flags ${SESSION} {"archived":false}`);
+  });
+
+  it('reopens a session a pipeline ran from with its run\'s tree', async () => {
+    const { hub, port, on, calls } = await setup({ archived: new Set([SESSION]), runs: [runOf('run-1', SESSION)] });
+    await on();
+    const { remote } = await pair(hub, port);
+    expect((await remote.call('sessions.archived', {})).sessions).toEqual([expect.objectContaining({ id: SESSION, steps: 1 })]);
+    await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
+    expect(calls.at(-1)).toBe('archive run-1 false');
   });
 
   it('stops following a session once it leaves the list, so nothing more of it reaches the phone', async () => {
@@ -635,6 +697,14 @@ describe('Remote hub', () => {
     await expect(remote.call('session.stopTask', { sessionId: HIDDEN, taskId: 'b1' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it('lists a session’s skills and commands, only for a session it shows', async () => {
+    const { hub, port, on } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    expect(await remote.call('session.commands', { sessionId: SESSION })).toEqual({ commands: [{ name: 'review', description: `Review ${SESSION}`, argumentHint: '[pr]' }] });
+    await expect(remote.call('session.commands', { sessionId: HIDDEN })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
   it('gives the catch-up without paths outside the project', async () => {
     const { hub, port, on } = await setup();
     await on();
@@ -660,6 +730,24 @@ describe('Remote hub', () => {
     hub.usageChanged('work', null);
     await until(() => heard.length > 0);
     expect(heard).toEqual(['work']);
+  });
+
+  it('leaves out a profile without plan usage, never showing another login\'s numbers under its name', async () => {
+    const { hub, port, on, calls } = await setup({ copilotProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const { profiles } = await remote.call('usage.get', { refresh: false });
+    expect(profiles.map((p) => p.profile.id)).toEqual(['default', 'work']);
+    expect(calls).toContain('usage copilot');
+  });
+
+  it("leaves a read-only provider's profile out of usage: it has no plan usage to give", async () => {
+    const { hub, port, on, calls } = await setup({ codexProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const { profiles } = await remote.call('usage.get', { refresh: false });
+    expect(profiles.map((p) => p.profile.id)).not.toContain('codex');
+    expect(calls.filter((c) => c.startsWith('usage codex'))).toEqual([]);
   });
 
   it('tells phones the app icon colourway in hello and when it changes', async () => {
@@ -710,6 +798,15 @@ describe('Remote hub', () => {
     expect(calls).toEqual(['tokens abab week project', 'tokens cdcd day session']);
   });
 
+  it('tells another computer what its sessions did per day, never where they are', async () => {
+    const { hub, port, on } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const { entries } = await remote.call('activity.range', { from: '2026-11-02', to: '2026-11-02', timeZone: 'UTC' });
+    expect(entries).toMatchObject([{ sessionId: SESSION, projectName: 'shop' }]);
+    expect(JSON.stringify(entries)).not.toContain('/secret/folder');
+  });
+
   it('answers the cost of a session in the list, and of the plan windows an account asks for', async () => {
     const { hub, port, on, calls } = await setup();
     await on();
@@ -743,6 +840,37 @@ describe('Remote hub', () => {
     hub.askEvent({ sessionId: SESSION, threadId: 't2', id: 'from-the-computer', delta: 'Hi.' });
     await until(() => heard.length >= 3);
     expect(heard).toEqual([`${asked.id}:Two files.`, `${asked.id}:done`, 'from-the-computer:Hi.']);
+  });
+
+  it('reads only the files the session wrote, for a session the list shows', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-remote-files-')));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const report = join(dir, 'review.md');
+    const page = join(dir, 'page.html');
+    const shot = join(dir, 'shot.png');
+    const secret = join(dir, 'secret.md');
+    writeFileSync(report, '# Review');
+    writeFileSync(page, `<p>Hi</p><img src="${secret}">`);
+    writeFileSync(shot, Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
+    writeFileSync(secret, 'secret');
+    const wrote = (id: string, path: string): TranscriptMessage[] => [
+      { uuid: `${id}-call`, role: 'assistant', timestamp: 1, parentToolUseId: null, model: null, blocks: [{ type: 'tool_use', id, name: 'Write', input: { file_path: path, content: '' }, truncated: false }] },
+      { uuid: `${id}-done`, role: 'user', timestamp: 2, parentToolUseId: null, model: null, blocks: [{ type: 'tool_result', toolUseId: id, isError: false, text: '', truncated: false, images: [] }] },
+    ];
+    const named: TranscriptMessage = { uuid: 'named', role: 'assistant', timestamp: 3, parentToolUseId: null, model: null, blocks: [{ type: 'text', text: `Also see ${secret}` }] };
+    const { hub, port, on } = await setup({ transcript: [...wrote('t1', report), ...wrote('t2', page), ...wrote('t3', shot), named] });
+    await on();
+    const { remote } = await pair(hub, port);
+    expect(await remote.call('files.read', { sessionId: SESSION, path: report })).toMatchObject({ kind: 'markdown', content: '# Review' });
+    // A page comes without its images: it could name any image on the disk.
+    const html = await remote.call('files.read', { sessionId: SESSION, path: page });
+    expect(html.content).toContain(`<img src="${secret}">`);
+    expect((await remote.call('files.image', { sessionId: SESSION, path: shot })).mediaType).toBe('image/png');
+    // Named in a reply only, not a file, another session's.
+    await expect(remote.call('files.read', { sessionId: SESSION, path: secret })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('files.image', { sessionId: SESSION, path: secret })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('files.read', { sessionId: SESSION, path: '/etc/hosts' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('files.read', { sessionId: HIDDEN, path: report })).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'No such session' });
   });
 
   it('lists changes, diffs only listed files with a cap, and commits without a terminal', async () => {
@@ -792,6 +920,20 @@ describe('Remote hub', () => {
     expect(calls).toContain(`send now ${SESSION} q1`);
     await expect(remote.call('session.queue.sendNow', { sessionId: HIDDEN, id: 'q1' })).rejects.toBeDefined();
     expect(calls).not.toContain(`send now ${HIDDEN} q1`);
+  });
+
+  it('moves a message in Up next, only for a session in the list, and sends the phone the list after', async () => {
+    const { hub, port, on, calls } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const heard: string[] = [];
+    remote.on('upNext.changed', (event) => heard.push(event.sessionId));
+    await remote.call('session.queue.move', { sessionId: SESSION, id: 'q2', toIndex: 0 });
+    expect(calls).toContain(`move ${SESSION} q2 0`);
+    await until(() => heard.length >= 1);
+    expect(heard).toEqual([SESSION]);
+    await expect(remote.call('session.queue.move', { sessionId: HIDDEN, id: 'q2', toIndex: 0 })).rejects.toBeDefined();
+    expect(calls).not.toContain(`move ${HIDDEN} q2 0`);
   });
 
   it('gives a phone how a session stands with its usage limit, and lets it resume or arm only a session in the list', async () => {
@@ -1247,6 +1389,8 @@ describe('what a phone sees', () => {
     const work = { id: 'work', defaults: { model: 'sonnet', effort: 'high' as const, permissionMode: 'plan' as const, workspace: 'current' as const, baseRef: 'fresh' as const } };
     expect(sessionChoice({}, NO_DEFAULTS, work)).toEqual({ profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'plan', worktree: false, baseRef: 'fresh', checkoutBranch: null });
     expect(sessionChoice({}, defaults, work)).toEqual({ profileId: 'work', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head', checkoutBranch: null });
+    // A base the phone picked wins over the project's.
+    expect(sessionChoice({ worktreeBase: 'refs/heads/dev' }, defaults, work)).toMatchObject({ worktree: true, baseRef: 'refs/heads/dev' });
     // The global mode where neither sets one, or where the project skips its profile's.
     expect(sessionChoice({}, NO_DEFAULTS, none, 'auto').permissionMode).toBe('auto');
     expect(sessionChoice({}, NO_DEFAULTS, work, 'auto').permissionMode).toBe('plan');

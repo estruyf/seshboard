@@ -244,6 +244,26 @@ describe('starting queued items by themselves', () => {
     expect(w.started.map((s) => s.itemId)).toEqual([item.id]);
   });
 
+  it('starts an item that waits for a free slot once one frees, while its project still has a session working', async () => {
+    const w = world({ focusLimit: 3 });
+    w.run('intranet-pr');
+    w.focus.count = 3;
+    const item = w.queue('Review the next pull request', { kind: 'slot' });
+    await w.starter.check();
+    expect(w.started).toEqual([]);
+    // Another session is read: a slot frees, and the session in the same project still works.
+    w.focus.count = 2;
+    await w.starter.check();
+    expect(w.started.map((s) => s.itemId)).toEqual([item.id]);
+  });
+
+  it('does not start an item that waits for a free slot at launch, before it was seen waiting', async () => {
+    const w = world({ focusLimit: 3 });
+    w.queue('Review the next pull request', { kind: 'slot' });
+    await w.starter.check();
+    expect(w.started).toEqual([]);
+  });
+
   it('starts an item held only by a usage limit once it resets', async () => {
     const w = world();
     w.setLimit({ profileId: 'default', resetsAt: Date.now() + 60_000 } as UsageLimitHit);

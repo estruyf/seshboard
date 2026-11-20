@@ -82,7 +82,7 @@ describe('shortcuts', () => {
     for (const key of ['cmd+k', 'cmd+f', 'cmd+g', 'cmd+\\', 'cmd+,', 'cmd+shift+f', 'cmd+shift+h', 'cmd+shift+d', 'cmd+shift+l', 'cmd+enter']) expect(reservedShortcuts().has(key)).toBe(true);
     expect(reservedShortcuts().has(shortcutFromEvent(press('K', { metaKey: true }))!)).toBe(true);
     expect(reservedShortcuts().has(shortcutFromEvent(press(',', { metaKey: true }))!)).toBe(true);
-    expect(reservedShortcuts().has('cmd+shift+b')).toBe(false);
+    expect(reservedShortcuts().has('cmd+shift+i')).toBe(false);
   });
 });
 
@@ -220,8 +220,22 @@ describe('the shortcut registry', () => {
       'find.next': [SESSION, HOME],
       'find.previous': [SESSION, HOME],
       'changes.toggle': [SESSION, at({ view: 'session' })],
+      'files.toggle': [SESSION, at({ view: 'session' })],
+      'files.search': [SESSION, at({ view: 'session' })],
+      'files.add-lines': [SESSION, at({ view: 'session' })],
+      'files.go-to-line': [SESSION, at({ view: 'session' })],
+      'files.find': [SESSION, at({ view: 'session' })],
+      'changes.comment': [SESSION, at({ view: 'session' })],
       'agents.toggle': [SESSION, at({ view: 'session' })],
       'commands.toggle': [SESSION, at({ view: 'session' })],
+      'web.toggle': [SESSION, at({ view: 'session' })],
+      'browser.view': [HOME, SESSION],
+      'browser.new-tab': [at({ view: 'browser' }), HOME],
+      'browser.address': [SESSION, at({ view: 'usage' })],
+      'browser.find': [at({ view: 'browser' }), HOME],
+      'browser.move-tab': [at({ view: 'browser' }), HOME],
+      'browser.reopen-tab': [at({ view: 'browser' }), SESSION],
+      activity: [SESSION, at({ view: 'browser' })],
       'ask.open': [SESSION, at({ view: 'session' })],
       'transcript.file-link-other': [SESSION, HOME],
       'transcript.run-send': [SESSION, HOME],
@@ -255,6 +269,7 @@ describe('the shortcut registry', () => {
       'composer.send-other': [{ ...SESSION, running: true }, SESSION],
       'upnext.edit': [{ ...SESSION, running: true }, SESSION],
       'upnext.move': [{ ...SESSION, running: true }, SESSION],
+      'rail.move': [SESSION, HOME],
       'upnext.remove': [{ ...SESSION, running: true }, SESSION],
       'mode.cycle': [SESSION, HOME],
       'composer.send': [at({ view: 'new-session' }), HOME],
@@ -312,6 +327,7 @@ describe('the shortcut registry', () => {
 
 /** Keys that are meant to do different things at the same time and place, and how they're told apart. */
 const INTENDED_OVERLAPS: Record<string, string> = {
+  'cmd+f': 'In a session ⌘F finds in the conversation; while a browser page or its find bar has focus it finds in the page, and while the Files viewer has focus it finds in the file.',
   escape: 'Esc closes or cancels what is nearest: a menu or dialog first, then a waiting card, then the message box stops Claude.',
   'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',

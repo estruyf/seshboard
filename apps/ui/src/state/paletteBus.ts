@@ -39,6 +39,18 @@ export type PaletteDialog =
   | { kind: 'memory-import'; source: { kind: 'export'; paths: string[] } | { kind: 'paste' } }
   | { kind: 'memory-copy-app' }
   | { kind: 'remember'; text: string; from: 'user' | 'claude'; sessionId: string | null; root: string | null }
+  /** Rename tab… on a browser tab, from its menu, a double click or the palette. */
+  | { kind: 'rename-tab'; tabId: string }
+  /** Edit favourite… from a favourite's menu: its title and address. */
+  | { kind: 'edit-favorite'; id: string }
+  /** ⌘D or the star on a page: its bookmark, just added (or the one it had), to name, place or remove. */
+  | { kind: 'bookmark'; tabId: string }
+  /** Clear data for this site (`origin`, in the tab's browser profile) or, with null, all browsing data: asks first. */
+  | { kind: 'clear-browser-data'; origin: string | null; profileId?: string | null }
+  /** Reset profile… on a browser profile (null: the Default one): what to forget, ticked. */
+  | { kind: 'reset-browser-profile'; profileId: string | null }
+  /** Delete profile… on a browser profile: asks first. */
+  | { kind: 'delete-browser-profile'; profileId: string }
   /** New session from an issue or pull request: the # list on its own, for `root`. */
   | { kind: 'github-start'; type: 'issue' | 'pr'; root: string }
   /**

@@ -17,7 +17,7 @@ AI makes starting work easy, and every session you start is one more thing to ke
 
 - Turn it on in [Settings → Focus](/settings/#focus) with the **Focus limit** switch.
 - In the command palette: *Focus limit: turn on*, *Focus limit: turn off* and *Focus limit: set limit…* (pick from 1 session to 10 sessions).
-- **Change limit** in the note New session shows at the limit opens Settings → Focus.
+- **Change limit** in the line New session shows at the limit opens Settings → Focus.
 
 <Screenshot name="settings-focus" alt="Settings on the Focus section: the Focus limit switch, Sessions at the same time with minus and plus buttons, When you reach it with Nudge and Strict, Count terminal and IDE sessions, and Count sessions on other computers" width={900} />
 
@@ -45,12 +45,14 @@ Click it to see which sessions count: needs you first, each with its project, it
 
 ## At the limit
 
-When you are at the limit, [New session](/new-session/form/) shows a note above the message box: "You have 3 of 3 sessions going", with the sessions that count and **Open** for each. Its **Add to queue** keeps your idea in the [queue](/new-session/queue/) instead.
+When you are at the limit, [New session](/new-session/form/) says so in one line above the message box: "3 of 3 sessions going. Your focus limit. Start puts this in the queue." The sessions that count are under **Going now** on the right, each with how long it has been going. Click one to open it.
 
-What Start does depends on how strict you set the limit:
+Start then reads **Add to queue** (<Kbd shortcut="new-session.start" />). Your prompt goes to the [queue](/new-session/queue/), waiting for **A free slot**: it doesn't wait for its project to be free too, so it can start while another session works there. Turn on **Start by itself** next to **Wait for** and it starts as soon as a slot frees.
 
-- **Nudge** (the default): Start asks first, "Start a 4th session?", with **Add to queue**, **Start anyway** and **Cancel**. The note in New session also has **Start anyway**.
-- **Strict**: Start waits. The question says "Finish one first", with **Open** for a session that needs you, **Add to queue** and **Cancel**. Finish, read or mark a session done first. In New session, **Add to queue** stays in Start's menu.
+What else you can do depends on how strict you set the limit:
+
+- **Nudge** (the default): **Start anyway** is in Start's ▾ menu. The [other ways of starting work](#everything-that-asks) ask first, "Start a 4th session?", with **Add to queue**, **Start anyway** and **Cancel**.
+- **Strict**: there is no Start anyway. The question says "Finish one first", with **Open** for a session that needs you, **Add to queue** and **Cancel**. Finish, read or mark a session done first.
 
 <Kbd keys="escape" /> or **Cancel** closes the question and keeps your prompt where it was. The question never starts anything over the limit without you saying so.
 
@@ -67,9 +69,9 @@ Every way of starting work goes through the same question:
 
 Answering a session that already counts, stopping Claude, marking a session done, reviewing changes and committing are never held up.
 
-A queued item that [starts by itself](/new-session/queue/#start-by-itself) never asks, since nobody may be there to answer. At the limit it waits, and its row says "waits for a free slot (focus limit)". It starts when a slot frees: when you read, archive or stop a session.
+A queued item that [starts by itself](/new-session/queue/#start-by-itself) never asks, since nobody may be there to answer. At the limit it waits, and its row says "waits for a free slot (focus limit)". It starts when a slot frees: when you read, mark done or stop a session. It doesn't also wait for its project to be free.
 
-A [scheduled](/new-session/schedules/) run doesn't ask either. At the limit it goes to the queue as an item that starts by itself, and starts when a slot frees. A session a [trigger](/projects/triggers/) starts does the same, on top of the trigger's own **At once** limit.
+A [scheduled](/new-session/schedules/) run doesn't ask either. At the limit it goes to the queue as an item that starts by itself, and starts when a slot frees, even while another session works in its project. A session a [trigger](/projects/triggers/) starts does the same, on top of the trigger's own **At once** limit.
 
 <Aside>
 Turning the limit off and on again keeps the number you chose.

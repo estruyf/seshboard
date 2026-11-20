@@ -38,6 +38,7 @@ export const COMPUTER_NAME_MAX = 60;
  */
 export const COMPUTER_METHODS = [
   'sessions.list',
+  'sessions.archived',
   'projects.list',
   'projects.branches',
   'transcript.get',
@@ -46,6 +47,7 @@ export const COMPUTER_METHODS = [
   'session.send',
   'session.queue.remove',
   'session.queue.sendNow',
+  'session.queue.move',
   'session.interrupt',
   'session.stopTask',
   'session.respond',
@@ -65,6 +67,7 @@ export const COMPUTER_METHODS = [
   'usage.tokens',
   'usage.sessionCost',
   'usage.windowCosts',
+  'activity.range',
   'limits.get',
   'limits.resume',
   'limits.arm',
@@ -72,6 +75,9 @@ export const COMPUTER_METHODS = [
   'changes.get',
   'changes.diff',
   'changes.commit',
+  'files.read',
+  'session.commands',
+  'files.image',
   'projects.clonePlan',
   'projects.clone',
   'projects.cancelClone',

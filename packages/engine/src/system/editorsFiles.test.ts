@@ -90,8 +90,28 @@ describe('detectEditors', () => {
     const exists = (path: string) => ['C:\\Users\\me\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd', 'C:\\Program Files\\Sublime Text\\subl.exe'].includes(path);
     expect(detectEditors(env, 'C:\\Users\\me', 'win32', exists)).toEqual([
       { id: 'cursor', name: 'Cursor', kind: 'editor' },
-      { id: 'sublime', name: 'Sublime Text', kind: 'editor' },
-      { id: 'finder', name: 'File Explorer', kind: 'finder' },
+      { id: 'sublime', name: 'Sublime Text', kind: 'editor', icon: 'C:\\Program Files\\Sublime Text\\subl.exe' },
+      { id: 'finder', name: 'File Explorer', kind: 'finder', icon: 'C:\\Windows\\explorer.exe' },
+    ]);
+  });
+
+  it("on Windows, takes an app's icon from the program next to its .cmd CLI", () => {
+    const env = { PATH: 'C:\\Windows', PATHEXT: '.EXE;.CMD', LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local', SystemRoot: 'D:\\Win' };
+    const code = 'C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code';
+    const exists = (path: string) => [`${code}\\bin\\code.cmd`, `${code}\\Code.exe`].includes(path);
+    expect(detectEditors(env, 'C:\\Users\\me', 'win32', exists)).toEqual([
+      { id: 'vscode', name: 'VS Code', kind: 'editor', icon: `${code}\\Code.exe` },
+      { id: 'finder', name: 'File Explorer', kind: 'finder', icon: 'D:\\Win\\explorer.exe' },
+    ]);
+  });
+
+  it("on macOS, takes an app's icon from its bundle, and Finder's from the system's", () => {
+    const exists = (path: string) => ['/Users/me/Applications/Visual Studio Code.app', '/System/Applications/Utilities/Terminal.app', '/opt/bin/zed'].includes(path);
+    expect(detectEditors({ PATH: '/opt/bin' }, '/Users/me', 'darwin', exists)).toEqual([
+      { id: 'vscode', name: 'VS Code', kind: 'editor', icon: '/Users/me/Applications/Visual Studio Code.app' },
+      { id: 'zed', name: 'Zed', kind: 'editor' },
+      { id: 'finder', name: 'Finder', kind: 'finder', icon: '/System/Library/CoreServices/Finder.app' },
+      { id: 'terminal', name: 'Terminal', kind: 'terminal', icon: '/System/Applications/Utilities/Terminal.app' },
     ]);
   });
 });

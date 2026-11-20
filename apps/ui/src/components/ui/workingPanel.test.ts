@@ -20,12 +20,12 @@ describe('WorkingPanel', () => {
     expect(html).toContain('width="16"');
   });
 
-  it('moves the light over the five free jacks while working, and holds still otherwise', () => {
+  it('moves the light over the five free jacks while working, and sets no delays otherwise', () => {
     const working = render();
     expect(working).toContain('data-working-state="working"');
     expect(count(working, /--jack-delay:/g)).toBe(5);
     expect(working).toContain('--working-round:1500ms');
-    for (const state of ['still', 'waiting'] as const) {
+    for (const state of ['compacting', 'waiting'] as const) {
       const html = render(state);
       expect(html).toContain(`data-working-state="${state}"`);
       expect(count(html, /--jack-delay|--working-round/g)).toBe(0);
@@ -46,8 +46,10 @@ describe('the working mark in both apps', () => {
         expect(keyframes, name).toContain(percent(WORKING_HOLD));
         expect(keyframes, name).toContain(percent(WORKING_FADE));
       }
-      // The still frame is as lit as the Dock's.
-      expect(css).toContain(`[data-working-state='still'] .jack-light {\n  opacity: ${WORKING_STILL_LEVEL};`);
+      // Compacting pulses from the Dock's still frame, and holds it with Reduce motion.
+      expect(css).toContain(`[data-working-state='compacting'] .jack-light {\n  opacity: ${WORKING_STILL_LEVEL};\n  animation: working-compacting `);
+      expect(/@keyframes working-compacting \{\s*0%,\s*100% \{\s*opacity: ([\d.]+);/.exec(css)?.[1]).toBe(String(WORKING_STILL_LEVEL));
+      expect(css).toMatch(/prefers-reduced-motion[\s\S]*\[data-working-state='compacting'\] \.jack-light \{\s*animation: none;/);
       expect(css).not.toContain('working-dots');
     }
   });

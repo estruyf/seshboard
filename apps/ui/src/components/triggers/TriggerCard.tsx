@@ -16,6 +16,7 @@ import { Switch } from '../ui/Toggle.tsx';
 import { SourceIcon } from './TriggerEditor.tsx';
 import { triggerEntries } from './triggerMenu.tsx';
 import { useTriggerSessions } from './useTriggerSessions.ts';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /** How many events a card shows before "Show all N events". */
 const SHOWN = 3;
@@ -230,7 +231,15 @@ export function TriggerEventRow({ event, state, now, position, of }: { event: Tr
           </Button>
         )}
         {event.url && (
-          <a href={event.url} target="_blank" rel="noreferrer" className="text-meta text-muted hover:text-link" aria-label={`Open ${event.kind === 'ci' ? 'the run' : 'the issue'} on GitHub`} data-tooltip="Open on GitHub">
+          <a
+            href={event.url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => {
+              e.preventDefault();
+              openWebLink(event.url!);
+            }}
+            className="text-meta text-muted hover:text-link" aria-label={`Open ${event.kind === 'ci' ? 'the run' : 'the issue'} on GitHub`} data-tooltip="Open on GitHub">
             GitHub
           </a>
         )}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { basename } from '../lib/format.ts';
+import { useFocus } from './focusGate.ts';
 import { useHosts } from './hostsStore.ts';
 import { useKeptSessions } from './keptSessions.ts';
 import { startQueued, useLater } from './laterStore.ts';
@@ -58,12 +59,14 @@ export function useQueue(rows?: readonly SessionRowData[]): QueueSummary & { row
   const projectName = useProjectName();
   const limitOf = useQueueLimit();
   const now = useMinute(useLimits((s) => s.state.limits.length > 0));
+  const focus = useFocus();
+  const focusFull = focus.limit !== null && focus.count >= focus.limit;
   // How sessions ended and what waits at the focus limit come from the engine, which decides what starts by itself.
   const engine = useMemo(() => {
     const outcomes = new Map(auto.outcomes.map((o) => [o.sessionId, o.outcome]));
     return { outcomeOf: (id: string) => outcomes.get(id) ?? null, focusHeld: new Set(auto.focusHeld) };
   }, [auto]);
-  const summary = useMemo(() => queueStates({ items, started, rows: all, projectName, limitOf, now, ...engine }), [items, started, all, projectName, limitOf, now, engine]);
+  const summary = useMemo(() => queueStates({ items, started, rows: all, projectName, limitOf, now, focusFull, ...engine }), [items, started, all, projectName, limitOf, now, focusFull, engine]);
   return { ...summary, rows: all };
 }
 

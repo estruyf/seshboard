@@ -1,0 +1,75 @@
+---
+title: Favourites and bookmarks
+description: Keep the sites you open often as tiles in the Browser view, and bookmark any page for a project or everywhere.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+The [browser](/browser/overview/) keeps pages to come back to in two ways:
+
+- **Favourites** are the few sites you open all the time, such as your mail or the team's board. They are a row of icons at the top of the Browser view's list, as in Arc or Zen.
+- **Bookmarks** are for everything else: a dashboard for one project, the docs of a library. They show on every new tab, for the session's project or everywhere, in folders if you like.
+
+Favourites and bookmarks get short names: "Seshboard | Seshboard" is "Seshboard".
+
+## Favourites
+
+### Add a favourite
+
+- Click the **+** tile after your favourites (**Add the page in front to favourites**).
+- Choose **Add to favourites** in a tab's menu.
+- Run *Add page to favourites* in the [command palette](/command-palette/).
+- Check **Also add to favourites** when you bookmark a page.
+
+A tab of the Browser view moves to its tile. A session's tab stays where it is, and the favourite shows in the Browser view.
+
+### Use the tiles
+
+A click on a tile opens its page and keeps it: the next click goes back to the same tab, with a dot under the icon while it's open. A middle click on an open tile closes its tab. Hover a tile for its name and address.
+
+Your favourites also show on an empty tab and in the empty Browser view, one click away. *Open favourite…* in the palette finds one: in a session it opens in the session's browser, elsewhere in the Browser view.
+
+### A tile's menu
+
+Right-click a tile:
+
+- **Open**, **Copy address** and **Open in browser**.
+- **Edit favourite…** changes its name or address.
+- **Use current page's address** gives the favourite the address its tab is on now. It shows when you browsed away from the favourite's address.
+- **Go back to its address** loads the favourite's own address in its tab.
+- **Close** closes its tab, while it's open.
+- **Remove from favourites**.
+
+A favourite keeps its address as you browse: only you change it, with **Edit favourite…** or **Use current page's address**.
+
+## Bookmarks
+
+### Bookmark a page
+
+Press <Kbd shortcut="browser.bookmark" />, click the star in the toolbar, choose **Bookmark tab…** in a tab's menu, or run *Bookmark this page* in the palette. The star fills in, and the **Bookmark added** dialog opens:
+
+- **Name**: what the bookmark is called. Empty, it uses the address.
+- **Show it in**: the session's project or **Everywhere**. Shown in a session of a project.
+- **Folder**: a folder to keep it in, or **None**. It suggests the folders you used before.
+- **Also add to favourites**.
+
+**Done** (or <Kbd keys="enter" />) keeps it. **Remove** takes the bookmark away.
+
+On a bookmarked page, the same key, the star or *Edit bookmark* opens **Edit bookmark**, to change it or remove it.
+
+### Open a bookmark
+
+- **A new tab** lists your favourites, then the bookmarks for the session's project (**For** and the project's name), then the ones for **Everywhere**, by folder, then **Recently closed**. The empty Browser view shows the same lists. Right-click a bookmark there for **Copy address**, **Open in browser** and **Remove bookmark**.
+- *Open bookmark…* in the palette finds any of them.
+
+<Aside>
+Pinned tabs are a third way to keep a page: a pinned tab comes back after a restart, where you left it. See [Tabs](/browser/tabs-and-pages/#tabs).
+</Aside>
+
+## Related
+
+<Related pages={['browser/overview', 'browser/tabs-and-pages', 'browser/profiles', 'command-palette']} />

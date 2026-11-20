@@ -1,15 +1,15 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState } from '@seshboard/protocol/bridge';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, webContents as electronWebContents, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
-import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
@@ -22,10 +22,21 @@ import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
+import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
+import { runFilesFromLinkStep, runFilesQuickOpenStep, runFilesSearchStep, runFilesToMessageStep, runFilesTreeStep } from './filesSmoke.ts';
+import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
+import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
+import { installWebPreviewGuards } from './webPreview.ts';
+import { runWebPreviewStep } from './webPreviewSmoke.ts';
+import { installBrowserAgent } from './browserAgent.ts';
+import { runBrowserAgentStep, runBrowserScriptsStep, runBrowserServerStep } from './browserAgentSmoke.ts';
+import { runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
+import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
+import { runBrowserDownloadStep, runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserTextPageStep, runBrowserViewStep, runBrowserWindowStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -35,7 +46,7 @@ import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { Cancelled, commandFolders, folderFromArgv, installShellCommand, pathCheck, readShellCommand, removeShellCommand, SHELL_COMMAND_NAMES, shellCommandDir, shellCommandPlan, type ShellCommandPlan } from './shellCommand.ts';
 import { ThemeStore } from './themes.ts';
-import { isConfigDir, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
+import { isConfigDir, isTrashableAgySession, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
 import { guarded } from './guarded.ts';
@@ -43,6 +54,9 @@ import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } f
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
 const here = import.meta.dirname;
+// Claude's visuals are drawn in a page of their own (`visualFrame.ts`). Standard and secure, like https: so URLs in it
+// resolve and it may load the CDNs' scripts. It must be named before the app is ready.
+protocol.registerSchemesAsPrivileged([{ scheme: VISUAL_SCHEME, privileges: { standard: true, secure: true } }]);
 // Variables named before the rename (SWITCHBOARD_…) still count, before anything reads them.
 adoptLegacyEnv(process.env);
 const smokeOutDir = process.env.SESHBOARD_SMOKE_OUT;
@@ -136,8 +150,9 @@ if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store')
 const forcedScheme = process.env.SESHBOARD_COLOR_SCHEME;
 const preferences = new PreferencesStore(join(app.getPath('userData'), 'preferences.json'), sanitizePreferences({ colorScheme: forcedScheme }).colorScheme);
 // The smoke steps need sessions to click; on the real ~/.claude most were started elsewhere. Star on GitHub stays out
-// of the screenshots (the smoke step that checks it asks for it).
-if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done' });
+// of the screenshots (the smoke step that checks it asks for it), and so does the browser's card. The browser starts
+// off, so the web preview steps check the local-only preview; the browser's own steps turn it on.
+if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done', browserIntro: 'done', browserEnabled: false });
 
 /** Built-in and imported themes; a change (an import, an edited file) goes to every window. */
 const themes = new ThemeStore(join(app.getPath('userData'), 'themes'), BUILT_IN_THEMES, (state) => {
@@ -290,12 +305,26 @@ function updatePreferences(patch: unknown): void {
 }
 
 /** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model, catch-up summaries, mods and Claude in Chrome. */
+/**
+ * Seshboard's `visualize` MCP server (`src/visualize/`), as an agent starts it: this app's own binary run as Node, so
+ * it needs no Node on the computer, on its bundle next to this one (inside the app's archive when packaged).
+ */
+const visualizeServer = () => ({ command: process.execPath, args: [join(here, 'visualize.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
+/**
+ * Seshboard's `browser` MCP server (`src/browserMcp/`), started the same way; the engine adds its socket and a session's
+ * token. `scripts`: Settings › Browser › Allow scripts in pages, so it lists evaluate and network.
+ */
+const browserMcpServer = (scripts = false) => ({ command: process.execPath, args: [join(here, 'browser-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1', ...(scripts ? { [BROWSER_SCRIPTS_ENV]: '1' } : {}) } });
+/** Seshboard's `orchestrator` MCP server (`src/orchestratorMcp/`), started the same way by an orchestrator's agent (docs/orchestrator.md). */
+const orchestratorMcpServer = () => ({ command: process.execPath, args: [join(here, 'orchestrator-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
+
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived, doneOnMerge: prefs.doneOnMerge });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
   engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
   // Settings › Conversation › Catch-up: whether Haiku writes the summaries.
   engine?.sendStanding({ type: 'catchUp', summaries: prefs.catchUpSummaries });
+  engine?.sendStanding({ type: 'activity', summaries: prefs.activitySummaries });
   // Settings › Conversation › Resume after a usage limit resets: Always arms a session the moment a limit stops it.
   engine?.sendStanding({ type: 'limits', resume: prefs.resumeAtLimit });
   // Settings › General › Global permission mode: a phone's new session starts in it where its profile and project set
@@ -303,10 +332,21 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'permissionMode', mode: prefs.newSessionMode === 'remember' ? 'default' : prefs.newSessionMode });
   // Settings › General › Global model and Global effort: the same, for the model and effort (empty: Claude Code's own).
   engine?.sendStanding({ type: 'globalModel', model: prefs.newSessionModel, effort: prefs.newSessionEffort });
+  // Settings › General › Global fallback model: Claude Code sessions switch to it when their own model is overloaded (empty: off).
+  engine?.sendStanding({ type: 'fallbackModel', model: prefs.newSessionFallbackModel });
   // Settings › Mods › Show mods: sessions attach or detach their mods without a restart.
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
   engine?.sendStanding({ type: 'chrome', enabled: prefs.chrome });
+  // Settings › Conversation › Let the agent mark its key sentences: sessions started or resumed from now on.
+  engine?.sendStanding({ type: 'skimMarks', enabled: prefs.skimMarks });
+  // Settings › General › Visuals in replies: sessions started or resumed from now on get the visualize server.
+  engine?.sendStanding({ type: 'visuals', server: prefs.agentVisuals ? visualizeServer() : null });
+  // Settings › Browser › Allow Seshboard to control the browser: sessions started or resumed from now on get
+  // the browser server, whatever their agent; with Allow scripts in pages, its evaluate and network too.
+  engine?.sendStanding({ type: 'browserControl', server: prefs.browserEnabled && prefs.browserControl ? browserMcpServer(prefs.browserScripts) : null });
+  // The orchestrator's tools: a session started or resumed as an orchestrator gets its server, whatever its agent.
+  engine?.sendStanding({ type: 'orchestratorServer', server: orchestratorMcpServer() });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
@@ -411,6 +451,27 @@ let notifier: Notifier;
 let mainWindow: BrowserWindow | null = null;
 /** Pop-out windows by the session each one shows. */
 const popouts = new Map<string, BrowserWindow>();
+/** Browser windows by the session whose browser each one shows (a session's Browser panel on its own). */
+const browserPopouts = new Map<string, BrowserWindow>();
+/**
+ * Each browser window's tabs, by session: what the session's window had when its browser moved out, then what the browser
+ * window last reported. They go back to the session's window when the browser window goes. In memory only.
+ */
+const browserPopoutTabs = new Map<string, BrowserTabsHandoff>();
+/** The window that shows a session (its pop-out, else the main window), apart from its browser window. */
+function sessionWindow(sessionId: string): BrowserWindow | null {
+  const popout = popouts.get(sessionId);
+  return popout && !popout.isDestroyed() ? popout : mainWindow;
+}
+/** The browser tools: a session's calls drive its page, in the window that shows its browser (its browser window, its pop-out, else the main window). */
+const browserAgent = installBrowserAgent({
+  windowFor: (sessionId) => {
+    const browser = browserPopouts.get(sessionId);
+    return browser && !browser.isDestroyed() ? browser : sessionWindow(sessionId);
+  },
+  enabled: () => preferences.get().browserEnabled && preferences.get().browserControl,
+  scripts: () => preferences.get().browserScripts,
+});
 /**
  * How each pop-out's session has its panels laid out, by session (a `SessionView`, which main never looks inside): what
  * the main window had when the session popped out, then what the pop-out last reported. It goes back to the main window
@@ -432,7 +493,33 @@ const recordedScheduleRuns: ScheduleRunEvent[] = [];
 const recordedSounds: Array<{ id: string; volume: number }> = [];
 const sounds = new SoundPlayer(smokeOutDir ? { record: (sound) => void recordedSounds.push(sound) } : {});
 
+/** MCP App pages, each served from an address of its own with the policy its server declared. */
+const mcpAppDocuments = new McpAppDocuments();
+/** An app's page is an HTML document; anything this large is not one worth drawing. */
+const MAX_APP_PAGE = 5 * 1024 * 1024;
+ipcMain.handle(IpcChannel.mcpAppDocument, (_event, html: unknown, csp: unknown) => {
+  if (typeof html !== 'string' || html.length > MAX_APP_PAGE) throw new Error('Not an MCP App page');
+  return mcpAppDocuments.add(html, csp && typeof csp === 'object' ? (csp as McpAppCsp) : null);
+});
+
 ipcMain.handle(IpcChannel.listSounds, () => sounds.list());
+/** Apps' icons for the rail, read once each. Only an app's bundle or program, the files `EditorInfo.icon` names. */
+const appIcons = new Map<string, Promise<string | null>>();
+ipcMain.handle(IpcChannel.appIcon, (_event, path: unknown) => {
+  if (typeof path !== 'string' || !isLocalAbsolutePath(path, process.platform) || !/\.(app|exe)$/i.test(path)) return null;
+  let icon = appIcons.get(path);
+  if (!icon) {
+    // The system's thumbnail is sharp on a Retina screen; the file icon (32px at most) is the fallback.
+    icon = existsSync(path)
+      ? nativeImage
+          .createThumbnailFromPath(path, { width: 64, height: 64 })
+          .catch(() => app.getFileIcon(path, { size: 'normal' }))
+          .then((image) => (image.isEmpty() ? null : image.toDataURL()), () => null)
+      : Promise.resolve(null);
+    appIcons.set(path, icon);
+  }
+  return icon;
+});
 ipcMain.on(IpcChannel.playSound, (_event, id: unknown, volume: unknown) => {
   if (isSoundId(id) && typeof volume === 'number' && Number.isFinite(volume)) sounds.play(id, volume);
 });
@@ -537,7 +624,12 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; on?: unknown } | null;
+  // The browser tools: a call the engine got from a session, run on its page (always answered).
+  const browserCall = message as { type?: unknown; id?: unknown; request?: BrowserToolRequest } | null;
+  if (browserCall?.type === 'browser-tool' && typeof browserCall.id === 'number' && browserCall.request) {
+    return { type: 'browser-tool-result', id: browserCall.id, result: await browserAgent.run(browserCall.request) };
+  }
+  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; codexHome?: unknown; agyHome?: unknown; on?: unknown } | null;
   // Keep awake until done: a session with the flag on works, or the last one finished.
   if (request?.type === 'keep-awake') {
     sessionsAwake.apply(request.on === true);
@@ -568,6 +660,8 @@ async function handleEngineRequest(message: unknown): Promise<unknown> {
   try {
     if (typeof request.memoryDir === 'string' || typeof request.instructionsRoot === 'string') return await trashMemoryForEngine(request.id, request.paths, request.memoryDir, request.instructionsRoot);
     if (typeof request.copilotHome === 'string') return await trashCopilotForEngine(request.id, request.paths, request.copilotHome);
+    if (typeof request.codexHome === 'string') return await trashCodexForEngine(request.id, request.paths, request.codexHome);
+    if (typeof request.agyHome === 'string') return await trashAgyForEngine(request.id, request.paths, request.agyHome);
     return await trashForEngine(request.id, request.paths, request.repoRoot, request.configDir);
   } catch (error) {
     return { type: 'trash-result', id: request.id, error: (error as Error).message };
@@ -596,6 +690,28 @@ async function trashCopilotForEngine(id: number, requested: unknown[], copilotHo
   const refused = paths.filter((p) => !isTrashableCopilotSession(p, copilotHome));
   if (refused.length > 0 || paths.length !== requested.length) {
     return { type: 'trash-result', id, error: `Refusing to move files outside Copilot's sessions folder: ${refused.join(', ')}` };
+  }
+  for (const path of paths) await shell.trashItem(path);
+  return { type: 'trash-result', id };
+}
+
+/** Moves an OpenAI Codex session's rollout file to the Trash after checking it is one, in the profile's `CODEX_HOME`. */
+async function trashCodexForEngine(id: number, requested: unknown[], codexHome: string): Promise<unknown> {
+  const paths = requested.filter((p): p is string => typeof p === 'string');
+  const refused = paths.filter((p) => !isTrashableCodexSession(p, codexHome));
+  if (refused.length > 0 || paths.length !== requested.length) {
+    return { type: 'trash-result', id, error: `Refusing to move files outside Codex's sessions folders: ${refused.join(', ')}` };
+  }
+  for (const path of paths) await shell.trashItem(path);
+  return { type: 'trash-result', id };
+}
+
+/** Moves a Google Antigravity conversation's files to the Trash after checking each is one, in the profile's `--gemini-dir`. */
+async function trashAgyForEngine(id: number, requested: unknown[], agyHome: string): Promise<unknown> {
+  const paths = requested.filter((p): p is string => typeof p === 'string');
+  const refused = paths.filter((p) => !isTrashableAgySession(p, agyHome));
+  if (refused.length > 0 || paths.length !== requested.length) {
+    return { type: 'trash-result', id, error: `Refusing to move files outside Antigravity's conversation folders: ${refused.join(', ')}` };
   }
   for (const path of paths) await shell.trashItem(path);
   return { type: 'trash-result', id };
@@ -1042,6 +1158,23 @@ function openSettings(section: 'about' | null = null): void {
   sendToWindow(showWindow(), IpcChannel.openSettings, section, { latestOnly: true });
 }
 
+/**
+ * Edit › Select All. The role would select the whole window, which a copy then takes with the theme's colours. The window's page
+ * decides first (`useSelectAllInText`: the conversation, reading mode or the file preview selects only its text, a field its own);
+ * when it takes none, or the focus is in a browser page of the Browser panel, it is the focused page's own Select all.
+ */
+function selectAllInFocused(from?: unknown): void {
+  // The window the menu item was used in (Electron hands it over), else the focused one.
+  const win = from instanceof BrowserWindow ? from : BrowserWindow.getFocusedWindow();
+  // A native panel (Save, Open) in front of the window has the focus, not a window of ours: its field selects its own text, as the role did.
+  if (!win) return process.platform === 'darwin' ? Menu.sendActionToFirstResponder('selectAll:') : undefined;
+  const focused = electronWebContents.getFocusedWebContents() ?? win.webContents;
+  if (focused !== win.webContents) return focused.selectAll();
+  focused
+    .executeJavaScript("(() => { const detail = { handled: false }; window.dispatchEvent(new CustomEvent('seshboard:select-all', { detail })); return detail.handled; })()")
+    .then((handled: boolean) => !handled && focused.selectAll(), () => focused.selectAll());
+}
+
 /** Seshboard → Check for Updates…: checks, and opens Settings → About where the result shows. */
 function checkForUpdates(): void {
   updater.run('check');
@@ -1081,7 +1214,21 @@ function installMenu(): void {
     : [{ label: 'File', submenu: [settings, { type: 'separator' }, quit] }];
   const template: MenuItemConstructorOptions[] = [
     ...top,
-    { role: 'editMenu' },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        // What the editMenu role has on each platform, with Select All as our own: ⌘A is the same logic as the key.
+        ...(mac ? ([{ role: 'pasteAndMatchStyle' }, { role: 'delete' }] as MenuItemConstructorOptions[]) : ([{ role: 'delete' }, { type: 'separator' }] as MenuItemConstructorOptions[])),
+        { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: (_item, window) => selectAllInFocused(window) },
+        ...(mac ? ([{ type: 'separator' }, { label: 'Speech', submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }] }] as MenuItemConstructorOptions[]) : []),
+      ],
+    },
     {
       label: 'View',
       submenu: [
@@ -1144,6 +1291,8 @@ const webPreferences = (): Electron.WebPreferences => ({
   contextIsolation: true,
   nodeIntegration: false,
   spellcheck: false,
+  // The web preview's `<webview>`; installWebPreviewGuards checks every one before it attaches.
+  webviewTag: true,
 });
 
 /**
@@ -1209,7 +1358,7 @@ function createWindow(): BrowserWindow {
   // Pop-outs go with the main window: without it there is no sidebar to come back to.
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
-    for (const popout of [...popouts.values()]) if (!popout.isDestroyed()) popout.close();
+    for (const popout of [...popouts.values(), ...browserPopouts.values()]) if (!popout.isDestroyed()) popout.close();
     // Closing quits (Windows and Linux, Keep running off): the hidden panel mustn't count as a window left open.
     if (quitsWhenAllClosed(process.platform, preferences.get().keepRunning)) {
       menuBarPanel?.destroy();
@@ -1221,7 +1370,7 @@ function createWindow(): BrowserWindow {
 }
 
 /** What every window's page needs: ready tracking, a reload after a crash, links in the browser, and the page itself. */
-function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' | 'quickstart' | null = null): void {
+function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' | 'quickstart' | null = null, browserPopout?: string): void {
   const contentsId = win.webContents.id;
   // Only a new page in the window itself: `did-start-loading` also fires for frames inside it (a previewed HTML file),
   // and the page says it is ready only once, so it would never count as ready again.
@@ -1253,15 +1402,20 @@ function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' 
   win.webContents.on('will-navigate', (event, url) => {
     if (url !== win.webContents.getURL()) event.preventDefault();
   });
+  // A visual's frame stays on its page: its links go to the browser through the conversation, never into the frame.
+  win.webContents.on('will-frame-navigate', (details) => {
+    if (!details.isMainFrame && isVisualFrameUrl(details.frame?.url) && !isVisualFrameUrl(details.url)) details.preventDefault();
+  });
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) {
     const url = new URL(devUrl);
     if (popout) url.searchParams.set(POPOUT_QUERY, popout);
+    if (browserPopout) url.searchParams.set(BROWSER_POPOUT_QUERY, browserPopout);
     if (panelPage) url.searchParams.set(panelPage === 'menubar' ? MENU_BAR_QUERY : QUICK_START_QUERY, '1');
     void win.loadURL(url.toString());
   } else {
-    const query: Record<string, string> | null = popout ? { [POPOUT_QUERY]: popout } : panelPage ? { [panelPage === 'menubar' ? MENU_BAR_QUERY : QUICK_START_QUERY]: '1' } : null;
+    const query: Record<string, string> | null = popout ? { [POPOUT_QUERY]: popout } : browserPopout ? { [BROWSER_POPOUT_QUERY]: browserPopout } : panelPage ? { [panelPage === 'menubar' ? MENU_BAR_QUERY : QUICK_START_QUERY]: '1' } : null;
     void win.loadFile(join(here, '../renderer/index.html'), query ? { query } : undefined);
   }
 }
@@ -1358,6 +1512,117 @@ ipcMain.on(IpcChannel.popIn, (event) => {
   returnView(entry[0], true);
   openSession(entry[0]);
 });
+/** How many tabs a browser window's handoff has, for the Browser button and the session's row in other windows. */
+function handoffTabCount(tabs: BrowserTabsHandoff | undefined): number {
+  return Array.isArray(tabs?.tabs) ? tabs.tabs.length : 0;
+}
+
+/** The sessions whose browser has a window of its own, with how many tabs each has. */
+function browserPopoutCounts(): Record<string, number> {
+  return Object.fromEntries([...browserPopouts.keys()].map((id) => [id, handoffTabCount(browserPopoutTabs.get(id))]));
+}
+
+/** Tells every window which sessions have their browser in a window of its own. */
+function broadcastBrowserPopouts(): void {
+  const counts = browserPopoutCounts();
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.browserPopoutsChanged, counts);
+}
+
+/**
+ * Moves a session's Browser panel to a window of its own, with the tabs its window had (`tabs`), or brings that window to
+ * the front, showing `url` when given. The browser window is the session's browser and nothing else, so it can go on
+ * another display while the session stays where it is. Closing it hands the tabs back to the session's window; like
+ * pop-outs, browser windows close with the main window and don't come back after a restart.
+ */
+function popOutBrowser(sessionId: string, tabs: unknown = null, url: unknown = null): void {
+  const open = browserPopouts.get(sessionId);
+  if (open && !open.isDestroyed()) {
+    if (typeof url === 'string' && url) sendToWindow(open, IpcChannel.browserOpenUrl, url);
+    return bringToFront(open);
+  }
+  if (isSessionView(tabs)) browserPopoutTabs.set(sessionId, tabs);
+  else browserPopoutTabs.delete(sessionId);
+  const from = sessionWindow(sessionId);
+  const bounds = from && !from.isDestroyed() && !from.isMinimized() ? from.getBounds() : null;
+  const placed = bounds ? placePopout(bounds, screen.getDisplayMatching(bounds).workArea, POPOUT_SIZE, POPOUT_MIN, browserPopouts.size) : undefined;
+  const win = new BrowserWindow({
+    ...POPOUT_SIZE,
+    ...placed,
+    minWidth: POPOUT_MIN.width,
+    minHeight: POPOUT_MIN.height,
+    show: false,
+    ...titleBar(),
+    ...windowIcon(),
+    backgroundColor: windowBackground(),
+    webPreferences: webPreferences(),
+  });
+  browserPopouts.set(sessionId, win);
+  win.once('ready-to-show', () => win.show());
+  // Looking at a browser window is looking at Seshboard: the main window's taskbar button stops flashing (Notifier).
+  if (process.platform !== 'darwin') win.on('focus', () => mainWindow?.flashFrame(false));
+  win.on('closed', () => {
+    if (browserPopouts.get(sessionId) !== win) return;
+    browserPopouts.delete(sessionId);
+    broadcastBrowserPopouts();
+    // Closed with the window's button or its last tab: the session's window gets the tabs back, for the next open.
+    if (!quitting) returnBrowser(sessionId, false);
+  });
+  loadRenderer(win, undefined, null, sessionId);
+  if (typeof url === 'string' && url) sendToWindow(win, IpcChannel.browserOpenUrl, url);
+  broadcastBrowserPopouts();
+}
+
+/**
+ * Hands a session's browser tabs, as its browser window left them, to the window that shows the session, and forgets them
+ * here. `show` (Move back): that window comes to the front with the session and its Browser panel open on them.
+ */
+function returnBrowser(sessionId: string, show: boolean): void {
+  const tabs = browserPopoutTabs.get(sessionId) ?? { tabs: [] };
+  browserPopoutTabs.delete(sessionId);
+  const win = show && !popouts.has(sessionId) ? showWindow() : sessionWindow(sessionId);
+  if (!win || win.isDestroyed()) return;
+  sendToWindow(win, IpcChannel.browserReturned, { sessionId, tabs, show });
+  if (show) openSession(sessionId);
+}
+
+ipcMain.on(IpcChannel.getBrowserPopouts, (event) => {
+  event.returnValue = browserPopoutCounts();
+});
+ipcMain.on(IpcChannel.getBrowserPopoutTabs, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...browserPopouts].find(([, browser]) => browser === win);
+  event.returnValue = entry ? (browserPopoutTabs.get(entry[0]) ?? null) : null;
+});
+ipcMain.on(IpcChannel.popOutBrowser, (_event, sessionId: unknown, tabs: unknown, url: unknown) => {
+  if (typeof sessionId === 'string' && sessionId) popOutBrowser(sessionId, tabs, url);
+});
+// A browser window keeps main up to date with its tabs, for when it goes; the other windows follow how many it has.
+ipcMain.on(IpcChannel.reportBrowserTabs, (event, tabs: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...browserPopouts].find(([, browser]) => browser === win);
+  if (!entry || !isSessionView(tabs)) return;
+  const before = handoffTabCount(browserPopoutTabs.get(entry[0]));
+  browserPopoutTabs.set(entry[0], tabs);
+  if (handoffTabCount(tabs) !== before) broadcastBrowserPopouts();
+});
+// A quote or a picked element for the session's message, which is in the window that shows the session.
+ipcMain.on(IpcChannel.browserToMessage, (event, item: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...browserPopouts].find(([, browser]) => browser === win);
+  const target = entry ? sessionWindow(entry[0]) : null;
+  if (!entry || !target || target.isDestroyed() || !item || typeof item !== 'object') return;
+  sendToWindow(target, IpcChannel.browserMessage, { sessionId: entry[0], item });
+});
+// Move back: the browser window goes first, then the session's window shows the tabs in its Browser panel.
+ipcMain.on(IpcChannel.popInBrowser, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...browserPopouts].find(([, browser]) => browser === win);
+  if (!win || !entry) return;
+  browserPopouts.delete(entry[0]);
+  broadcastBrowserPopouts();
+  win.close();
+  returnBrowser(entry[0], true);
+});
 ipcMain.on(IpcChannel.showSession, (_event, sessionId: unknown) => {
   if (typeof sessionId === 'string' && sessionId) openSession(sessionId);
 });
@@ -1367,7 +1632,7 @@ ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
 });
 // A view a pop-out doesn't have (Settings, Usage, a project, New session, Go to, Search) opens in the main window, which comes to the front.
-const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming']);
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming', 'activity', 'browser']);
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
@@ -1507,6 +1772,8 @@ ipcMain.handle(IpcChannel.chooseMemoryExport, async (event) => {
 
 /** The smoke run has no one to answer the save dialog: images go to a folder in its throwaway profile. */
 const smokeImageExports = () => join(app.getPath('userData'), 'smoke-image-exports');
+/** The smoke run's Downloads folder, in its throwaway profile: pages' downloads never reach the real one. */
+const smokeDownloads = () => join(app.getPath('userData'), 'smoke-downloads');
 /** Images saved this run: the only paths Show in Finder will reveal. */
 const savedImages = new Set<string>();
 
@@ -1536,6 +1803,34 @@ ipcMain.handle(IpcChannel.saveImage, async (event, request: unknown) => {
   return path;
 });
 
+/** The kinds of text a window can save, with what the dialog calls them. */
+const TEXT_FILE_KINDS: Record<string, string> = { md: 'Markdown', csv: 'CSV' };
+
+ipcMain.handle(IpcChannel.saveTextFile, async (event, request: unknown) => {
+  const { fileName, content } = (request ?? {}) as Record<string, unknown>;
+  const name = typeof fileName === 'string' && /^[\w .-]{1,120}$/.test(fileName) ? fileName : null;
+  const extension = name?.split('.').pop()?.toLowerCase() ?? '';
+  if (!name || !TEXT_FILE_KINDS[extension] || typeof content !== 'string') throw new Error('Not a file that can be saved');
+  let path: string;
+  if (smokeOutDir) {
+    mkdirSync(smokeImageExports(), { recursive: true });
+    path = join(smokeImageExports(), name);
+  } else {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.SaveDialogOptions = {
+      title: 'Export',
+      defaultPath: join(app.getPath('downloads'), name),
+      filters: [{ name: TEXT_FILE_KINDS[extension]!, extensions: [extension] }],
+      properties: ['createDirectory', 'showOverwriteConfirmation'],
+    };
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    path = result.filePath;
+  }
+  writeFileSync(path, content);
+  return path;
+});
+
 ipcMain.on(IpcChannel.showSavedImage, (_event, path: unknown) => {
   if (typeof path === 'string' && savedImages.has(path)) shell.showItemInFolder(path);
 });
@@ -1548,6 +1843,13 @@ ipcMain.on(IpcChannel.showRemoteLog, () => {
 });
 
 const readyReports: TimedReport[] = [];
+/** Reloads of the main window a smoke step made, whose ready reports are expected (`reloadForSmoke`). */
+let smokeReloads = 0;
+/** A smoke step reloads the main window: the ready report that follows is not taken for an engine restart. */
+function reloadForSmoke(win: BrowserWindow): void {
+  smokeReloads++;
+  win.webContents.reload();
+}
 ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
   const timed: TimedReport = {
     ...report,
@@ -1558,6 +1860,12 @@ ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   // What waited for a window is for the main one; a pop-out only shows its session.
   if (!win || win !== mainWindow) return;
+  // A smoke step reloaded the window on purpose (`reloadForSmoke`): its report is not the engine restarting.
+  if (smokeReloads > 0) {
+    smokeReloads--;
+    for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
+    return;
+  }
   // Only the main window's: the menu bar's and Quick start's report too, in any order, and a second report here means the engine restarted.
   readyReports.push(timed);
   for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
@@ -1663,7 +1971,7 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-open-settings]').click()");
     await waitInPage(win, "document.querySelector('[data-settings]')", 3_000);
     await js("document.querySelector('[data-settings-section=\"conversation\"]').click()");
-    if (!(await waitInPage(win, "document.querySelectorAll('[data-auto-model-settings] [data-auto-model-allowed]').length === 3", 3_000))) return 'Settings › Conversation has no Auto model block';
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-auto-model-settings] [data-auto-model-allowed]').length === 4", 3_000))) return 'Settings › Conversation has no Auto model block with Haiku, Sonnet, Opus and Fable';
     updatePreferences({ autoModel: { ...before, enabled: true, allowed: ['sonnet'] } });
     if (!(await waitInPage(win, "document.querySelector('[data-auto-model-allowed=\"sonnet\"]')?.disabled === true", 2_000))) return 'the last model to pick could be unchecked';
     await js("document.querySelector('[data-auto-model-allowed=\"opus\"]').click()");
@@ -1922,6 +2230,8 @@ async function runSendNowLive(win: BrowserWindow): Promise<string> {
 let crashedAt = 0;
 /** The session the smoke steps work in (the newest one with messages). */
 let smokeSessionId: string | null = null;
+/** Outside addresses the web preview sent to the browser, recorded instead in a scripted run. */
+const webPreviewOutside: string[] = [];
 /** What was on screen when the steps finished, for the report (not checked). */
 let rendering: Record<string, number> = {};
 // npm run smoke -- --only "<pattern>": only the steps whose label matches (case-insensitive), to check one while building.
@@ -2224,25 +2534,25 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${PANEL_BOX}.width === ${wide.width}`, 2_000))) return `failed: ← on the handle did not widen the panel again (${(await box())?.width}px)`;
   await shot(win, 'terminal-right-light.png');
 
-  // Changes also lives on the right: the terminal stays there as a tab, behind Changes until you pick it.
+  // Changes also lives on the right: the terminal stays open there, behind Changes, until you pick it on the rail.
   let changes = 'no Changes button (not a git checkout)';
   if (await js("document.querySelector('[data-current-session] [data-toggle-changes]') !== null")) {
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
-    if (!(await waitInPage(win, `document.querySelector('[data-changes-panel]') && !document.querySelector('[data-terminal-panel]') && document.querySelector('[data-right-tab="terminal"][aria-selected="false"]')`, 3_000))) {
-      return 'failed: with Changes open the terminal did not wait behind it as a tab';
+    if (!(await waitInPage(win, `document.querySelector('[data-changes-panel]') && !document.querySelector('[data-terminal-panel]') && document.querySelector('[data-current-session] [data-toggle-terminal]')?.dataset.railState === 'behind'`, 3_000))) {
+      return 'failed: with Changes open the terminal did not wait behind it on the rail';
     }
     await shot(win, 'terminal-with-changes.png');
-    await js(`document.querySelector('[data-right-tab="terminal"]').click()`);
-    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right' && document.querySelector('[data-terminal-panel] [data-right-tabs]')", 3_000))) {
-      return 'failed: the Terminal tab did not bring the terminal to the front on the right';
+    await js(`document.querySelector('[data-current-session] [data-toggle-terminal]').click()`);
+    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right' && document.querySelector('[data-current-session] [data-toggle-terminal]')?.getAttribute('aria-pressed') === 'true' && document.querySelector('[data-current-session] [data-toggle-changes]')?.dataset.railState === 'behind'", 3_000))) {
+      return 'failed: the rail\'s Terminal did not bring the terminal to the front on the right';
     }
     // Behind the terminal, the Changes button brings Changes to the front first; the second click closes it.
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
-    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && !document.querySelector('[data-right-tabs]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right'", 3_000))) {
+    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-current-session] [data-toggle-changes]')?.dataset.railState === 'closed' && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right'", 3_000))) {
       return 'failed: closing Changes did not leave the terminal alone on the right';
     }
-    changes = 'a tab next to Changes on the right, alone there again after';
+    changes = 'behind Changes on the right, in front from the rail, alone there again after';
   }
 
   // Maximize: the button, then Esc from it; ⌘⇧J twice.
@@ -2251,8 +2561,9 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${PANEL_BOX}.maximized && ${hidden} && !document.querySelector('[data-current-session] [data-composer-submit]')?.offsetParent`, 3_000))) {
     return `failed: Maximize did not give the terminal the whole view (the click landed on ${maximize.at})`;
   }
-  // The panel grows into the view after the conversation hides; a slow machine can measure it in between.
-  const viewWidth = "Math.round(document.querySelector('[data-current-session]').getBoundingClientRect().width)";
+  // The panel grows into the view after the conversation hides; a slow machine can measure it in between. The view's
+  // rail of tools stays beside it.
+  const viewWidth = "Math.round(document.querySelector('[data-current-session]').getBoundingClientRect().width - (document.querySelector('[data-current-session] [data-tool-rail]')?.getBoundingClientRect().width ?? 0))";
   if (!(await waitInPage(win, `Math.abs(${PANEL_BOX}.width - ${viewWidth}) <= 2`, 3_000))) {
     await shot(win, 'terminal-maximized-failed.png');
     return `failed: maximized, the terminal is ${(await box())?.width}px of ${await js(viewWidth)}px`;
@@ -2451,6 +2762,32 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     // .native also turns Windows' short names (RUNNER~1) into the long ones the shell prints.
     if (folder && realpathSync.native(read()) !== realpathSync.native(folder)) return `failed: the shell started in ${read()}, not ${folder}`;
     await shot(win, 'terminal.png');
+    const ranIn = read();
+    // With the browser on (a smoke run starts with it off), a web link printed in the terminal opens in the session's
+    // browser on a click. `clear` puts it on the first row, so the click lands on it whatever the renderer draws with.
+    updatePreferences({ browserEnabled: true });
+    const link = 'http://127.0.0.1:9/smoke-terminal-link';
+    rmSync(marker, { force: true });
+    const printed =
+      process.platform === 'win32'
+        ? `Clear-Host; echo '${link}'; New-Item -ItemType File '${marker.replace(/'/g, "''")}' | Out-Null`
+        : `clear && echo ${link} && touch ${JSON.stringify(marker)}`;
+    if (!(await typeInShell(win, printed, () => existsSync(marker)))) return 'failed: the shell did not print the link';
+    const at = (await js(`(() => {
+      const r = [...document.querySelectorAll('[data-terminal-panel] .xterm-screen')].find((el) => el.checkVisibility()).getBoundingClientRect();
+      return { x: Math.round(r.left + 40), y: Math.round(r.top + 6) };
+    })()`)) as { x: number; y: number };
+    const address = "document.querySelector('[data-current-session] [data-web-preview] [data-browser-address]')";
+    for (let attempt = 0; attempt < 3 && !(await js(`${address}?.value.includes('smoke-terminal-link')`)); attempt++) {
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: at.x, y: at.y });
+      // The link shows once the pointer rests on it: wait for xterm's underline before the click.
+      await waitInPage(win, "!!document.querySelector('[data-terminal-panel] .xterm-cursor-pointer')", 1_500);
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+      await waitInPage(win, `${address}?.value.includes('smoke-terminal-link')`, 2_000);
+    }
+    if (!(await js(`${address}?.value.includes('smoke-terminal-link')`))) return 'failed: a click on a link in the terminal did not open it in the session\'s browser';
+    await js("document.querySelector('[data-current-session] [data-web-preview-close]')?.click()");
     // Middle-click on a tab closes it.
     const tabs = "document.querySelectorAll('[data-terminal-panel] [role=tab]')";
     const before = (await js(`${tabs}.length`)) as number;
@@ -2458,9 +2795,10 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${tabs}.length === ${before + 1}`, 5_000))) return 'failed: a second tab did not open';
     await js(`${tabs}[${before}].dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }))`);
     if (!(await waitInPage(win, `${tabs}.length === ${before}`, 3_000))) return 'failed: middle-click did not close the tab';
-    return `ok: ran a command in ${read()}, and middle-click closed a tab`;
+    return `ok: ran a command in ${ranIn}, a link opened in the session's browser, and middle-click closed a tab`;
   } finally {
     rmSync(marker, { force: true });
+    updatePreferences({ browserEnabled: false });
     // Leave the next run's panel closed again.
     await js("document.querySelector('[data-terminal-panel]') && document.querySelector('[data-toggle-terminal]')?.click()");
   }
@@ -2498,7 +2836,7 @@ async function runPopoutStep(win: BrowserWindow): Promise<string> {
     pop.webContents.debugger.attach('1.3');
     await pop.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true });
     const view = `document.querySelector('[data-current-session="${id}"]')`;
-    if (!(await inPop(`${view} && ${view}.querySelector('[data-panel-toggles]')`, 20_000))) return 'failed: the pop-out shows no panel buttons';
+    if (!(await inPop(`${view} && ${view}.querySelector('[data-tool-rail] [data-toggle-terminal]')`, 20_000))) return 'failed: the pop-out shows no rail of tools';
     // Its pane in the main window closes: the session is open in one window.
     if (!(await waitInPage(win, `!document.querySelector('[data-current-session="${id}"]')`, 5_000))) return 'failed: the main window still shows the session';
     const header = (await popJs(
@@ -2566,7 +2904,7 @@ async function runPopoutStep(win: BrowserWindow): Promise<string> {
     if (!(await inPop("document.querySelector('[data-ask-panel]')"))) return 'failed: Ask did not open in the narrow pop-out';
     await shot(pop, 'popout-narrow.png');
     const fits = (await popJs(
-      `(() => { const w = window.innerWidth; const edge = (sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return !r || (r.left >= 0 && r.right <= w + 1); }; return { page: document.documentElement.scrollWidth <= w, ask: edge('[data-ask-panel]') && document.querySelector('[data-ask-panel]').getBoundingClientRect().width >= w - 2, back: edge('[data-move-to-main-window]'), close: edge('[data-close-window]'), toggles: edge('[data-panel-toggles]'), w }; })()`,
+      `(() => { const w = window.innerWidth; const edge = (sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return !r || (r.left >= 0 && r.right <= w + 1); }; return { page: document.documentElement.scrollWidth <= w, ask: edge('[data-ask-panel]') && document.querySelector('[data-ask-panel]').getBoundingClientRect().right >= document.querySelector('[data-tool-rail]').getBoundingClientRect().left - 2 && document.querySelector('[data-ask-panel]').getBoundingClientRect().left <= 2, back: edge('[data-move-to-main-window]'), close: edge('[data-close-window]'), toggles: edge('[data-tool-rail]'), w }; })()`,
     )) as { page: boolean; ask: boolean; back: boolean; close: boolean; toggles: boolean; w: number };
     if (!Object.values(fits).every(Boolean)) return `failed: something sticks out of a ${fits.w}px pop-out (${JSON.stringify(fits)})`;
     await popJs("document.querySelector('[data-toggle-ask]').click()");
@@ -3190,15 +3528,17 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return `the Copilot session's tray has no premium requests on its right (${String(await js(`${ring}?.dataset.tooltip ?? 'none'`))})`;
     }
     if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
+    // Its call to Seshboard's visualize server, which Copilot names its own way, draws as a visual (#289).
+    if (!(await waitInPage(win, `!!${view}.querySelector('[data-visual] [data-visual-state="drawn"]')`, 10_000))) return "the Copilot session's show_widget call did not draw as a visual";
     await js(`${view}.querySelector('[data-more-menu]').click()`);
     const menuOk = await waitInPage(
       win,
-      "!!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !!document.querySelector('[role=\"menu\"] [data-rename-session]') && !!document.querySelector('[role=\"menu\"] [data-agents-button]') && !document.querySelector('[data-menu-note]')",
+      "!!document.querySelector('[role=\"menu\"] [data-open-in]') && !!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !!document.querySelector('[role=\"menu\"] [data-rename-session]') && !!document.querySelector('[role=\"menu\"] [data-agents-button]') && !document.querySelector('[data-menu-note]')",
       3_000,
     );
     await shot(win, 'copilot-session-menu.png');
     pressKey(win, 'Escape');
-    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Agents and Done, with no Claude Code only line)";
+    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in with Copilot CLI, Rename, Agents and Done, with no Claude Code only line)";
     // Copilot's own fork and rewind on its messages (in its words), and Rename… and Delete… in its row's menu. Nothing is
     // picked: the demo's Copilot can't run them.
     const toolbar = (await js(
@@ -3224,14 +3564,20 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return waitInPage(win, `document.querySelector('[data-usage-view]')?.dataset.usageProfile === ${JSON.stringify(value)}`, 3_000);
     };
     if (!(await pickUsageProfile(profileId))) return "Usage's profile menu could not pick the Copilot profile";
-    const quotaShown = await waitInPage(win, "(document.querySelector('[data-provider-quota=\"copilot\"]')?.textContent ?? '').includes('212 of 1,500 used') && !document.querySelector('[data-usage-tab]')?.offsetParent", 5_000);
+    await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
+    const quotaShown = await waitInPage(win, "(document.querySelector('[data-provider-quota=\"copilot\"]')?.textContent ?? '').includes('212 of 1,500 used')", 5_000);
     const quotaText = (await js("document.querySelector('[data-provider-quota], [data-provider-quota-status]')?.textContent ?? 'nothing'")) as string;
     await shot(win, 'usage-copilot.png');
+    // Its tokens, read from Copilot's session files, in the Tokens tab; then back on Limits for later steps.
+    await js("document.querySelector('[data-usage-tab=\"tokens\"]')?.click()");
+    const copilotTokens = await waitInPage(win, "document.querySelector('[data-usage-tab=\"tokens\"]')?.getAttribute('aria-selected') === 'true' && !!document.querySelector('[data-usage-view] [data-usage-headline], [data-usage-view] [data-usage-scan]')", 10_000);
+    await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
     // Back on a Claude Code profile, so later steps find Usage as it was.
     if (claudeProfile) await pickUsageProfile(claudeProfile);
     await js("document.querySelector('[data-usage-back]')?.click()");
     await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
     if (!quotaShown) return `Usage for the Copilot profile doesn't show its premium requests (${quotaText})`;
+    if (!copilotTokens) return "Usage for the Copilot profile has no Tokens tab with totals";
     // Home's card for the profile: its premium requests too, never Claude Code's 5-hour and weekly windows.
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
     const homeCard = `document.querySelector('[data-home-profile=${JSON.stringify(profileId)}]')`;
@@ -3256,6 +3602,376 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
   } finally {
     // Back as it was: the Copilot profile removed (its folder and sessions stay on disk; the project is on the default
     // profile again), and the sidebar's scope.
+    if (profileId) {
+      await openPage('profiles');
+      await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
+      await js(`document.querySelector('[data-profile="${profileId}"] [data-remove-profile]')?.click()`);
+      const confirm = "[...document.querySelectorAll('[role=alertdialog] button, [role=dialog] button')].find((b) => b.textContent.trim() === 'Remove')";
+      if (await waitInPage(win, `!!${confirm}`, 3_000)) await js(`${confirm}.click()`);
+      await waitInPage(win, `!${markedRow}`, 10_000);
+    }
+    if (!scopeWasAll && (await openPage('sidebar'))) {
+      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}?.click()`);
+    }
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    if (addedProject) await removeProjectInProjects(win, addedProject);
+  }
+}
+
+/**
+ * OpenAI Codex (#276). Settings › Profiles offers Codex CLI found on this computer; Add profile on Codex uses its own
+ * folder and, signed in there already, skips the sign in: Codex is ready, with Start, Use for a project and Make it the
+ * default. Its profile has a Default and New session defaults with Codex's models. Start a Codex session opens New
+ * session on it, with Codex's mark, models, effort and modes; Start says what the demo's Codex says (it runs nothing).
+ * Its session in the sidebar has Codex's mark, its tool calls as steps, a message box for Codex, and says its usage isn't
+ * shown yet. The demo's Codex is made up (SESHBOARD_STUB_CODEX): installed, signed in, three models, two sessions in
+ * `~/.codex`, and an app-server that answers in the engine and refuses to run a session. Elsewhere the step is skipped:
+ * it never reaches a real Codex. The profile and the project it added are removed again.
+ */
+async function runCodexStep(win: BrowserWindow): Promise<string> {
+  if (!process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_STUB_CODEX !== '1') return 'ok: skipped, only with the demo\'s made-up Codex (npm run smoke:demo)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const markedRow = "document.querySelector('[data-session-id]:has([data-provider-mark=\"codex\"])')";
+  const scope = "document.querySelector('[data-settings-page=\"sidebar\"] [data-session-scope]')";
+  const page = "document.querySelector('[data-settings-page=\"profiles\"]')";
+  const offer = `${page}?.querySelector('[data-provider-offer="codex"]')`;
+  const openPage = async (section: string) => {
+    await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
+  };
+  // Codex's sessions started outside Seshboard show only with sessions from other apps shown.
+  if (!(await openPage('sidebar'))) return 'no Sidebar page in Settings';
+  if (!(await waitInPage(win, `!!${scope}`, 3_000))) return 'no Show sessions from other apps switch';
+  const scopeWasAll = (await js(`${scope}.getAttribute('aria-checked') === 'true'`)) as boolean;
+  if (!scopeWasAll) await js(`${scope}.click()`);
+  let profileId: string | null = null;
+  /** A project added for New session (the throwaway profile has none), removed again at the end. */
+  let addedProject: string | null = null;
+  const nsv = '[data-new-session-view]';
+  const box = `document.querySelector('${nsv} [data-composer]')`;
+  try {
+    // 1. The offer: its sessions, and new ones.
+    if (!(await openPage('profiles'))) return 'no Profiles page in Settings';
+    if (!(await waitInPage(win, `!!${offer}`, 15_000))) return 'no offer for Codex CLI in Settings › Profiles';
+    const offerText = (await js(`${offer}.textContent`)) as string;
+    if (!/OpenAI Codex CLI is on this (Mac|PC)/.test(offerText) || !offerText.includes('see its 2 sessions here and start new ones')) return `the Codex offer reads ${JSON.stringify(offerText)}`;
+    // 2. Add profile on Codex: its own folder, signed in there already, so no sign in.
+    await js(`${offer}.querySelector('[data-provider-offer-add]').click()`);
+    if (!(await waitInPage(win, `${page}.querySelector('[data-new-profile-tool="codex"]')?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'Add Codex profile did not open Add profile with Codex picked';
+    if (!(await waitInPage(win, `!${page}.querySelector('[data-add-profile-next]').disabled`, 10_000))) return 'Next stays off for Codex (the demo Codex was not found)';
+    await js(`${page}.querySelector('[data-add-profile-next]').click()`);
+    const folderField = `${page}.querySelector('[data-new-profile-folder]')`;
+    if (!(await waitInPage(win, `/^~[\\\\/]\\.codex$/.test(${folderField}?.value ?? '')`, 3_000))) return `Add profile with Codex offers ${String(await js(`${folderField}?.value`))}, not ~/.codex`;
+    if (!(await waitInPage(win, `!!${page}.querySelector('[data-new-profile-signed-in]')`, 5_000))) return "Add profile with Codex doesn't say it is signed in already";
+    const submit = (await js(`${page}.querySelector('[data-add-profile-submit]').textContent.trim()`)) as string;
+    if (submit !== 'Add profile') return `signed in, the button reads ${JSON.stringify(submit)}`;
+    await js(`${page}.querySelector('[data-add-profile-submit]').click()`);
+    // 3. Codex is ready: who it is signed in as, and the ways to start using it.
+    const ready = `${page}.querySelector('[data-profile-ready]')`;
+    if (!(await waitInPage(win, `${ready}?.textContent.includes('Codex is ready')`, 10_000))) return 'adding the profile did not end on Codex is ready';
+    profileId = (await js(`${ready}.dataset.profileReady`)) as string;
+    if (!(await waitInPage(win, `${ready}.querySelector('[data-profile-ready-account]')?.textContent.includes('demo-user@example.com')`, 10_000))) return "Codex is ready doesn't say who it is signed in as";
+    if (!(await js(`!!${ready}.querySelector('[data-profile-ready-start]') && !!${ready}.querySelector('[data-profile-ready-default]')`))) return 'Codex is ready has no Start a Codex session or Make it the default';
+    // Its Default and its own New session defaults, as any profile that starts sessions.
+    const row = `document.querySelector('[data-profile="${profileId}"]')`;
+    if (!(await js(`!!${row}?.querySelector('[data-profile-default]') && !!${row}.querySelector('[data-profile-defaults]')`))) return 'the Codex profile has no Default or New session defaults';
+    await js(`${ready}.querySelector('[data-profile-ready-done]').click()`);
+    await js("document.querySelector('[data-close-settings]')?.click()");
+
+    // 4. Its session: Codex's mark, its tool calls as steps, a message box for Codex, and its usage not shown yet.
+    if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Codex session showed in the sidebar after adding the profile';
+    const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
+    const view = `document.querySelector('[data-current-session="${id}"]')`;
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 10_000))) return 'the Codex session has no message box';
+    if (await js(`!!${view}.querySelector('[data-read-only-session]')`)) return 'the Codex session still says it is read-only';
+    if (!(await waitInPage(win, `(${view}.querySelector('[data-session-elsewhere]')?.textContent ?? '').includes('OpenAI Codex')`, 5_000))) return "the Codex session doesn't say a message continues it here with Codex";
+    // Its usage: Codex's rate limits as plan windows (the demo's 23% of 5 hours and 41% of the week), with their cost.
+    const band = `(${view}.querySelector('[data-usage-band]')?.getAttribute('aria-label') ?? '')`;
+    if (!(await waitInPage(win, `${band}.includes('5-hour limit: 23% used') && ${band}.includes('Weekly limit: 41% used') && !!${view}.querySelector('[data-usage-cost]')`, 10_000))) {
+      return `the Codex session's tray doesn't show its windows (${JSON.stringify(await js(band))})`;
+    }
+    // Usage for the Codex profile: its windows in Limits, without Claude Code's history, and its tokens in Tokens.
+    await js(`${view}.querySelector('[data-usage-band]').click()`);
+    await waitInPage(win, "!!document.querySelector('[data-usage-view] [data-usage-tab]')", 5_000);
+    await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
+    const usageOk = await waitInPage(win, "document.querySelectorAll('[data-usage-view] [data-usage-plan-windows] > *').length === 2 && !document.querySelector('[data-usage-view] [data-usage-history]')", 10_000);
+    const usageText = usageOk ? '' : String(await js("document.querySelector('[data-usage-view]')?.innerText.slice(0, 200) ?? 'no Usage view'"));
+    if (usageOk) await shot(win, 'usage-codex.png');
+    await js("document.querySelector('[data-usage-tab=\"tokens\"]')?.click()");
+    const codexTokens = await waitInPage(win, "document.querySelector('[data-usage-tab=\"tokens\"]')?.getAttribute('aria-selected') === 'true' && !!document.querySelector('[data-usage-view] [data-usage-headline], [data-usage-view] [data-usage-scan]')", 10_000);
+    await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
+    await js("document.querySelector('[data-usage-back]')?.click()");
+    await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
+    if (!usageOk) return `Usage for the Codex profile doesn't show just its two windows (${usageText})`;
+    if (!codexTokens) return 'Usage for the Codex profile has no Tokens tab with totals';
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 5_000))) return 'the Codex session did not open again after Usage';
+    // A finished turn folds its tool calls into one line (Skim); opened, each is a step, with Codex's file read as a Read.
+    const fold = `${view}.querySelector('[data-activity] > button')`;
+    if (!(await waitInPage(win, `!!${fold}`, 10_000))) return 'the Codex transcript shows no tool activity';
+    if ((await js(`${fold}.getAttribute('aria-expanded')`)) !== 'true') await js(`${fold}.click()`);
+    const steps = `[...${view}.querySelectorAll('[data-activity] [data-step]')].map((s) => s.textContent.trim())`;
+    if (!(await waitInPage(win, `${steps}.some((t) => t.includes('ProductList.tsx'))`, 5_000))) return `the Codex transcript's steps have no read of ProductList.tsx (${JSON.stringify(await js(steps))})`;
+    await shot(win, 'codex-session.png');
+    // Its ⋯ menu, as Copilot's: Compact (off while it doesn't run here), Tools, Rename (Codex renames it too) and Open in
+    // Codex CLI. Nothing is picked but Tools.
+    await js(`${view}.querySelector('[data-more-menu]').click()`);
+    const menuItems = "[...document.querySelectorAll('[role=menu] [data-provider-compact], [role=menu] [data-provider-tools], [role=menu] [data-rename-session], [role=menu] [data-open-provider-cli=\"codex\"]')].map((e) => Object.keys(e.dataset).find((k) => ['providerCompact', 'providerTools', 'renameSession', 'openProviderCli'].includes(k)))";
+    const menuOk = await waitInPage(win, `${menuItems}.length === 4 && !!document.querySelector('[role=menu] [data-open-in]')`, 3_000);
+    const menuSeen = (await js(menuItems)) as string[];
+    if (!menuOk) {
+      pressKey(win, 'Escape');
+      return `the Codex session's ⋯ menu has ${JSON.stringify(menuSeen)}${(await js("!!document.querySelector('[role=menu] [data-open-in]')")) ? '' : ' and no Open in'}, not Open in, Compact, Tools, Rename and Codex CLI`;
+    }
+    // Tools: the session doesn't run here (the demo's Codex runs nothing), so it reads Codex's config for the folder: the
+    // demo's github and linear servers, with no switch to turn one on or off (Codex keeps that in its config.toml), and
+    // its hook in a Hooks tab. Reconnect and its note come only while the session runs here.
+    await js("document.querySelector('[role=menu] [data-provider-tools]').click()");
+    const caps = "document.querySelector('[data-capabilities]')";
+    const toolsShown = await waitInPage(win, `(${caps}?.innerText ?? '').includes('Read from this folder.') && ['github', 'linear'].every((n) => (${caps}.querySelector('[data-capabilities-list="mcp"]')?.innerText ?? '').includes(n)) && !${caps}.querySelector('[role=alert]')`, 10_000);
+    const toolsText = toolsShown ? '' : String(await js(`${caps}?.innerText.slice(0, 300) ?? 'no Tools dialog'`));
+    const switches = (await js(`${caps}?.querySelectorAll('[role=switch]').length ?? 0`)) as number;
+    let hookText = '';
+    if (toolsShown && switches === 0) {
+      await js(`${caps}.querySelector('[data-capabilities-tab="hooks"]')?.click()`);
+      if (await waitInPage(win, `!!${caps}.querySelector('[data-capabilities-list="hooks"]') && !(${caps}.querySelector('[data-capabilities-list="hooks"]').innerText ?? '').includes('No hooks')`, 5_000)) {
+        hookText = String(await js(`${caps}.querySelector('[data-capabilities-list="hooks"]').innerText.split(String.fromCharCode(10))[0]`));
+      }
+      await shot(win, 'codex-tools.png');
+    }
+    pressKey(win, 'Escape');
+    await waitInPage(win, "!document.querySelector('[data-capabilities]')", 2_000);
+    if (!toolsShown) return `Tools for the Codex session doesn't list github and linear from its config (${toolsText})`;
+    if (switches > 0) return `Tools for the Codex session shows ${switches} switches to turn MCP servers on or off`;
+    if (!hookText) return "Tools for the Codex session has no Hooks tab with the demo's hook";
+
+    // Fork from a reply and Ask about this session, as for Copilot (not picked: the demo's Codex refuses them).
+    const forkAsk = await waitInPage(
+      win,
+      `[...${view}.querySelectorAll('[data-message-actions] button')].some((b) => (b.getAttribute('aria-label') ?? '').startsWith('Fork from here')) && !!${view}.querySelector('[data-toggle-ask]')`,
+      5_000,
+    );
+    if (!forkAsk) return 'the Codex session has no Fork on its replies, or no Ask';
+
+    // 4b. Its other session draws the CI server's MCP App in the conversation (#289).
+    const appProblem = await checkCodexMcpApp(win);
+    if (appProblem) return appProblem;
+    await shot(win, 'codex-mcp-app.png');
+
+    // 5. New session on the Codex profile, with Codex's mark, models, efforts and modes.
+    await js("document.querySelector('[data-new-session]')?.click()");
+    const chip = `document.querySelector('${nsv} [data-profile-select]')`;
+    if (!(await waitInPage(win, `!!${chip}`, 5_000))) return 'New session has no profile chip';
+    const folderOf = `document.querySelector('${nsv} [data-folder-select]')?.dataset.value`;
+    if (!(await js(`!!${folderOf}`))) {
+      await js(`document.querySelector('${nsv} [data-add-folder]')?.click()`);
+      if (!(await waitInPage(win, "!!document.querySelector('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')", 5_000))) return 'New session has no project to add';
+      addedProject = (await js(
+        "(() => { const all = [...document.querySelectorAll('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')].map((e) => e.dataset.knownProject); return all.find((r) => /acme-store$/.test(r)) ?? all[0]; })()",
+      )) as string;
+      await js(`document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)}).click()`);
+      if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)})?.dataset.added === 'true'`, 3_000))) return 'the project was not added';
+      pressKey(win, 'Escape');
+      await waitInPage(win, "!document.querySelector('[data-add-project-dialog]')", 3_000);
+      if (!(await js(`${folderOf} === ${JSON.stringify(addedProject)}`))) {
+        if (!(await waitInPage(win, `!!document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)})`, 3_000))) return 'the added project is not offered in New session';
+        await js(`document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)}).click()`);
+      }
+      if (!(await waitInPage(win, `${folderOf} === ${JSON.stringify(addedProject)}`, 5_000))) return 'New session did not pick the added project';
+    }
+    // The profile after the project: picking a project puts its own profile back.
+    await js(`${chip}.click()`);
+    const choice = `document.querySelector('[data-menu="profile"] [data-choice=${JSON.stringify(profileId)}]')`;
+    if (!(await waitInPage(win, `!!${choice}`, 3_000))) return "New session's profile menu has no Codex profile";
+    await js(`${choice}.click()`);
+    if (!(await waitInPage(win, `${chip}?.dataset.value === ${JSON.stringify(profileId)}`, 3_000))) return 'New session did not take the Codex profile';
+    if (!(await waitInPage(win, `${box}?.placeholder === 'What should Codex work on?'`, 5_000))) return `New session with Codex asks ${JSON.stringify(await js(`${box}?.placeholder`))}`;
+    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-chip-provider="codex"]')`, 3_000))) return 'New session with the Codex profile has no Codex mark';
+    // Codex's models (from its app-server's model/list), a model's own efforts (the mini one has medium and high), and
+    // Codex's four modes.
+    const menuChoices = async (name: string) => {
+      await js(`document.querySelector('${nsv} [data-${name}-select]')?.click()`);
+      const open = await waitInPage(win, `!!document.querySelector('[data-menu="${name}"]')`, 3_000);
+      const values = open ? ((await js(`[...document.querySelectorAll('[data-menu="${name}"] [data-choice]')].map((b) => b.dataset.choice)`)) as string[]) : [];
+      pressKey(win, 'Escape');
+      await waitInPage(win, `!document.querySelector('[data-menu="${name}"]')`, 2_000);
+      return values;
+    };
+    const models = await menuChoices('model');
+    if (!models.includes('gpt-5.3-codex-mini') || !models.includes('gpt-5.2')) return `New session's model menu with Codex lists ${JSON.stringify(models)}`;
+    await js(`document.querySelector('${nsv} [data-model-select]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-menu="model"] [data-choice="gpt-5.3-codex-mini"]')`, 3_000))) return 'the model menu did not open again';
+    await js(`document.querySelector('[data-menu="model"] [data-choice="gpt-5.3-codex-mini"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-model-chip="gpt-5.3-codex-mini"]')`, 3_000))) return 'New session did not take the mini model';
+    const efforts = await menuChoices('effort');
+    if (efforts.join(',') !== ',medium,high') return `New session's effort menu with Codex's mini model lists ${JSON.stringify(efforts)}`;
+    const modes = await menuChoices('mode');
+    if (modes.join(',') !== 'default,acceptEdits,plan,auto') return `New session's mode menu with Codex lists ${JSON.stringify(modes)}`;
+    await shot(win, 'new-session-codex.png');
+    // Start: the demo's Codex refuses, and New session says so. The worktree off, so nothing is made first.
+    const toggle = `document.querySelector('${nsv} [data-worktree-switch]')`;
+    if (await js(`${toggle}?.getAttribute('aria-checked') === 'true'`)) await js(`${toggle}.click()`);
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('Smoke: a prompt for Codex');
+    // Start's main part (the ▾ menu's items have their own hooks).
+    const start = `document.querySelector('${nsv} [data-composer-submit]')`;
+    if (!(await waitInPage(win, `!!${start} && !${start}.disabled`, 5_000))) return "typing in New session with Codex didn't make Start usable";
+    await js(`${start}.click()`);
+    const refused = await waitInPage(win, "document.body.innerText.includes('The demo has no Codex CLI to run sessions')", 10_000);
+    const said = refused ? '' : String(await js("[...document.querySelectorAll('[role=alert], [role=status], [data-toast]')].map((e) => e.textContent).join(' | ')"));
+    await setFieldValue(win, `${nsv} [data-composer]`, '');
+    if (!refused) return `Start with the demo's Codex didn't say it has no Codex CLI to run sessions (${said || 'nothing said'})`;
+    return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box, its 5-hour and weekly windows, Fork and Ask, a ⋯ menu with Compact, Tools and Rename, and Tools lists github and linear without switches and its hook (${hookText})`;
+  } finally {
+    // Back as it was: the Codex profile removed (its folder and sessions stay on disk), the sidebar's scope, the project.
+    if (profileId) {
+      await openPage('profiles');
+      await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
+      await js(`document.querySelector('[data-profile="${profileId}"] [data-remove-profile]')?.click()`);
+      const confirm = "[...document.querySelectorAll('[role=alertdialog] button, [role=dialog] button')].find((b) => b.textContent.trim() === 'Remove')";
+      if (await waitInPage(win, `!!${confirm}`, 3_000)) await js(`${confirm}.click()`);
+      await waitInPage(win, `!${markedRow}`, 10_000);
+    }
+    if (!scopeWasAll && (await openPage('sidebar'))) {
+      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}?.click()`);
+    }
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    if (addedProject) await removeProjectInProjects(win, addedProject);
+  }
+}
+
+/**
+ * Google Antigravity (#272). Settings › Profiles offers Antigravity CLI found on this computer; Add profile on it uses
+ * `~/.gemini` and, signed in there already, skips the sign in: Antigravity is ready, on its plan. Its session in the
+ * sidebar has Antigravity's mark, its tool calls as steps (its file read as a Read) and a message box. New session on
+ * it has Antigravity's models, thinking levels and modes; Start says what the demo's Antigravity says (it runs nothing).
+ * The demo's Antigravity is made up (SESHBOARD_STUB_AGY): installed, signed in, three models, two sessions in
+ * `~/.gemini`, and an `agy acp` that answers in the engine. Elsewhere the step is skipped: it never reaches a real
+ * Antigravity. The profile and the project it added are removed again.
+ */
+async function runAntigravityStep(win: BrowserWindow): Promise<string> {
+  if (!process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_STUB_AGY !== '1') return 'ok: skipped, only with the demo\'s made-up Antigravity (npm run smoke:demo)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const markedRow = "document.querySelector('[data-session-id]:has([data-provider-mark=\"antigravity\"])')";
+  const scope = "document.querySelector('[data-settings-page=\"sidebar\"] [data-session-scope]')";
+  const page = "document.querySelector('[data-settings-page=\"profiles\"]')";
+  const offer = `${page}?.querySelector('[data-provider-offer="antigravity"]')`;
+  const openPage = async (section: string) => {
+    await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
+  };
+  if (!(await openPage('sidebar'))) return 'no Sidebar page in Settings';
+  if (!(await waitInPage(win, `!!${scope}`, 3_000))) return 'no Show sessions from other apps switch';
+  const scopeWasAll = (await js(`${scope}.getAttribute('aria-checked') === 'true'`)) as boolean;
+  if (!scopeWasAll) await js(`${scope}.click()`);
+  let profileId: string | null = null;
+  let addedProject: string | null = null;
+  const nsv = '[data-new-session-view]';
+  const box = `document.querySelector('${nsv} [data-composer]')`;
+  try {
+    // 1. The offer, and Add profile on its own folder, signed in there already.
+    if (!(await openPage('profiles'))) return 'no Profiles page in Settings';
+    if (!(await waitInPage(win, `!!${offer}`, 15_000))) return 'no offer for Antigravity CLI in Settings › Profiles';
+    const offerText = (await js(`${offer}.textContent`)) as string;
+    if (!/Google Antigravity CLI is on this (Mac|PC)/.test(offerText) || !offerText.includes('see its 2 sessions here')) return `the Antigravity offer reads ${JSON.stringify(offerText)}`;
+    await js(`${offer}.querySelector('[data-provider-offer-add]').click()`);
+    if (!(await waitInPage(win, `${page}.querySelector('[data-new-profile-tool="antigravity"]')?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'Add Antigravity profile did not open Add profile with Antigravity picked';
+    if (!(await waitInPage(win, `!${page}.querySelector('[data-add-profile-next]').disabled`, 10_000))) return 'Next stays off for Antigravity (the demo agy was not found)';
+    await js(`${page}.querySelector('[data-add-profile-next]').click()`);
+    const folderField = `${page}.querySelector('[data-new-profile-folder]')`;
+    if (!(await waitInPage(win, `/^~[\\\\/]\\.gemini$/.test(${folderField}?.value ?? '')`, 3_000))) return `Add profile with Antigravity offers ${String(await js(`${folderField}?.value`))}, not ~/.gemini`;
+    if (!(await waitInPage(win, `!!${page}.querySelector('[data-new-profile-signed-in]')`, 5_000))) return "Add profile with Antigravity doesn't say it is signed in already";
+    await js(`${page}.querySelector('[data-add-profile-submit]').click()`);
+    const ready = `${page}.querySelector('[data-profile-ready]')`;
+    if (!(await waitInPage(win, `${ready}?.textContent.includes('Antigravity is ready')`, 10_000))) return 'adding the profile did not end on Antigravity is ready';
+    profileId = (await js(`${ready}.dataset.profileReady`)) as string;
+    if (!(await waitInPage(win, `${ready}.querySelector('[data-profile-ready-account]')?.textContent.includes('Google AI Pro')`, 10_000))) return "Antigravity is ready doesn't say its plan";
+    await js(`${ready}.querySelector('[data-profile-ready-done]').click()`);
+    await js("document.querySelector('[data-close-settings]')?.click()");
+
+    // 2. Its session: the mark, its steps from the replay (the read of Cart.tsx), and a message box for Antigravity.
+    if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Antigravity session showed in the sidebar after adding the profile';
+    const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
+    const view = `document.querySelector('[data-current-session="${id}"]')`;
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 10_000))) return 'the Antigravity session has no message box';
+    if (await js(`!!${view}.querySelector('[data-read-only-session]')`)) return 'the Antigravity session still says it is read-only';
+    const fold = `${view}.querySelector('[data-activity] > button')`;
+    if (!(await waitInPage(win, `!!${fold}`, 10_000))) return 'the Antigravity transcript shows no tool activity';
+    if ((await js(`${fold}.getAttribute('aria-expanded')`)) !== 'true') await js(`${fold}.click()`);
+    const steps = `[...${view}.querySelectorAll('[data-activity] [data-step]')].map((s) => s.textContent.trim())`;
+    if (!(await waitInPage(win, `${steps}.some((t) => t.includes('Cart.tsx'))`, 5_000))) return `the Antigravity transcript's steps have no read of Cart.tsx (${JSON.stringify(await js(steps))})`;
+    await shot(win, 'antigravity-session.png');
+    // Its ⋯ menu: Tools and Open in Antigravity CLI; no Rename (Antigravity has no way to rename yet).
+    await js(`${view}.querySelector('[data-more-menu]').click()`);
+    const menuOk = await waitInPage(win, "!!document.querySelector('[role=menu] [data-provider-tools]') && !!document.querySelector('[role=menu] [data-open-provider-cli=\"antigravity\"]') && !document.querySelector('[role=menu] [data-rename-session]')", 3_000);
+    pressKey(win, 'Escape');
+    if (!menuOk) return "the Antigravity session's ⋯ menu doesn't have Tools and Open in Antigravity CLI without Rename";
+    if (!(await waitInPage(win, `!!${view}.querySelector('[data-toggle-ask]')`, 5_000))) return 'the Antigravity session has no Ask';
+
+    // 3. New session on the Antigravity profile: its mark, models, thinking levels and modes; Start refused by the demo.
+    await js("document.querySelector('[data-new-session]')?.click()");
+    const chip = `document.querySelector('${nsv} [data-profile-select]')`;
+    if (!(await waitInPage(win, `!!${chip}`, 5_000))) return 'New session has no profile chip';
+    const folderOf = `document.querySelector('${nsv} [data-folder-select]')?.dataset.value`;
+    if (!(await js(`!!${folderOf}`))) {
+      await js(`document.querySelector('${nsv} [data-add-folder]')?.click()`);
+      if (!(await waitInPage(win, "!!document.querySelector('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')", 5_000))) return 'New session has no project to add';
+      addedProject = (await js(
+        "(() => { const all = [...document.querySelectorAll('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')].map((e) => e.dataset.knownProject); return all.find((r) => /acme-store$/.test(r)) ?? all[0]; })()",
+      )) as string;
+      await js(`document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)}).click()`);
+      if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)})?.dataset.added === 'true'`, 3_000))) return 'the project was not added';
+      pressKey(win, 'Escape');
+      await waitInPage(win, "!document.querySelector('[data-add-project-dialog]')", 3_000);
+      if (!(await js(`${folderOf} === ${JSON.stringify(addedProject)}`))) {
+        if (!(await waitInPage(win, `!!document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)})`, 3_000))) return 'the added project is not offered in New session';
+        await js(`document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)}).click()`);
+      }
+      if (!(await waitInPage(win, `${folderOf} === ${JSON.stringify(addedProject)}`, 5_000))) return 'New session did not pick the added project';
+    }
+    await js(`${chip}.click()`);
+    const choice = `document.querySelector('[data-menu="profile"] [data-choice=${JSON.stringify(profileId)}]')`;
+    if (!(await waitInPage(win, `!!${choice}`, 3_000))) return "New session's profile menu has no Antigravity profile";
+    await js(`${choice}.click()`);
+    if (!(await waitInPage(win, `${box}?.placeholder === 'What should Antigravity work on?'`, 5_000))) return `New session with Antigravity asks ${JSON.stringify(await js(`${box}?.placeholder`))}`;
+    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-chip-provider="antigravity"]')`, 3_000))) return 'New session with the Antigravity profile has no Antigravity mark';
+    const menuChoices = async (name: string) => {
+      await js(`document.querySelector('${nsv} [data-${name}-select]')?.click()`);
+      const open = await waitInPage(win, `!!document.querySelector('[data-menu="${name}"]')`, 3_000);
+      const values = open ? ((await js(`[...document.querySelectorAll('[data-menu="${name}"] [data-choice]')].map((b) => b.dataset.choice)`)) as string[]) : [];
+      pressKey(win, 'Escape');
+      await waitInPage(win, `!document.querySelector('[data-menu="${name}"]')`, 2_000);
+      return values;
+    };
+    const models = await menuChoices('model');
+    if (!models.includes('gemini-4-neon') || !models.includes('gemini-3.8-flash')) return `New session's model menu with Antigravity lists ${JSON.stringify(models)}`;
+    await js(`document.querySelector('${nsv} [data-model-select]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-menu="model"] [data-choice="gemini-3.8-flash"]')`, 3_000))) return 'the model menu did not open again';
+    await js(`document.querySelector('[data-menu="model"] [data-choice="gemini-3.8-flash"]').click()`);
+    const efforts = await menuChoices('effort');
+    if (efforts.join(',') !== ',low,medium,high,xhigh') return `New session's effort menu with Antigravity lists ${JSON.stringify(efforts)}`;
+    const modes = await menuChoices('mode');
+    if (modes.join(',') !== 'default,acceptEdits,plan,auto') return `New session's mode menu with Antigravity lists ${JSON.stringify(modes)}`;
+    await shot(win, 'new-session-antigravity.png');
+    const toggle = `document.querySelector('${nsv} [data-worktree-switch]')`;
+    if (await js(`${toggle}?.getAttribute('aria-checked') === 'true'`)) await js(`${toggle}.click()`);
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('Smoke: a prompt for Antigravity');
+    const start = `document.querySelector('${nsv} [data-composer-submit]')`;
+    if (!(await waitInPage(win, `!!${start} && !${start}.disabled`, 5_000))) return "typing in New session with Antigravity didn't make Start usable";
+    await js(`${start}.click()`);
+    const refused = await waitInPage(win, "document.body.innerText.includes('The demo has no Antigravity CLI to run sessions')", 10_000);
+    const said = refused ? '' : String(await js("[...document.querySelectorAll('[role=alert], [role=status], [data-toast]')].map((e) => e.textContent).join(' | ')"));
+    await setFieldValue(win, `${nsv} [data-composer]`, '');
+    if (!refused) return `Start with the demo's Antigravity didn't say it has no Antigravity CLI to run sessions (${said || 'nothing said'})`;
+    return `ok: offered, added without a sign in, Antigravity is ready on Google AI Pro; its session has the mark, its steps, a message box, Ask, Tools and Open in Antigravity CLI; New session on it with its models (${models.filter(Boolean).join(', ')}), thinking levels and modes, and Start said the demo has no Antigravity CLI`;
+  } finally {
     if (profileId) {
       await openPage('profiles');
       await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
@@ -3433,6 +4149,18 @@ async function runGlobalModelStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-settings-section=\"general\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-new-session-effort]') && document.querySelector('[data-new-session-model]')", 2_000))) return 'Settings › General has no Global model and Global effort';
     if (model && !(await chooseOption(win, '[data-new-session-model]', ''))) return "the Global model menu has no Claude Code's default";
+    if (model) {
+      // The Global fallback model is off until one is picked, and Off puts it back.
+      const fallback = '[data-new-session-fallback-model]';
+      if (!(await waitInPage(win, `document.querySelector('${fallback}')?.dataset.value === ''`, 2_000))) return 'Settings › General has no Global fallback model, or it is not off';
+      await js(`document.querySelector('${fallback}').click()`);
+      if (!(await waitInPage(win, "document.querySelectorAll('[data-select-list] [data-option-value]').length > 1", 3_000))) return 'the Global fallback model menu lists no models';
+      const picked = (await js("document.querySelectorAll('[data-select-list] [data-option-value]')[1].dataset.optionValue")) as string;
+      await js("document.querySelectorAll('[data-select-list] [data-option-value]')[1].click()");
+      if (!(await until(() => preferences.get().newSessionFallbackModel === picked))) return `the Global fallback model was not saved as ${picked}`;
+      if (!(await chooseOption(win, fallback, ''))) return 'could not turn the Global fallback model off again';
+      if (!(await until(() => preferences.get().newSessionFallbackModel === ''))) return 'the Global fallback model did not go back to off';
+    }
     if (!(await chooseOption(win, '[data-new-session-effort]', effort))) return `could not pick ${effort || 'the default'} as the Global effort`;
     if (effort) await shot(win, 'settings-global-model.png');
     await js("document.querySelector('[data-close-settings]').click()");
@@ -3709,6 +4437,10 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, 'global'))) return 'could not pick Global default for the model';
   if (!(await waitInPage(win, `${page('[data-default-model]')}?.dataset.value === 'global'`, 2_000))) return 'the model did not stay on Global default';
   if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, ''))) return 'could not put the model back on Profile default';
+  // The fallback model is off until one is set, and can skip its profile's for the global one as well.
+  if (!(await waitInPage(win, `${page('[data-default-fallback-model]')}?.dataset.value === ''`, 2_000))) return 'the fallback model did not start on Profile default';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-fallback-model]`, 'global'))) return 'could not pick Global default for the fallback model';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-fallback-model]`, ''))) return 'could not put the fallback model back on Profile default';
 
   // The page's other tabs, read-only: Overview, Sessions, and the worktrees of a real repository.
   const pageResult = await smokeRun.step('project page and worktrees', () => runProjectPageStep(win, root), { cleanup: false });
@@ -3787,6 +4519,7 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
   // Home without projects is the way to add the first one: its lanes, projects and start box need this one.
   await smokeRun.step('home: three lanes and usage on the right when wide, two lanes at 900px, one under 760px', () => runHomeLayoutStep(win), { cleanup: false, timeoutMs: 60_000 });
+  await smokeRun.step('home width: the same as New session, wide and narrow', () => runHomeWidthStep(win), { cleanup: false });
   await smokeRun.step('home: a To review card opens its session with the catch-up', () => runHomeReviewStep(win), { cleanup: false });
   await smokeRun.step('home: a project name and Enter in the start box open New session in it', () => runHomeStartStep(win), { cleanup: false });
 
@@ -3978,6 +4711,9 @@ async function runProjectPageStep(win: BrowserWindow, root: string): Promise<str
 
   const main = '[data-worktree-row][data-group="main"]';
   if (!(await js(`!!${q(main)}`))) return 'the main checkout is not listed';
+  // The rows come at once; their changes, commits and pull requests are read after. Nothing is suggested or picked before that.
+  if (!(await waitInPage(win, `!${q('[data-worktrees-tab]')}.hasAttribute('data-reading')`, 20_000))) return 'the worktrees were still being read after 20 seconds';
+  if (await js(`!!${q('[data-group="reading"]')}`)) return 'a worktree is still in the Reading group after the facts were in';
   if (!(await js(`${q(main)}.hasAttribute('data-locked') && !${q(`${main} [data-worktree-pick]`)}`))) return 'the main checkout can be picked';
   const rows = (await js(`document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-worktree-row]`)}).length`)) as number;
   const groups = (await js(`[...document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-worktree-group]`)})].map((e) => e.dataset.worktreeGroup)`)) as string[];
@@ -4724,6 +5460,47 @@ async function remoteQuoteAndRead(win: BrowserWindow, row: string): Promise<stri
 }
 
 /**
+ * Another computer's message box (part of `runOtherComputerStep`, on its finished session, after `remoteQuoteAndRead`):
+ * ⇧↵ on a list item starts the next one, as in a session here, and a pasted image alone makes Send ready. Nothing is
+ * sent: the image is removed and the box emptied after. Returns what went wrong, or null.
+ */
+async function remoteComposerEdits(win: BrowserWindow): Promise<string | null> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-remote-session="a0000000-0000-4000-8000-000000000005"]';
+  const box = `${view} [data-computer-composer]`;
+  const remove = `${view} [data-remote-attachments] [data-attachments] button[aria-label^="Remove"]`;
+  try {
+    await setFieldValue(win, box, '- one');
+    await js(`(() => { const box = document.querySelector('${box}'); box.focus(); box.setSelectionRange(box.value.length, box.value.length); })()`);
+    pressKey(win, 'Enter', ['shift']);
+    if (!(await waitInPage(win, `document.querySelector('${box}').value === '- one\\n- '`, 3_000))) return `⇧↵ after "- one" in the remote message box left ${JSON.stringify(await js(`document.querySelector('${box}').value`))}`;
+    await setFieldValue(win, box, '');
+    if (!(await js("document.querySelector('[data-computer-send]')?.disabled"))) return 'Send is ready with an empty remote message box';
+    // / lists the session's skills and commands there (`session.commands`), and a pick puts the command in the box.
+    await js(`document.querySelector('${box}').focus()`);
+    await win.webContents.insertText('/rev');
+    const option = `${view} [data-remote-composer] [data-command-option="review"]`;
+    if (!(await waitInPage(win, `document.querySelector('${option}')`, 5_000))) return 'typing /rev in the remote message box did not list the other computer’s /review';
+    await js(`document.querySelector('${option}').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+    if (!(await waitInPage(win, `document.querySelector('${box}').value === '/review '`, 3_000))) return `picking /review left ${JSON.stringify(await js(`document.querySelector('${box}').value`))} in the remote message box`;
+    await setFieldValue(win, box, '');
+    // A 1×1 PNG pasted the way a screenshot is.
+    await js(`(() => {
+      const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
+      const data = new DataTransfer();
+      data.items.add(new File([bytes], 'screen.png', { type: 'image/png' }));
+      document.querySelector('${box}').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    })()`);
+    if (!(await waitInPage(win, `document.querySelector('${remove}')`, 5_000))) return 'the image pasted in the remote message box did not show';
+    if (!(await waitInPage(win, "document.querySelector('[data-computer-send]')?.disabled === false", 3_000))) return 'Send stayed disabled with only an image in the remote message box';
+    return null;
+  } finally {
+    await js(`document.querySelectorAll('${remove}').forEach((b) => b.click())`);
+    await setFieldValue(win, box, '');
+  }
+}
+
+/**
  * What another computer's finished session offers here (part of `runOtherComputerStep`, after `remoteQuoteAndRead`,
  * which leaves it open): its catch-up, Changes with a file's diff and a commit its hook turns down (the demo refuses a
  * message with "fail", so nothing is committed), Ask with an answer from there, a tool call opened, Find (⌘F), Jump
@@ -4958,6 +5735,75 @@ async function runComputerUpdateStep(win: BrowserWindow): Promise<string> {
   return `ok: "${behind}", Update asked first with Update when it’s idle focused, "${waiting}" then Cancel update, Check for updates then "${checked}"; ⋯ has ${items.join(', ')}; removed again`;
 }
 
+/**
+ * Done on another computer: Done in a remote row's menu takes "Upgrade to Node 24" (which no other step uses) out of
+ * the list, and it shows under this sidebar's Done with that computer's chip and "Done"; its menu has Reopen, and a
+ * click reopens it there and opens it. It pairs the demo computer (All, to list the others' sessions) and removes it.
+ */
+async function runRemoteDoneStep(win: BrowserWindow): Promise<string> {
+  const linkFile = process.env.SESHBOARD_SMOKE_COMPUTER_LINK;
+  if (!linkFile) return 'ok: skipped, no second computer (run through npm run smoke)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  if (!(await until(() => existsSync(linkFile), 20_000))) return 'the second computer wrote no pairing link';
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000))) return 'Settings has no Remote section';
+  await click('[data-settings-section="remote"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-computers-link]')", 5_000))) return 'Settings › Remote has no field for another computer’s link';
+  await setFieldValue(win, '[data-computers-link]', readFileSync(linkFile, 'utf8').trim());
+  await click('[data-computers-add]');
+  const settingsRow = '[data-computer][data-computer-state="connected"]';
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow}')`, 20_000))) return 'the second computer did not connect';
+  const computerId = (await js(`document.querySelector('${settingsRow}').dataset.computer`)) as string;
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-close-settings]')?.click()");
+  const result = await (async () => {
+    // All: the demo's sessions weren't started from here.
+    if (!(await waitInPage(win, "document.querySelector('[data-computers-strip] [data-computer-menu-button]')", 10_000))) return 'the computer has no chip in the sidebar';
+    await click('[data-computers-strip] [data-computer-menu-button]');
+    if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"all\"]')", 3_000))) return 'the chip’s menu has no All';
+    await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
+    pressKey(win, 'Escape');
+    // The search narrows the list to the one session, Done included, so the virtualised list has it on screen.
+    await setFieldValue(win, 'input[aria-label="Search sessions by title, project or branch"]', 'Upgrade to Node 24');
+    const row = `[...document.querySelectorAll('[data-session-list] [data-remote-row=${JSON.stringify(computerId)}]')].find((r) => r.innerText.includes('Upgrade to Node 24'))`;
+    if (!(await waitInPage(win, `${row} && ${row}.dataset.archived !== 'true'`, 10_000))) return 'the search did not find "Upgrade to Node 24" on the other computer';
+    const menu = async () => {
+      await js(`(() => { const row = ${row}; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+      return waitInPage(win, "document.querySelector('[role=menu] [role=menuitem]')", 3_000);
+    };
+    if (!(await menu())) return 'the remote row’s menu did not open';
+    if (!(await js("Boolean(document.querySelector('[role=menu] [data-remote-archive]'))"))) return 'the remote row’s menu has no Done';
+    await click('[role=menu] [data-remote-archive]');
+    if (!(await waitInPage(win, `${row}?.dataset.archived === 'true' && ${row}.dataset.doneReason === 'done'`, 10_000))) return `"Upgrade to Node 24" did not show under Done (${await js(`${row}?.outerHTML.slice(0, 200) ?? 'no row'`)})`;
+    await shot(win, 'remote-done.png');
+    if (!(await menu())) return 'the done row’s menu did not open';
+    const items = (await js("[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((i) => i.innerText.split('\\n')[0]).join(', ')")) as string;
+    if (!(await js("Boolean(document.querySelector('[role=menu] [data-remote-reopen]')) && !document.querySelector('[role=menu] [data-remote-archive], [role=menu] [data-remote-open]')"))) return `the done row’s menu has ${items}`;
+    pressKey(win, 'Escape');
+    await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000);
+    await js(`${row}.click()`);
+    if (!(await waitInPage(win, `${row}?.dataset.archived !== 'true' && document.querySelector('[data-remote-reopened-toast]')`, 10_000))) return 'a click did not reopen it';
+    if (!(await waitInPage(win, `${row}?.getAttribute('aria-current') === 'true'`, 5_000))) return 'the click reopened it but did not open it';
+    return `ok: Done took "Upgrade to Node 24" to this sidebar’s Done; its menu has ${items}; a click reopened and opened it`;
+  })();
+  // Clean up: the search cleared, the computer removed through ⋯ › Remove….
+  await setFieldValue(win, 'input[aria-label="Search sessions by title, project or branch"]', '');
+  await click('[data-open-settings]');
+  await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
+  await click('[data-settings-section="remote"]');
+  await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-more]')`, 5_000);
+  await click(`${settingsRow} [data-computer-more]`);
+  await waitInPage(win, "document.querySelector('[role=menu] [data-computer-forget]')", 3_000);
+  await click('[role=menu] [data-computer-forget]');
+  await waitInPage(win, "document.querySelector('[data-confirm-strip] [data-confirm]')", 2_000);
+  await click('[data-confirm-strip] [data-confirm]');
+  const removed = await waitInPage(win, "!document.querySelector('[data-computer]')", 5_000);
+  pressKey(win, 'Escape');
+  if (!removed && result.startsWith('ok:')) return 'the computer did not go after Remove';
+  return result;
+}
+
 async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const linkFile = process.env.SESHBOARD_SMOKE_COMPUTER_LINK;
   if (!linkFile) return 'ok: skipped, no second computer (run through npm run smoke)';
@@ -5100,6 +5946,17 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (why !== 'Terminal is on Smoke Mac. Not available from here.') return `the disabled terminal says "${why}"`;
   await shot(win, 'computers-session.png');
 
+  // 3a. A path in the reply to a file Claude wrote there opens in the preview, read by that computer (`files.read`),
+  // without Open in editor or Show in the file manager, which would act on this computer. Esc closes it.
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-session-file-link$=\"review.md\"]')", 5_000))) return 'the path of the file Claude wrote on the other computer is not a link';
+  await click('[data-remote-session] [data-session-file-link$="review.md"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-file-preview][data-file-preview-place=dialog] [data-file-preview-markdown]')?.innerText.includes('No changes needed')", 10_000))) {
+    return `the file did not open in the preview: ${await js("document.querySelector('[data-file-preview]')?.innerText.replace(/\\s+/g, ' ').slice(0, 200) ?? 'no preview'")}`;
+  }
+  if (await js("Boolean(document.querySelector('[data-file-preview] button[aria-label=\"Open in editor\"], [data-file-preview] [data-file-preview-dock]'))")) return 'the preview of a file on the other computer offers Open in editor or Dock to the side';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-file-preview]')", 3_000))) return 'Esc did not close the preview of the other computer’s file';
+
   // 3b. What a remote session runs in the background: its pill opens the list, and Stop stops the task there.
   const busy = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Move the login form'))`;
   if (!(await js(`Boolean(${busy})`))) return 'the working session of the other computer is not in the sidebar';
@@ -5113,6 +5970,8 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   // 3c. Quote and Read, on its finished session: nothing is sent, and the message box is emptied again each time.
   const quoted = await remoteQuoteAndRead(win, row);
   if (quoted) return quoted;
+  const edits = await remoteComposerEdits(win);
+  if (edits) return edits;
   const extras = await remoteSessionExtras(win, row);
   if (extras) return extras;
   const pipelines = await remoteRunRows(win, row, computerId);
@@ -5177,6 +6036,16 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `document.querySelector('[data-menu="remote-branch"] [data-choice="feat/onboarding"]')`, 3_000))) return 'the branch menu does not list the other computer’s branches';
   await click('[data-menu="remote-branch"] [data-choice="feat/onboarding"]');
   if (!(await waitInPage(win, `${routeBranch} === 'feat/onboarding'`, 3_000))) return `picking a branch did not show in the route (${await js(routeBranch)})`;
+  // In a new worktree, Branch from picks where it starts there: the local HEAD names the branch checked out there.
+  const routeBase = "document.querySelector('[data-remote-new-session] [data-route-base]')?.innerText";
+  await click('[data-remote-new-session] [data-worktree-switch]');
+  if (!(await waitInPage(win, `document.querySelector('[data-remote-new-session] [data-remote-base-select]')`, 3_000))) return 'a new worktree on the other computer has no Branch from';
+  await click('[data-remote-base-select]');
+  if (!(await waitInPage(win, `document.querySelector('[data-menu="remote-base"] [data-choice="head"]')`, 3_000))) return 'Branch from does not list the local HEAD';
+  await click('[data-menu="remote-base"] [data-choice="head"]');
+  if (!(await waitInPage(win, `${routeBase} === 'main'`, 3_000))) return `picking the local HEAD did not show in the route (${await js(routeBase)})`;
+  await click('[data-remote-new-session] [data-worktree-switch]');
+  if (!(await waitInPage(win, `${routeBranch} === 'feat/onboarding'`, 3_000))) return `back in the current checkout, the picked branch is gone (${await js(routeBranch)})`;
   // The saved prompt, picked with / in the message box.
   const prompt = savedText;
   await js("document.querySelector('[data-remote-new-session] textarea').focus()");
@@ -5218,7 +6087,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const removed = await waitInPage(win, "!document.querySelector('[data-computer]') && !document.querySelector('[data-remote-row]')", 5_000);
   pressKey(win, 'Escape');
   if (!removed) return 'the other computer and its rows did not go after Remove';
-  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, its run row opened and a pipeline run there, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
+  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, a file Claude wrote there previewed, its run row opened and a pipeline run there, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
 }
 
 /**
@@ -5845,7 +6714,7 @@ async function runBranchStep(win: BrowserWindow): Promise<string> {
 /**
  * Read-only: the "Open in" items in the header's ⋯ menu (the default app first, with ⌘O) open on top of
  * the transcript (nothing paints over the menu), offer GitHub with the link git's remotes give when the
- * checkout is on GitHub, and Escape closes the menu. Opens nothing.
+ * checkout is on GitHub, and Escape or a second click on ⋯ closes the menu. Opens nothing.
  */
 async function runOpenInStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -5870,7 +6739,13 @@ async function runOpenInStep(win: BrowserWindow): Promise<string> {
   if (!defaultHint.includes(openKeys)) return `the default app does not show ${openKeys} ("${defaultHint}")`;
   if (github !== null && !/^https:\/\/github\.com\/[^/]+\/[^/]+(\/tree\/.+)?$/.test(github)) return `odd GitHub link "${github}"`;
   if (!(await waitInPage(win, `!${menu}`, 2_000))) return 'Escape did not close the menu';
-  return `ok: Open in items in the More menu (${defaultHint}), on top of the transcript, ${github ? `GitHub → ${github}` : 'no GitHub remote'}, Escape closed it`;
+  // With real mouse events, a click on ⋯ while the menu is open closes it, not closes and opens it again.
+  const button = '[data-current-session] [data-more-menu]';
+  await clickLikeAUser(win, button);
+  if (!(await waitInPage(win, menu, 2_000))) return 'a click on ⋯ did not open the menu';
+  await clickLikeAUser(win, button);
+  if (!(await waitInPage(win, `!${menu}`, 2_000))) return 'a second click on ⋯ did not close the menu';
+  return `ok: Open in items in the More menu (${defaultHint}), on top of the transcript, ${github ? `GitHub → ${github}` : 'no GitHub remote'}, Escape closed it, and so did a second click on ⋯`;
 }
 
 /**
@@ -6234,28 +7109,30 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!${wrapped}.startsWith('pre-wrap') && document.querySelector('[data-file-preview-wrap]').getAttribute('aria-pressed') === 'false'`, 3_000))) return 'the wrap toggle did not turn wrapping off';
     await js("document.querySelector('[data-file-preview-wrap]').click()");
 
-    // From a session, a file opens in its side panel, at the lines the link named (20 to 24), marked and scrolled to.
-    let panel = 'no session open, so the side panel was not tried';
+    // From a session, a file opens in its Files panel, at the lines the link named (20 to 24), marked and scrolled to.
+    let panel = 'no session open, so the Files panel was not tried';
     if (session) {
       pressKey(win, 'Escape');
       if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
-      const PANEL = `document.querySelector('[data-current-session="${session}"] [data-file-preview-place="panel"]')`;
+      const PANEL = `document.querySelector('[data-current-session="${session}"] [data-files-panel]')`;
+      // Found by its data rather than a selector: a Windows path's backslashes would need escaping in one.
+      const VIEWER = `[...(${PANEL}?.querySelectorAll('[data-files-viewer]') ?? [])].find((v) => v.dataset.filesViewer === ${JSON.stringify(code)})`;
       await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(code)}, sessionId: ${JSON.stringify(session)}, line: 20, endLine: 24 } }))`);
       // Detached in an earlier run of this window, it would open in the dialog: dock it first.
       if (await waitInPage(win, `${DIALOG}?.querySelector('[data-file-preview-dock]')`, 1_000)) await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
-      if (!(await waitInPage(win, `${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 5_000))) return 'the file did not open in the side panel with lines 20 to 24 marked';
+      if (!(await waitInPage(win, `${VIEWER}?.querySelectorAll('[data-line-marked]').length === 5`, 5_000))) return 'the file did not open in the Files panel with lines 20 to 24 marked';
       const shown = (await js(
-        `(() => { const box = ${PANEL}.querySelector('[data-file-preview-source]').getBoundingClientRect(); const row = ${PANEL}.querySelector('[data-line="20"]').getBoundingClientRect(); return row.top >= box.top && row.bottom <= box.bottom; })()`,
+        `(() => { const viewer = ${VIEWER}; const box = viewer.querySelector('[data-file-preview-source]').getBoundingClientRect(); const row = viewer.querySelector('[data-line="20"]').getBoundingClientRect(); return row.top >= box.top && row.bottom <= box.bottom; })()`,
       )) as boolean;
-      if (!shown) return 'line 20 is not scrolled into view in the side panel';
+      if (!shown) return 'line 20 is not scrolled into view in the Files panel';
       await shot(win, 'file-preview-panel.png');
-      await js(`${PANEL}.querySelector('[data-file-preview-detach]').click()`);
-      if (!(await waitInPage(win, `${DIALOG}?.querySelectorAll('[data-line-marked]').length === 5 && !${PANEL}`, 3_000))) return 'Open in a dialog did not move the preview to the dialog';
+      await js(`${VIEWER}.querySelector('[data-file-preview-detach]').click()`);
+      if (!(await waitInPage(win, `${DIALOG}?.querySelectorAll('[data-line-marked]').length === 5 && !${VIEWER}`, 3_000))) return 'Open in a dialog did not move the file to the dialog';
       await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
-      if (!(await waitInPage(win, `!${DIALOG} && ${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 3_000))) return 'Dock to the side did not move the preview back to the panel';
-      await js(`${PANEL}.querySelector('[data-file-preview-close]').click()`);
-      if (!(await waitInPage(win, `!${PANEL}`, 3_000))) return 'the side panel did not close';
-      panel = 'from a session it opens in the side panel at the lines a link names, marked and in view, moves to a dialog and back';
+      if (!(await waitInPage(win, `!${DIALOG} && ${VIEWER}?.querySelectorAll('[data-line-marked]').length === 5`, 3_000))) return 'Dock to the side did not move the file back to the Files panel';
+      await js(`${PANEL}.querySelector('[data-files-close]').click()`);
+      if (!(await waitInPage(win, `!${PANEL}`, 3_000))) return 'the Files panel did not close';
+      panel = 'from a session it opens in the Files panel at the lines a link names, marked and in view, moves to a dialog and back';
     }
 
     await open(big);
@@ -6267,6 +7144,210 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     return `ok: Markdown renders its heading, alert, details and picture without its script, Source shows the text, Reload picks up a change, HTML opens on its source and renders in an empty sandbox with the CSP and its picture inlined, a code file shows its numbered source with wrapping you can toggle, ${panel}, a 3 MB file says it is over the limit, and Escape closes it`;
   } finally {
     if (await js(`!!${DIALOG}`)) pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click(); document.querySelector('[data-files-close]')?.click()");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Mermaid diagrams (#255), in a throwaway Markdown file in a folder of its own, opened in the file preview: a flowchart and
+ * a pie chart are drawn as SVG (Mermaid loads on first use, under the window's Content-Security-Policy), a block that does
+ * not parse shows its source with "Couldn't draw this diagram.", Source and Preview switch, the colours follow light and dark
+ * (the diagram is drawn again), and a click opens the flowchart larger, where the buttons zoom and Escape closes only the
+ * overlay. The folder is removed at the end.
+ */
+async function runMermaidStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-mermaid-')));
+  const md = join(dir, 'diagrams.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const BLOCKS = `${DIALOG}.querySelectorAll('[data-mermaid]')`;
+  const original = preferences.get().colorScheme;
+  const open = () => js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+  const drawing = () => js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML ?? ''`) as Promise<string>;
+  try {
+    // A diagram's script must never run: alert() is replaced by a flag, as a real one would block the window.
+    await js('window.__mermaidAlert = window.alert; window.__alerted = false; window.alert = () => { window.__alerted = true; }; null');
+    writeFileSync(md, '# Diagrams\n\n```mermaid\nflowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C[Ship]\n  B -->|no| D[Wait]\n```\n\n```Mermaid\nthis is not a diagram\n```\n\n```mermaid\npie title Pets\n  "Dogs" : 3\n  "Cats" : 2\n```\n\n```mermaid\nxychart-beta\n  title "Sales"\n  x-axis [jan, feb, mar]\n  y-axis "Units" 0 --> 100\n  bar [30, 60, 90]\n```\n\n```mermaid\n%%{init: {"securityLevel":"loose","theme":"dark","themeVariables":{"primaryColor":"#ff0000"},"htmlLabels":true,"flowchart":{"htmlLabels":true}}}%%\nflowchart LR\n  A["<img src=x onerror=alert(1)>"] --> B[Safe]\n  click A call alert()\n  click B href "javascript:alert(1)"\n```\n\n```mermaid\nflowchart LR\n  A[Docs] --> B[Next]\n  click A href "https://example.com/docs"\n```\n');
+    await open();
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DIALOG}.querySelectorAll('[data-mermaid]').length === 6`, 5_000))) return 'the Markdown file did not open with its six diagram blocks';
+    // Mermaid is fetched the first time, so the first one takes longer.
+    if (!(await waitInPage(win, `${BLOCKS}[0].dataset.mermaidState === 'drawn' && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 15_000))) {
+      return `the flowchart was not drawn (it is ${await js(`${BLOCKS}[0]?.dataset.mermaidState ?? 'missing'`)})`;
+    }
+    const flow = (await js(`(() => { const b = ${BLOCKS}[0]; const svg = b.querySelector('[data-mermaid-diagram] svg'); return { text: svg.textContent, scripts: svg.querySelectorAll('script').length, width: svg.getBoundingClientRect().width }; })()`)) as { text: string; scripts: number; width: number };
+    if (!flow.text.includes('Start') || !flow.text.includes('Ready?') || !flow.text.includes('Ship')) return `the flowchart's labels read ${JSON.stringify(flow.text)}`;
+    if (flow.scripts !== 0 || flow.width < 50) return `the flowchart has ${flow.scripts} scripts and is ${flow.width}px wide`;
+
+    // A block that mounts from the cache (the preview closed and opened again) and then gets another theme keeps its drawing
+    // while the new one is made, instead of falling back to its source.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    await open();
+    if (!(await waitInPage(win, `${BLOCKS}[0]?.dataset.mermaidState === 'drawn'`, 3_000))) return 'the flowchart was not drawn at once from the cache when the preview opened again';
+    const wasDark = (await js("matchMedia('(prefers-color-scheme: dark)').matches")) as boolean;
+    const first = await drawing();
+    await js(`window.__mermaidStates = []; window.__mermaidStop = false; (function tick() { window.__mermaidStates.push(${BLOCKS}[0]?.dataset.mermaidState ?? 'gone'); if (!window.__mermaidStop) requestAnimationFrame(tick); })()`);
+    await setColorScheme(win, wasDark ? 'light' : 'dark');
+    const redrawn = await waitInPage(win, `${BLOCKS}[0]?.querySelector('[data-mermaid-diagram] svg')?.innerHTML !== ${JSON.stringify(first)} && ${BLOCKS}[0].dataset.mermaidState === 'drawn'`, 8_000);
+    await js('window.__mermaidStop = true');
+    const states = (await js('[...new Set(window.__mermaidStates)]')) as string[];
+    if (!redrawn) return 'a diagram from the cache was not drawn again for the other colour scheme';
+    if (states.join() !== 'drawn') return `a diagram from the cache showed ${states.join(', ')} while it was drawn again for the other colour scheme, not its old drawing`;
+
+    // A chart type that is not a flowchart comes with Mermaid.
+    if (!(await waitInPage(win, `${BLOCKS}[2].dataset.mermaidState === 'drawn' && ${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Dogs')`, 5_000))) return `the pie chart was not drawn (${await js(`${BLOCKS}[2].dataset.mermaidState + ': ' + (${BLOCKS}[2].querySelector('[data-mermaid-diagram] svg')?.textContent ?? '').slice(0, 200)`)})`;
+
+    if (!(await waitInPage(win, `${BLOCKS}[3].dataset.mermaidState === 'drawn' && ${BLOCKS}[3].querySelector('[data-mermaid-diagram] svg')?.textContent.includes('Sales')`, 5_000))) return 'the bar chart (xychart-beta) was not drawn';
+
+    // A diagram that does not parse stays source, with a line under it.
+    if (!(await waitInPage(win, `${BLOCKS}[1].dataset.mermaidState === 'error'`, 5_000))) return 'the broken diagram did not report that it cannot be drawn';
+    const broken = (await js(`(() => { const b = ${BLOCKS}[1]; return { line: b.querySelector('[data-mermaid-error]')?.textContent ?? null, source: b.querySelector('[data-code-language]')?.textContent ?? '', svgs: b.querySelectorAll('[data-mermaid-diagram] svg').length }; })()`)) as { line: string | null; source: string; svgs: number };
+    if (broken.line !== "Couldn't draw this diagram.") return `the broken diagram's line reads ${JSON.stringify(broken.line)}`;
+    if (!broken.source.includes('this is not a diagram') || broken.svgs !== 0) return `the broken diagram shows ${JSON.stringify(broken.source)} and ${broken.svgs} drawings`;
+
+    // Hostile text: the diagram's own settings can't loosen the security level or replace the theme, and nothing it holds runs.
+    if (!(await waitInPage(win, `['drawn', 'error'].includes(${BLOCKS}[4].dataset.mermaidState)`, 5_000))) return 'the hostile diagram neither drew nor failed';
+    const hostile = (await js(`(() => { const b = ${BLOCKS}[4]; const svg = b.querySelector('[data-mermaid-diagram] svg'); const all = svg ? [...svg.querySelectorAll('*')] : []; return { state: b.dataset.mermaidState, source: b.querySelector('[data-code-language]')?.textContent ?? '', handlers: all.flatMap((el) => [...el.attributes].filter((a) => /^on/i.test(a.name)).map((a) => el.tagName + '.' + a.name)), scripts: all.filter((el) => /^(script|img|iframe|object|foreignobject)$/i.test(el.tagName)).map((el) => el.tagName), links: all.flatMap((el) => [...el.attributes].filter((a) => /javascript:/i.test(a.value)).map((a) => el.tagName + '.' + a.name)), red: svg ? /#ff0000|rgb\\(255, ?0, ?0\\)/i.test(svg.outerHTML) : false, text: svg?.textContent ?? '', alerted: window.__alerted }; })()`)) as { state: string; source: string; handlers: string[]; scripts: string[]; links: string[]; red: boolean; text: string; alerted: boolean };
+    if (hostile.state !== 'drawn') return `the hostile diagram is ${hostile.state}, not drawn: its safe parts should still draw`;
+    if (!hostile.text.includes('Safe')) return `the hostile diagram reads ${JSON.stringify(hostile.text)}`;
+    if (hostile.handlers.length || hostile.scripts.length || hostile.links.length) return `the hostile diagram kept ${JSON.stringify({ handlers: hostile.handlers, elements: hostile.scripts, links: hostile.links })}`;
+    if (hostile.red) return 'the diagram replaced the app\'s colours with its own theme variables';
+    if (await js(`${BLOCKS}[4].querySelector('[data-mermaid-diagram] foreignObject') !== null`)) return 'the diagram brought back HTML labels';
+    // Clicking its nodes runs nothing either.
+    await js(`${BLOCKS}[4].querySelectorAll('[data-mermaid-diagram] .node').forEach((n) => n.dispatchEvent(new MouseEvent('click', { bubbles: true })))`);
+    await settle(win);
+    if (await js('window.__alerted === true')) return 'a hostile diagram ran a script (alert was called)';
+    // A click on a node is a click on the diagram, which opens it larger: close that overlay before the next part.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-mermaid-overlay]')", 3_000))) return 'a click on the hostile diagram opened an overlay that Escape did not close';
+
+    // A link in a diagram opens the way a link in the Markdown does (a new window, which main hands to the browser), and
+    // doesn't also open the diagram larger. window.open is a spy here, so nothing leaves the sandbox.
+    if (!(await waitInPage(win, `${BLOCKS}[5].dataset.mermaidState === 'drawn' && ${BLOCKS}[5].querySelector('[data-mermaid-diagram] a')`, 5_000))) return 'the diagram with a link was not drawn with its link';
+    // Mermaid builds each diagram in a hidden element of the page and removes it when done, a failed one too. The diagrams
+    // draw one after the other, so one still being drawn has its element there: look once the last has drawn, and wait for it
+    // to go rather than catch another diagram's (a slower machine is still drawing when the broken one reports).
+    if (!(await waitInPage(win, "!document.querySelector('body > [id^=\"dsb-mermaid-\"]')", 3_000))) return 'a diagram left its hidden element in the page';
+    await js("window.__mermaidOpen = window.open; window.__opened = []; window.open = (...args) => { window.__opened.push(args[0]); return null; }; null");
+    await js(`${BLOCKS}[5].querySelector('[data-mermaid-diagram] a').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))`);
+    const opened = (await js('window.__opened')) as string[];
+    if (opened.join() !== 'https://example.com/docs') return `a click on the diagram's link opened ${JSON.stringify(opened)}`;
+    await settle(win);
+    if (await js("!!document.querySelector('[data-mermaid-overlay]')")) return 'a click on the diagram\'s link also opened the diagram larger';
+
+    // Preview | Source on the flowchart.
+    await js(`${BLOCKS}[0].querySelector('[data-code-view="source"]').click()`);
+    if (!(await waitInPage(win, `!${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg') && ${BLOCKS}[0].innerText.includes('flowchart LR')`, 3_000))) return 'Source did not show the diagram text';
+    await js(`${BLOCKS}[0].querySelector('[data-code-view="preview"]').click()`);
+    if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 3_000))) return 'Preview did not bring the diagram back';
+
+    // Light and dark: drawn again with the theme's colours.
+    await setColorScheme(win, 'light');
+    await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 5_000);
+    await shot(win, 'mermaid-light.png');
+    const light = await drawing();
+    await setColorScheme(win, 'dark');
+    if (!(await waitInPage(win, `${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')?.innerHTML !== ${JSON.stringify(light)} && ${BLOCKS}[0].querySelector('[data-mermaid-diagram] svg')`, 8_000))) return 'the diagram was not drawn again when the colour scheme changed';
+    await shot(win, 'mermaid-dark.png');
+
+    // Larger, with zoom; Escape closes the overlay and leaves the preview.
+    await js(`${BLOCKS}[0].querySelector('[data-mermaid-diagram]').click()`);
+    const OVERLAY = "document.querySelector('[data-mermaid-overlay][role=dialog]')";
+    if (!(await waitInPage(win, `${OVERLAY}?.querySelector('[data-mermaid-viewport] svg') && ${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent.endsWith('%')`, 3_000))) return 'a click on the diagram did not open it larger';
+    const percent = () => js(`parseInt(${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent)`) as Promise<number>;
+    const before = await percent();
+    await js(`${OVERLAY}.querySelector('[data-mermaid-zoom-in]').click()`);
+    if (!(await waitInPage(win, `parseInt(${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent) > ${before}`, 2_000))) return `Zoom in did not zoom (${before}%)`;
+    await js(`${OVERLAY}.querySelector('[data-mermaid-actual]').click()`);
+    if ((await waitInPage(win, `${OVERLAY}.querySelector('[data-mermaid-zoom]').textContent === '100%'`, 2_000)) === false) return 'Actual size did not show 100%';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${OVERLAY} && ${DIALOG}`, 3_000))) return 'Escape did not close the overlay and leave the preview';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    return `ok: a flowchart, a pie chart and a bar chart are drawn as SVG in the preview, a diagram from the cache keeps its drawing while it is drawn again for another colour scheme, a link in a diagram opens in the browser without opening it larger, a hostile diagram can't change the security level, theme or labels and runs and keeps nothing (no handlers, javascript: links or images), a broken diagram shows its source and "Couldn't draw this diagram.", Source and Preview switch, the diagram is drawn again in dark mode, and a click opens it larger with zoom (${before}% to more, then 100%), where Escape closes only the overlay`;
+  } finally {
+    await js('if (window.__mermaidAlert) { window.alert = window.__mermaidAlert; delete window.__mermaidAlert; } if (window.__mermaidOpen) { window.open = window.__mermaidOpen; delete window.__mermaidOpen; } null');
+    updatePreferences({ colorScheme: original });
+    for (let i = 0; i < 3 && (await js(`!!${DIALOG} || !!document.querySelector('[data-mermaid-overlay]')`)); i++) {
+      pressKey(win, 'Escape');
+      await settle(win);
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Maths in a Markdown preview (#348), on a throwaway file: `$x^2$`, a `$$` block and a math fence are drawn by KaTeX (its
+ * fonts load under the window's CSP), in the text's colour; a dollar amount stays text; a formula that doesn't parse shows its
+ * source; a wide formula scrolls inside its block instead of widening the page; a block's Source and Preview switch works.
+ * The folder is removed at the end.
+ */
+async function runMathsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-maths-')));
+  const md = join(dir, 'maths.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  const wide = Array.from({ length: 80 }, (_, i) => `x_{${i + 1}}`).join(' + ');
+  // A drawn formula sits in a shadow root (so a selection copies only its TeX): its KaTeX is in there.
+  const DRAWN = (selector: string, within = PREVIEW) => `[...(${within}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector(${JSON.stringify(selector)}))`;
+  try {
+    writeFileSync(
+      md,
+      `# Maths\n\nA square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.\n\n$$\n\\int_0^1 x\\,dx = \\frac12\n$$\n\n\`\`\`math\n\\sum_{i=1}^n i = \\frac{n(n+1)}{2}\n\`\`\`\n\nBroken: $\\frac{1$ here.\n\nPlaced: before $\\llap{\\kern-60em CLICK}$ after, and $\\rule{1em}{2000em}$ too.\n\n$$\n${wide}\n$$\n`,
+    );
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && ${DRAWN('.katex')}`, 10_000))) return 'the formulas were not drawn in the Markdown preview';
+    // The fonts are requested once the formulas are on screen and arrive a little later (slower on a CI machine): wait for one
+    // to be loaded, and say at once if the window refused them.
+    const KATEX_FONTS = "[...document.fonts].filter((f) => f.family.replace(/[\"']/g, '').startsWith('KaTeX'))";
+    if (!(await waitInPage(win, `${KATEX_FONTS}.some((f) => f.status === 'loaded' || f.status === 'error')`, 10_000))) return "KaTeX's fonts were never requested";
+    if (await js(`${KATEX_FONTS}.some((f) => f.status === 'error') && !${KATEX_FONTS}.some((f) => f.status === 'loaded')`)) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
+    const found = (await js(
+      `(() => { const p = ${PREVIEW}; const html = (sel) => p.querySelectorAll(sel).length;
+        const inline = p.querySelector('[data-math="inline"]'); const block = p.querySelector('[data-code-preview-block] [data-math="block"]');
+        const wideBox = [...p.querySelectorAll('[data-math="block"]')].pop();
+        return { inline: html('[data-math="inline"] [data-math-visual]'), blocks: html('[data-code-preview-block] [data-math="block"] [data-math-visual]'), switches: html('[data-code-preview-block] [data-code-view="source"]'),
+          text: p.innerText, broken: p.querySelector('[data-math-error]')?.innerText ?? null,
+          colour: inline && getComputedStyle(inline.querySelector('[data-math-visual]').shadowRoot.querySelector('.katex')).color, drawnInShadow: [...p.querySelectorAll('[data-math-visual]')].every((v) => v.shadowRoot?.querySelector('.katex') && v.children.length === 0), prose: getComputedStyle(p).color,
+          fonts: [...document.fonts].filter((f) => f.family.replace(/["']/g, '').startsWith('KaTeX') && f.status === 'loaded').length,
+          wideScrolls: wideBox.scrollWidth > wideBox.clientWidth, wideFits: wideBox.getBoundingClientRect().right <= p.getBoundingClientRect().right + 1, pageScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          blockInner: !!block,
+          clipped: [...p.querySelectorAll('[data-math="inline"]')].map((m) => getComputedStyle(m).overflowX + '/' + getComputedStyle(m).overflowY + ':' + Math.round(m.getBoundingClientRect().height) + 'x' + Math.round(m.getBoundingClientRect().width)),
+          sources: [...p.querySelectorAll('[data-math-source]')].map((m) => m.dataset.mathSource).filter(Boolean).length,
+          // What Copy, Quote and Remember read: a selection across a line of text, and one that is only a formula.
+          selected: (() => { const sel = getSelection(); const pick = (fn) => { const r = document.createRange(); fn(r); sel.removeAllRanges(); sel.addRange(r); const t = String(sel); sel.removeAllRanges(); return t; };
+            return { line: pick((r) => r.selectNodeContents(p.querySelector('p'))), alone: pick((r) => r.selectNode(p.querySelector('[data-math="inline"]'))), block: pick((r) => r.selectNodeContents(p.querySelector('[data-code-preview] [data-math="block"]'))) }; })()
+        }; })()`,
+    )) as { inline: number; blocks: number; switches: number; text: string; broken: string | null; colour: string | null; prose: string; fonts: number; wideScrolls: boolean; wideFits: boolean; pageScrolls: boolean; blockInner: boolean; clipped: string[]; sources: number; drawnInShadow: boolean; selected: { line: string; alone: string; block: string } };
+    if (found.inline !== 3) return `${found.inline} inline formulas were drawn, not 3`;
+    if (!found.drawnInShadow) return 'a formula is not drawn in its shadow root alone';
+    // One that places itself (a negative kern, a tall rule) is clipped to its own box, and every drawn formula keeps its TeX for a copy.
+    if (!found.clipped.every((box) => box.startsWith('clip/clip'))) return `an inline formula is not clipped to its box (${found.clipped.join(' ')})`;
+    if (found.sources !== 6) return `${found.sources} formulas carry their TeX for a copy, not 6`;
+    if (found.blocks !== 3) return `${found.blocks} blocks were drawn, not 3 (a $$ block, a math fence and a wide one)`;
+    if (found.switches !== 3) return `${found.switches} math blocks have a Source switch, not 3`;
+    if (!found.text.includes('it costs $5 and $10 a month')) return 'the dollar amount did not stay text';
+    if (found.selected.line !== 'A square: $x^2 + y^2 = z^2$ and a price: it costs $5 and $10 a month.') return `a selection across a line with a formula reads ${JSON.stringify(found.selected.line)}`;
+    if (found.selected.alone !== '$x^2 + y^2 = z^2$') return `a selection of only a formula reads ${JSON.stringify(found.selected.alone)}`;
+    if (found.selected.block.trim() !== '$$\n\\int_0^1 x\\,dx = \\frac12\n$$') return `a selection of a formula block reads ${JSON.stringify(found.selected.block)}`;
+    if (!found.broken?.includes('\\frac{1')) return `a formula that doesn't parse shows ${JSON.stringify(found.broken)}, not its source`;
+    if (found.colour !== found.prose) return `a formula is ${found.colour}, not the text colour ${found.prose}`;
+    if (found.fonts < 1) return "KaTeX's fonts did not load (the Content-Security-Policy may block them)";
+    if (!found.wideScrolls || !found.wideFits || found.pageScrolls) return `a wide formula does not scroll inside its block (scrolls ${found.wideScrolls}, fits ${found.wideFits}, page scrolls ${found.pageScrolls})`;
+
+    await shot(win, 'maths-preview.png');
+
+    // Source shows the formula as written and Preview draws it again.
+    const FIRST = `${PREVIEW}.querySelector('[data-code-preview-block]')`;
+    await js(`${FIRST}.querySelector('[data-code-view="source"]').click()`);
+    if (!(await waitInPage(win, `!${FIRST}.querySelector('[data-code-preview]') && ${FIRST}.innerText.includes('\\int_0^1')`, 3_000))) return 'Source did not show the formula as written';
+    await js(`${FIRST}.querySelector('[data-code-view="preview"]').click()`);
+    if (!(await waitInPage(win, `${DRAWN('.katex', FIRST)}`, 3_000))) return 'Preview did not draw the formula again';
+    return 'ok: $x^2$, a $$ block and a math fence are drawn by KaTeX in the text colour with its fonts loaded, a dollar amount stays text, a formula that does not parse shows its source, a wide one scrolls inside its block, and Source and Preview switch';
+  } finally {
+    pressKey(win, 'Escape');
     await js("document.querySelector('[data-file-preview-close]')?.click()");
     rmSync(dir, { recursive: true, force: true });
   }
@@ -6317,18 +7398,20 @@ async function runLongPromptStep(win: BrowserWindow): Promise<string> {
   const found = (await js(`(() => { const row = ${row}; if (!row) return null; row.dataset.smokeLongPrompt = '1'; return true; })()`)) as boolean | null;
   if (!found) return 'ok: no long prompt on screen';
   const target = "document.querySelector('[data-smoke-long-prompt]')";
+  // The toggle shows once the prompt measures long, and a view that just changed width measures it again: wait for it.
+  if (!(await waitInPage(win, `!!${target}?.querySelector('[data-prompt-toggle]')`, 3_000))) return 'ok: no long prompt on screen once the view settled';
   // A prompt that mounts open (Show less) is closed first, so the check starts from the cut.
-  if (await js(`${target}.querySelector('[data-prompt-toggle]').getAttribute('aria-expanded') === 'true'`)) await js(`${target}.querySelector('[data-prompt-toggle]').click()`);
+  if (await js(`${target}?.querySelector('[data-prompt-toggle]')?.getAttribute('aria-expanded') === 'true'`)) await js(`${target}?.querySelector('[data-prompt-toggle]')?.click()`);
   if (!(await waitInPage(win, `!!${target}?.querySelector('[data-prompt-clamped]')`, 3_000))) return 'the long prompt is not cut';
   const lines = (await js(
     `(() => { const el = ${target}.querySelector('[data-prompt-clamped]'); return Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)); })()`,
   )) as number;
   if (lines !== 2) return `the cut prompt shows ${lines} lines, expected 2`;
-  await js(`${target}.querySelector('[data-prompt-toggle]').click()`);
+  await js(`${target}?.querySelector('[data-prompt-toggle]')?.click()`);
   if (!(await waitInPage(win, `!${target}?.querySelector('[data-prompt-clamped]') && ${target}?.querySelector('[data-prompt-toggle]')?.innerText.trim() === 'Show less'`, 3_000))) return 'Show more did not open the prompt';
-  await js(`${target}.querySelector('[data-prompt-toggle]').click()`);
+  await js(`${target}?.querySelector('[data-prompt-toggle]')?.click()`);
   if (!(await waitInPage(win, `!!${target}?.querySelector('[data-prompt-clamped]')`, 3_000))) return 'Show less did not cut the prompt again';
-  await js(`delete ${target}.dataset.smokeLongPrompt`);
+  await js(`(() => { const row = ${target}; if (row) delete row.dataset.smokeLongPrompt; })()`);
   return 'ok: a long prompt shows 2 lines, Show more opens it, Show less cuts it again';
 }
 
@@ -6389,6 +7472,54 @@ async function runPromptOutlineStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Switching sessions keeps where you were reading, read-only: the open session scrolled up comes back with the same row
+ * at the top after another session took the view, and one left at its end comes back at its end. Switches to the first
+ * other session that isn't running, and leaves the open session at its end.
+ */
+async function runScrollMemoryStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const home = smokeSessionId;
+  if (!home) return 'no session to switch from';
+  const scroller = `document.querySelector('[data-current-session="${home}"] [data-transcript]')`;
+  // The row at the top of the view and how far its top is above the view's.
+  const topRow = `(() => { const el = ${scroller}; const box = el.getBoundingClientRect(); const row = [...el.querySelectorAll('[data-transcript-item]')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).find((r) => r.getBoundingClientRect().bottom > box.top + 1); return row ? { index: row.dataset.index, offset: Math.round(box.top - row.getBoundingClientRect().top) } : null; })()`;
+  const atEnd = `(() => { const el = ${scroller}; return !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 8; })()`;
+  const switchTo = async (id: string) => {
+    await js(`document.querySelector('[data-session-list] [data-session-id="${id}"]')?.click()`);
+    return waitInPage(win, `!!document.querySelector('[data-current-session="${id}"] [data-transcript-item]')`, 5_000);
+  };
+  const running = await runningSessions();
+  if (!running) return 'failed: could not ask the engine which sessions are running, so none is safe to open';
+  const rows = (await js("[...document.querySelectorAll('[data-session-list] [data-session-id]')].map((row) => row.dataset.sessionId)")) as string[];
+  const other = rows.find((id) => id !== home && !running.ids.has(id));
+  if (!other) return 'ok: no other session to switch to';
+  try {
+    if (!(await waitInPage(win, `(() => { const el = ${scroller}; return !!el && el.scrollHeight > el.clientHeight * 2; })()`, 3_000))) return 'ok: the open session is too short to scroll';
+    // Scrolling up with the wheel stops following the end; then to the middle, as reading would.
+    await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true })); el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) / 2); })()`);
+    await settle(win, 300);
+    const before = (await js(topRow)) as { index: string; offset: number } | null;
+    if (!before) return 'no row at the top of the view after scrolling up';
+    if (!(await switchTo(other))) return 'did not switch to another session';
+    if (!(await switchTo(home))) return 'did not switch back';
+    const same = `(() => { const now = ${topRow}; return !!now && now.index === ${JSON.stringify(before.index)} && Math.abs(now.offset - ${before.offset}) <= 4; })()`;
+    if (!(await waitInPage(win, same, 3_000))) return `back in the session, row ${JSON.stringify(await js(topRow))} is at the top, not ${JSON.stringify(before)}`;
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${home}"] [data-jump-to-latest]')`, 2_000))) return 'Jump to latest is missing after coming back up the conversation';
+
+    // Left at its end, it comes back at its end.
+    await js(`document.querySelector('[data-current-session="${home}"] [data-jump-to-latest]').click()`);
+    if (!(await waitInPage(win, atEnd, 2_000))) return 'Jump to latest did not reach the end';
+    if (!(await switchTo(other))) return 'did not switch to another session the second time';
+    if (!(await switchTo(home))) return 'did not switch back the second time';
+    if (!(await waitInPage(win, atEnd, 3_000))) return 'a session left at its end came back above it';
+    return `ok: came back with row ${before.index} at the top (${before.offset}px into it), and at the end when left there`;
+  } finally {
+    await switchTo(home);
+    await js(`document.querySelector('[data-current-session="${home}"] [data-jump-to-latest]')?.click()`);
+  }
+}
+
+/**
  * Every message has a Copy button (Markdown for Claude's replies, which also have Copy as rich text), and the text
  * of prompts, commands and replies can be selected. Read-only: it doesn't click Copy, which would replace the clipboard.
  */
@@ -6419,6 +7550,360 @@ async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
   const withoutRich = (await js(`[...document.querySelectorAll('[data-item-kind="text"]')].filter((row) => row.querySelector('.markdown') && !row.querySelector('[data-message-actions] button[aria-label="Copy as rich text"]')).length`)) as number;
   if (withoutRich > 0) return `${withoutRich} of Claude's replies have no Copy as rich text`;
   return `ok: Copy and selectable text on ${kinds.map(([kind, { rows }]) => `${rows} ${kind}`).join(', ')} messages`;
+}
+
+/**
+ * A selection in the transcript copies as clean HTML (`useCleanCopy`): the structure of what is selected (a list, inline code,
+ * two table rows, a bold run) with no classes, theme colours, data attributes or buttons, and without what a person could not
+ * select (the speaker's name, the turn line). Read-only: it dispatches `copy` events with a DataTransfer of its own, so the
+ * clipboard is untouched, and the blocks it adds to the transcript for the step are removed again. The HTML is parsed, not
+ * searched: a reply's own words ("in the background") would match a pattern.
+ */
+async function runCopySelectionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await transcriptAtRest(win);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const report = (await js(`(() => {
+    const area = document.querySelector('${view} [data-transcript]');
+    if (!area) return { none: true };
+    const problems = [];
+    const added = [];
+    const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+    // Every element and attribute the clipboard keeps: no class, data attribute, button or theme colour.
+    const audit = (label, body) => {
+      for (const el of body.querySelectorAll('*')) {
+        if (['BUTTON', 'SVG', 'INPUT', 'TEXTAREA', 'IMG'].includes(el.tagName)) problems.push(label + ': a <' + el.tagName.toLowerCase() + '>');
+        for (const attribute of el.attributes) {
+          if (!['href', 'start', 'style'].includes(attribute.name)) problems.push(label + ': ' + attribute.name + '= on <' + el.tagName.toLowerCase() + '>');
+          else if (attribute.name === 'style' && /color|background/i.test(attribute.value)) problems.push(label + ': style ' + attribute.value);
+        }
+      }
+    };
+    // Selects the range and copies, as ⌘C does: a copy event at 'target' with a DataTransfer to read.
+    const copy = (range, target) => {
+      document.activeElement?.blur();
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const data = new DataTransfer();
+      const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain'), selected: selection.toString() };
+    };
+    const rangeOf = (startNode, startOffset, endNode, endOffset) => {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+      return range;
+    };
+    const add = (el) => (area.appendChild(el), added.push(el), el);
+    try {
+      // 1. A reply on screen with a list and inline code, or a block of that shape.
+      let reply = [...area.querySelectorAll('[data-remember-from="claude"] .markdown')].find((m) => m.querySelector('li') && m.querySelector(':not(pre) > code'));
+      const real = !!reply;
+      if (!reply) {
+        reply = add(document.createElement('div'));
+        reply.className = 'markdown text-body select-text';
+        reply.innerHTML = '<p class="text-text">Steps:</p><ul class="list-disc"><li class="my-0.5" style="color: red">Run <code class="rounded bg-border/60 font-mono">npm test</code></li><li><strong>Bold</strong> and <a href="https://example.com" class="text-link">a link</a></li></ul><button type="button">Copy code</button>';
+      }
+      const whole = document.createRange();
+      whole.selectNodeContents(reply);
+      const first = copy(whole, reply);
+      if (!first.prevented) problems.push('a copy of a reply was left to the browser, with its theme colours');
+      const body = parse(first.html);
+      if (!body.querySelector('li') || !body.querySelector('code')) problems.push('the HTML of a reply has no <li> and <code>');
+      audit('reply', body);
+      if (!first.text) problems.push('the copy of a reply has no plain text');
+
+      // 2. Parts of a block: items 3 and 4 of a list, two table rows, a few words in a bold run, a prompt with line breaks,
+      // and what a person could not select (the speaker's name, a line of numbers) in the middle of it.
+      const block = add(document.createElement('div'));
+      block.className = 'markdown text-body select-text';
+      block.innerHTML = '<h2 class="sr-only">Speaker</h2><ol><li>one</li><li>two</li><li>three</li><li>four</li></ol><table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table><p>Some <strong>bold run</strong> here</p><p class="whitespace-pre-wrap" data-lines></p><p class="select-none">turn line</p><p data-mid>Run <code>npm test</code> and <strong>then</strong> check it</p><ul data-three><li>alpha</li><li>beta</li><li>gamma</li></ul><p data-math>Let <span data-math-source="x^2"><span class="select-none">garbled</span></span> be</p><details><summary>Summary</summary><p>Hidden body</p></details>';
+      block.querySelector('[data-lines]').append('first line' + String.fromCharCode(10) + 'second line');
+      const li = [...block.querySelectorAll('li')];
+      const items = copy(rangeOf(li[2].firstChild, 0, li[3].firstChild, 4), li[2]);
+      const list = parse(items.html).querySelector('ol');
+      if (!list || list.getAttribute('start') !== '3' || list.querySelectorAll('li').length !== 2) problems.push('items 3 and 4 of a list: ' + items.html.slice(0, 120));
+      const cells = [...block.querySelectorAll('td')];
+      const rows = copy(rangeOf(cells[0].firstChild, 0, cells[3].firstChild, 1), cells[0]);
+      const table = parse(rows.html).querySelector('table > tbody');
+      if (!table || table.querySelectorAll('tr').length !== 2 || table.querySelectorAll('td').length !== 4) problems.push('two table rows: ' + rows.html.slice(0, 160));
+      const strong = block.querySelector('strong');
+      const bold = copy(rangeOf(strong.firstChild, 0, strong.firstChild, 4), strong);
+      if (!parse(bold.html).querySelector('strong')) problems.push('words in a bold run lost the bold: ' + bold.html.slice(0, 80));
+      const lines = block.querySelector('[data-lines]');
+      const broken = copy(rangeOf(lines.firstChild, 0, lines.firstChild, lines.firstChild.length), lines);
+      if (!parse(broken.html).querySelector('br')) problems.push('a prompt lost its line break: ' + broken.html.slice(0, 80));
+      // Starting in the middle of a paragraph, after an inline mark: only what the range holds.
+      const mid = block.querySelector('[data-mid]');
+      const midText = mid.childNodes[2];
+      const midEnd = mid.childNodes[4];
+      const middle = copy(rangeOf(midText, 1, midEnd, 6), mid);
+      const middleBody = parse(middle.html);
+      if (middleBody.querySelector('code') || !middleBody.querySelector('strong') || middleBody.textContent.trim() !== 'and then check') problems.push('a selection that starts after an inline mark copies ' + JSON.stringify(middleBody.textContent));
+      // A triple-click on an item ends at the start of the next one: it is not copied.
+      const three = [...block.querySelectorAll('[data-three] li')];
+      const triple = copy(rangeOf(three[1], 0, three[2], 0), three[1]);
+      const tripleBody = parse(triple.html);
+      if (tripleBody.textContent.trim() !== 'beta' || tripleBody.querySelectorAll('li').length !== 1) problems.push('a triple-click on a list item copies ' + JSON.stringify(tripleBody.textContent));
+      if (triple.text.includes('gamma')) problems.push('the text of a triple-click has the next item');
+      // A formula is its source, in the HTML and the text.
+      const math = block.querySelector('[data-math]');
+      const formula = copy(rangeOf(math.firstChild, 0, math.lastChild, 3), math);
+      if (!formula.html.includes('$x^2$') || formula.html.includes('garbled') || !formula.text.includes('$x^2$')) problems.push('a formula copies ' + JSON.stringify(formula.text));
+      const all = document.createRange();
+      all.selectNodeContents(block);
+      const unseen = copy(all, block);
+      const unseenBody = parse(unseen.html);
+      if (unseenBody.querySelector('h2') || unseenBody.textContent.includes('turn line') || unseenBody.textContent.includes('Speaker')) problems.push('text nobody could select is in the HTML: ' + unseen.html.slice(0, 120));
+      if (unseen.text.includes('turn line')) problems.push('the plain text has unselectable text');
+      if (unseenBody.textContent.includes('Hidden body') || !unseenBody.textContent.includes('Summary')) problems.push('a closed details copies its body');
+
+      // 3. Across two messages: no speaker heading and none of the turn line's numbers.
+      const messages = [...area.querySelectorAll('[data-transcript-item]')].filter((m) => !added.includes(m)).slice(0, 2);
+      let across = 0;
+      if (messages.length === 2) {
+        const range = rangeOf(messages[0], 0, messages[1], messages[1].childNodes.length);
+        const unselectable = [...area.querySelectorAll('h2.sr-only, [data-turn-meta], [data-skim-stats]')].filter((e) => !added.includes(e) && range.intersectsNode(e) && e.textContent.trim());
+        const crossed = copy(range, messages[0]);
+        const crossedBody = parse(crossed.html);
+        audit('across messages', crossedBody);
+        for (const e of unselectable) {
+          across++;
+          const text = e.textContent.trim();
+          if (e.matches('h2') ? [...crossedBody.querySelectorAll('h2')].some((h) => h.textContent.trim() === text) : crossedBody.textContent.includes(text)) problems.push('a selection across two messages has "' + text + '"');
+        }
+      }
+
+      // 4. Fields keep their own copy: a text field inside the transcript, and the message box.
+      const field = add(document.createElement('textarea'));
+      field.value = 'typed text';
+      field.focus();
+      field.select();
+      const fieldEvent = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+      field.dispatchEvent(fieldEvent);
+      if (fieldEvent.defaultPrevented) problems.push('a copy in a text field was taken over');
+      const composer = document.querySelector('${view} [data-composer]');
+      if (composer) {
+        const composerEvent = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+        composer.dispatchEvent(composerEvent);
+        if (composerEvent.defaultPrevented) problems.push('a copy in the message box was taken over');
+      }
+      return { problems, real, across, messages: messages.length };
+    } finally {
+      window.getSelection().removeAllRanges();
+      for (const el of added) el.remove();
+    }
+  })()`)) as { none?: boolean; problems: string[]; real: boolean; across: number; messages: number };
+  if (report.none) return 'ok: no transcript on screen';
+  if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+  return `ok: a ${report.real ? "reply's" : 'made-up'} list, table rows, list items, a bold run, a mid-paragraph start, a triple-click, a formula and line breaks copy as clean HTML; ${report.across} unselectable lines stay out across ${report.messages} messages; fields keep their own copy`;
+}
+
+/**
+ * A selection in the file preview with a real formula and a real Mermaid diagram (`useCleanCopy` on the preview's Markdown),
+ * in a throwaway file in a folder of its own: a sentence with `$x^2 + y^2$` copies with the formula as its TeX in `$…$` exactly once
+ * (not KaTeX's pieces, no `.katex`, no `math`) and its text is the sentence; a `$$` block copies as its source in `$$…$$`; a selection
+ * from the line before a diagram to the line after has both lines and no `svg` (the diagram is left out, not copied as its source).
+ * Read-only: `copy` events with a DataTransfer of its own, the clipboard is untouched. The folder is removed at the end.
+ */
+async function runCopyFormulaStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-copy-formula-')));
+  const md = join(dir, 'copy.md');
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const PREVIEW = "document.querySelector('[data-file-preview-markdown]')";
+  try {
+    writeFileSync(md, '# Copy\n\nThen $x^2 + y^2$ holds.\n\n$$\nE = mc^2\n$$\n\nBefore the diagram.\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Ship]\n```\n\nAfter the diagram.\n');
+    await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(md)} }))`);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && [...(${PREVIEW}?.querySelectorAll('[data-math-visual]') ?? [])].some((v) => v.shadowRoot?.querySelector('.katex')) && !!${PREVIEW}?.querySelector('[data-mermaid-state="drawn"] svg')`, 20_000))) return 'the formula and the diagram were not drawn in the Markdown preview';
+    const report = (await js(`(() => {
+      const preview = ${PREVIEW};
+      const problems = [];
+      const parse = (html) => new DOMParser().parseFromString(html, 'text/html').body;
+      const copy = (range, target) => {
+        document.activeElement?.blur();
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const data = new DataTransfer();
+        const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        const out = { prevented: event.defaultPrevented, html: data.getData('text/html'), text: data.getData('text/plain') };
+        selection.removeAllRanges();
+        return out;
+      };
+      const times = (text, part) => text.split(part).length - 1;
+      const paragraph = (start) => [...preview.querySelectorAll('p')].find((p) => p.textContent.trim().startsWith(start));
+      // 1. The sentence with an inline formula.
+      const sentence = paragraph('Then');
+      if (!sentence) return { problems: ['the sentence is not in the preview'] };
+      if (!sentence.closest('[data-clean-copy]')) problems.push('the preview is not a clean-copy container');
+      const range = document.createRange();
+      range.selectNodeContents(sentence);
+      const line = copy(range, sentence);
+      const lineBody = parse(line.html);
+      if (!line.prevented) problems.push('the copy was left to the browser');
+      if (times(lineBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the formula is in the HTML ' + times(lineBody.textContent, '$x^2 + y^2$') + ' times: ' + line.html.slice(0, 160));
+      if (lineBody.querySelector('[class*=katex], math, svg, annotation') || [...lineBody.querySelectorAll('*')].some((e) => [...e.attributes].some((a) => a.name === 'class' || a.name.startsWith('data-')))) problems.push('the HTML keeps KaTeX, MathML or attributes: ' + line.html.slice(0, 160));
+      if (line.text !== 'Then $x^2 + y^2$ holds.') problems.push('the text is ' + JSON.stringify(line.text));
+      // 2. From the sentence through the $$ block.
+      const block = preview.querySelector('[data-math="block"]');
+      const through = document.createRange();
+      through.setStart(sentence.firstChild, 0);
+      through.setEnd(block, block.childNodes.length);
+      const blockCopy = copy(through, sentence);
+      const blockBody = parse(blockCopy.html);
+      if (times(blockBody.textContent, 'E = mc^2') !== 1 || !blockBody.textContent.includes('$$') || blockBody.querySelector('[class*=katex], math, svg')) problems.push('a $$ block copies as ' + JSON.stringify(blockBody.textContent.slice(0, 120)));
+      if (times(blockBody.textContent, '$x^2 + y^2$') !== 1) problems.push('the sentence before the block has its formula ' + times(blockBody.textContent, '$x^2 + y^2$') + ' times');
+      // 3. From the line before the diagram to the line after it.
+      const before = paragraph('Before the diagram');
+      const after = paragraph('After the diagram');
+      const around = document.createRange();
+      around.setStart(before.firstChild, 0);
+      around.setEnd(after.firstChild, after.firstChild.length);
+      const diagram = copy(around, before);
+      const diagramBody = parse(diagram.html);
+      if (!diagram.prevented) problems.push('the copy around a diagram was left to the browser');
+      if (!diagramBody.textContent.includes('Before the diagram.') || !diagramBody.textContent.includes('After the diagram.')) problems.push('the copy around a diagram has ' + JSON.stringify(diagramBody.textContent.slice(0, 120)));
+      if (diagramBody.querySelector('svg') || /Start|Ship|flowchart/.test(diagramBody.textContent)) problems.push('the copy around a diagram has the diagram: ' + diagram.html.slice(0, 160));
+      window.getSelection().removeAllRanges();
+      return { problems };
+    })()`)) as { problems: string[] };
+    if (report.problems.length > 0) return report.problems.slice(0, 3).join('; ');
+    return 'ok: a sentence copies its formula once as $…$ with the sentence as text, a $$ block as its source, and a selection around a Mermaid diagram has its lines and no svg (the diagram is left out)';
+  } finally {
+    pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click(); window.getSelection().removeAllRanges(); null");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * ⌘A (Ctrl+A) in the conversation and in reading mode selects only that text (`useSelectAllInText`), so a copy of it is the clean
+ * HTML: the selection lies inside the area, the HTML (parsed) has no class, data attribute, button or colour and none of the sidebar's or
+ * the reading bar's text. In a text field it still selects only the field's text, and in the message box it leaves the conversation
+ * alone; with words selected in the conversation and focus on a control outside it, the key and Edit › Select All leave the conversation
+ * unselected. The conversation is virtualised: Select all takes the rows drawn. Read-only: the key is pressed in the page, `copy` events carry
+ * a DataTransfer of their own, and what the step adds to the conversation is removed again.
+ */
+async function runSelectAllCopyStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await transcriptAtRest(win);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const AREA = `${view} [data-transcript]`;
+  const READ = '[data-read-mode] [data-read-scroll]';
+  // Selects with the key from a state with no selection and no focus in the area, then copies as ⌘C does, to the focused element.
+  const reset = (pointerIn: string | null) =>
+    js(`(() => { window.getSelection().removeAllRanges(); document.activeElement?.blur(); ${pointerIn ? `document.querySelector(${JSON.stringify(pointerIn)})?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));` : ''} return true; })()`);
+  const copyOf = (selector: string, outside: string) =>
+    js(`(() => {
+      const root = document.querySelector(${JSON.stringify(selector)});
+      const selection = window.getSelection();
+      const problems = [];
+      if (!root || selection.rangeCount === 0) return ['nothing is selected'];
+      const range = selection.getRangeAt(0);
+      if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) problems.push('the selection reaches outside the text');
+      const data = new DataTransfer();
+      const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+      (document.activeElement ?? document.body).dispatchEvent(event);
+      if (!event.defaultPrevented) problems.push('the copy was left to the browser, with its theme colours');
+      const body = new DOMParser().parseFromString(data.getData('text/html'), 'text/html').body;
+      if (!body.textContent.trim()) problems.push('the copy is empty');
+      for (const el of body.querySelectorAll('*')) {
+        if (['BUTTON', 'SVG', 'INPUT', 'TEXTAREA', 'IMG'].includes(el.tagName)) problems.push('a <' + el.tagName.toLowerCase() + '> in the HTML');
+        for (const a of el.attributes) {
+          if (!['href', 'start', 'style'].includes(a.name)) problems.push(a.name + '= on <' + el.tagName.toLowerCase() + '>');
+          else if (a.name === 'style' && /color|background/i.test(a.value)) problems.push('style ' + a.value);
+        }
+      }
+      // Text of the window around the area: the sidebar's rows and the reading bar.
+      for (const text of (${outside}).map((t) => t.trim()).filter((t) => t.length > 8 && !root.textContent.includes(t))) if (body.textContent.includes(text)) problems.push('the HTML has "' + text.slice(0, 30) + '" from outside the text');
+      selection.removeAllRanges();
+      return problems;
+    })()`) as Promise<string[]>;
+  const ROWS = "[...document.querySelectorAll('[data-session-id]')].map((row) => row.textContent)";
+  try {
+    if (!(await js(`!!document.querySelector('${AREA} [data-transcript-item]')`))) return 'ok: no conversation on screen';
+    // 1. The conversation: after a click in it, ⌘A selects its text, not the window.
+    await reset(AREA);
+    pressKey(win, 'A', ['meta']);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`, 3_000))) {
+      const where = await js("(() => { const s = window.getSelection(); return s.rangeCount ? s.getRangeAt(0).startContainer.nodeName + ' > ' + s.getRangeAt(0).endContainer.nodeName : 'none'; })()");
+      return `⌘A in the conversation did not select just its text (${where})`;
+    }
+    const conversation = await copyOf(AREA, ROWS);
+    if (conversation.length > 0) return `⌘A in the conversation: ${conversation.slice(0, 3).join('; ')}`;
+
+    // 2. A text field in the area keeps its own Select all, and so does the message box: the key is not taken (a key event sent to the page
+    // does not run the menu's Select all, so what the browser would do with it is not seen here) and the conversation stays unselected.
+    await js("window.__smokeKeys = []; window.__smokeKeyListener = (e) => window.__smokeKeys.push(e.defaultPrevented); window.addEventListener('keydown', window.__smokeKeyListener); true");
+    await js(`(() => { const field = document.createElement('textarea'); field.value = 'typed text'; field.dataset.smokeSelectAll = ''; document.querySelector('${AREA}').appendChild(field); window.getSelection().removeAllRanges(); field.focus(); return document.activeElement === field; })()`);
+    pressKey(win, 'A', ['meta']);
+    await settle(win);
+    if ((await js('JSON.stringify(window.__smokeKeys)')) !== '[false]') return `⌘A in a text field was taken (${await js('JSON.stringify(window.__smokeKeys)')})`;
+    await js("document.querySelector('[data-smoke-select-all]')?.remove(); window.__smokeKeys = []; true");
+    const composer = `${view} [data-composer]`;
+    if (await js(`!!document.querySelector('${composer}')`)) {
+      await js(`(() => { window.getSelection().removeAllRanges(); document.querySelector('${composer}').focus(); return true; })()`);
+      pressKey(win, 'A', ['meta']);
+      await settle(win);
+      const stayed = (await js(`(() => { const s = window.getSelection(); return { composer: document.activeElement === document.querySelector('${composer}'), keys: window.__smokeKeys, inConversation: s.rangeCount > 0 && document.querySelector('${AREA}').contains(s.anchorNode) && !s.isCollapsed }; })()`)) as { composer: boolean; keys: boolean[]; inConversation: boolean };
+      if (!stayed.composer || stayed.inConversation || stayed.keys.join() !== 'false') return `⌘A in the message box ${stayed.inConversation ? 'selected the conversation' : stayed.composer ? 'was taken' : 'lost the focus'}`;
+    }
+
+    // 3. An old selection does not take ⌘A from where focus is: with words selected in the conversation, a control elsewhere with focus
+    // (a click on a Files row or a pane's button does this) keeps ⌘A for itself, the key and Edit › Select All alike.
+    await js(`(() => {
+      const area = document.querySelector('${AREA}');
+      const p = area.querySelector('p');
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      const button = document.createElement('button');
+      button.dataset.smokeOutside = '';
+      button.textContent = 'outside';
+      document.body.appendChild(button);
+      button.focus();
+      window.__smokeKeys = [];
+      return document.activeElement === button;
+    })()`);
+    pressKey(win, 'A', ['meta']);
+    await settle(win);
+    const keptKeys = (await js('JSON.stringify(window.__smokeKeys)')) as string;
+    const whole = (await js(`(() => { const s = window.getSelection(); return s.rangeCount > 0 && s.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`)) as boolean;
+    if (keptKeys !== '[false]' || whole) return `⌘A with focus on a control outside the conversation ${whole ? 'selected the conversation' : 'was taken'} (${keptKeys})`;
+    const edit = Menu.getApplicationMenu()?.items.find((item) => item.label === 'Edit')?.submenu?.items.find((item) => item.label === 'Select All');
+    if (!edit) return 'the Edit menu has no Select All';
+    edit.click({} as never, win, win.webContents);
+    await settle(win);
+    if ((await js(`(() => { const s = window.getSelection(); return s.rangeCount > 0 && s.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`)) as boolean) return 'Edit › Select All with focus outside the conversation selected the conversation';
+    await js("document.querySelector('[data-smoke-outside]')?.remove(); window.getSelection().removeAllRanges(); document.activeElement?.blur(); true");
+    // Edit › Select All in the conversation selects its text, the same as the key.
+    await reset(AREA);
+    edit.click({} as never, win, win.webContents);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${AREA}'); })()`, 3_000))) return 'Edit › Select All did not select just the conversation text';
+
+    // 3. Reading mode: ⌘A selects its text, with no click in it.
+    await js("window.getSelection().removeAllRanges(); document.activeElement?.blur(); true");
+    const reading = (await js(`(() => { const b = document.querySelector('${view} [data-read-button]'); if (!b) return false; b.click(); return true; })()`)) as boolean;
+    if (!reading) return 'ok: ⌘A in the conversation copies clean HTML and keeps its own in fields; no reply to read on screen';
+    if (!(await waitInPage(win, `!!document.querySelector('${READ}[data-clean-copy]')`, 5_000))) return 'reading mode did not open';
+    await reset(null);
+    pressKey(win, 'A', ['meta']);
+    if (!(await waitInPage(win, `(() => { const r = window.getSelection(); return r.rangeCount > 0 && r.getRangeAt(0).startContainer === document.querySelector('${READ}'); })()`, 3_000))) return '⌘A in reading mode did not select just its text';
+    const readBar = "[...document.querySelectorAll('[data-read-mode] [data-read-position], [data-read-mode] header, [data-read-mode] nav')].map((e) => e.textContent).concat(" + ROWS + ')';
+    const read = await copyOf(READ, readBar);
+    pressKey(win, 'Escape');
+    await waitInPage(win, '!document.querySelector("[data-read-mode]")', 3_000);
+    if (read.length > 0) return `⌘A in reading mode: ${read.slice(0, 3).join('; ')}`;
+    return 'ok: ⌘A selects only the conversation, or reading mode, and a copy is clean HTML without the sidebar or the bar; in a text field and the message box the key is left to the browser (the conversation is drawn a screenful at a time: it selects the rows drawn)';
+  } finally {
+    await js("if (window.__smokeKeyListener) { window.removeEventListener('keydown', window.__smokeKeyListener); delete window.__smokeKeyListener; } document.querySelectorAll('[data-smoke-select-all], [data-smoke-outside]').forEach((e) => e.remove()); window.getSelection().removeAllRanges(); document.activeElement?.blur?.(); null");
+    if (await js("!!document.querySelector('[data-read-mode]')")) pressKey(win, 'Escape');
+  }
 }
 
 /**
@@ -6517,7 +8002,7 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   const selected = (await js(select)) as string;
   if (!selected) return 'ok: no paragraph of Claude on screen to select';
   const done = async (result: string) => {
-    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } true");
+    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } if (window.__smokeWrite) { navigator.clipboard.write = window.__smokeWrite; delete window.__smokeWrite; } true");
     return result;
   };
   if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar over the selection');
@@ -6534,7 +8019,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
 
   // Keyboard: Tab from the transcript into the toolbar, → to Copy, then Copy.
-  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeCopied = null; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; true");
+  // Copy in the conversation writes the clean HTML and the text together (`copySelection`), elsewhere the text alone.
+  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeWrite = navigator.clipboard.write.bind(navigator.clipboard); window.__smokeCopied = null; window.__smokeCopiedHtml = false; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; navigator.clipboard.write = async (items) => { window.__smokeCopiedHtml = items[0].types.includes('text/html'); window.__smokeCopied = await (await items[0].getType('text/plain')).text(); }; true");
   key('Tab');
   if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-quote-selection')", 2_000))) return done('Tab did not move into the toolbar');
   key('Right');
@@ -6542,7 +8028,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   await js('document.activeElement.click()');
   if (!(await waitInPage(win, "document.querySelector('[data-copy-selection][data-copied]')?.textContent.includes('Copied')", 2_000))) return done('Copy did not say Copied');
   const copied = (await js('window.__smokeCopied')) as string | null;
-  if (copied !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (copied?.trim() !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (!(await js('window.__smokeCopiedHtml'))) return done('Copy in the conversation wrote no clean HTML');
   if (!(await js(`!!${toolbar}`))) return done('the toolbar closed after Copy');
 
   // Esc closes it and keeps the selection.
@@ -6592,8 +8079,13 @@ async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
   const row = "document.querySelector('[data-smoke-reply-actions]')";
   const bar = `${row}.querySelector('[data-message-actions]')`;
   try {
-    const before = (await js(`({ height: ${row}.getBoundingClientRect().height, opacity: getComputedStyle(${bar}).opacity })`)) as { height: number; opacity: string };
-    if (before.opacity !== '0') return `the actions of a reply show (opacity ${before.opacity}) without hover or focus`;
+    // The pointer can rest over the reply on the runners (where the window opened under it), and a step before can leave
+    // the focus in it: away from both first, as "turn line" does.
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+    await js(`document.activeElement instanceof HTMLElement && document.activeElement.blur()`);
+    await waitInPage(win, `getComputedStyle(${bar}).opacity === '0'`, 2_000);
+    const before = (await js(`({ height: ${row}.getBoundingClientRect().height, opacity: getComputedStyle(${bar}).opacity, hovered: ${row}.matches(':hover'), focused: ${row}.contains(document.activeElement) })`)) as { height: number; opacity: string; hovered: boolean; focused: boolean };
+    if (before.opacity !== '0') return `the actions of a reply show (opacity ${before.opacity}) without hover or focus (hovered ${before.hovered}, focus inside ${before.focused})`;
     await js(`${bar}.querySelector('button[aria-label^="Copy"]').focus()`);
     if (!(await waitInPage(win, `getComputedStyle(${bar}).opacity === '1'`, 2_000))) return 'tabbing to Copy did not show the actions of the reply';
     const height = (await js(`${row}.getBoundingClientRect().height`)) as number;
@@ -6820,6 +8312,277 @@ async function runAnsweredQuestionStep(win: BrowserWindow): Promise<string> {
   } finally {
     await js(`(() => { const el = ${transcript}; if (el) el.scrollTop = el.scrollHeight; })()`);
     if (back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
+/**
+ * The lightbox on the demo's "Check the banner sizes": the arrows go through all of a reply's images and stop at the next
+ * prompt, and right-clicking the image offers Copy image (the clipboard is stubbed, so it stays yours) and keeps Escape
+ * for the menu first. Read-only: it opens that session and goes back to the one it was on.
+ */
+async function runImageViewerStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: needs the demo home, which has a session with images (npm run smoke:demo)';
+  const view = '[data-current-session]';
+  const thumbs = `document.querySelectorAll('${view} [data-transcript-image]')`;
+  const label = "document.querySelector('[data-lightbox-label]')?.textContent ?? ''";
+  const row = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Check the banner sizes'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!row) return 'failed: the demo session "Check the banner sizes" is not in the sidebar';
+  const back = smokeSessionId;
+  const key = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
+  // The full-size image shows a moment after the label moves on; until then the first image in the lightbox is a thumbnail, which has no menu.
+  const rightClickImage = async () => {
+    await waitInPage(win, "document.querySelector('[data-lightbox-image]')", 3_000);
+    await js(`(() => {
+      const image = document.querySelector('[data-lightbox-image]');
+      const r = image.getBoundingClientRect();
+      image.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.top + 4 }));
+    })()`);
+  };
+  try {
+    await js(`document.querySelector('[data-session-id="${row}"]')?.click()`);
+    if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(row)} && ${thumbs}.length === 3 && ${thumbs}[0].querySelector('img')`, 8_000))) return `the session shows ${await js(`${thumbs}.length`)} images, not 3`;
+
+    await js(`${thumbs}[0].click()`);
+    if (!(await waitInPage(win, `(${label}).startsWith('1 / 2')`, 3_000))) return `the first reply's lightbox says ${JSON.stringify(await js(label))}, not 1 / 2`;
+    if ((await js("document.querySelectorAll('[data-lightbox-thumb]').length")) !== 2) return 'the filmstrip does not show both images of the reply';
+    key('Right');
+    if (!(await waitInPage(win, `(${label}).startsWith('2 / 2')`, 3_000))) return '→ did not go to the next image of the reply';
+    await js("document.querySelector('[data-lightbox-prev]').click()");
+    if (!(await waitInPage(win, `(${label}).startsWith('1 / 2')`, 3_000))) return 'the previous button did not go back';
+
+    await js("window.__smokeWrite = navigator.clipboard.write; window.__smokeCopied = null; navigator.clipboard.write = async (items) => { window.__smokeCopied = items[0].types; }; true");
+    await rightClickImage();
+    if (!(await waitInPage(win, "document.querySelector('[data-image-menu-copy]')", 3_000))) return 'right-clicking the full-size image shows no Copy image';
+    key('Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-image-menu-copy]')", 3_000))) return 'Esc did not close the menu';
+    if (!(await js("!!document.querySelector('[data-lightbox]')"))) return 'Esc closed the lightbox along with its menu';
+    await rightClickImage();
+    if (!(await waitInPage(win, "document.querySelector('[data-image-menu-copy]')", 3_000))) return 'the menu did not open again';
+    await js("document.querySelector('[data-image-menu-copy]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-image-copied]')", 3_000))) return 'Copy image did not confirm';
+    const copied = (await js('window.__smokeCopied')) as string[] | null;
+    if (copied?.join() !== 'image/png') return `Copy image wrote ${JSON.stringify(copied)}, not a PNG`;
+    if (!(await js("!!document.querySelector('[data-lightbox]')"))) return 'Copy image closed the lightbox';
+    key('Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-lightbox]')", 3_000))) return 'Esc did not close the lightbox';
+
+    await js(`${thumbs}[2].click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-lightbox] img')", 3_000))) return "the next reply's image did not open";
+    if (await js("!!document.querySelector('[data-lightbox-next]')")) return "the next reply's only image has arrows: its gallery runs past your prompt";
+    key('Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-lightbox]')", 3_000))) return 'Esc did not close the second lightbox';
+    return 'ok: arrows and the filmstrip go through the reply and stop at your next prompt; right-click copies the image as PNG';
+  } finally {
+    await js("if (window.__smokeWrite) { navigator.clipboard.write = window.__smokeWrite; delete window.__smokeWrite; } document.querySelector('[data-lightbox] [aria-label=\"Close\"]')?.click(); true");
+    if (back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
+/**
+ * Skim and Full, on the demo's finished session (`screenshot-demo.ts`): another home folder doesn't have it, so the step
+ * says so and leaves. Read-only: it opens that session and goes back to the one it was on.
+ */
+/**
+ * Skim's marks, on the demo's "Speed up the checkout page" (`screenshot-demo.ts`), whose reply ends with a keep line:
+ * the line never shows, what it quotes stays and the rest fades. Read-only.
+ */
+async function runSkimMarksStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const faded = `[...document.querySelectorAll('${view} [data-skim-faded]')]`;
+  const open = (id: string) => js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+  const back = (await js(`document.querySelector('${view}')?.dataset.currentSession ?? null`)) as string | null;
+  const id = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!id) return 'ok: not the demo home, so no marked reply';
+  if (preferences.get().conversationView !== 'skim') return `failed: the view is ${preferences.get().conversationView}`;
+  try {
+    await open(id);
+    if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-skim-fade-row]')`, 5_000))) return 'failed: the marked reply did not fade by its marks';
+    if (((await js(`document.querySelector('${view} [data-transcript]')?.innerText ?? ''`)) as string).includes('keep:')) return 'failed: the keep line shows';
+    if (await js(`${faded}.some((el) => el.innerText.includes('One more thing changed'))`)) return 'failed: a quoted sentence faded';
+    if (!(await js(`${faded}.some((el) => el.innerText.includes('I kept the hook small'))`))) return 'failed: a sentence the line left out did not fade';
+    return `ok: ${await js(`${faded}.length`)} faded by the keep line, the line hidden`;
+  } finally {
+    if (back && back !== id) await open(back);
+  }
+}
+
+async function runMarkdownRepliesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const open = (id: string) => js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+  const back = (await js(`document.querySelector('${view}')?.dataset.currentSession ?? null`)) as string | null;
+  const id = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!id) return 'ok: not the demo home, so no reply with a quote';
+  // What the reply must show, read from the page: the quote is not the muted colour of the old one, has a bar, and keeps its list and code.
+  const check = (root: string) => `(() => {
+    const md = document.querySelector('${root} .markdown:has(blockquote:not([data-alert]))');
+    if (!md) return 'no reply with a quote';
+    const quote = md.querySelector('blockquote:not([data-alert])');
+    const text = getComputedStyle(md.querySelector('p')).color;
+    const bar = getComputedStyle(quote);
+    if (parseFloat(bar.borderLeftWidth) < 3 || bar.borderLeftStyle === 'none') return 'the quote has no bar';
+    if (bar.borderLeftColor === bar.backgroundColor || bar.borderLeftColor === 'rgba(0, 0, 0, 0)') return 'the quote bar is invisible';
+    if (getComputedStyle(quote.querySelector('p')).color !== text) return 'the quote is not in the text colour';
+    if (!quote.querySelector('strong') || !quote.querySelector('ol li') || !quote.querySelector('code')) return 'the quote lost its bold text, list or code';
+    if (!md.querySelector('td br')) return 'the break in the table cell is not a break';
+    if (md.innerText.includes('<br>')) return 'the break shows as source';
+    const alert = md.querySelector('blockquote[data-alert=note]');
+    if (!alert || !alert.querySelector('[data-alert-title]') || alert.innerText.includes('[!NOTE]')) return 'the alert is a plain quote';
+    if (parseFloat(getComputedStyle(alert).borderLeftWidth) < 3) return 'the alert has no bar';
+    const boxes = [...md.querySelectorAll('li.task-list-item [data-task-box]')];
+    if (boxes.length !== 2 || boxes.filter((box) => box.dataset.taskBox === 'checked').length !== 1) return 'the task list has ' + boxes.length + ' boxes';
+    if (md.querySelector('input[type=checkbox]')) return 'a native checkbox shows in the task list';
+    if (getComputedStyle(md.querySelector('li.task-list-item')).listStyleType !== 'none') return 'the task list has a bullet';
+    return 'ok';
+  })()`;
+  const scheme = preferences.get().colorScheme;
+  try {
+    await open(id);
+    if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) return 'failed: the session did not open';
+    // The reply is last; the list is virtualised, so go to its end.
+    await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); if (el) el.scrollTop = el.scrollHeight; })()`);
+    if (!(await waitInPage(win, `document.querySelector('${view} blockquote[data-alert=note]')`, 5_000))) return 'failed: the reply with the alert is not in the conversation';
+    for (const mode of ['dark', 'light'] as const) {
+      if (!(await setColorScheme(win, mode))) return `failed: ${mode} did not apply`;
+      const result = (await js(check(view))) as string;
+      if (result !== 'ok') return `failed: in ${mode}, ${result}`;
+      await js(`document.querySelector('${view} blockquote:not([data-alert])')?.scrollIntoView({ block: 'start' })`);
+      await shot(win, `markdown-replies-${mode}.png`);
+    }
+    // The same reply in reading mode, in both schemes (the paper is warm in light and the same as the page in dark).
+    for (const mode of ['dark', 'light'] as const) {
+      if (!(await setColorScheme(win, mode))) return `failed: ${mode} did not apply`;
+      if (!(await js(`(() => { const b = [...document.querySelectorAll('${view} [data-read-button]')].at(-1); if (!b) return false; b.click(); return true; })()`))) return 'failed: no Read button on the reply';
+      if (!(await waitInPage(win, "document.querySelector('[data-read-mode] blockquote[data-alert]')", 4_000))) return `failed: reading mode in ${mode} does not show the alert`;
+      const reading = (await js(check('[data-read-mode]'))) as string;
+      if (reading !== 'ok') return `failed: in reading mode in ${mode}, ${reading}`;
+      pressKey(win, 'Escape');
+      if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'failed: Esc did not close reading mode';
+    }
+    return 'ok: the quote has a bar in the text colour with its list and code, the table cell breaks, the alert and the task list show, in dark, light and reading mode (both)';
+  } finally {
+    updatePreferences({ colorScheme: scheme });
+    if (back && back !== id) await open(back);
+  }
+}
+
+async function runConversationViewStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const faded = `document.querySelectorAll('${view} [data-skim-faded]').length`;
+  const open = (id: string) => js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+  const back = (await js(`document.querySelector('${view}')?.dataset.currentSession ?? null`)) as string | null;
+  const hero = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.innerText.includes('Add dark mode toggle'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!hero) return 'ok: not the demo home, so no session to skim';
+  if (preferences.get().conversationView !== 'skim') return `failed: the default is ${preferences.get().conversationView}`;
+  const openReply = async () => {
+    await open(hero);
+    return waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(hero)} && document.querySelector('${view} [data-folded-messages]')`, 5_000);
+  };
+  try {
+    if (!(await openReply())) return 'failed: the finished turn did not fold';
+    // The reply ends with a keep line (Skim's marks): what it leaves out fades, and the line never shows.
+    if (!(await waitInPage(win, `${faded} > 0 && document.querySelector('${view} [data-skim-show-all]')`, 5_000))) return 'failed: the reply did not fade by its keep line';
+    if (((await js(`document.querySelector('${view} [data-transcript]')?.innerText ?? ''`)) as string).includes('keep:')) return 'failed: the keep line shows';
+
+    // The stats line sits above the reply, from the turn's tool calls.
+    const stats = (await js(`[...document.querySelectorAll('${view} [data-skim-stats]')].at(-1)?.innerText.replace(/\\s+/g, ' ') ?? ''`)) as string;
+    if (!/\+\d+.*\d files/.test(stats)) return `failed: stats line says "${stats}"`;
+    if (!(await js(`[...document.querySelectorAll('${view} [data-skim-stats]')].at(-1).closest('[data-message-key]').querySelector('.markdown')?.innerText.includes('Dark mode is in')`))) return 'failed: the stats line is not on the reply';
+
+    // What Haiku didn't keep fades in `faint`; a question stays whatever it picked.
+    if (!(await js(`[...document.querySelectorAll('${view} [data-skim-faded]')].some((el) => el.innerText.includes('I went through the theme code'))`))) return 'failed: the narrated sentence did not fade';
+    if (await js(`[...document.querySelectorAll('${view} [data-skim-faded]')].some((el) => el.innerText.includes('?'))`)) return 'failed: a question faded';
+
+    // The fade shows in dark and light, and a narrow pane neither clips the line nor scrolls sideways.
+    const fadeShows = `(() => { const span = document.querySelector('${view} [data-skim-faded]'); return !!span && getComputedStyle(span).color !== getComputedStyle(span.parentElement).color; })()`;
+    if (!(await js(fadeShows))) return 'failed: the faded sentence looks like the rest in dark';
+    const [width, height] = win.getContentSize() as [number, number];
+    const scheme = preferences.get().colorScheme;
+    updatePreferences({ colorScheme: 'light' });
+    win.setContentSize(760, height);
+    try {
+      if (!(await waitInPage(win, `getComputedStyle(document.querySelector('${view} [data-transcript]')).backgroundColor === 'rgb(255, 255, 255)' || getComputedStyle(document.body).backgroundColor === 'rgb(255, 255, 255)'`, 2_000))) return 'failed: Light did not apply';
+      await settle(win);
+      if (!(await js(fadeShows))) return 'failed: the faded sentence looks like the rest in light';
+      const fits = (await js(`(() => { const list = document.querySelector('${view} [data-transcript]'); const line = [...document.querySelectorAll('${view} [data-skim-stats]')].at(-1); const row = [...document.querySelectorAll('${view} [data-skim-fade-row]')].at(-1); const box = list.getBoundingClientRect(); return list.scrollWidth <= list.clientWidth && [line, row].every((el) => el && el.getBoundingClientRect().right <= box.right); })()`)) as boolean;
+      await shot(win, 'skim-light-narrow.png');
+      if (!fits) return 'failed: the stats line or Show all text overflows a narrow pane';
+    } finally {
+      updatePreferences({ colorScheme: scheme });
+      win.setContentSize(width, height);
+    }
+
+    // The group opens to read the messages, in place.
+    const group = `document.querySelector('${view} [data-folded-messages]')`;
+    await js(`${group}.querySelector('button').click()`);
+    if (!(await waitInPage(win, `${group}?.querySelector('[data-folded-message]')?.innerText.includes('how the theme is set up')`, 3_000))) return 'failed: the group did not open to the folded message';
+    await shot(win, 'skim.png');
+    await js(`${group}.querySelector('button').click()`);
+    if (!(await waitInPage(win, `!${group}?.querySelector('[data-steps]')`, 2_000))) return 'failed: the group did not close';
+
+    // Find works on the whole text: the fade goes, and a match in a folded message opens its group.
+    await js(`document.querySelector('${view} [data-transcript]').focus?.()`);
+    pressKey(win, 'F', ['meta']);
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-find-input]')", 3_000))) return 'failed: ⌘F did not open the find bar';
+    await setFieldValue(win, '[data-find-input]', 'how the theme is set up');
+    if (!(await waitInPage(win, `/^\\d+ of \\d+$/.test(document.querySelector('[data-find-count]')?.innerText ?? '') && ${faded} === 0 && ${group}?.querySelector('[data-folded-message]') && CSS.highlights.get('find-current')?.size === 1`, 3_000))) {
+      return `failed: find did not reach the folded message (${await js("document.querySelector('[data-find-count]')?.innerText ?? 'no count'")}, ${await js(faded)} still faded)`;
+    }
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-find-bar]') && ${faded} > 0 && !${group}?.querySelector('[data-steps]')`, 3_000))) return 'failed: closing find did not bring the fade back and close the group';
+
+    // Reading mode shows the reply without the fade.
+    const readButtons = `[...document.querySelectorAll('${view} [data-read-button]')]`;
+    await js(`${readButtons}.at(-1)?.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-read-mode]')?.innerText.includes('I went through the theme code')", 3_000))) return 'failed: reading mode did not open on the reply';
+    if (await js("!!document.querySelector('[data-read-mode] [data-skim-faded]')")) return 'failed: reading mode shows faded text';
+    pressKey(win, 'Escape');
+    // Leaving puts the focus on the reply's Read button a frame later, which would take it from the palette below.
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]') && document.activeElement?.matches('[data-read-button]')", 3_000))) return 'failed: Escape did not leave reading mode';
+
+    // Show all text stays when the row is gone from the list and back; here, by leaving the session.
+    await js(`document.querySelector('${view} [data-skim-show-all]').click()`);
+    if (!(await waitInPage(win, `${faded} === 0 && document.querySelector('${view} [data-skim-show-all]')?.innerText === 'Fade text'`, 2_000))) return 'failed: Show all text kept the fade';
+    if (back && back !== hero) {
+      await open(back);
+      await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(back)}`, 3_000);
+      if (!(await openReply()) || !(await waitInPage(win, `document.querySelector('${view} [data-skim-show-all]')`, 3_000))) return 'failed: did not get back to the session';
+      if ((await js(faded)) !== 0) return 'failed: Show all text did not stay after leaving the row';
+    }
+    await js(`document.querySelector('${view} [data-skim-show-all]').click()`);
+    if (!(await waitInPage(win, `${faded} > 0`, 2_000))) return 'failed: Fade text did not fade again';
+
+    // Full from the palette applies without a reload, and looks like the conversation always did.
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return 'failed: the palette did not open';
+    await setFieldValue(win, '[data-palette-input]', 'Conversation: Full');
+    if (!(await waitInPage(win, "[...document.querySelectorAll('[data-command-palette] [role=option]')].some((el) => el.innerText.includes('Conversation: Full'))", 3_000))) return 'failed: no Conversation: Full in the palette';
+    pressKey(win, 'Return');
+    if (!(await until(() => preferences.get().conversationView === 'full', 2_000))) return 'failed: Conversation: Full was not saved';
+    const full = `!document.querySelector('${view} [data-folded-messages]') && !document.querySelector('${view} [data-skim-stats]') && !document.querySelector('${view} [data-skim-show-all]') && ${faded} === 0`;
+    if (!(await waitInPage(win, `${full} && [...document.querySelectorAll('${view} [data-item-kind="text"]')].some((row) => row.innerText.includes('how the theme is set up'))`, 3_000))) return 'failed: Full still folds or fades';
+
+    // Skim again from Settings, saved to the preferences file.
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings]')", 3_000))) return 'failed: Settings did not open';
+    await js("document.querySelector('[data-settings-section=\"conversation\"]')?.click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-conversation-view=\"skim\"]') && document.querySelector('[data-skim-marks-setting]')", 3_000))) return 'failed: Settings › Conversation has no Skim, or no switch for the fade';
+    await js("document.querySelector('[data-conversation-view=\"skim\"]').click()");
+    if (!(await until(() => preferences.get().conversationView === 'skim', 2_000))) return 'failed: Skim was not saved';
+    const saved = JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8')) as Record<string, unknown>;
+    await js("document.querySelector('[data-close-settings]').click()");
+    if (!(await waitInPage(win, `!document.querySelector('[data-settings]') && document.querySelector('${view} [data-folded-messages]') && ${faded} > 0`, 3_000))) return 'failed: Skim did not apply when Settings closed';
+    if (saved.conversationView !== 'skim') return `failed: saved ${String(saved.conversationView)}`;
+
+    return `ok: stats "${stats}", faded by its keep line, folded and opened, the fade in light and dark and a narrow pane, Show all text kept, find and reading mode on the whole text, Full and Skim switched`;
+  } finally {
+    if (preferences.get().conversationView !== 'skim') updatePreferences({ conversationView: 'skim' });
+    if (back && back !== hero) await open(back);
   }
 }
 
@@ -7423,20 +9186,12 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
         folders: rows.map((r) => r.dataset.folderOption),
       };
     })()`)) as { columns: number; rows: number; firstLine: number; cut: string[]; folders: string[] } | null;
-  /**
-   * Sizes the window so the picker is `pickerWidth` wide. A small window narrows the sidebar or folds it into the rail
-   * (over 150ms), which widens the view again: measure, adjust by the difference, and repeat until it holds.
-   */
-  const pickerWidth = () => js(`Math.round(${one('[data-project-header]')}?.getBoundingClientRect().width ?? 0)`) as Promise<number>;
-  const sizeFor = async (target: number) => {
-    for (let i = 0; i < 6; i++) {
-      const now = await pickerWidth();
-      if (Math.abs(now - target) <= 1) return;
-      const [current] = win.getContentSize() as [number, number];
-      win.setContentSize(current + target - now, height);
-      await waitInPage(win, `window.innerWidth === ${current + target - now}`, 1_000);
-      await settle(win);
-    }
+  /** Sizes the window, and waits until New session shows this layout. */
+  const sizeFor = async (windowWidth: number, windowHeight: number, layout: string) => {
+    win.setContentSize(windowWidth, windowHeight);
+    await waitInPage(win, `window.innerWidth === ${windowWidth}`, 1_000);
+    await settle(win);
+    return waitInPage(win, `${one('[data-new-session-view]')}?.dataset.newSessionLayout === ${JSON.stringify(layout)}`, 3_000);
   };
   try {
     pressKey(win, 'N', [MOD_MODIFIER]);
@@ -7457,43 +9212,65 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
       added.push(dir);
     }
 
-    // Wide (the column's 56rem less its padding): three columns, nine rows, three on the first line, any cut name cut in the middle.
+    // In columns, one column of rows: nine in a tall window, any cut name cut in the middle.
     if (!(await js("Boolean(document.querySelector('[data-sidebar-open]'))"))) {
       pressKey(win, 'B', [MOD_MODIFIER]);
       if (!(await waitInPage(win, one('[data-sidebar-open]'), 3_000))) return 'the sidebar did not open';
     }
     // The window's minimum width would clamp the narrow sizes below (how far depends on the sidebar's width).
     win.setMinimumSize(400, minHeight);
-    await sizeFor(848);
-    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '3' && ${one(list)}.querySelectorAll('[data-project-row]').length === 9`, 3_000))) return `a wide window did not show three columns and nine rows (${JSON.stringify(await shape())})`;
+    if (!(await sizeFor(1280, 900, 'two'))) return `a 1280 window with the sidebar open is not two columns (${String(await js(`${one('[data-new-session-view]')}?.dataset.newSessionLayout`))}, sidebar ${String(await js(`${one('[data-sidebar]')}?.getBoundingClientRect().width`))})`;
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '1' && ${one(list)}.querySelectorAll('[data-project-row]').length === 9`, 3_000))) return `a tall window did not list nine rows in one column (${JSON.stringify(await shape())})`;
     let now = (await shape())!;
-    if (now.firstLine !== 3) return `three columns put ${now.firstLine} rows on the first line`;
-    for (const cut of now.cut) if (!/^.+….+$/.test(cut)) return `a name was cut at its end in a wide window: ${cut}`;
+    if (now.firstLine !== 1) return `one column put ${now.firstLine} rows on the first line`;
+    for (const cut of now.cut) if (!/^.+….+$/.test(cut)) return `a name was cut at its end: ${cut}`;
     if (!(await js(`${one('[data-new-session-view] [data-all-projects]')}?.innerText.startsWith('All ')`))) return 'no All N projects… under the list';
-    // ⌘2 picks the second row: left to right, so the middle of the first line.
+    // ⌘2 picks the second row, and the focus stays in the message box.
     const second = now.folders[1]!;
+    await js(`${one('[data-new-session-view] [data-composer]')}.focus()`);
     pressKey(win, '2', [MOD_MODIFIER]);
     if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(second)}`, 3_000))) return `⌘2 did not pick the second row (${String(await js(`${one(list)}?.dataset.value`))})`;
+    if (!(await js("document.activeElement?.matches('[data-composer]')"))) return '⌘2 took the focus out of the message box';
     await shot(win, 'new-session-project-list.png');
+    // A click on a row picks too, and leaves the focus where it was.
+    const third = now.folders[2]!;
+    await clickLikeAUser(win, `[data-new-session-view] [data-folder-option=${JSON.stringify(third)}]`);
+    if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(third)}`, 3_000))) return 'a click did not pick the row';
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-composer]')", 1_000))) return 'a click on a row took the focus out of the message box';
 
-    // Two columns, eight rows.
-    await sizeFor(650);
-    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '2' && ${one(list)}.querySelectorAll('[data-project-row]').length === 8`, 3_000))) return `a narrower window did not show two columns and eight rows (${JSON.stringify(await shape())})`;
+    // A shorter window lists as many as fit, and ⌘ only reaches those.
+    win.setContentSize(1280, 620);
+    await waitInPage(win, 'window.innerHeight === 620', 1_000);
+    await settle(win);
+    now = (await shape())!;
+    if (now.rows >= 9 || now.rows < 3) return `a short window listed ${now.rows} rows`;
+    const short = await js(`(() => { const root = ${one('[data-project-header]')}, q = ${one('[data-new-session-view] [data-quick-question]')}; return q.getBoundingClientRect().bottom <= root.getBoundingClientRect().bottom + 1 && ${one(list)}.scrollHeight <= ${one(list)}.clientHeight + 2; })()`);
+    if (!short) return `the ${now.rows} rows of a short window push Quick question out of its column`;
+    const fitted = now.rows;
+
+    // Stacked: two columns of eight, wider than the list's breakpoint, with the long name cut in the middle.
+    if (!(await sizeFor(900, height, 'stack'))) return `a 900 window with the sidebar open is not stacked (${String(await js(`${one('[data-new-session-view]')}?.dataset.newSessionLayout`))})`;
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '2' && ${one(list)}.querySelectorAll('[data-project-row]').length === 8`, 3_000))) return `stacked did not show two columns and eight rows (${JSON.stringify(await shape())})`;
     now = (await shape())!;
     if (now.firstLine !== 2) return `two columns put ${now.firstLine} rows on the first line`;
-    // Narrow columns: the long name is cut in the middle, and its tooltip and label have it whole.
-    await sizeFor(530);
     const long = dirs.find((dir) => basename(dir) === 'pointfire-document-summarization')!;
     const longRow = one(`[data-new-session-view] [data-folder-option=${JSON.stringify(long)}]`);
-    if (!(await waitInPage(win, `${longRow}?.querySelector('[data-project-name]').textContent.includes('…')`, 3_000))) return `a long name in a narrow column was not cut (${String(await js(`${longRow}?.querySelector('[data-project-name]').textContent`))})`;
-    const cutName = (await js(`${longRow}.querySelector('[data-project-name]').textContent`)) as string;
+    // In the 280px column of the wider layout the long name is sure to be cut: look there if the two columns have room for it whole.
+    let cutName = (await js(`${longRow}?.querySelector('[data-project-name]').textContent ?? ''`)) as string;
+    if (!cutName.includes('…')) {
+      await sizeFor(1280, height, 'two');
+      await waitInPage(win, `${longRow}?.querySelector('[data-project-name]').textContent.includes('…')`, 3_000);
+      cutName = (await js(`${longRow}?.querySelector('[data-project-name]').textContent ?? ''`)) as string;
+    }
     // A wider font (Linux) may cut right after the dash.
-    if (!/^pointfire-.*….*ation$/.test(cutName)) return `a long name was not cut in the middle: ${cutName}`;
-    if (!(await js(`${longRow}.dataset.tooltip.startsWith('pointfire-document-summarization\\n') && ${longRow}.getAttribute('aria-label').startsWith('pointfire-document-summarization, ')`))) return 'the cut name has no whole name in its tooltip or label';
+    if (cutName && !/^pointfire-.*….*ation$/.test(cutName)) return `a long name was not cut in the middle: ${cutName}`;
+    if (cutName && !(await js(`${longRow}.dataset.tooltip.startsWith('pointfire-document-summarization\\n') && ${longRow}.getAttribute('aria-label').startsWith('pointfire-document-summarization, ')`))) return 'the cut name has no whole name in its tooltip or label';
 
-    // One column, six rows: as a side panel would make it.
-    await sizeFor(440);
-    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '1' && ${one(list)}.querySelectorAll('[data-project-row]').length === 6`, 3_000))) return `a narrow view did not show one column and six rows (${JSON.stringify(await shape())})`;
+    // One column of six, as a side panel would make it: too narrow for two.
+    win.setContentSize(440, height);
+    await waitInPage(win, 'window.innerWidth === 440', 1_000);
+    await settle(win);
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '1' && ${one(list)}.querySelectorAll('[data-project-row]').length === 6`, 3_000))) return `a narrow view did not show one column and six rows (${JSON.stringify(await shape())}, view ${String(await js(`${one('[data-project-header]')}.getBoundingClientRect().width`))})`;
     now = (await shape())!;
     // A name cut in the middle keeps its start and its end; the tooltip has it whole, with its folder.
     for (const cut of now.cut) if (!/^.+….+$/.test(cut)) return `a name was cut at its end, not in the middle: ${cut}`;
@@ -7502,10 +9279,7 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     pressKey(win, '7', [MOD_MODIFIER]);
     await settle(win);
     if ((await js(`${one(list)}.dataset.value`)) !== picked) return '⌘7 picked a project that is not on screen';
-    // Add project… keeps only its icon, with its label as the tooltip.
-    const addButton = `[...document.querySelectorAll('[data-new-session-view] [data-add-folder]')].map((b) => (b.getAttribute('aria-label') ?? '-') + ':' + b.innerText.trim())`;
-    if (!(await waitInPage(win, `${addButton}.join() === 'Add project…:'`, 2_000))) return `Add project… kept its label in one column (${String(await js(`${addButton}.join(' | ')`))}, ${String(await js(`${one(list)}?.dataset.projectColumns`))} columns)`;
-    return `ok: three columns and nine rows wide (⌘2 picked ${basename(second)}), two and eight (${cutName} in narrow ones), one and six, ⌘7 did nothing`;
+    return `ok: one column of nine in columns (⌘2 picked ${basename(second)}, the focus stayed), ${fitted} in a short window, two and eight stacked (${cutName || 'no cut name'}), one and six in a narrow view, ⌘7 did nothing`;
   } finally {
     win.setMinimumSize(minWidth, minHeight);
     win.setContentSize(width, height);
@@ -7527,6 +9301,223 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     } catch (error) {
       console.log(`[smoke] could not remove ${parent}: ${(error as Error).message}`);
     }
+  }
+}
+
+/**
+ * New session uses the width: three columns, two, or stacked, by the view's width. The window takes the width each
+ * layout is drawn for, with a 300px sidebar counted in (the default sidebar is 320px, so the window is sized by the view
+ * it leaves). A display too small to reach a width still has to show the layout its view gets. In columns nothing needs
+ * a page scroll at 900px tall. At the focus limit, Start reads Add to queue, with Start anyway only in Nudge. Sends
+ * nothing: what it queues it removes, the box is emptied, and the preferences and projects are put back.
+ */
+async function runNewSessionLayoutStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const view = '[data-new-session-view]';
+  const [width, height] = win.getContentSize() as [number, number];
+  const [minWidth, minHeight] = win.getMinimumSize() as [number, number];
+  const before = preferences.get();
+  const box = `${view} [data-composer]`;
+  const SIDEBAR = 300;
+  const widths = [
+    { window: 1920, layout: 'three', box: 836 },
+    { window: 1512, layout: 'three', box: 505 },
+    { window: 1280, layout: 'two', box: 588 },
+    { window: 900, layout: 'stack', box: null },
+  ];
+  const seen: string[] = [];
+  const added: string[] = [];
+  /** A process that stands in for Claude Code running in a terminal, so a session counts toward the limit (the demo home only). */
+  let sleeper: ChildProcess | null = null;
+  let liveEntry: string | null = null;
+  const home = process.env.SESHBOARD_SMOKE_DEMO ? (process.env.HOME ?? process.env.USERPROFILE ?? null) : null;
+  /** The width of the view (what the layouts go by), and the layout it should show. */
+  const viewWidth = () => js(`Math.round(${one(view)}.parentElement.clientWidth)`) as Promise<number>;
+  const expected = (w: number) => (w >= 1200 ? 'three' : w >= 860 ? 'two' : 'stack');
+  const layoutNow = () => js(`${one(view)}?.dataset.newSessionLayout ?? null`) as Promise<string | null>;
+  const sizeView = async (target: number) => {
+    for (let i = 0; i < 6; i++) {
+      const now = await viewWidth();
+      if (Math.abs(now - target) <= 1) return;
+      const [current] = win.getContentSize() as [number, number];
+      const next = current + target - now;
+      win.setContentSize(next, 900);
+      await waitInPage(win, `window.innerWidth === ${next}`, 1_000);
+      await settle(win);
+      // The display stops it here (a window can't always pass the screen's size).
+      if ((win.getContentSize()[0] as number) === current) return;
+    }
+  };
+  /** Checks the layout a width shows, and that its columns fit. Returns what went wrong. */
+  const check = async (item: (typeof widths)[number]): Promise<string | null> => {
+    win.setContentSize(Math.max(item.window, 400), 900);
+    await settle(win);
+    await sizeView(item.window - SIDEBAR);
+    const w = await viewWidth();
+    const reached = Math.abs(w - (item.window - SIDEBAR)) <= 1;
+    const want = reached ? item.layout : expected(w);
+    if (!(await waitInPage(win, `${one(view)}?.dataset.newSessionLayout === ${JSON.stringify(want)}`, 3_000))) return `a ${w}px view shows ${String(await layoutNow())}, not ${want}`;
+    const shape = (await js(`(() => {
+      const scroller = ${one(view)}.parentElement;
+      const tray = ${one(`${view} [data-route-tray]`)}.getBoundingClientRect();
+      const card = ${one(`${view} [data-composer-card]`)}.getBoundingClientRect();
+      const text = ${one(box)}.getBoundingClientRect();
+      return { scrolls: scroller.scrollHeight > scroller.clientHeight + 1, top: tray.top, bottom: card.bottom, cardWidth: Math.round(card.width), textHeight: Math.round(text.height), tall: window.innerHeight };
+    })()`)) as { scrolls: boolean; top: number; bottom: number; cardWidth: number; textHeight: number; tall: number };
+    if (want !== 'stack') {
+      if (shape.scrolls) return `${want} columns scroll the page in a ${shape.tall}px tall window`;
+      if (shape.top < 0 || shape.bottom > shape.tall) return `the box is not all on screen in ${want} columns (${shape.top} to ${shape.bottom} of ${shape.tall})`;
+      if (shape.tall >= 900 && shape.textHeight < (want === 'three' ? 210 : 140)) return `the box is ${shape.textHeight}px tall at rest in ${want} columns`;
+      if (reached && item.box !== null && Math.abs(shape.cardWidth - item.box) > 4) return `the box is ${shape.cardWidth}px wide in a ${w}px view, not about ${item.box}px`;
+    }
+    seen.push(`${w}: ${want}${want === 'stack' ? '' : ` ${shape.cardWidth}px`}`);
+    return null;
+  };
+  try {
+    win.setMinimumSize(400, minHeight);
+    pressKey(win, 'N', [MOD_MODIFIER]);
+    if (!(await waitInPage(win, `${one(view)} && ${one(box)}`, 3_000))) return 'New session did not open';
+    if (!(await js(`Boolean(${one('[data-sidebar-open]')})`))) {
+      pressKey(win, 'B', [MOD_MODIFIER]);
+      if (!(await waitInPage(win, one('[data-sidebar-open]'), 3_000))) return 'the sidebar did not open';
+    }
+    if (!(await js(`${one('[data-new-session-projects]')}?.tagName === 'ASIDE' && ${one('main [data-composer-card]')} !== null`))) return 'the projects and the box are not their landmarks';
+    if (await js("document.querySelectorAll('main, [role=main]').length !== 1")) return 'New session has more than one main';
+
+    // The demo's projects, for what the columns are about (removed again at the end).
+    if (home) {
+      const developer = join(home, 'Developer');
+      const list = `${view} [data-folder-select][data-project-list]`;
+      for (const dir of readdirSync(developer).map((name) => join(developer, name)).filter((dir) => statSync(dir).isDirectory())) {
+        // After a pick the focus goes to the box, once it is enabled: wait for it, so the field keeps the focus below.
+        await waitInPage(win, "document.activeElement?.matches('[data-composer]')", 2_000);
+        await js(`${one(`${view} [data-find-project]`)}.click()`);
+        if (!(await waitInPage(win, `document.activeElement === ${one('[data-folder-list] input')}`, 3_000))) return 'Find a project did not open the filter field';
+        await setFieldValue(win, '[data-folder-list] input', dir);
+        const suggestion = one(`[data-path-suggestion=${JSON.stringify(dir)}]`);
+        if (!(await waitInPage(win, `${suggestion}?.dataset.active === 'true'`, 3_000))) return `typing ${dir} did not offer the folder`;
+        pressKey(win, 'Return');
+        if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(dir)}`, 5_000))) return `↩ did not add and pick ${dir}`;
+        added.push(dir);
+      }
+      // The project with the most to show: its sessions and defaults in the context, and the focus on the box.
+      const acme = join(developer, 'acme-store');
+      const place = (await js(`[...document.querySelectorAll(${JSON.stringify(`${list} [data-folder-option]`)})].findIndex((r) => r.dataset.folderOption === ${JSON.stringify(acme)}) + 1`)) as number;
+      pressKey(win, String(place), [MOD_MODIFIER]);
+      if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(acme)}`, 3_000))) return `could not pick acme-store (${String(await js(`${one(list)}?.dataset.value`))})`;
+      if (!(await waitInPage(win, `${one('[data-new-session-context] [data-pick-up]')} && ${one('[data-new-session-context] [data-edit-project-defaults]')}`, 5_000))) return 'the context does not show the project with its sessions and defaults';
+      if (!(await js("document.querySelector('[data-new-session-context]')?.tagName === 'ASIDE'"))) return 'the context is not an aside';
+      if (!(await waitInPage(win, "document.activeElement?.matches('[data-composer]')", 2_000))) return 'picking from the filter field did not put the focus in the box';
+    }
+
+    for (const item of widths) {
+      const problem = await check(item);
+      if (problem) return problem;
+      for (const scheme of ['light', 'dark'] as const) {
+        updatePreferences({ colorScheme: scheme });
+        await settle(win);
+        await shot(win, `new-session-layout-${item.window}-${scheme}.png`);
+      }
+    }
+
+    // Closing the sidebar gives the width back: a window moves up a layout.
+    await sizeView(1280 - SIDEBAR);
+    pressKey(win, 'B', [MOD_MODIFIER]);
+    if (!(await waitInPage(win, `!${one('[data-sidebar-open]')}`, 3_000))) return 'the sidebar did not close';
+    await settle(win);
+    const wide = await viewWidth();
+    if (!(await waitInPage(win, `${one(view)}?.dataset.newSessionLayout === ${JSON.stringify(expected(wide))}`, 3_000))) return `with the sidebar closed, a ${wide}px view shows ${String(await layoutNow())}`;
+    pressKey(win, 'B', [MOD_MODIFIER]);
+    await waitInPage(win, one('[data-sidebar-open]'), 3_000);
+
+    // A long message grows the box up to the room in its column, then scrolls inside: the page still doesn't scroll.
+    await sizeView(1512 - SIDEBAR);
+    await setFieldValue(win, box, Array.from({ length: 80 }, (_, line) => `line ${line}`).join('\n'));
+    await settle(win);
+    const grown = (await js(`(() => {
+      const text = ${one(box)}, card = ${one(`${view} [data-composer-card]`)}.getBoundingClientRect(), scroller = ${one(view)}.parentElement;
+      return { height: Math.round(text.getBoundingClientRect().height), inside: text.scrollHeight > text.clientHeight, bottom: card.bottom, tall: window.innerHeight, page: scroller.scrollHeight > scroller.clientHeight + 1 };
+    })()`)) as { height: number; inside: boolean; bottom: number; tall: number; page: boolean };
+    if (grown.tall >= 900 && grown.height <= 320) return `a long message left the box at ${grown.height}px with room to grow`;
+    if (!grown.inside || grown.page || grown.bottom > grown.tall) return `a long message did not scroll inside the box (${JSON.stringify(grown)})`;
+    // The / list stays on screen and out of the drag strip, though the box sits high in its column.
+    await setFieldValue(win, box, '/');
+    if (await waitInPage(win, one(`${view} [data-palette]`), 2_000)) {
+      const list = (await js(`(() => { const r = ${one(`${view} [data-palette]`)}.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, tall: window.innerHeight }; })()`)) as { top: number; bottom: number; tall: number };
+      if (list.top < 52 || list.bottom > list.tall) return `the / list runs off the view (${JSON.stringify(list)})`;
+    }
+    await setFieldValue(win, box, '');
+    await waitInPage(win, `!${one(`${view} [data-palette]`)}`, 2_000);
+
+    // The focus limit, in three columns where the list of what is going sits beside the box. A session has to count,
+    // which needs one going (the demo's, started outside Seshboard).
+    win.setContentSize(Math.max(1600, width), 900);
+    await settle(win);
+    if (home) {
+      sleeper = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120_000)'], { stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+      liveEntry = join(process.env.CLAUDE_CONFIG_DIR ?? join(home, '.claude'), 'sessions', `${sleeper.pid}.json`);
+      const at = Date.now();
+      writeFileSync(liveEntry, JSON.stringify({ pid: sleeper.pid, sessionId: randomUUID(), cwd: join(home, 'Developer', 'docs-site'), startedAt: at, version: '2.1.0', kind: 'interactive', entrypoint: 'cli', status: 'busy', statusUpdatedAt: at, updatedAt: at }));
+    }
+    updatePreferences({ focusLimit: 1, focusMode: 'nudge', focusCountExternal: true });
+    if (!(await waitInPage(win, `${one('[data-focus-counter]')} !== null`, 2_000))) return 'the focus limit did not turn on';
+    if (!(await waitInPage(win, one('[data-focus-line]'), 15_000))) {
+      if (home) return 'a running session in the demo home did not reach the focus limit';
+      return `ok: ${seen.join(', ')}; nothing counts toward the limit here, so Add to queue is not checked`;
+    }
+    const lineText = (await js(`${one('[data-focus-line]')}.innerText`)) as string;
+    if (!/sessions? going\./.test(lineText) || !lineText.includes('Change limit')) return `the focus line says ${JSON.stringify(lineText)}`;
+    if (!(await js(`${one('[data-focus-line]')}.closest('[aria-live=polite]') !== null`))) return 'the focus line is not a polite live region';
+    await setFieldValue(win, box, 'for the queue, not sent');
+    const start = '[data-start-main]';
+    if (!(await waitInPage(win, `${one(start)}?.dataset.startMain === 'queue' && ${one(start)}.innerText.includes('Add to queue')`, 3_000))) return `at the limit, Start reads ${JSON.stringify(await js(`${one(start)}?.innerText`))}`;
+    const startKey = (await js(`${one(start)}.innerText`)) as string;
+    if (!/↵|↩|Enter/.test(startKey)) return `Add to queue shows no key: ${JSON.stringify(startKey)}`;
+    await js(`${one('[data-start-menu]')}.click()`);
+    if (!(await waitInPage(win, one('[data-start-anyway]'), 2_000))) return 'Nudge has no Start anyway in the menu';
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!${one('[data-start-anyway]')}`, 2_000);
+    if (!(await waitInPage(win, `${one('[data-new-session-context] [data-going-now] [data-focus-session]')} !== null`, 2_000))) return `three columns do not list what is going (${String(await layoutNow())})`;
+    await shot(win, 'new-session-layout-at-limit.png');
+    // ⌘↩ does what the button says: the box empties, the prompt is queued, and no gate asks.
+    await js(`${one(box)}.focus()`);
+    pressKey(win, 'Return', [MOD_MODIFIER]);
+    const queued = `${view} [data-later-item]`;
+    if (!(await waitInPage(win, `${one(queued)} !== null && ${one(box)}.value === ''`, 3_000))) return `⌘↩ at the limit did not add it to the queue (${String(await js(`${one('[role=alertdialog]')}?.innerText ?? 'no question asked'`))})`;
+    await js(`${one(`${view} [data-later-remove]`)}.click()`);
+    if (!(await waitInPage(win, `!${one(queued)}`, 3_000))) return 'the queued prompt was not removed';
+    await setFieldValue(win, box, 'for the queue, not sent');
+    updatePreferences({ focusMode: 'strict' });
+    await settle(win);
+    if (!(await waitInPage(win, `${one(start)}?.dataset.startMain === 'queue'`, 2_000))) return 'Strict did not keep Add to queue';
+    await js(`${one('[data-start-menu]')}.click()`);
+    if (!(await waitInPage(win, one('[data-queue-add]'), 2_000))) return "Start's menu did not open in Strict";
+    if (await js(`Boolean(${one('[data-start-anyway]')})`)) return 'Strict offers Start anyway';
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!${one('[data-queue-add]')}`, 2_000);
+    // Stacked, the list of what is going is under the line, behind Show.
+    win.setContentSize(900, 900);
+    await waitInPage(win, `${one(view)}?.dataset.newSessionLayout === 'stack'`, 3_000);
+    if (await js(`Boolean(${one('[data-going-now]')})`)) return 'stacked still has Going now in the context';
+    await js(`${one('[data-focus-line-show]')}?.click()`);
+    if (!(await waitInPage(win, one('[data-focus-line-list]'), 2_000))) return 'Show did not open the list under the focus line';
+    await setFieldValue(win, box, '');
+    return `ok: ${seen.join(', ')}; a long message scrolls in the box; at the limit Start reads Add to queue and ⌘↩ queues, Start anyway only in Nudge, and Show opens the list when stacked`;
+  } finally {
+    await setFieldValue(win, box, '').catch(() => {});
+    updatePreferences({ focusLimit: before.focusLimit, focusMode: before.focusMode, focusCountExternal: before.focusCountExternal, colorScheme: before.colorScheme });
+    sleeper?.kill();
+    if (liveEntry) rmSync(liveEntry, { force: true });
+    win.setMinimumSize(minWidth, minHeight);
+    win.setContentSize(width, height);
+    await waitInPage(win, `window.innerWidth === ${width}`, 3_000);
+    for (const dir of added) {
+      const removed = (await removeProjectInProjects(win, dir)) && (await settle(win), await removeProjectInProjects(win, dir));
+      if (removed) console.log(`[smoke] could not remove the project ${dir}: ${removed}`);
+    }
+    pressKey(win, 'N', [MOD_MODIFIER]);
+    await waitInPage(win, one(view), 3_000);
   }
 }
 
@@ -7674,8 +9665,14 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   // New session: Clone from GitHub… next to Add project…, and a URL pasted in the folder field offers the clone.
   pressKey(win, 'N', ['meta']);
   if (!(await waitInPage(win, `${one('[data-new-session-view] [data-clone-from-github]')} && ${one('[data-new-session-view] [data-find-project]')}`, 3_000))) return fail('New session has no Clone from GitHub…');
+  // It says what it does, in the projects' column too, rather than being an icon alone.
+  if (!(await js(`${one('[data-new-session-view] [data-clone-from-github]')}.innerText.includes('Clone from GitHub')`))) return fail('Clone from GitHub… under the projects has no label');
+  await shot(win, 'clone-new-session.png');
   await js(`${one('[data-new-session-view] [data-find-project]')}.click()`);
   if (!(await waitInPage(win, one('[data-folder-list] input'), 3_000))) return fail('Filter did not open the folder field');
+  // The demo's few projects don't fill the column: the footer stays under them rather than at the column's bottom.
+  const footerGap = (await js(`${one('[data-new-session-view] [data-project-footer]')}.getBoundingClientRect().top - ${one('[data-new-session-view] [data-folder-list]')}.getBoundingClientRect().bottom`)) as number;
+  if (footerGap > 16) return fail(`the open list pushed Add project… ${Math.round(footerGap)}px down, away from its rows`);
   await setFieldValue(win, '[data-folder-list] input', 'https://github.com/acme/smoke-clone');
   if (!(await waitInPage(win, `${one('[data-clone-option="acme/smoke-clone"]')}?.dataset.active === 'true'`, 3_000))) return fail('a GitHub URL in the folder field did not offer Clone acme/smoke-clone');
   pressKey(win, 'Return');
@@ -7686,6 +9683,9 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   const picked = `${one('[data-route-project]')}?.dataset.tooltip === ${JSON.stringify(target)}`;
   if (!(await waitInPage(win, `${picked} && ${one('[data-worktree-switch]')}?.disabled === true`, 5_000))) return fail('the clone was not picked as the project, or a fresh clone still offers a worktree');
   await shot(win, 'clone-from-github.png');
+  // The sandbox's long temp path fits the column's folder field (cut at its start) instead of running over the message box.
+  const folderField = `${one('[data-clone-folder]')}?.closest('label')`;
+  if (!(await js(`${folderField} && ${folderField}.scrollWidth <= ${folderField}.clientWidth + 1`))) return fail('the folder the clone goes in runs out of its field');
 
   // Start asks about the hook it brings; Cancel starts nothing and keeps the prompt.
   const box = '[data-new-session-view] [data-composer]';
@@ -8245,6 +10245,16 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
   const row = `[data-saved-prompt-row="${id}"]`;
   const box = '[data-new-session-view] [data-composer]';
 
+  /** Closes the step's toasts (not the update toasts, which stay until they're dealt with): they would cover what is clicked next. */
+  const clearToasts = async () => {
+    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
+    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
+    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
+      await js(closeToasts);
+      await settle(win);
+    }
+  };
+
   /** Closes what a failure left open, and removes the sandbox. */
   const cleanUp = async () => {
     if (await js("!!document.querySelector('[role=dialog], [role=menu]')")) pressKey(win, 'Escape');
@@ -8270,6 +10280,35 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, one('[data-settings-section="prompts"]'), 3_000))) return 'Settings has no Prompts page';
     await click('[data-settings-section="prompts"]');
     if (!(await waitInPage(win, one('[data-saved-prompts-new]'), 3_000))) return 'Settings › Prompts has no New prompt';
+    // Starter prompts are only offered: adding one saves it for every project, and then it is no longer offered. Deleted
+    // again, so the rest of the step starts clean. Skipped when one is already saved somewhere (a real home with a
+    // prompt of the same text, shared with a project), since that one is hidden and isn't ours to remove.
+    const starter = '[data-saved-prompt-starter="throwaway-build"]';
+    const starterRow = '[data-saved-prompt-row="throwaway-build"]';
+    const bestStarter = '[data-saved-prompt-starter="best-judgment"]';
+    const bestRow = '[data-saved-prompt-row="use-your-best-judgment"]';
+    let starters = 'the suggested prompts were skipped (one is already saved here)';
+    await waitInPage(win, one('[data-saved-prompts-starters]'), 3_000);
+    if (await js(`!!${one(starter)} && !!${one(bestStarter)} && !${one(starterRow)} && !${one(bestRow)}`)) {
+      // Clicked twice in a row: the second one is ignored, so only one copy is saved (the row count below).
+      await click('[data-saved-prompt-starter-add="throwaway-build"]');
+      await click('[data-saved-prompt-starter-add="throwaway-build"]');
+      if (!(await waitInPage(win, `${one(starterRow)}?.dataset.savedPromptScope === 'global' && !${one(starter)} && ${one(bestStarter)} && ${one(starterRow)}.innerText.includes('1 blank · text')`, 3_000))) return 'Add did not save the throwaway build for every project, with its blank, and stop offering it';
+      await click('[data-saved-prompt-starter-add="best-judgment"]');
+      if (!(await waitInPage(win, `${one(bestRow)} && !${one('[data-saved-prompts-starters]')}`, 3_000))) return 'adding the second starter did not hide the suggestions';
+      if ((await js(`document.querySelectorAll('[data-saved-prompt-row]').length`)) !== 2) return 'adding the two starters did not leave exactly two prompts';
+      await shot(win, 'saved-prompt-starters-added.png');
+      for (const rowId of ['throwaway-build', 'use-your-best-judgment']) {
+        await click(`[data-saved-prompt-row="${rowId}"] [data-saved-prompt-menu]`);
+        if (!(await waitInPage(win, one('[role=menu] [data-prompt-delete]'), 2_000))) return 'a starter prompt had no Delete in its menu';
+        await click('[role=menu] [data-prompt-delete]');
+        if (!(await waitInPage(win, `!${one(`[data-saved-prompt-row="${rowId}"]`)}`, 3_000))) return 'Delete did not remove a starter prompt';
+      }
+      if (!(await waitInPage(win, one(starter), 3_000))) return 'a deleted starter prompt was not offered again';
+      // Their toasts go too, so the Delete check further down can only be met by its own.
+      await clearToasts();
+      starters = 'the two suggested prompts were added with one click (each hidden once saved) and deleted';
+    }
     await click('[data-saved-prompts-new]');
     if (!(await waitInPage(win, `${one('[data-prompt-editor-dialog]')} && ${one('[data-prompt-use-in="personal"]')}?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'New prompt did not open with "just for you" picked';
     await setFieldValue(win, '[data-prompt-editor-name]', 'Smoke: fix a pull request');
@@ -8383,14 +10422,8 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!${one(row)} && !!document.querySelector('[data-prompt-deleted-toast]')`, 3_000))) return 'Delete did not take it out, with Undo';
     await click('[data-close-settings]');
     // Its toasts (saved, queued, moved, shared, deleted) would cover what later steps click.
-    // Not the update toasts, which stay until they're dealt with.
-    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
-    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
-    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
-      await js(closeToasts);
-      await settle(win);
-    }
-    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .seshboard.json, with Show the change) and back (out of it), deleted';
+    await clearToasts();
+    return `ok: ${starters}; made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .seshboard.json, with Show the change) and back (out of it), deleted`;
   } finally {
     await cleanUp();
   }
@@ -8645,6 +10678,134 @@ async function runRunAsStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, opened(''), 8_000))) return 'New session did not open again';
   if ((await js(`${chip}.dataset.runAs`)) !== 'one') return 'Run as did not go back to One session after the run started';
   return `ok: Run as › Execute and validate made Start Run pipeline with two pills, ⌘↵ ran it as a run row${runId ? ` (${runId})` : ''} with Execute working, and New session is back on One session`;
+}
+
+/**
+ * The orchestrator (docs/orchestrator.md), with stand-in sessions: Run as › Orchestrator in New session makes Start
+ * say Start orchestrator, and ⌘↵ opens the session with its overview. Its tools (called as its agent would) start three
+ * sessions, which show in the overview as Working and under its row in the sidebar. One that needs you moves to
+ * Waiting on you; one whose turn ends cleanly moves to Idle, and the orchestrator is told so. Open on a row opens that
+ * session, whose header leads back. The project's Orchestrator instructions, saved on its Settings tab first, reach
+ * every session it starts. No prompt reaches an agent: starts and messages are recorded, not sent.
+ */
+async function runOrchestratorStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-orchestrator-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+  const logFile = join(app.getPath('userData'), 'smoke-orchestrator.jsonl');
+  const logged = (): Array<{ kind: string; sessionId: string; title?: string; text?: string; workspace?: string; permissionMode?: string; instructions?: string | null }> => {
+    try {
+      return readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as { kind: string; sessionId: string });
+    } catch {
+      return [];
+    }
+  };
+  const before = logged().length;
+  const host = (sessionId: string, state: 'running' | 'needs-you' | 'idle' | 'closed', outcome?: 'clean') => engine.send({ type: 'smokeQueueHost', sessionId, cwd: folder, state, ...(outcome ? { outcome } : {}) });
+  const view = '[data-new-session-view]';
+  const chip = `document.querySelector('${view} [data-run-as]')`;
+  const submit = `document.querySelector('${view} [data-composer-submit]')`;
+  const overview = "document.querySelector('[data-orchestrator-overview]')";
+  const workers = (state: string) => `${overview}?.querySelectorAll('[data-orchestrator-worker][data-worker-state="${state}"]').length`;
+  const instructions = 'Branch from main. Run the tests before you call work done.';
+  const pageSelector = `[data-project-page=${JSON.stringify(folder)}]`;
+  const page = (selector: string) => `document.querySelector(${JSON.stringify(`${pageSelector} ${selector}`)})`;
+  let orchestratorId = '';
+  let started: string[] = [];
+  try {
+    openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${chip} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)}`, 8_000))) return 'New session did not open on the throwaway repository with the Run as chip';
+    await js(`${chip}.click()`);
+    const option = "document.querySelector('[role=menu] [data-run-as-option=\"orchestrator\"]')";
+    if (!(await waitInPage(win, `!!${option}`, 3_000))) return 'the Run as menu did not list Orchestrator';
+    await shot(win, 'orchestrator-run-as-menu.png');
+    await js(`${option}.click()`);
+    if (!(await waitInPage(win, `${chip}?.dataset.runAs === 'orchestrator' && ${submit}?.innerText.includes('Start orchestrator')`, 2_000))) return 'Start did not turn into Start orchestrator';
+    await setFieldValue(win, `${view} [data-composer]`, 'Fix the login redirect, update the lint config and refresh the docs.');
+    await shot(win, 'orchestrator-run-as.png');
+    // The session is a stand-in: nothing is sent to an agent.
+    engine.send({ type: 'smokeStubCreate', on: true });
+    await js(`document.querySelector('${view} [data-composer]').focus()`);
+    pressKey(win, 'Return', ['meta']);
+    if (!(await waitInPage(win, `${overview}?.querySelector('[data-orchestrator-line]')?.innerText.includes('No sessions yet')`, 10_000))) return 'the orchestrator did not open with its empty overview';
+    orchestratorId = (await js(`${overview}.dataset.orchestratorOverview`)) as string;
+    engine.send({ type: 'smokeStubCreate', on: false });
+    host(orchestratorId, 'idle');
+    // Starting it added the folder to your projects: its Settings tab keeps the orchestrator's instructions.
+    await js("document.querySelector('[data-open-projects]')?.click()");
+    const projectRow = `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(folder)}]`)})`;
+    if (!(await waitInPage(win, `!!${projectRow} || !!${page('[data-project-tab="settings"]')}`, 5_000))) return 'the throwaway project did not show in Projects';
+    if (!(await js(`!!${page('[data-project-tab="settings"]')}`))) await js(`${projectRow}.click()`);
+    if (!(await waitInPage(win, `!!${page('[data-project-tab="settings"]')}`, 5_000))) return 'the project’s page did not open';
+    await js(`${page('[data-project-tab="settings"]')}.click()`);
+    if (!(await waitInPage(win, `!!${page('[data-orchestrator-instructions-input]')}`, 3_000))) return 'the Settings tab has no Orchestrator instructions';
+    await setFieldValue(win, `${pageSelector} [data-orchestrator-instructions-input]`, instructions);
+    await js(`${page('[data-orchestrator-instructions-save]')}.click()`);
+    if (!(await waitInPage(win, `${page('[data-orchestrator-instructions]')}?.innerText.includes('Saved') && ${page('[data-orchestrator-instructions-save]')}.disabled`, 5_000))) return 'the instructions did not save';
+    await js(`${page('[data-orchestrator-instructions]')}.scrollIntoView({ block: 'center' })`);
+    await shot(win, 'orchestrator-instructions.png');
+    // Plan mode's instructions sit next to them, save on their own, and leave the orchestrator's alone.
+    if (!(await waitInPage(win, `!!${page('[data-plan-mode-instructions-input]')}`, 3_000))) return 'the Settings tab has no Plan mode instructions';
+    await setFieldValue(win, `${pageSelector} [data-plan-mode-instructions-input]`, 'List the files you will change before you ask for approval.');
+    await js(`${page('[data-plan-mode-instructions-save]')}.click()`);
+    if (!(await waitInPage(win, `${page('[data-plan-mode-instructions]')}?.innerText.includes('Saved') && ${page('[data-plan-mode-instructions-save]')}.disabled`, 5_000))) return 'the plan mode instructions did not save';
+    if ((await js(`${page('[data-orchestrator-instructions-input]')}.value`)) !== instructions) return 'saving the plan mode instructions changed the orchestrator’s';
+    // Back to the orchestrator.
+    await js(`document.querySelector('[data-session-list] [data-session-id="${orchestratorId}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${orchestratorId}"] [data-orchestrator-overview]')`, 5_000))) return 'the orchestrator did not open again from the sidebar';
+    // Its agent would call start_session: three tasks, three sessions.
+    for (const title of ['Fix the login redirect', 'Update the lint config', 'Refresh the docs']) {
+      engine.send({ type: 'smokeOrchestrator', sessionId: orchestratorId, projectRoot: folder, tool: 'start_session', args: { title, prompt: `${title}. Run the tests before you call it done.` } });
+    }
+    if (!(await waitInPage(win, `${workers('working')} === 3 && ${overview}.querySelector('[data-orchestrator-line]').innerText.includes('3 working')`, 8_000))) return `the overview did not show three working sessions (${String(await js(workers('working')))})`;
+    const starts = logged().slice(before).filter((l) => l.kind === 'start');
+    started = starts.map((l) => l.sessionId);
+    if (starts.length !== 3 || starts.some((l) => l.workspace !== 'worktree' || l.permissionMode !== 'acceptEdits')) return `the starts were not three sessions in their own worktrees, accepting edits (${JSON.stringify(starts)})`;
+    if (starts.some((l) => !(l.instructions ?? '').includes(instructions))) return 'the started sessions did not get the project’s instructions';
+    // Under its row in the sidebar: the row says how many, and its sessions open under it.
+    const row = `document.querySelector('[data-session-list] [data-session-id="${orchestratorId}"]')`;
+    if (!(await waitInPage(win, `${row}?.querySelector('[data-row-orchestrator]')?.dataset.rowOrchestrator === '3' && !!${row}.querySelector('[data-tree-toggle]')`, 5_000))) return 'the orchestrator’s row did not say 3 sessions with a chevron';
+    if ((await js(`${row}.querySelector('[data-tree-toggle]').dataset.treeToggle`)) !== 'true') await js(`${row}.querySelector('[data-tree-toggle]').click()`);
+    if (!(await waitInPage(win, `document.querySelectorAll('[data-session-list] [data-tree-child-row] [data-session-id^="smoke-worker-"]').length === 3`, 5_000))) return 'its three sessions did not show under it in the sidebar';
+    // One needs you, one ends its turn: the groups follow, and the orchestrator hears about the one that finished.
+    host(started[0]!, 'needs-you');
+    host(started[1]!, 'idle', 'clean');
+    if (!(await waitInPage(win, `${workers('waiting')} === 1 && ${workers('working')} === 1 && ${workers('idle')} + ${workers('review')} === 1`, 8_000))) {
+      return `the groups did not follow the sessions (waiting ${String(await js(workers('waiting')))}, working ${String(await js(workers('working')))})`;
+    }
+    const told = await until(() => logged().slice(before).some((l) => l.kind === 'send' && l.sessionId === orchestratorId && (l.text ?? '').includes('"Update the lint config"') && (l.text ?? '').includes('finished its turn')), 5_000);
+    if (!told) return 'the orchestrator was not told that a session finished its turn';
+    await shot(win, 'orchestrator-overview.png');
+    // Open on a row goes to the session; its header leads back.
+    await js(`${overview}.querySelector('[data-worker-open="${started[2]!}"]').click()`);
+    const crumb = `document.querySelector('[data-current-session="${started[2]!}"] [data-orchestrator-crumb="${orchestratorId}"]')`;
+    if (!(await waitInPage(win, `!!${crumb}`, 5_000))) return 'Open did not show the session with the way back to its orchestrator';
+    await js(`${crumb}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${orchestratorId}"] [data-orchestrator-overview]')`, 5_000))) return 'the way back did not open the orchestrator';
+    return 'ok: the project kept its instructions and gave them to each session; Run as › Orchestrator started the orchestrator; its three sessions showed as Working in the overview and under its row; one moved to Waiting on you, one to Idle with the orchestrator told; Open and the way back work';
+  } finally {
+    engine.send({ type: 'smokeStubCreate', on: false });
+    const ids = [...started, orchestratorId].filter(Boolean);
+    for (const id of ids) host(id, 'closed');
+    // Closed without a transcript, each session counts as failed to start, and its prompt comes back as its unsent
+    // message when its row goes. Left, the + opens this folder for every later step: gone, as a draft emptied elsewhere is.
+    for (const id of ids) await waitInPage(win, `!document.querySelector('[data-session-list] [data-session-id="${id}"]')`, 5_000);
+    win.webContents.send(IpcChannel.draftsRelayed, Object.fromEntries([...ids, `new:${folder}`].map((key) => [key, null])));
+    // Starting it added the folder to your projects. Through Projects, so the UI's list knows too: later steps expect none.
+    if (orchestratorId) await removeProjectInProjects(win, folder);
+    engine.send({ type: 'smokeProject', path: folder, add: false });
+    // Back to the session the next steps work in, out of Projects.
+    if (smokeSessionId) {
+      await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+      await waitInPage(win, `!!document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    }
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
 }
 
 /**
@@ -8919,9 +11080,42 @@ async function runCompactingStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/** A session whose API calls are retried says so under the reply, with the wait counting down, and stops when the retry is over (a stand-in the host list reports as retrying). */
+async function runApiRetryStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-retry-')));
+  const standIn = `smoke-retry-${randomUUID()}`;
+  const host = (apiRetry?: { attempt: number; maxRetries: number; delayMs: number; status: number | null; at: number } | null) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state: 'running', ...(apiRetry !== undefined ? { apiRetry } : {}) });
+  const line = `document.querySelector('[data-current-session="${standIn}"] [data-streaming][data-api-retry]')?.innerText ?? ''`;
+  try {
+    host();
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${standIn}"] [data-streaming]')`, 5_000))) return 'the session did not show its working line';
+    if (await js(`!!document.querySelector('[data-streaming][data-api-retry]')`)) return 'the working line said retrying before any retry';
+    host({ attempt: 3, maxRetries: 10, delayMs: 60_000, status: 529, at: Date.now() });
+    if (!(await waitInPage(win, `${line}.includes('API overloaded, retrying (3 of 10) in ')`, 5_000))) return `the session did not say it is retrying: "${await js(line)}"`;
+    await shot(win, 'api-retry.png');
+    host({ attempt: 4, maxRetries: 10, delayMs: 8_000, status: 429, at: Date.now() });
+    if (!(await waitInPage(win, `${line}.includes('API rate limited, retrying (4 of 10)')`, 5_000))) return `the next retry did not replace the line: "${await js(line)}"`;
+    host(null);
+    if (!(await waitInPage(win, `!document.querySelector('[data-streaming][data-api-retry]')`, 3_000))) return 'it kept saying it is retrying after the retry ended';
+    return 'ok: a session that retries an API call said "API overloaded, retrying (3 of 10) in ...", moved on to the next retry, and went back to working when it ended';
+  } finally {
+    engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state: 'closed' });
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
 /**
  * The working mark under a reply (WorkingPanel), on a stand-in session: the patch panel on the working line with its
- * light moving, its still frame while compacting, and lit in the needs-you colour while a permission prompt waits.
+ * light moving, all its jacks pulsing while compacting, and lit in the needs-you colour while a permission prompt waits.
  * Follows the theme (Forest's plugs are its icon's). Takes the working line in light and in dark, as it is and zoomed,
  * and in Forest and Signal (working-panel-light.png, working-panel-dark@3x.png, working-panel-forest-dark@3x.png, …).
  */
@@ -8975,15 +11169,17 @@ async function runWorkingPanelStep(win: BrowserWindow): Promise<string> {
     updatePreferences({ themeId });
     nativeTheme.themeSource = scheme;
     host('running', true);
-    if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'still' && ${panel}.closest('[data-streaming]').innerText.includes('Compacting')`, 5_000))) return 'Compacting did not show the still panel';
-    if ((await js(`[...${panel}.querySelectorAll('.jack-light')].filter((l) => getComputedStyle(l).animationName !== 'none').length`)) !== 0) return 'the still panel kept moving';
+    if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'compacting' && ${panel}.closest('[data-streaming]').innerText.includes('Compacting')`, 5_000))) return 'Compacting did not show the compacting panel';
+    const pulsing = (await js(`[...${panel}.querySelectorAll('.jack-light')].filter((l) => getComputedStyle(l).animationName === 'working-compacting').length`)) as number;
+    // Reduce motion stops the pulse too, as on the working line above.
+    if (pulsing !== (look.reduced ? 0 : 5)) return `the compacting panel pulsed ${pulsing} jacks, not ${look.reduced ? 0 : 5}`;
     host('running', false);
     host('needs-you');
     if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'waiting' && ${panel}.closest('[data-streaming]').innerText.includes('Waiting for you')`, 5_000))) {
       const seen = await js(`document.querySelector('[data-current-session="${standIn}"] [data-streaming]')?.innerText ?? 'no working line'`).catch(() => 'unknown');
       return `a permission prompt did not show the waiting panel (${JSON.stringify(seen)})`;
     }
-    return `ok: the working line showed the patch panel (9 jacks, ${moving} moving, 16px, hidden from screen readers) and no dots, still while compacting, and waiting while a permission prompt was held`;
+    return `ok: the working line showed the patch panel (9 jacks, ${moving} moving, 16px, hidden from screen readers) and no dots, pulsing while compacting, and waiting while a permission prompt was held`;
   } finally {
     if (preferences.get().themeId !== themeId) updatePreferences({ themeId });
     nativeTheme.themeSource = scheme;
@@ -9502,6 +11698,225 @@ async function runSchedulesStep(win: BrowserWindow): Promise<string> {
       // A temp folder left behind is harmless.
     }
   }
+}
+
+/**
+ * Activity: from the sidebar on today, a day with sessions picked in the strip, its summary (the stub), numbers, hours and
+ * sessions per project, a row opened to what it did, the projects of that day, the Week view from Monday, a Range with its
+ * calendar, the bar that stays when scrolling, the project filter (Copy for standup keeps it), a day without sessions, Copy for standup (never copied: the
+ * clipboard is yours), Export as CSV (in the throwaway profile), and Home's Yesterday card.
+ */
+async function runActivityPageStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-activity]';
+  await js("document.querySelector('[data-activity-nav]').click()");
+  if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 3_000))) return 'Activity did not open';
+  if (!(await js("document.querySelector('[data-activity-nav]')?.getAttribute('aria-current') === 'page'"))) return 'the Activity row was not selected';
+  if (!(await waitInPage(win, `document.querySelectorAll('${view} [data-activity-day]').length === 7 && !document.querySelector('${view} [data-activity-loading]')`, 5_000))) return 'the strip has no seven days';
+  if (!(await js(`new Date(document.querySelector('${view} [data-activity-day]').dataset.activityDay + 'T12:00').getDay() === 1`))) return 'the strip does not start on a Monday';
+  const today = (await js(`(() => { const d = new Date(); return \`\${d.getFullYear()}-\${String(d.getMonth() + 1).padStart(2, '0')}-\${String(d.getDate()).padStart(2, '0')}\`; })()`)) as string;
+  const selected = () => js(`document.querySelector('${view} [data-activity-day][aria-current="date"]')?.dataset.activityDay`);
+  if ((await selected()) !== today) return `it did not open on today, but on ${await selected()}`;
+  if (!(await js(`document.querySelector('${view} [data-activity-later]').disabled`))) return 'a later week can be picked from today';
+
+  // The transcripts' first read may still be going: wait for a day with sessions.
+  const busiest = `[...document.querySelectorAll('${view} [data-activity-day]')].filter((d) => Number(d.dataset.activityDayCount) > 0).sort((a, b) => b.dataset.activityDayCount - a.dataset.activityDayCount)[0]`;
+  if (!(await waitInPage(win, `!!${busiest}`, 15_000))) return process.env.SESHBOARD_SMOKE_DEMO ? 'no day in the strip has sessions' : 'ok: no sessions this week to show';
+  // A day's bar is its activity score, stacked from the time worked up, with a typical-day line and a legend.
+  if (!(await waitInPage(win, `Number(${busiest}.dataset.activityDayScore) > 0 && !!${busiest}.querySelector('[data-activity-bar-part="time"]')`, 5_000))) return `the busiest day has no score bar: ${await js(`${busiest}.dataset.activityDayScore`)}`;
+  if (!(await js(`!!document.querySelector('${view} [data-activity-typical]') && !!document.querySelector('${view} [data-activity-legend]')`))) return 'the strip has no typical-day line or legend';
+  // The demo's sessions made commits this week (screenshot-demo.ts), so a bar has its Shipped part.
+  if (process.env.SESHBOARD_SMOKE_DEMO && !(await waitInPage(win, `!!document.querySelector('${view} [data-activity-bar-part="shipped"]')`, 5_000))) return 'no bar in the strip has a Shipped part, though the demo has commits';
+  if (!(await js(`JSON.parse(${busiest}.dataset.tooltipRows ?? '[]').some((row) => row.label === 'Claude working') && ${busiest}.dataset.tooltipMeta.endsWith('a typical day')`))) return `the busiest day's tooltip has no breakdown: ${await js(`${busiest}.dataset.tooltip`)}`;
+  await js(`${busiest}.click()`);
+  const list = `${view} [data-activity-list]`;
+  if (!(await waitInPage(win, `!!document.querySelector('${list} [data-activity-session]') && !!document.querySelector('${view} [data-activity-numbers]')`, 5_000))) return 'a day with sessions listed none';
+  if (!(await js(`Number(document.querySelector('${view} [data-activity-stat="sessions"] b').innerText) > 0`))) return 'the numbers count no sessions';
+  if (!(await js(`[...document.querySelectorAll('${view} [data-activity-hour-level]')].some((h) => h.dataset.activityHourLevel !== '0')`))) return 'the hour ribbon is empty';
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-summary]')?.dataset.activitySummaryState === 'ok' && !!document.querySelector('${view} [data-activity-summary-text]')?.innerText.trim()`, 8_000))) return 'the day in short did not come';
+  if (!(await js(`!!document.querySelector('${view} [data-activity-summary-text] b')`))) return 'the day in short has no bold project';
+  // A row with many pull requests must not push the page sideways.
+  if (await js(`(() => { const el = document.querySelector('${view} [data-activity-scroller]'); return el.scrollWidth > el.clientWidth; })()`)) return 'the page scrolls sideways';
+  await shot(win, 'activity.png');
+  const scheme = preferences.get().colorScheme;
+  await setColorScheme(win, 'light');
+  await shot(win, 'activity-light.png');
+  updatePreferences({ colorScheme: scheme });
+  await settle(win);
+
+  const row = `document.querySelector('${list} [data-activity-session]')`;
+  await js(`${row}.querySelector('button').click()`);
+  if (!(await waitInPage(win, `${row}.dataset.activitySessionOpen === 'true' && !!${row}.querySelector('[data-activity-open-session], [data-activity-did]')`, 2_000))) return 'a click did not open the row';
+  await js(`${row}.querySelector('button').click()`);
+
+  // Regenerate says it is busy, then the summary is back.
+  await js(`document.querySelector('${view} [data-activity-regenerate]').click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-summary]')?.dataset.activitySummaryState === 'ok'`, 8_000))) return 'Regenerate did not finish';
+
+  // Day is the default, and the projects' bars add up to the sessions of that day.
+  const stat = `Number(document.querySelector('${view} [data-activity-stat="sessions"] b').innerText)`;
+  const total = `parseInt(document.querySelector('${view} [data-activity-projects-total]').innerText)`;
+  if (!(await js(`document.querySelector('${view} [data-activity-span="day"]').getAttribute('aria-checked') === 'true'`))) return 'the page did not start on Day';
+  if (!(await js(`${total} === ${stat}`))) return `the projects count ${await js(total)} sessions, the day ${await js(stat)}`;
+  const dayTitleText = (await js(`document.querySelector('${view} [data-activity-title]').innerText`)) as string;
+  const daySessions = (await js(stat)) as number;
+
+  // Week: the title, the numbers, the bars and the list are all of the week, and it has no day in short.
+  await js(`document.querySelector('${view} [data-activity-span="week"]').click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-title]').innerText === 'This week' && document.querySelectorAll('${view} [data-activity-day][aria-current="true"]').length === document.querySelectorAll('${view} [data-activity-day]:not([disabled])').length`, 2_000))) return 'Week did not show the days of this week so far';
+  if (await js(`[...document.querySelectorAll('${view} [data-activity-day]')].some((d) => d.disabled !== d.dataset.activityDay > ${JSON.stringify(today)})`)) return 'a day to come can be picked, or a day so far cannot';
+  if (await js(`!!document.querySelector('${view} [data-activity-summary]')`)) return 'Week shows the day in short of one day';
+  if (!(await js(`${stat} >= ${daySessions} && ${total} === ${stat}`))) return 'Week does not count the whole week';
+  const listed = `new Set([...document.querySelectorAll('${list} [data-activity-session]')].map((row) => row.dataset.activitySession))`;
+  if (!(await js(`${listed}.size === document.querySelectorAll('${list} [data-activity-session]').length`))) return 'Week lists a session twice';
+  await shot(win, 'activity-week.png');
+  // A day picked in the strip goes back to that day.
+  await js(`${busiest}.click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-span="day"]').getAttribute('aria-checked') === 'true' && document.querySelector('${view} [data-activity-title]').innerText === ${JSON.stringify(dayTitleText)}`, 2_000))) return 'a day in the strip did not go back to Day';
+
+  // Range: from a week ago till today, then till a day, then back till today, with the other end moving when it has to.
+  const daysAgo = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const rangeTitleText = `document.querySelector('${view} [data-activity-title]').innerText`;
+  const rangeBars = `document.querySelectorAll('${view} [data-activity-range-day]').length`;
+  /** Picks a day in the open calendar, one month back when it isn't in this one's grid. */
+  const pickInCalendar = async (day: string) => {
+    if (!(await waitInPage(win, "!!document.querySelector('[data-activity-calendar]')", 2_000))) return false;
+    const cell = `document.querySelector('[data-activity-calendar-day="${day}"]')`;
+    if (!(await js(`!!${cell}`))) await js("document.querySelector('[data-activity-calendar-earlier]').click()");
+    if (!(await waitInPage(win, `!!${cell}`, 2_000))) return false;
+    await js(`${cell}.click()`);
+    return waitInPage(win, "!document.querySelector('[data-activity-calendar]')", 2_000);
+  };
+  await js(`document.querySelector('${view} [data-activity-span="range"]').click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-range]') && ${rangeBars} === 7 && !document.querySelector('${view} [data-activity-loading]') && ${rangeTitleText}.endsWith('till today')`, 5_000))) return `Range did not start on the last seven days: ${await js(rangeTitleText)}`;
+  await js(`document.querySelector('${view} [data-activity-range-from]').click()`);
+  await shot(win, 'activity-range.png');
+  if (!(await pickInCalendar(daysAgo(7)))) return 'the first day of the range could not be picked';
+  if (!(await waitInPage(win, `${rangeBars} === 8 && ${rangeTitleText}.endsWith('till today')`, 5_000))) return `a new first day did not change the range: ${await js(rangeBars)} days`;
+  await js(`document.querySelector('${view} [data-activity-range-till]').click()`);
+  if (!(await pickInCalendar(daysAgo(1)))) return 'the last day of the range could not be picked';
+  if (!(await waitInPage(win, `${rangeBars} === 7 && !${rangeTitleText}.endsWith('today') && document.querySelector('${view} [data-activity-range-till]').innerText !== 'Today'`, 5_000))) return `a last day did not change the range: ${await js(rangeTitleText)}`;
+  await js(`document.querySelector('${view} [data-activity-range-till]').click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-calendar-today]')", 2_000))) return 'the calendar of the last day has no Today';
+  await js("document.querySelector('[data-activity-calendar-today]').click()");
+  if (!(await waitInPage(win, `${rangeBars} === 8 && ${rangeTitleText}.endsWith('till today') && document.querySelector('${view} [data-activity-range-till]').innerText === 'Today'`, 5_000))) return 'Today did not end the range on today';
+  // Only the projects at first, Escape leaves a calendar, a project opens to its sessions, each once.
+  await js(`document.querySelector('${view} [data-activity-range-from]').click()`);
+  if (!(await waitInPage(win, `document.activeElement?.dataset.activityCalendarDay === ${JSON.stringify(daysAgo(7))}`, 2_000))) return 'the calendar did not take the focus on its day';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `!document.querySelector('[data-activity-calendar]') && document.activeElement === document.querySelector('${view} [data-activity-range-from]')`, 2_000))) return 'Escape did not close the calendar and go back to its button';
+  if (!(await waitInPage(win, `!!document.querySelector('${list} [data-activity-project-toggle]') && !document.querySelector('${list} [data-activity-session]')`, 5_000))) return 'a range did not start with only its projects';
+  // Opening one stays where you are, also when that makes the list long enough to only draw what is in view: turning that on once scrolled to the top.
+  const scroller = `document.querySelector('${view} [data-activity-scroller]')`;
+  const addFiller = `Array.from({ length: 40 }, () => document.createElement('div')).forEach((filler) => { filler.style.height = '40px'; filler.dataset.smokeFiller = ''; ${scroller}.firstElementChild.append(filler); })`;
+  const removeFiller = `${scroller}.scrollTop = 0; document.querySelectorAll('[data-smoke-filler]').forEach((filler) => filler.remove())`;
+  const toggleTop = `document.querySelector('${list} [data-activity-project-toggle]').getBoundingClientRect().top`;
+  await js(addFiller);
+  await js(`${scroller}.scrollTop = 200`);
+  const toggleBefore = (await js(toggleTop)) as number;
+  await js(`document.querySelector('${list} [data-activity-project-toggle]').click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${list} [data-activity-session]')`, 2_000))) return 'a project in a range did not open';
+  await settle(win);
+  const toggleAfter = (await js(toggleTop)) as number;
+  if (Math.abs(toggleAfter - toggleBefore) > 16) return `opening a project moved the page: its row went from ${toggleBefore} to ${toggleAfter}, scrolled to ${await js(`${scroller}.scrollTop`)}`;
+  await js(removeFiller);
+  await shot(win, 'activity-range-list.png');
+  // Copy for standup and Export start on the range.
+  await js(`document.querySelector('${view} [data-activity-copy]').click()`);
+  if (!(await waitInPage(win, `document.querySelector('[data-activity-copy-pick="range"]')?.getAttribute('aria-checked') === 'true' && (document.querySelector('[data-activity-copy-text]')?.innerText ?? '').includes('\\n- ')`, 5_000))) return 'Copy for standup did not start on the range';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Escape did not close Copy for standup';
+  await js(`document.querySelector('${view} [data-activity-export]').click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-export-dialog]') && !document.querySelector('[data-activity-export-span]')", 2_000))) return 'Export of a range still asks which days';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-export-dialog]')", 2_000))) return 'Escape did not close Export';
+  // A bar shows its day. Its height is the day's score, as in the strip.
+  const rangeBusy = `[...document.querySelectorAll('${view} [data-activity-range-day]')].find((d) => Number(d.dataset.activityRangeDayCount) > 0)`;
+  if (!(await js(`Number(${rangeBusy}.dataset.activityRangeDayScore) > 0 && !!${rangeBusy}.querySelector('[data-activity-bar-part]')`))) return 'a day of the range with sessions has no score bar';
+  await js(`${rangeBusy}.click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-span="day"]').getAttribute('aria-checked') === 'true' && document.querySelectorAll('${view} [data-activity-day]').length === 7 && !document.querySelector('${view} [data-activity-loading]')`, 5_000))) return 'a bar of the range did not show its day';
+  await js(`${busiest}.click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-title]').innerText === ${JSON.stringify(dayTitleText)} && !!document.querySelector('${list} [data-activity-session]')`, 5_000))) return 'back from the range, the day did not return';
+
+  // Scrolled down, the title and the actions are still there, and a bar keeps the strip and the numbers.
+  await js(addFiller);
+  await js(`${scroller}.scrollTop = ${scroller}.scrollHeight`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-pinned]')`, 2_000))) return 'scrolling down did not show the bar';
+  if (!(await js(`document.querySelector('${view} [data-activity-copy]').getBoundingClientRect().top >= 0 && document.querySelector('${view} [data-activity-title]').getBoundingClientRect().bottom <= ${scroller}.getBoundingClientRect().top`))) return 'the title and the actions scrolled away';
+  if (!(await js(`document.querySelector('${view} [data-activity-pinned-numbers]').innerText.startsWith(${daySessions} + ' session')`))) return `the bar says: ${await js(`document.querySelector('${view} [data-activity-pinned-numbers]').innerText`)}`;
+  if (!(await js(`document.querySelector('${view} [data-activity-pinned-day][aria-current="date"]') !== null && document.querySelectorAll('${view} [data-activity-pinned-day]').length === 7`))) return 'the bar has no strip';
+  await shot(win, 'activity-scrolled.png');
+  await js(removeFiller);
+  if (!(await waitInPage(win, `!document.querySelector('${view} [data-activity-pinned]')`, 2_000))) return 'back at the top, the bar stayed';
+
+  // The bars: a project filters the page and Copy for standup, and clearing it brings the rest back.
+  const bars = (await js(`document.querySelectorAll('${view} [data-activity-project-bar]').length`)) as number;
+  if (bars === 0) return 'the day lists no projects';
+  await js(`document.querySelector('${view} [data-activity-project-bar]').click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-clear-project]')`, 2_000))) return 'a project in the bars did not filter the page';
+  const pickedProject = (await js(`document.querySelector('${view} [data-activity-clear-project]').innerText.replace(/^Only /, '')`)) as string;
+  await js(`document.querySelector('${view} [data-activity-copy]').click()`);
+  const standup = "(document.querySelector('[data-activity-copy-text]')?.innerText ?? '')";
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Copy for standup did not open';
+  await js(`document.querySelector('[data-activity-copy-pick="week"]').click()`);
+  if (!(await waitInPage(win, `${standup}.startsWith(${JSON.stringify(`**${pickedProject}**`)})`, 5_000))) return `Copy for standup is not of ${pickedProject}: ${await js(standup)}`;
+  if (((await js(standup)) as string).split('\n').some((line) => line.startsWith('**') && line !== `**${pickedProject}**`)) return `Copy for standup has other projects: ${await js(standup)}`;
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Escape did not close Copy for standup';
+  await js(`document.querySelector('${view} [data-activity-clear-project]').click()`);
+  if (!(await waitInPage(win, `!document.querySelector('${view} [data-activity-clear-project]')`, 2_000))) return 'the project filter did not clear';
+
+  // A day without sessions says so.
+  const empty = `[...document.querySelectorAll('${view} [data-activity-day]:not([disabled])')].find((d) => d.dataset.activityDayCount === '0')`;
+  let emptyDay = false;
+  if (await js(`!!${empty}`)) {
+    await js(`${empty}.click()`);
+    emptyDay = await waitInPage(win, `!!document.querySelector('${view} [data-activity-empty]')`, 2_000);
+    if (!emptyDay) return 'a day without sessions did not say so';
+    if (!(await js(`document.querySelector('${view} [data-activity-empty]').innerText.includes('had')`))) return 'an empty day does not say what the days around it had';
+    await js(`${busiest}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${list}')`, 2_000))) return 'back from an empty day, the list did not return';
+  }
+
+  // Copy for standup: Today or This week has a line, in Markdown and then plain.
+  await js(`document.querySelector('${view} [data-activity-copy]').click()`);
+  const copyText = "(document.querySelector('[data-activity-copy-text]')?.innerText ?? '')";
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Copy for standup did not open';
+  await js(`document.querySelector('[data-activity-copy-pick="week"]').click()`);
+  if (!(await waitInPage(win, `${copyText}.includes('**') && ${copyText}.includes('\\n- ')`, 5_000))) return `Copy for standup has no Markdown lines: ${await js(copyText)}`;
+  await js("document.querySelector('[data-activity-copy-format]').click()");
+  if (!(await waitInPage(win, `!${copyText}.includes('**') && ${copyText}.includes('\\n- ')`, 2_000))) return 'Plain text kept the Markdown marks';
+  await shot(win, 'activity-copy.png');
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Escape did not close Copy for standup';
+
+  // Export writes into the throwaway profile in a smoke run.
+  await js(`document.querySelector('${view} [data-activity-export]').click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-export-dialog]')", 2_000))) return 'Export did not open';
+  await js("document.querySelector('[data-activity-export-save]').click()");
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-export-dialog]')", 3_000))) return 'Export did not save';
+  const exports = existsSync(smokeImageExports()) ? readdirSync(smokeImageExports()).filter((name) => name.startsWith('activity-') && name.endsWith('.csv')) : [];
+  if (exports.length === 0) return 'Export wrote no CSV';
+  const csv = readFileSync(join(smokeImageExports(), exports[0]!), 'utf8');
+  if (!csv.startsWith('Date,Project,Session') || csv.trim().split('\n').length < 2) return `the CSV reads: ${csv.slice(0, 120)}`;
+
+  // Home: the last day with sessions, and a way back to it. Only when that isn't today alone.
+  await js("document.querySelector('[data-go-home]').click()");
+  const hasEarlier = await waitInPage(win, "!!document.querySelector('[data-home-yesterday-open]')", 5_000);
+  if (process.env.SESHBOARD_SMOKE_DEMO && !hasEarlier) return 'Home has no Yesterday card';
+  if (hasEarlier) {
+    if (!(await js("/\\d+ sessions? · /.test(document.querySelector('[data-home-yesterday-stats]').innerText)"))) return 'Home\'s Yesterday card has no numbers';
+    if (process.env.SESHBOARD_SMOKE_DEMO && !(await waitInPage(win, "!!document.querySelector('[data-home-yesterday-summary]')", 8_000))) return 'Home\'s Yesterday card has no day in short';
+    await shot(win, 'activity-home.png');
+    await js("document.querySelector('[data-home-yesterday-open]').click()");
+    if (!(await waitInPage(win, `!!document.querySelector('${view}') && document.querySelector('${view} [data-activity-day][aria-current="date"]')?.dataset.activityDay !== ${JSON.stringify(today)}`, 3_000))) return 'See the day did not open that day';
+  }
+  await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  return `ok: opened on today, a day with its summary, numbers, hours and sessions; a row opened, Regenerate, the project filter${emptyDay ? ', an empty day' : ''}, Copy for standup, Export as CSV${hasEarlier ? ", Home's Yesterday card" : ''}`;
 }
 
 /**
@@ -10153,6 +12568,75 @@ async function runUsageViewStep(win: BrowserWindow): Promise<string> {
   return `ok: opened from ${opened[0]} for ${profile}, ${limits} limit card(s), every period, ${openedSession}, Esc went back`;
 }
 
+/**
+ * Auto's step-up note on the demo's two grown sessions (smoke-only, `writeAutoSuggestDemo`), both on Sonnet as Auto
+ * picked. Ten edited files: the note offers more effort first, and Use high effort saves it. A later ask to plan a
+ * refactor across all modules: the note offers the next model, Opus, at medium effort, and Use Opus saves both. Usage
+ * then counts that session as changed on the Sonnet row. Only the demo's own sessions change.
+ */
+async function runAutoStepUpStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const raw = process.env.SESHBOARD_SMOKE_AUTO_SUGGEST;
+  if (!process.env.SESHBOARD_SMOKE_DEMO || !raw) return 'ok: skipped, needs the demo home with its grown Auto sessions (npm run smoke:demo)';
+  const ids = JSON.parse(raw) as { effort: string; model: string };
+  const view = '[data-current-session]';
+  const back = smokeSessionId;
+  const open = async (id: string) => {
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    return waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000);
+  };
+  const chipLabel = (name: string) => js(`document.querySelector('${view} [data-${name}-select]')?.getAttribute('aria-label') ?? ''`) as Promise<string>;
+  try {
+    if (!(await open(ids.effort))) return 'the grown session with ten edited files did not open';
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-auto-suggest="effort-high"]')`, 5_000))) {
+      const shown = (await js(`document.querySelector('${view} [data-auto-suggest]')?.dataset.autoSuggest ?? 'nothing'`)) as string;
+      return `ten edited files on medium effort suggested ${shown}, not high effort`;
+    }
+    const effortText = (await js(`document.querySelector('${view} [data-auto-suggest]').textContent`)) as string;
+    if (!effortText.includes('more time to think')) return `the effort note reads ${JSON.stringify(effortText)}`;
+    await shot(win, 'auto-step-up-effort.png');
+    await js(`document.querySelector('${view} [data-auto-suggest-use]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${view} [data-auto-suggest]')`, 3_000))) return 'the effort note stayed after Use high effort';
+    if (!(await waitInPage(win, `(document.querySelector('${view} [data-effort-select]')?.getAttribute('aria-label') ?? '').includes('High')`, 3_000))) return `Use high effort left the effort chip at ${JSON.stringify(await chipLabel('effort'))}`;
+
+    if (!(await open(ids.model))) return 'the grown session with a later big ask did not open';
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-auto-suggest="opus"]')`, 5_000))) {
+      const shown = (await js(`document.querySelector('${view} [data-auto-suggest]')?.dataset.autoSuggest ?? 'nothing'`)) as string;
+      return `a later ask to plan a refactor suggested ${shown}, not Opus`;
+    }
+    const modelText = (await js(`document.querySelector('${view} [data-auto-suggest]').textContent`)) as string;
+    if (!modelText.includes('Use Opus at medium effort')) return `the model note reads ${JSON.stringify(modelText)}`;
+    // Not running here, so no context to compact: only Use Opus.
+    if (await js(`!!document.querySelector('${view} [data-auto-suggest-compact]')`)) return 'Compact first showed for a session that is not running';
+    await shot(win, 'auto-step-up-model.png');
+    await js(`document.querySelector('${view} [data-auto-suggest-use]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${view} [data-auto-suggest]')`, 3_000))) return 'the model note stayed after Use Opus';
+    if (!(await waitInPage(win, `/opus/i.test(document.querySelector('${view} [data-session-model-select]')?.textContent ?? '') && (document.querySelector('${view} [data-effort-select]')?.getAttribute('aria-label') ?? '').includes('Medium')`, 3_000))) {
+      return `Use Opus left the chips at ${JSON.stringify(await js(`document.querySelector('${view} [data-session-model-select]')?.textContent ?? ''`))} and ${JSON.stringify(await chipLabel('effort'))}`;
+    }
+
+    // Usage › Tokens › Today › Model: the Sonnet row counts both of Auto's picks, and the one you changed.
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return '⌘K did not open the commands';
+    await setFieldValue(win, '[data-palette-input]', 'Open usage');
+    if (!(await waitInPage(win, "[...document.querySelectorAll('[data-command-palette] [role=option]')].some((el) => el.innerText.includes('Open usage'))", 3_000))) return 'the palette has no Open usage';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, "document.querySelector('[data-usage-view]')", 5_000))) return 'the Usage view did not open';
+    await js("document.querySelector('[data-usage-tab=\"tokens\"]').click()");
+    await waitInPage(win, "document.querySelector('[data-usage-period=\"day\"]')", 5_000);
+    await js("document.querySelector('[data-usage-period=\"day\"]').click()");
+    await waitInPage(win, "document.querySelector('[data-usage-group=\"model\"]')", 5_000);
+    await js("document.querySelector('[data-usage-group=\"model\"]').click()");
+    const counted = await waitInPage(win, "[...document.querySelectorAll('[data-usage-by-auto]')].some((el) => /2 by Auto, 1 changed/.test(el.textContent))", 15_000);
+    const labels = (await js("[...document.querySelectorAll('[data-usage-by-auto]')].map((el) => el.textContent.trim())")) as string[];
+    pressKey(win, 'Escape');
+    await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
+    if (!counted) return `Usage did not count the changed pick on the Sonnet row (it shows ${JSON.stringify(labels)})`;
+    return 'ok: ten edited files suggested high effort and saved it; a later big ask suggested Opus at medium effort and saved both; Usage reads "2 by Auto, 1 changed"';
+  } finally {
+    if (back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
 /** Home, from wherever the app is: ⌘⇧H, then its page. */
 async function goHome(win: BrowserWindow): Promise<boolean> {
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
@@ -10171,6 +12655,42 @@ async function homeViewWidth(win: BrowserWindow, width: number): Promise<number>
     await waitInPage(win, `Math.abs(${view} - ${width}) <= 2`, 1_500);
   }
   return (await js(view)) as number;
+}
+
+/**
+ * Home and New session have the same width and padding, so nothing jumps between them: past their limit, and just under
+ * the view width where the padding changes. Inside the projects step: without a project Home shows the way to add the
+ * first one. Widths are only compared past the limit, where Home's scrollbar (it scrolls, New session doesn't) can't count.
+ */
+async function runHomeWidthStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const column = (selector: string) => js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); return { width: Math.round(el.getBoundingClientRect().width), padding: parseFloat(getComputedStyle(el).paddingLeft) }; })()`) as Promise<{ width: number; padding: number }>;
+  const openNew = () => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+    return waitInPage(win, "!!document.querySelector('[data-new-session-view]')", 3_000);
+  };
+  if (!(await goHome(win))) return 'Home did not open with its column';
+  const [width, height] = win.getContentSize();
+  try {
+    const wideView = await homeViewWidth(win, 1700);
+    const wideHome = await column('[data-home]');
+    if (!(await openNew())) return 'New session did not open';
+    const wideNew = await column('[data-new-session-view]');
+    if (wideHome.padding !== wideNew.padding) return `wide, Home is ${wideHome.padding}px in and New session ${wideNew.padding}px`;
+    // A screen too small for a view past the limit can't show the limit; the padding still counts.
+    if (wideView > 1620 && (wideHome.width !== 1620 || wideNew.width !== 1620)) return `past the limit, Home is ${wideHome.width}px wide and New session ${wideNew.width}px`;
+
+    if (!(await goHome(win))) return 'Home did not open again';
+    await homeViewWidth(win, 770);
+    const narrowHome = await column('[data-home]');
+    if (!(await openNew())) return 'New session did not open narrow';
+    const narrowNew = await column('[data-new-session-view]');
+    if (narrowHome.padding !== narrowNew.padding) return `narrow, Home is ${narrowHome.padding}px in and New session ${narrowNew.padding}px`;
+    return `ok: ${wideHome.width}px wide in a ${wideView}px view, ${wideHome.padding}px in, ${narrowHome.padding}px in when narrow`;
+  } finally {
+    win.setContentSize(width!, height!);
+    await goHome(win);
+  }
 }
 
 /**
@@ -10197,7 +12717,7 @@ async function runHomeLayoutStep(win: BrowserWindow): Promise<string> {
       usageUnder: !!usage && !!projects && usage.top >= projects.bottom,
       start: !!document.querySelector('[data-home-start] input[aria-label="Start a session"]'),
       summary: document.querySelector('[data-home-summary]')?.textContent ?? '',
-      heading: document.querySelector('[data-home] h1')?.textContent ?? '',
+      heading: document.querySelector('[data-home] h2')?.textContent ?? '',
     };
   })()`;
   type Layout = { lanes: string[]; rows: number; columns: number; usageRight: boolean; usageUnder: boolean; start: boolean; summary: string; heading: string };
@@ -10370,8 +12890,30 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, details, 3_000))) return 'Space did not open the banner’s Details again';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${banner}') && !${details}`, 3_000))) return 'Esc did not close Details first';
+  // A wide panel beside the conversation (the web preview, widened as far as it goes): the banner and the strip shrink
+  // with the conversation, nothing runs past their edge, and their buttons take a second row when they must.
+  const fitsNarrow = async (box: string) => {
+    await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', shiftKey: true, ${MOD_KEY_PROPERTY}: true, bubbles: true, cancelable: true }))`);
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-web-preview] [role=separator]')`, 3_000))) return 'the web preview did not open beside the conversation';
+    await js(`(() => { const handle = document.querySelector('${view} [data-web-preview] [role=separator]'); for (let i = 0; i < 40; i++) handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })); })()`);
+    const result = (await js(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.querySelector('${box}');
+      if (!el) return resolve('no catch-up');
+      const rect = el.getBoundingClientRect();
+      if (rect.width >= 640) return resolve('not narrow: ' + Math.round(rect.width) + 'px');
+      const out = [...el.querySelectorAll('button, [data-catchup-state]')].filter((b) => b.offsetParent && b.getBoundingClientRect().right > rect.right + 1);
+      resolve(out.length ? 'past its edge: ' + out.map((b) => b.textContent.trim()).join(', ') : 'ok');
+    })))`)) as string;
+    await js(`document.querySelector('${view} [data-web-preview-close]')?.click()`);
+    await waitInPage(win, `!document.querySelector('${view} [data-web-preview]')`, 3_000);
+    return result;
+  };
+  const bannerNarrow = await fitsNarrow(banner);
+  if (bannerNarrow !== 'ok') return `with a wide panel beside it, the banner: ${bannerNarrow}`;
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${strip}') && !document.querySelector('${banner}')`, 3_000))) return 'Esc did not fold the banner into the strip';
+  const stripNarrow = await fitsNarrow(strip);
+  if (stripNarrow !== 'ok') return `with a wide panel beside it, the strip: ${stripNarrow}`;
   pressKey(win, 'Space');
   if (!(await waitInPage(win, `document.querySelector('${banner}')`, 3_000))) return 'Space did not open the banner again';
   if (!(await waitInPage(win, details, 3_000))) return 'the banner came back without its Details';
@@ -10384,10 +12926,16 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   if (!(await has(banner))) return 'Esc in the message box folded the banner';
   await blur();
 
-  await js("document.querySelector('[data-sort-quick]')?.click()");
+  // The sort is in the View button's menu beside the project filter: open it and pick.
+  const sortBy = async (value: string) => {
+    await js("document.querySelector('[data-sidebar-view]')?.click()");
+    await waitInPage(win, `document.querySelector('[data-sidebar-view-option="sort-${value}"]')`, 2_000);
+    await js(`document.querySelector('[data-sidebar-view-option="sort-${value}"]')?.click()`);
+  };
+  await sortBy('quickest');
   const grouped = await waitInPage(win, "document.querySelector('[data-session-group=\"review\"], [data-session-group=\"read\"], [data-session-group=\"still-working\"]') && !document.querySelector('[data-session-group=\"open\"], [data-session-group=\"pinned\"], [data-queue-header]')", 3_000);
   if (grouped) await shot(win, 'sidebar-quickest.png');
-  await js("document.querySelector('[data-sort-recent]')?.click()");
+  await sortBy('recent');
   if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
   if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
   return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Details open at first, Space closed and opened them, Esc closed Details then folded the banner, Space opened it again with Details, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
@@ -10470,7 +13018,8 @@ async function runCatchUpPassStep(win: BrowserWindow): Promise<string> {
 
 /**
  * What's left in a session: N on its row opens the note, Save shows it under the title, the sidebar's search finds the
- * session by it, and Note… in the row's menu clears it again. The note lives in the throwaway profile.
+ * session by it, the header shows it and opens it in the Note panel, where it changes, and Note… in the row's menu
+ * clears it again. The note lives in the throwaway profile.
  */
 async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -10494,6 +13043,20 @@ async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
   const found = await waitInPage(win, `!!${row} && [...document.querySelectorAll('[data-session-list] [data-session-id]')].every((r) => r.dataset.sessionId === ${JSON.stringify(smokeSessionId)} || (r.innerText + (r.dataset.tooltip ?? '')).toLowerCase().includes('push after review'))`, 3_000);
   await setFieldValue(win, 'input[placeholder="Search sessions"]', '');
   if (!found) return 'search did not find the session by its note';
+  // The header shows it too; a click opens the Note panel, where a change shows on the row.
+  const view = `document.querySelector('[data-current-session="${smokeSessionId}"]')`;
+  const headerNote = `${view}?.querySelector('[data-session-header-note]')`;
+  const panel = `${view}?.querySelector('[data-note-panel]')`;
+  if (!(await waitInPage(win, `(${headerNote}?.getAttribute('aria-label') ?? '').includes(${JSON.stringify(text)})`, 3_000))) return 'the header does not show the note';
+  await js(`${headerNote}.click()`);
+  if (!(await waitInPage(win, `${panel}?.querySelector('[data-note-panel-input]')?.value === ${JSON.stringify(text)} && !!${view}.querySelector('[data-toggle-note][data-rail-state="front"]')`, 3_000))) return 'the header did not open the note in the Note panel';
+  await shot(win, 'session-note-panel.png');
+  const changed = 'smoke note: merge on Friday';
+  await setFieldValue(win, `[data-current-session="${smokeSessionId}"] [data-note-panel-input]`, changed);
+  await js(`${panel}.querySelector('[data-note-panel-save]').click()`);
+  if (!(await waitInPage(win, `(${headerNote}?.getAttribute('aria-label') ?? '').includes(${JSON.stringify(changed)}) && ((${row}?.querySelector('[data-row-note]')?.innerText ?? '') + (${row}?.dataset.tooltip ?? '')).includes(${JSON.stringify(changed)})`, 3_000))) return 'a change in the Note panel did not show on the header and the row';
+  await js(`${panel}.querySelector('[data-note-close]').click()`);
+  if (!(await waitInPage(win, `!${panel}`, 3_000))) return 'the Note panel did not close';
   // Clear it from the row's menu.
   await waitInPage(win, `!!${row}`, 3_000);
   await js(`(() => { const r = ${row}; const b = r.getBoundingClientRect(); r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 40, clientY: b.top + 20 })); })()`);
@@ -10501,8 +13064,8 @@ async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[role=menu] [data-session-note]').click()");
   if (!(await waitInPage(win, "!!document.querySelector('[data-session-note-clear]')", 3_000))) return 'the note has no Clear';
   await js("document.querySelector('[data-session-note-clear]').click()");
-  if (!(await waitInPage(win, `!${dialog} && !!${row} && !${row}.querySelector('[data-row-note]') && !(${row}.dataset.tooltip ?? '').includes('Note:')`, 3_000))) return 'Clear left the note on the row';
-  return 'ok: N opened the note, it showed under the title and in the row\'s label, search found it, Clear from the menu took it away';
+  if (!(await waitInPage(win, `!${dialog} && !!${row} && !${row}.querySelector('[data-row-note]') && !(${row}.dataset.tooltip ?? '').includes('Note:') && !${headerNote}`, 3_000))) return 'Clear left the note on the row or the header';
+  return 'ok: N opened the note, it showed under the title and in the row\'s label, search found it, the header opened it in the Note panel where it changed, Clear from the menu took it away';
 }
 
 /**
@@ -12026,25 +14589,23 @@ async function runAskStep(win: BrowserWindow): Promise<string> {
   await js(`${askButton}.click()`);
   if (!(await waitInPage(win, `${has('[data-ask-panel]')} && ${box}.value === '' && !${has('[data-btw-token]')}`, 2_000))) return await fail('a bare /btw did not open the panel');
 
-  // With Changes open too, the right side has tabs; opening Changes never closes Ask.
+  // With Changes open too, both stay open on the right and the rail says which is in front; opening Changes never closes Ask.
   let tabs = 'no Changes here';
   if (await js(has('[data-toggle-changes]'))) {
     const wasOpen = (await js(has('[data-changes-panel]'))) as boolean;
-    if (!wasOpen) await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
-    else await js(`document.querySelector('${pane} [data-right-tab="changes"]')?.click()`);
-    const tab = (id: string) => `document.querySelector('${pane} [data-right-tab="${id}"]')?.getAttribute('aria-selected') === 'true'`;
-    if (!(await waitInPage(win, `${has('[data-right-tabs]')} && ${tab('changes')} && ${has('[data-changes-panel]')} && !${has('[data-ask-panel]')}`, 3_000))) return await fail('opening Changes with Ask open did not show it in front as a tab');
-    if (!(await js(`document.querySelector('${pane} [data-right-tab="ask"]').textContent.includes('4')`))) return await fail('the Ask tab does not count the thread’s questions');
-    await js(`document.querySelector('${pane} [data-right-tab="ask"]').click()`);
-    if (!(await waitInPage(win, `${tab('ask')} && ${has('[data-ask-panel]')} && !${has('[data-changes-panel]')}`, 2_000))) return await fail('the Ask tab did not bring Ask to the front');
+    const rail = (id: string) => `document.querySelector('${pane} [data-toggle-${id}]')?.dataset.railState`;
+    if (!wasOpen || (await js(rail('changes'))) !== 'front') await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
+    if (!(await waitInPage(win, `${rail('changes')} === 'front' && ${rail('ask')} === 'behind' && ${has('[data-changes-panel]')} && !${has('[data-ask-panel]')}`, 3_000))) return await fail('opening Changes with Ask open did not show it in front, with Ask behind on the rail');
+    await js(`document.querySelector('${pane} [data-toggle-ask]').click()`);
+    if (!(await waitInPage(win, `${rail('ask')} === 'front' && ${has('[data-ask-panel]')} && !${has('[data-changes-panel]')}`, 2_000))) return await fail("the rail's Ask did not bring Ask to the front");
     if (!wasOpen) {
       // ⌘⇧D with Changes behind: to the front, then closed (Ask stays).
       await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
-      if (!(await waitInPage(win, `${tab('changes')}`, 2_000))) return await fail('the Changes toggle did not bring Changes to the front');
+      if (!(await waitInPage(win, `${rail('changes')} === 'front'`, 2_000))) return await fail('the Changes toggle did not bring Changes to the front');
       await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
-      if (!(await waitInPage(win, `!${has('[data-right-tabs]')} && ${has('[data-ask-panel]')}`, 2_000))) return await fail('closing Changes did not leave Ask on its own');
+      if (!(await waitInPage(win, `${rail('changes')} === 'closed' && ${has('[data-ask-panel]')}`, 2_000))) return await fail('closing Changes did not leave Ask on its own');
     }
-    tabs = 'tabs with Changes';
+    tabs = 'Ask and Changes open together, the rail says which is in front';
   }
   await close();
 
@@ -12114,6 +14675,87 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
   if (afterDown.said.trim() !== 'Back to your draft') return `↓ announced ${JSON.stringify(afterDown.said)}`;
   if (left !== '') return 'could not empty the message box afterwards';
   return `ok: ↑ brought back the last of ${afterUp.total} messages, ↓ put the draft back, nothing sent`;
+}
+
+/**
+ * Ultrathink in the message box: the word is drawn in colour over a copy of the text that lines up with the box, and the
+ * effort chip's "Ultrathink this turn" turns on and off (the chip shows it). Types a draft and empties the box again;
+ * nothing is sent.
+ */
+async function runUltrathinkStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!smokeSessionId) return 'no smoke session';
+  const pane = `[data-current-session="${smokeSessionId}"]`;
+  const box = `document.querySelector('${pane} [data-composer]')`;
+  const chip = `document.querySelector('${pane} [data-composer-tray] [data-effort-select]')`;
+  // Long enough to wrap onto several lines, past the box's minimum height, so the height says whether the lines break in the same places.
+  const draft = `smoke draft, never sent: Ultrathink about this ${'word '.repeat(90)}\nsecond line`;
+  const empty = async () => {
+    await js(`${box}.focus()`);
+    win.webContents.selectAll();
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
+    await settle(win);
+  };
+  const toggle = async (expected: 'on' | 'off') => {
+    await js(`${chip}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-menu="effort"] [data-ultrathink-toggle="${expected}"][role="menuitemcheckbox"][aria-checked="${expected === 'on'}"]')`, 3_000))) {
+      await js(`document.querySelector('[data-menu="effort"]') && ${chip}.click()`);
+      return false;
+    }
+    await js(`document.querySelector('[data-menu="effort"] [data-ultrathink-toggle]').click()`);
+    return true;
+  };
+  await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  if (!(await waitInPage(win, `!!${box} && !${box}.disabled`, 10_000))) return 'the session has no message box to type in';
+  if (((await js(`${box}.value`)) as string) !== '') return 'the message box was not empty to start with';
+  try {
+    // 1. The word is coloured in the box, in any case, and the text is not changed.
+    await js(`${box}.focus()`);
+    await win.webContents.insertText(draft);
+    if (!(await waitInPage(win, `document.querySelectorAll('${pane} [data-ultrathink-word]').length === 1`, 3_000))) return 'the word ultrathink was not coloured in the message box';
+    const look = (await js(`(() => {
+      const word = document.querySelector('${pane} [data-ultrathink-word]'), mirror = document.querySelector('${pane} [data-ultrathink-mirror]'), box = ${box};
+      const lines = mirror.firstElementChild;
+      return { word: word.textContent, gradient: getComputedStyle(word).backgroundImage.includes('linear-gradient'), text: lines.textContent, value: box.value, mirrorWidth: lines.getBoundingClientRect().width, boxWidth: box.clientWidth, mirrorHeight: Math.round(lines.getBoundingClientRect().height), boxHeight: Math.round(box.scrollHeight), boxColor: getComputedStyle(box).color };
+    })()`)) as { word: string; gradient: boolean; text: string; value: string; mirrorWidth: number; boxWidth: number; mirrorHeight: number; boxHeight: number; boxColor: string };
+    if (look.word !== 'Ultrathink') return `the coloured word is ${JSON.stringify(look.word)}`;
+    if (!look.gradient) return 'the word has no gradient';
+    if (look.value !== draft) return `the coloured box changed the text (${JSON.stringify(look.value)})`;
+    if (look.text !== draft) return `the coloured copy does not read like the box (${JSON.stringify(look.text)})`;
+    if (Math.abs(look.mirrorWidth - look.boxWidth) > 0.5) return `the coloured copy is ${look.mirrorWidth}px wide and the box ${look.boxWidth}px without its scrollbar: the lines would wrap differently`;
+    if (Math.abs(look.mirrorHeight - look.boxHeight) > 2) return `the coloured copy is ${look.mirrorHeight}px tall and the box ${look.boxHeight}px: the lines do not line up`;
+    if (!/rgba\(0, 0, 0, 0\)|transparent/.test(look.boxColor)) return `the box's own text is still drawn (${look.boxColor})`;
+    await empty();
+    if (!(await waitInPage(win, `!document.querySelector('${pane} [data-ultrathink-mirror]') && ${box}.value === ''`, 3_000))) return 'the coloured copy stayed after the box was emptied';
+    // A longer word is not the word.
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('ultrathinking is not the word');
+    await settle(win);
+    if (await js(`!!document.querySelector('${pane} [data-ultrathink-mirror]')`)) return 'a longer word, ultrathinking, was coloured';
+    await empty();
+
+    // 2. The effort chip's option arms the next message, shows on the chip, and turns off again. A session without an
+    // effort chip, a tray folded into one chip, or an effort that is xhigh or max already has no option to try.
+    const where = (await js(`(() => { const chip = ${chip}; const tray = document.querySelector('${pane} [data-composer-tray]'); return { chip: !!chip, folded: !!tray?.hasAttribute('data-composer-tray-folded'), effort: chip?.dataset.value ?? '' }; })()`)) as { chip: boolean; folded: boolean; effort: string };
+    if (!where.chip || where.folded) return `ok: ultrathink is coloured in the box (a longer word is not) and the lines line up; skipped the option, ${where.folded ? 'the tray is folded into one chip' : 'this session has no effort chip'}`;
+    if (where.effort === 'xhigh' || where.effort === 'max') {
+      if (await js(`(() => { ${chip}.click(); return true; })()`) && !(await waitInPage(win, "!!document.querySelector('[data-menu=\"effort\"]')", 3_000))) return 'the effort menu did not open';
+      const offered = await js("!!document.querySelector('[data-menu=\"effort\"] [data-ultrathink-toggle]')");
+      await js(`${chip}.click()`);
+      return offered ? `the option is offered at ${where.effort} effort, where the word does nothing` : `ok: ultrathink is coloured in the box and the option is not offered at ${where.effort} effort`;
+    }
+    if (!(await toggle('off'))) return 'the effort menu has no "Ultrathink this turn" option';
+    if (!(await waitInPage(win, `!!${chip}.querySelector('[data-ultrathink-armed]') && ${chip}.getAttribute('aria-label').includes('ultrathink')`, 3_000))) return 'the effort chip does not show that ultrathink is on';
+    if (!(await toggle('on'))) return 'the effort menu does not offer to turn ultrathink off';
+    if (!(await waitInPage(win, `!${chip}.querySelector('[data-ultrathink-armed]')`, 3_000))) return 'ultrathink stayed on the chip after turning it off';
+    return 'ok: ultrathink is coloured in the box (a longer word is not), the lines line up with the box, the effort chip arms it and turns it off again, nothing sent';
+  } finally {
+    // Whatever happened: an empty box, and the option off.
+    await empty();
+    if (await js(`!!${chip}?.querySelector('[data-ultrathink-armed]')`)) await toggle('on');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  }
 }
 
 /**
@@ -12685,6 +15327,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     return activity.steps ? `ok: ${summary}` : `failed: ${summary}`;
   });
   await step('changes panel', () => runChangesStep(win));
+  await step('diff comments: comment on lines in Changes, edit, keep after closing, submit to the message box', () => runDiffCommentsStep(win, (name) => shot(win, name)));
   await step('fewer lines: the header line only while scrolled, Changes on the sidebar surface, a fade over the composer', () => runFewerLinesStep(win));
   await step('branch button', () => runBranchStep(win));
   await step('open in menu', () => runOpenInStep(win));
@@ -12694,13 +15337,46 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('file preview', () => runFilePreviewStep(win));
+  await step('mermaid diagrams', () => runMermaidStep(win));
+  await step('maths: Markdown preview', () => runMathsStep(win));
+  // Pictures of the Files panel in dark and light, in the demo home (CI uploads them with the results).
+  const filesPictures = process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_SMOKE_FILES_PICTURES
+    ? { shot: (name: string) => shot(win, name), setScheme: (scheme: 'light' | 'dark') => setColorScheme(win, scheme), scheme: () => preferences.get().colorScheme, restoreScheme: (colorScheme: string) => updatePreferences({ colorScheme: colorScheme as 'light' | 'dark' | 'system' }) }
+    : undefined;
+  await step('files tree', () => runFilesTreeStep(win, filesPictures));
+  // Quick open, search and lines to the message open the Files panel themselves.
+  await step('files quick open', () => runFilesQuickOpenStep(win, filesPictures));
+  await step('files search', () => runFilesSearchStep(win, filesPictures));
+  await step('files to message', () => runFilesToMessageStep(win, filesPictures));
+  await step('files from a link', () => runFilesFromLinkStep(win));
   await step('long prompts', () => runLongPromptStep(win));
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
+  await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
+  await step('copy a selection: clean HTML', () => runCopySelectionStep(win));
+  await step('copy a selection: a formula and a diagram in the file preview', () => runCopyFormulaStep(win), { timeoutMs: 60_000 });
+  await step('copy a selection: Select all in the conversation and in reading mode', () => runSelectAllCopyStep(win), { timeoutMs: 60_000 });
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
+  await step('conversation view: Skim folds, shows the stats and fades by the keep line, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
+  await step('skim marks: a reply\'s keep line fades the rest and never shows', () => runSkimMarksStep(win));
+  await step('markdown in replies: a quote, a break in a table cell, an alert and a task list', () => runMarkdownRepliesStep(win), { timeoutMs: 60_000 });
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
+  await step('image viewer: arrows go through a reply, right-click copies the image', () => runImageViewerStep(win));
+  await step("inline visual: Claude's visual draws between the text, its controls work, sendPrompt fills the message box", () =>
+    runVisualsStep(win, {
+      demo: Boolean(process.env.SESHBOARD_SMOKE_DEMO),
+      back: smokeSessionId,
+      setScheme: (scheme) => setColorScheme(win, scheme),
+      scheme: () => preferences.get().colorScheme,
+      restoreScheme: (colorScheme) => updatePreferences({ colorScheme }),
+      shot: (name) => shot(win, name),
+    }),
+  );
+  await step('visualize server: runs as this app, lists its tools, gives its guide and MCP App page; Visuals in replies saves', () =>
+    runVisualizeServerStep(win, { server: visualizeServer(), enabled: () => preferences.get().agentVisuals, setEnabled: (agentVisuals) => updatePreferences({ agentVisuals }) }),
+  );
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
@@ -12721,6 +15397,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('quick actions on hover: Archive with Undo, a working session asks first, U and ⌘Z', () => runQuickActionsStep(win));
   await step('drop target', () => runDropStep(win));
   await step('prompt history', () => runHistoryStep(win));
+  await step('ultrathink: coloured in the box, one turn from the effort chip', () => runUltrathinkStep(win));
   await step('send now only while Claude works', () => runSendNowStep(win));
   await step('Ask about this session, nothing added to the conversation', () => runAskStep(win));
   await step('controls', () => runControlsStep(win));
@@ -12738,11 +15415,13 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: run, @ links, a round 2, another round, done', () => runPipelineStep(win));
   await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));
   await step('pipelines: Stop the run, archive the run with its steps, then delete it', () => runArchiveRunStep(win));
+  await step('orchestrator: instructions saved in a project, Run as › Orchestrator, three sessions in the overview and under its row, the groups follow, the way back', () => runOrchestratorStep(win), { timeoutMs: 60_000 });
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
+  await step('api retry: the working line says Claude Code is retrying', () => runApiRetryStep(win));
   await step('fast mode: a toggle with a tooltip on models that have it, /fast, why it is blocked, and from New session', () => runFastModeStep(win));
-  await step('working panel: the patch panel on the working line, still while compacting, waiting on a permission', () => runWorkingPanelStep(win));
+  await step('working panel: the patch panel on the working line, pulsing while compacting, waiting on a permission', () => runWorkingPanelStep(win));
   await step('menu bar: the icon says needs you, the panel lists what needs you, works and finished', () => runMenuBarPanelStep(win));
   await step('menu bar: Allow on a waiting session moves it to Working', () => runMenuBarAllowStep());
   await step('menu bar: new work starts in the background, the main window stays where it was', () => runMenuBarNewWorkStep(win));
@@ -12754,13 +15433,31 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('keep awake until done: the ⋯ menu, the pill, and it goes once the session is done', () => runKeepAwakeSessionStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
+  await step('activity: from the sidebar on today, a day with its summary, numbers and sessions, the project filter, Copy for standup, Export, Home\'s card', () => runActivityPageStep(win));
   await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
   await step('triggers: a trigger that starts a pipeline, from Run as and Start when…, starts one run with the issue as its task and the bolt on its run row', () => runTriggerPipelineStep(win), { timeoutMs: 60_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
+  // The new views' pictures, in light and dark, for the pull request.
+  const shotBoth = async (name: string) => {
+    const scheme = preferences.get().colorScheme;
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await setColorScheme(win, colorScheme);
+      await shot(win, `${name}-${colorScheme}.png`);
+    }
+    updatePreferences({ colorScheme: scheme });
+  };
+  const sidebarDeps: SidebarGroupSmokeDeps = { shot: shotBoth, setPreferences: updatePreferences, preferences: () => preferences.get() };
+  await step('sidebar group by project: View › Project, a header per project, what needs you under the first', () => runSidebarGroupByProjectStep(win, sidebarDeps));
+  await step('sidebar fold project: a folded project says what is in it, unfolding brings its rows back', () => runSidebarFoldProjectStep(win, sidebarDeps));
+  await step('sidebar compact: View › Compact rows makes rows one line', () => runSidebarCompactStep(win, sidebarDeps));
+  await step('tool rail: a toolbar at the right edge, Changes opens in front and closes again', () => runToolRailStep(win, shotBoth, smokeSessionId));
+  await step('tool rail badges: the Changes badge counts the changed files', () => runToolRailBadgesStep(win, smokeSessionId));
+  await step('tool rail apps: an app checked in the menu is pinned to the rail with its icon', () => runToolRailAppsStep(win, shotBoth, smokeSessionId));
+  await step('tool rail order: ⌥↑ and ⌥↓ move a tool inside its group', () => runToolRailOrderStep(win, smokeSessionId));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
-  await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));
+  await step("session note: N, shown under the title, found by search, in the header and its panel, cleared", () => runSessionNoteStep(win));
   await step('loose ends: the marker on a session with uncommitted files', () => runLooseEndsStep(win));
   await step('remind me later: L, gone from the list, Upcoming, Remind now, back under Reminders, cleared on open', () => runRemindStep(win));
   await step('star on GitHub', () => runStarStep(win));
@@ -12774,6 +15471,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     return `ok: ${await js("document.querySelector('[data-usage-band]').innerText.replace(/\\s+/g, ' ')")}`;
   });
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
+  await step('auto model: step-up note, more effort then the next model, Usage counts the change', () => runAutoStepUpStep(win), { timeoutMs: 45_000 });
   await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
   await step('settings: theme, sidebar style, session scope, tool activity, open at login, keep awake, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
@@ -12791,22 +15489,65 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
+  await step("web preview: an action's server offered on its run strip and pill, its page beside the conversation, outside links to the browser", () => runWebPreviewStep(win, { shot: (name) => shot(win, name), addAction: (name, command) => addAction(win, name, command), outside: webPreviewOutside, popoutOf: (id) => popouts.get(id) }));
+  // The browser: on for the first three, off again by the last (which checks the web preview as before). "browser
+  // pin" needs "browser view"'s tab; "browser outside link" uses the panel "session browser" left open, or opens one.
+  const bothSchemes = async (name: string) => {
+    const scheme = preferences.get().colorScheme;
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await setColorScheme(win, colorScheme);
+      await shot(win, `${name}-${colorScheme}.png`);
+    }
+    updatePreferences({ colorScheme: scheme });
+  };
+  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win), agent: (request) => browserAgent.run(request), downloadsDir: smokeDownloads() };
+  await step('browser intro: the sidebar card opens the browser, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
+  await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
+  await step('browser server: runs as this app, lists its tools, and says when it has no session', async () => {
+    const plain = await runBrowserServerStep(browserMcpServer());
+    if (!plain.startsWith('ok')) return plain;
+    const scripts = await runBrowserServerStep(browserMcpServer(true));
+    return scripts.startsWith('ok') ? `${plain}; with scripts on, it lists evaluate and network too` : `with scripts on: ${scripts}`;
+  });
+  await step('browser control: open, snapshot, type, click, screenshot and console on a local page, in the session’s own tab', () =>
+    runBrowserAgentStep(win, { run: (request) => browserAgent.run(request), setPrefs: updatePreferences, prefs: () => preferences.get(), shot: bothSchemes }),
+  );
+  await step('browser scripts: scripts off refused, read in parts and an XML source, evaluate and network on a local page', () =>
+    runBrowserScriptsStep(win, { run: (request) => browserAgent.run(request), setPrefs: updatePreferences, prefs: () => preferences.get(), shot: bothSchemes }),
+  );
+  // Needs "browser view" first: its tab and its pages in the history.
+  await step('browser text page: JSON and XML get a dark canvas in the dark', () => runBrowserTextPageStep(win, browserDeps));
+  await step('browser suggestions: the address bar offers open tabs and pages from the history', () => runBrowserSuggestionsStep(win, browserDeps));
+  await step('browser pin: a favourite tile keeps its page, its name and icon after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser favorites: the star bookmarks a page into a folder, kept after a reload, opened from an empty tab, ⌘D removes it', () => runBrowserFavoritesStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser palette: zoom, developer tools, rename, go to tab and clearing a site\'s data from the palette', () => runBrowserPaletteStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step("browser profiles: two made in Settings, a cookie and local storage kept apart, Open in other profile, the agent's open in a profile, Reset, Delete", () => runBrowserProfilesStep(win, browserDeps), { timeoutMs: 60_000 });
+  await step("session browser: a reply's link opens in the session's panel, the row shows the globe", () => runSessionBrowserStep(win, browserDeps));
+  await step('browser window: a session\'s tabs move to a window of their own, the agent finds the page there, Move back and closing put them back', () =>
+    runBrowserWindowStep(win, { ...browserDeps, browserWindowOf: (id) => { const open = browserPopouts.get(id); return open && !open.isDestroyed() ? open : undefined; }, shotOf: (target, name) => shot(target, name) }), { timeoutMs: 60_000 });
+  await step('browser pick: an element picked on a session\'s page and the page\'s menu send to the message', () => runBrowserPickStep(win, browserDeps), { timeoutMs: 45_000 });
+  await step('browser download: a link to a file saves it in the Downloads folder, with a toast to show it', () => runBrowserDownloadStep(win, browserDeps));
+  await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
   // After the steps that need New session on no folder: picking the project it adds is remembered.
   await step('providers: Copilot CLI offered in Settings › Profiles, added in two screens, Copilot is ready, New session says what switching turned off, set as the project profile, its session and ⋯ menu (never started), removed again', () => runProvidersStep(win), { timeoutMs: 90_000 });
+  await step('codex: Codex CLI offered and added without a sign in, Codex is ready, New session with its models, efforts and modes (Start refused by the demo), its session with a message box, removed again', () => runCodexStep(win), { timeoutMs: 90_000 });
+  await step('antigravity: Antigravity CLI offered and added without a sign in, Antigravity is ready, its session with its steps and a message box, New session with its models, thinking levels and modes (Start refused by the demo), removed again', () => runAntigravityStep(win), { timeoutMs: 90_000 });
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
+  await step('new session layout: three columns, two and stacked by the width, no page scroll, Add to queue at the focus limit', () => runNewSessionLayoutStep(win), { timeoutMs: 90_000 });
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
   await step('clone from GitHub: the setting with its folder, a URL in the folder field, the clone of a local repository, the trust question (no session)', () => runCloneStep(win), { timeoutMs: 60_000 });
   // After projects: it adds ten projects (removed again), which the Projects view's first step must not see.
-  await step('new session project list: three columns and nine rows, two and eight, one and six, ⌘F finds, ⌘2 picks the second row', () => runProjectListStep(win), { timeoutMs: 90_000 });
+  await step('new session project list: one column of nine, as many as fit, two and eight stacked, one and six, ⌘F finds, ⌘2 picks the second row', () => runProjectListStep(win), { timeoutMs: 90_000 });
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", its page from Open, the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('other computers: Settings › Remote updates an older computer, asks with sessions working, waits for idle, checks for updates', () => runComputerUpdateStep(win), { timeoutMs: 45_000 });
+  await step('other computers: Done on a remote session shows it under this Done, Reopen in its menu, a click reopens and opens it', () => runRemoteDoneStep(win), { timeoutMs: 60_000 });
   await step('computers strip: one line, neutral chips, Mine as a person, the menu from a right-click, "+N" in a narrow sidebar', () => runComputersStripStep(win), { timeoutMs: 75_000 });
   // The remote app on a phone, in a window of its own (remotePhoneSmoke.ts). The first of these to run pairs it, which
   // waits for Vite's first build of the app on a fresh runner.
@@ -12814,13 +15555,16 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: New session from the drawer in a session', runPhoneDrawerNewStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Settings switches the theme, Back returns to Home in it', runPhoneSettingsThemeStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: ⋯ › All settings opens Settings', runPhoneMoreStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: Done takes a session out of the list, the Done page lists it, Reopen puts it back', runPhoneDoneStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: what a trigger started has the bolt and says which trigger', () => runPhoneTriggerStep(shot), { timeoutMs: 75_000 });
   await step("remote app on a phone: a finished session's catch-up shows the prompt's title without #", runPhoneCatchUpStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Quote under a reply, over a selection and in Read', runPhoneQuoteStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: a path to a file Claude wrote opens in a sheet', runPhoneFileStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: ⇧↵ continues a list, an image alone can be sent', runPhoneComposerStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, a model picked in Options shows in the accent colour', runPhoneOptionsStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, Start is dim while empty and ready with a task', runPhoneStartStep, { timeoutMs: 75_000 });
-  await step('remote app on a phone: New session with a Copilot profile, in its own models and modes', runPhoneProviderStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: New session with a Copilot or Codex profile, in its own models and modes', runPhoneProviderStep, { timeoutMs: 75_000 });
   await closeRemotePhone();
   // Every built-in theme in light and dark (about 11s locally) runs over 30s on a CI runner.
   // Every built-in theme in both modes: about 11 s here, and over 120 s on the macOS runners, so it gets room.
@@ -12853,6 +15597,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 }
 
 app.whenReady().then(() => {
+  protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
+  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().browserEnabled, preview: () => preferences.get().webPreview, askFirst: !scripted, downloadsDir: () => (scripted ? smokeDownloads() : app.getPath('downloads')) });
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);

@@ -19,7 +19,7 @@ export interface TurnMetaValue {
 export const TurnMetaContext = createContext<TurnMetaValue | null>(null);
 
 /** The `·` between the parts, in the border colour. */
-const Sep = () => (
+export const Sep = () => (
   <span aria-hidden className="text-border">
     ·
   </span>

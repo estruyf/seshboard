@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { ChangedFile, ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from '@seshboard/protocol';
+import { remoteOnlyBranches, type ChangedFile, type ChangesBase, type GitChanges, type GitSyncAction, type WorktreeStatus } from '@seshboard/protocol';
 import { programPath } from '../system/program.ts';
 
 const MAX_DIFF_BYTES = 512 * 1024;
@@ -32,7 +32,24 @@ export const gitProgram = (env: Record<string, string | undefined> = process.env
  * Runs git in `cwd`; resolves with stdout. Never goes through a shell. Pathspecs are literal: the paths
  * passed come from the file list, and `app/[id]/page.tsx` or `a*.txt` must not match other files.
  */
-export function git(cwd: string, args: string[], options: { env?: Record<string, string>; allowExitCodes?: number[]; timeout?: number } = {}): Promise<string> {
+export function git(cwd: string, args: string[], options: GitOptions = {}): Promise<string> {
+  return run(cwd, args, options, 'utf8');
+}
+
+/** `git` for output that isn't text (a blob of an image): stdout as bytes. */
+export function gitBytes(cwd: string, args: string[], options: GitOptions = {}): Promise<Buffer> {
+  return run(cwd, args, options, 'buffer');
+}
+
+interface GitOptions {
+  env?: Record<string, string>;
+  allowExitCodes?: number[];
+  timeout?: number;
+}
+
+function run(cwd: string, args: string[], options: GitOptions, encoding: 'utf8'): Promise<string>;
+function run(cwd: string, args: string[], options: GitOptions, encoding: 'buffer'): Promise<Buffer>;
+function run(cwd: string, args: string[], options: GitOptions, encoding: 'utf8' | 'buffer'): Promise<string | Buffer> {
   // Node reports a missing `cwd` as the command not being found ("spawn git ENOENT"), which reads as git not being
   // installed, and a file as `cwd` as "spawn ENOTDIR" (thrown, not passed on). Neither is an allowed exit code.
   const spawnFailed = (error: NodeJS.ErrnoException) => (error.code === 'ENOENT' || error.code === 'ENOTDIR' ? folderProblem(cwd) : null);
@@ -44,12 +61,12 @@ export function git(cwd: string, args: string[], options: { env?: Record<string,
       execFile(
         file,
         [...GIT_SETTINGS, ...args],
-        { cwd, env, maxBuffer: 32 * 1024 * 1024, timeout: options.timeout ?? 20_000 },
+        { cwd, env, encoding, maxBuffer: 32 * 1024 * 1024, timeout: options.timeout ?? 20_000 },
         (error, stdout, stderr) => {
           const problem = error ? spawnFailed(error as NodeJS.ErrnoException) : null;
           if (problem) return reject(new GitError(problem));
           const code = typeof error?.code === 'number' ? error.code : error ? 1 : 0;
-          if (error && !options.allowExitCodes?.includes(code)) reject(new GitError(stderr.trim() || error.message));
+          if (error && !options.allowExitCodes?.includes(code)) reject(new GitError(String(stderr).trim() || error.message));
           else resolvePromise(stdout);
         },
       );
@@ -158,15 +175,19 @@ async function olderGitRefs(cwd: string, run: typeof git, error: Error): Promise
 }
 
 /**
- * Checks out an existing local branch, or a remote one as a new tracking branch. Git keeps
+ * Checks out an existing local branch, or one only a remote has as a new tracking branch. Git keeps
  * uncommitted changes that don't conflict and refuses otherwise; nothing is ever discarded.
  */
 export async function switchBranch(cwd: string, branch: string): Promise<void> {
   // Never let a branch name be read as an option.
   if (branch.startsWith('-')) throw new GitError(`Not a branch name: ${branch}`);
-  const { current } = await listBranches(cwd);
+  const { current, branches } = await listBranches(cwd);
   if (current === branch) return;
-  await git(cwd, ['switch', branch]);
+  if (branches.includes(branch)) return void (await git(cwd, ['switch', branch]));
+  // Only on a remote (a fresh clone has just the default branch here): a new local branch that tracks it.
+  const onRemote = remoteOnlyBranches(branches, await listRemoteBranches(cwd)).find((b) => b.name === branch);
+  if (!onRemote) throw new GitError(`No branch ${branch}`);
+  await git(cwd, ['switch', '--track', onRemote.ref]);
 }
 
 /** The top folder of the checkout `cwd` is in (a worktree is its own checkout), or null outside git. */
@@ -184,7 +205,7 @@ export async function topLevel(cwd: string): Promise<string> {
 }
 
 /** The commit `base` mode compares against: where this branch left the base branch. */
-async function mergeBase(cwd: string, base: string): Promise<string | null> {
+export async function mergeBase(cwd: string, base: string): Promise<string | null> {
   for (const ref of [`origin/${base}`, base]) {
     const sha = await git(cwd, ['merge-base', 'HEAD', ref], { allowExitCodes: [1, 128] }).catch(() => '');
     if (sha.trim()) return sha.trim();
@@ -246,7 +267,7 @@ async function renames(root: string): Promise<Map<string, string>> {
 const inHead = (root: string, rel: string) => git(root, ['cat-file', '-e', `HEAD:${rel}`]).then(() => true, () => false);
 /** Whether the index has the file. */
 const inIndex = async (root: string, rel: string) => (await git(root, ['ls-files', '--error-unmatch', '--', rel], { allowExitCodes: [1] })).trim() !== '';
-const hasHead = async (root: string) => (await git(root, ['rev-parse', '--verify', '--quiet', 'HEAD'], { allowExitCodes: [1] })).trim() !== '';
+export const hasHead = async (root: string) => (await git(root, ['rev-parse', '--verify', '--quiet', 'HEAD'], { allowExitCodes: [1] })).trim() !== '';
 
 /**
  * Lines in a new file, as `git diff --numstat` would count them: 0 for a binary file (a NUL byte in

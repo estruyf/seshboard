@@ -1,4 +1,4 @@
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Globe, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users } from 'lucide-react';
 import type { SettingsSection } from '../state/sessionsStore.ts';
 
 /** What a Settings page is about: Seshboard itself, how Claude behaves, the things you keep, what Seshboard talks to; `bottom` is the rarely used ones under a line. */
@@ -25,6 +25,7 @@ const GROUP_ORDER: readonly SettingsGroup[] = ['app', 'claude', 'work', 'connect
 /** Settings' pages, in the order its menu lists them; the command palette's Settings pages follow it too. */
 export const SETTINGS_SECTIONS: readonly SettingsPage[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, group: 'app' },
+  { id: 'browser', label: 'Browser', icon: Globe, group: 'app' },
   { id: 'theme', label: 'Theme', icon: Palette, group: 'app' },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft, group: 'app' },
   { id: 'notifications', label: 'Notifications', icon: Bell, group: 'app' },
@@ -44,6 +45,11 @@ export const SETTINGS_SECTIONS: readonly SettingsPage[] = [
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity, group: 'bottom' },
   { id: 'about', label: 'About', icon: Info, group: 'bottom' },
 ];
+
+/** Pages shown only while something is on: Browser with the browser (Settings › General › Allow browser). */
+export function settingsPageShown(page: SettingsSection, options: { browser: boolean }): boolean {
+  return page !== 'browser' || options.browser;
+}
 
 /** The pages under each group, groups in the menu's order (the bottom block last), pages in the order of `sections`. */
 export function navGroups<T extends { group: SettingsGroup }>(sections: readonly T[]): Array<{ group: SettingsGroup; pages: T[] }> {

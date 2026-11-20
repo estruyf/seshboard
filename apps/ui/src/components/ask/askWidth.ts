@@ -16,6 +16,18 @@ export function clampAskWidth(width: number, windowWidth: number): number {
   return Math.round(Math.min(Math.max(value, ASK_MIN_WIDTH), max));
 }
 
+/** How the right side's panels are sized: a width you drag (`side`), or half the session area (`half`). */
+export type PanelSizing = 'side' | 'half';
+
+/**
+ * The right panel's width: the dragged one, or at Half half of the session area `body` wide (conversation and panel
+ * share it 50/50, and keep doing so as the window resizes). Before the area is measured, the dragged width.
+ */
+export function panelWidthFor(sizing: PanelSizing, side: number, body: number | null): number {
+  if (sizing !== 'half' || body === null || !(body > 0)) return side;
+  return Math.max(ASK_MIN_WIDTH, Math.floor(body / 2));
+}
+
 /** The width after a resize key: ← widens the panel (its edge is on the left), → narrows it. Null for other keys. */
 export function askWidthForKey(key: string, width: number, windowWidth: number): number | null {
   const step = key === 'ArrowLeft' ? ASK_KEY_STEP : key === 'ArrowRight' ? -ASK_KEY_STEP : null;
@@ -23,12 +35,12 @@ export function askWidthForKey(key: string, width: number, windowWidth: number):
 }
 
 /** The panels that can share the right side: the terminal joins them when it is docked there. */
-export type PanelTab = 'changes' | 'ask' | 'agents' | 'commands' | 'preview' | 'terminal';
+export type PanelTab = 'files' | 'changes' | 'ask' | 'agents' | 'commands' | 'note' | 'web' | 'terminal';
 /** A Claude Code mod's pane, by its id. */
 export type ModPaneTab = `mod:${string}`;
 export type RightTab = PanelTab | ModPaneTab;
 /** Their order as tabs (mods' panes go after Ask). */
-export const RIGHT_TABS: readonly PanelTab[] = ['changes', 'ask', 'agents', 'commands', 'preview', 'terminal'];
+export const RIGHT_TABS: readonly PanelTab[] = ['files', 'changes', 'ask', 'agents', 'commands', 'note', 'web', 'terminal'];
 
 export const modPaneTab = (paneId: string): ModPaneTab => `mod:${paneId}`;
 /** The pane id of a mod's tab, or null for one of Seshboard's panels. */
@@ -41,10 +53,10 @@ export const paneOfTab = (tab: RightTab | null): string | null => (tab?.startsWi
  */
 export function rightPanel(isOpen: Record<PanelTab, boolean>, tab: RightTab, modPanes: readonly string[] = []): { tab: RightTab | null; tabs: boolean; open: RightTab[] } {
   const own = (id: PanelTab) => (isOpen[id] ? [id] : []);
-  const open: RightTab[] = [...own('changes'), ...own('ask'), ...modPanes.map(modPaneTab), ...own('agents'), ...own('commands'), ...own('preview'), ...own('terminal')];
+  const open: RightTab[] = [...own('files'), ...own('changes'), ...own('ask'), ...modPanes.map(modPaneTab), ...own('agents'), ...own('commands'), ...own('note'), ...own('web'), ...own('terminal')];
   return { tab: open.includes(tab) ? tab : (open[0] ?? null), tabs: open.length > 1, open };
 }
 
 /** A stored tab, or Changes for anything else. */
 export const readTab = (value: string | null): RightTab =>
-  value === 'ask' || value === 'agents' || value === 'commands' || value === 'preview' || value === 'terminal' ? value : value && /^mod:[A-Za-z0-9_-]{1,64}$/.test(value) ? (value as ModPaneTab) : 'changes';
+  value === 'files' || value === 'ask' || value === 'agents' || value === 'commands' || value === 'note' || value === 'web' || value === 'terminal' ? value : value && /^mod:[A-Za-z0-9_-]{1,64}$/.test(value) ? (value as ModPaneTab) : 'changes';

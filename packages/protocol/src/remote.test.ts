@@ -7,6 +7,7 @@ describe('the remote contracts', () => {
     // A paired phone can make Claude run commands on the computer: adding a method here must be a deliberate change,
     // reviewed against the threat model in docs/remote-access.md.
     expect(Object.keys(remoteContract.requests).sort()).toEqual([
+      'activity.range',
       'app.update.cancel',
       'app.update.check',
       'app.update.get',
@@ -16,6 +17,8 @@ describe('the remote contracts', () => {
       'changes.diff',
       'changes.get',
       'device.visibility',
+      'files.image',
+      'files.read',
       'hello',
       'later.add',
       'limits.arm',
@@ -43,10 +46,12 @@ describe('the remote contracts', () => {
       'runs.write',
       'session.ask',
       'session.askThreads',
+      'session.commands',
       'session.create',
       'session.interrupt',
       'session.markRead',
       'session.markUnread',
+      'session.queue.move',
       'session.queue.remove',
       'session.queue.sendNow',
       'session.respond',
@@ -56,6 +61,7 @@ describe('the remote contracts', () => {
       'session.setModel',
       'session.setPermissionMode',
       'session.stopTask',
+      'sessions.archived',
       'sessions.list',
       'theme.get',
       'transcript.get',
@@ -79,6 +85,8 @@ describe('the remote contracts', () => {
     const send = remoteContract.requests['session.send'].params;
     expect(send.safeParse({ sessionId: 's', text: 'run the tests' }).success).toBe(true);
     expect(send.safeParse({ sessionId: 's', text: '   ' }).success).toBe(false);
+    // An image alone is a message, as on the computer.
+    expect(send.safeParse({ sessionId: 's', text: ' ', images: [{ type: 'image', mediaType: 'image/png', data: 'aGk=' }] }).data?.text).toBe('');
     expect(send.safeParse({ sessionId: 's', text: 'hi', attachments: [] }).data).not.toHaveProperty('attachments');
     const create = remoteContract.requests['session.create'].params;
     expect(create.safeParse({ projectId: '0123456789abcdef', prompt: 'hi' }).success).toBe(true);

@@ -420,4 +420,27 @@ describe('branches', () => {
     expect(readFileSync(join(repo, 'a.txt'), 'utf8')).toBe('uncommitted\n');
     await expect(switchBranch(repo, '--orphan')).rejects.toThrow(/Not a branch/);
   });
+
+  it('switches to a branch only a remote has, as a new branch that tracks it', async () => {
+    await run('branch', 'era2');
+    await run('branch', 'dev');
+    // A fresh clone: only the default branch is local; era2 is on origin, dev on origin and a second remote.
+    const clone = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-clone-')));
+    try {
+      await git(tmpdir(), ['clone', '-q', repo, clone]);
+      await git(clone, ['remote', 'add', 'aaa', repo]);
+      await git(clone, ['fetch', '-q', 'aaa']);
+      expect((await listBranches(clone)).branches).toEqual(['main']);
+
+      await switchBranch(clone, 'era2');
+      expect((await listBranches(clone)).current).toBe('era2');
+      expect((await git(clone, ['rev-parse', '--abbrev-ref', 'era2@{upstream}'])).trim()).toBe('origin/era2');
+      // On two remotes, where `git switch dev` alone refuses: origin's.
+      await switchBranch(clone, 'dev');
+      expect((await git(clone, ['rev-parse', '--abbrev-ref', 'dev@{upstream}'])).trim()).toBe('origin/dev');
+      await expect(switchBranch(clone, 'nowhere')).rejects.toThrow(/No branch nowhere/);
+    } finally {
+      rmSync(clone, { recursive: true, force: true });
+    }
+  });
 });

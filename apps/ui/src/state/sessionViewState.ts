@@ -1,5 +1,6 @@
 import { readTab, type RightTab } from '../components/ask/askWidth.ts';
 import type { SessionAsk } from './ask.ts';
+import type { SessionWeb } from './webPreviewStore.ts';
 
 /*
  * How a session's panels stand: which are open, the tab in front, what each one has on show. It travels with the
@@ -28,6 +29,8 @@ export interface SessionViewState {
   terminalMaximized: boolean;
   /** The terminal tab selected in the terminal panel. */
   terminalTab: string | null;
+  /** The web preview, while its tab is open: the page (loaded again in the new window) and the phone width. */
+  web: { url: string | null; phone: boolean } | null;
 }
 
 /** A panel with something picked in it (Agents, Commands). */
@@ -49,6 +52,7 @@ export interface ViewSlices {
   terminalOpen: ReadonlySet<string>;
   terminalMaximized: ReadonlySet<string>;
   terminalTab: ReadonlyMap<string, string>;
+  web: ReadonlyMap<string, SessionWeb>;
 }
 
 const emptyAsk = (): Pick<SessionAsk, 'open' | 'threadId'> => ({ open: false, threadId: undefined });
@@ -59,6 +63,7 @@ export function collectView(sessionId: string, slices: ViewSlices): SessionViewS
   const agents = slices.agents.get(sessionId);
   const commands = slices.commands.get(sessionId);
   const open = slices.terminalOpen.has(sessionId);
+  const web = slices.web.get(sessionId);
   return {
     changes: slices.changes.has(sessionId),
     ask: ask.open,
@@ -71,6 +76,7 @@ export function collectView(sessionId: string, slices: ViewSlices): SessionViewS
     terminal: open,
     terminalMaximized: open && slices.terminalMaximized.has(sessionId),
     terminalTab: slices.terminalTab.get(sessionId) ?? null,
+    web: web ? { url: web.url, phone: web.phone } : null,
   };
 }
 
@@ -120,6 +126,8 @@ export function applyView(sessionId: string, view: SessionViewState, slices: Vie
     terminalOpen,
     terminalMaximized: withMember(slices.terminalMaximized, sessionId, view.terminal && view.terminalMaximized),
     terminalTab: view.terminalTab === null ? slices.terminalTab : withEntry(slices.terminalTab, sessionId, view.terminalTab, (a, b) => a === b),
+    // A new page (`seq`) only when the address changed: the same one stays as it is.
+    web: withEntry(slices.web, sessionId, view.web && { ...view.web, seq: (slices.web.get(sessionId)?.seq ?? 0) + 1 }, (a, b) => a.url === b.url && a.phone === b.phone),
   };
 }
 
@@ -144,6 +152,9 @@ export function parseView(value: unknown): SessionViewState | null {
         ? { id: (thread as { id: string }).id }
         : null;
   if (!askThread) return null;
+  // Missing in a view from a window without the web preview: none.
+  const w = v.web as { url?: unknown; phone?: unknown } | null | undefined;
+  const web = w && typeof w === 'object' && isFlag(w.phone) && (w.url === null || (typeof w.url === 'string' && w.url.length < 2000)) ? { url: w.url as string | null, phone: w.phone } : null;
   return {
     changes: v.changes,
     ask: v.ask,
@@ -156,5 +167,6 @@ export function parseView(value: unknown): SessionViewState | null {
     terminal: v.terminal,
     terminalMaximized: v.terminalMaximized,
     terminalTab: v.terminalTab,
+    web,
   };
 }

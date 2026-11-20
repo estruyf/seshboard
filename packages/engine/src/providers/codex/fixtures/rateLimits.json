@@ -1,0 +1,75 @@
+{
+  "ordinaryUsageAllowed": true,
+  "rateLimits": {
+    "limitId": "codex",
+    "limitName": null,
+    "normalModelSlug": null,
+    "primary": {
+      "usedPercent": 12,
+      "windowDurationMins": 300,
+      "resetsAt": 1793990000
+    },
+    "secondary": {
+      "usedPercent": 41,
+      "windowDurationMins": 10080,
+      "resetsAt": 1794550000
+    },
+    "credits": {
+      "hasCredits": false,
+      "unlimited": false,
+      "balance": null
+    },
+    "individualLimit": null,
+    "spendControlReached": false,
+    "planType": "plus",
+    "rateLimitReachedType": null
+  },
+  "rateLimitsByLimitId": {
+    "codex_mini": {
+      "limitId": "codex_mini",
+      "limitName": "GPT-5 mini",
+      "normalModelSlug": "gpt-5-mini",
+      "primary": null,
+      "secondary": {
+        "usedPercent": 93,
+        "windowDurationMins": 10080,
+        "resetsAt": 1794550000
+      },
+      "credits": null,
+      "individualLimit": null,
+      "spendControlReached": null,
+      "planType": "plus",
+      "rateLimitReachedType": null
+    },
+    "codex": {
+      "limitId": "codex",
+      "limitName": null,
+      "normalModelSlug": null,
+      "primary": {
+        "usedPercent": 12,
+        "windowDurationMins": 300,
+        "resetsAt": 1793990000
+      },
+      "secondary": {
+        "usedPercent": 41,
+        "windowDurationMins": 10080,
+        "resetsAt": 1794550000
+      },
+      "credits": {
+        "hasCredits": false,
+        "unlimited": false,
+        "balance": null
+      },
+      "individualLimit": null,
+      "spendControlReached": false,
+      "planType": "plus",
+      "rateLimitReachedType": null
+    }
+  },
+  "rateLimitResetCredits": {
+    "availableCount": 0,
+    "credits": null
+  },
+  "accountId": "acct-made-up",
+  "rateLimitUpsell": null
+}

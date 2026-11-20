@@ -4,36 +4,57 @@ import type { AutoLean, AutoTier } from '@seshboard/protocol';
  * The rules Haiku follows to pick a model for a new session, in one place. Bump the version when they change,
  * so a pick can be traced to the rules it was made with.
  */
-export const ROUTING_RULES_VERSION = 1;
-
-const TIER_RULES: Record<AutoTier, string> = {
-  haiku: 'haiku: quick answers. A question about code or a tool, a one-line fix, renaming, a typo, formatting, a short explanation, a lookup.',
-  sonnet: 'sonnet: everyday coding. A small or local change, a bug in one place, a test, a component, a script, a setting and the code that reads it.',
-  opus: 'opus: complex, multi-step work. Planning or designing a feature, refactoring across many files or modules, an architecture change, a hard bug with unclear cause, a migration, security or concurrency reasoning.',
-};
-
-const LEAN_RULES: Record<AutoLean, string> = {
-  cheaper: 'When two models both fit, pick the cheaper one.',
-  balanced: 'When two models both fit, pick the one that matches the most likely size of the work.',
-  stronger: 'When two models both fit, pick the stronger one.',
-};
+export const ROUTING_RULES_VERSION = 2;
 
 /**
- * The system prompt of the routing call: only the allowed models, the lean, and the strict JSON to answer with.
- * The prompt it reads is the user's text alone, never files, memory, CLAUDE.md or the project's name.
+ * What each model is for. Version 2 follows Anthropic's model guide (November 2026): Haiku answers but doesn't edit
+ * code, a clear spec alone isn't a reason for Sonnet, migrations and performance work go up a tier, and images go to
+ * Opus or above.
+ */
+const TIER_RULES: Record<AutoTier, string> = {
+  haiku: 'haiku: quick answers that change no code. A question about code or a tool, a short explanation, a lookup, finding a file, reading a log.',
+  sonnet: 'sonnet: well-scoped coding. A bug in one place, a small feature built against a clear spec, a test, a component, a script, a setting and the code that reads it, a rename or a one-line fix.',
+  opus: 'opus: everyday engineering that needs judgement. Planning or designing a feature, work across several files or pull requests, a hard bug with unclear cause, a migration, performance work, security or concurrency reasoning, anything about images or screenshots.',
+  fable: 'fable: the hardest technical work. A major refactor or migration across a whole codebase, an architecture change, deep research or quantitative analysis, a long run with no one watching, leading many subagents.',
+};
+
+/** Without Opus, images still need a strong model. */
+const IMAGES_WITHOUT_OPUS = 'A request about images or screenshots needs the strongest allowed model.';
+
+/** On a close call. Balanced falls back to Opus when it can't tell, as the model guide advises. */
+const leanRule = (lean: AutoLean, allowed: readonly AutoTier[]): string =>
+  lean === 'cheaper'
+    ? 'When two models both fit, pick the cheaper one.'
+    : lean === 'stronger'
+      ? 'When two models both fit, pick the stronger one.'
+      : `When two models both fit, pick the one that matches the most likely size of the work.${allowed.includes('opus') ? ' If you cannot tell, pick opus.' : ''}`;
+
+const EFFORT_RULES = [
+  'Effort is how long the model thinks and checks its work. Pick one:',
+  '- low: a quick answer or a chat reply someone waits on.',
+  '- medium: most work. Pick medium when unsure.',
+  '- high: hard reasoning, a bug with unclear cause, work that must be checked carefully.',
+];
+
+/**
+ * The system prompt of the routing call: only the allowed models, the lean, the efforts and the strict JSON to answer
+ * with. The prompt it reads is the user's text alone, never files, memory, CLAUDE.md or the project's name.
  */
 export function routingSystemPrompt(allowed: readonly AutoTier[], lean: AutoLean): string {
   const models = allowed.join('|');
   return [
-    'You pick which Claude model should handle a coding request. You never answer the request itself.',
+    'You pick which Claude model, and how much effort, should handle a coding request. You never answer the request itself.',
     'You only see the text of the first message of a new session. Judge how big and how hard the work is.',
     '',
     'Models:',
     ...allowed.map((tier) => `- ${TIER_RULES[tier]}`),
+    ...(allowed.includes('opus') ? [] : [IMAGES_WITHOUT_OPUS]),
     '',
-    LEAN_RULES[lean],
+    leanRule(lean, allowed),
     '',
-    `Answer with strict JSON and nothing else: {"model":"${models}","reason":"<one short sentence>"}`,
+    ...EFFORT_RULES,
+    '',
+    `Answer with strict JSON and nothing else: {"model":"${models}","effort":"low|medium|high","reason":"<one short sentence>"}`,
     'The reason is plain and short, at most 12 words, and says what kind of work it is ("A small, local change: one setting and the code that reads it.").',
   ].join('\n');
 }

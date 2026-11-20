@@ -5,14 +5,16 @@ import { useMiddleEllipsis } from '../ui/useMiddleEllipsis.ts';
 import { gridMove, type TileTone } from './projectTiles.ts';
 
 /**
- * New session's project list: one column, two from 520px, three from 780px (`COLUMN_BREAKPOINTS`, which `useColumns`
- * reads). A container query, so the sidebar and side panels count; put `@container` on the picker around it.
+ * A list of project rows on Home and another computer's New session: one column, two from 520px, three from 780px
+ * (`COLUMN_BREAKPOINTS`, which `useColumns` reads). A container query, so the sidebar and side panels count; put
+ * `@container` on the element around it.
  */
 export const PROJECT_GRID = 'grid grid-cols-1 gap-1.5 @min-[520px]:grid-cols-2 @min-[780px]:grid-cols-3';
 
 /**
- * New session's column: one width for the heading, the project list, the message box and the usage line, up to 56rem.
- * Wide enough for three columns of projects (from 780px), and still a comfortable line length in the message box.
+ * Another computer's New session: one width for the heading, the project list, the message box and the usage line, up
+ * to 56rem. Wide enough for three columns of projects, and still a comfortable line length in the message box. This
+ * computer's has columns of its own (`NEW_SESSION_GRID`).
  */
 export const NEW_SESSION_COLUMN = 'mx-auto grid w-full max-w-4xl grid-cols-[minmax(0,1fr)] gap-5 px-6';
 
@@ -38,7 +40,7 @@ interface ProjectRowProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 
   'data-tooltip'?: string;
 }
 
-/** One project in New session's list, on this computer or another: its icon, its name over its state, and its ⌘ key. */
+/** One project in a list of them, on this computer or another: its icon, its name over its state, and its ⌘ key. */
 export function ProjectRow({ icon, name, tone, label, branch, shortcut, selected, highlighted = false, color, className = '', ...rest }: ProjectRowProps) {
   const { ref, text } = useMiddleEllipsis<HTMLSpanElement>(name);
   const keys = shortcut ? `⌘${shortcut}` : null;

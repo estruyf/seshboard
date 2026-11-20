@@ -10,6 +10,7 @@ export class CatchUpStore {
       get: db.prepare('SELECT json FROM catchup WHERE session_id = ?'),
       all: db.prepare('SELECT json FROM catchup'),
       save: db.prepare('INSERT OR REPLACE INTO catchup (session_id, turn_id, json) VALUES (?, ?, ?)'),
+      keep: db.prepare('INSERT OR REPLACE INTO catchup_turns (session_id, turn_id, at, did_json) VALUES (?, ?, ?, ?)'),
       clear: db.prepare('DELETE FROM catchup WHERE session_id = ?'),
     };
   }
@@ -25,6 +26,9 @@ export class CatchUpStore {
 
   save(card: CatchUp): void {
     this.statements.save.run(card.sessionId, card.turnId, JSON.stringify(card));
+    // Activity's "what it did": the next turn replaces the card and a new message clears it, this stays. A card that
+    // waits for you is about the request, not what was done.
+    if (card.state !== 'waiting') this.statements.keep.run(card.sessionId, card.turnId, card.generatedAt, JSON.stringify(card.did));
   }
 
   /** Whether there was one to clear. */

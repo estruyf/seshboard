@@ -57,6 +57,10 @@ export interface CopilotSessionOptions {
   streaming: boolean;
   /** Copilot keeps what each turn changed in files, which Rewind restores. */
   enableFileChangeTracking?: boolean;
+  /** MCP servers of Seshboard's, besides the user's own (Visuals in replies). */
+  mcpServers?: Record<string, { type: 'local'; command: string; args: string[]; env: Record<string, string>; tools: string[] }>;
+  /** Seshboard's text after Copilot's own prompt (Skim's marks). */
+  systemMessage?: { mode: 'append'; content: string };
   clientName: string;
   onPermissionRequest(request: Record<string, unknown>, invocation: { sessionId: string }): Promise<PermissionAnswer>;
 }
@@ -66,7 +70,7 @@ export interface CopilotSdkClient {
   start(): Promise<void>;
   stop(): Promise<unknown>;
   getAuthStatus(): Promise<{ isAuthenticated: boolean; login?: string; statusMessage?: string }>;
-  listModels(): Promise<Array<{ id: string; name: string; capabilities?: { supports?: { reasoningEffort?: boolean } }; supportedReasoningEfforts?: string[]; defaultReasoningEffort?: string }>>;
+  listModels(): Promise<Array<{ id: string; name: string; supportedReasoningEfforts?: string[]; capabilities?: { supports?: { reasoningEffort?: boolean } }; defaultReasoningEffort?: string }>>;
   createSession(options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   resumeSession(sessionId: string, options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   /** The headless `copilot` the SDK started (its locks on sessions are Seshboard's own). */
@@ -97,6 +101,8 @@ export interface CopilotQuotaSnapshot {
   usedRequests: number;
   remainingPercentage: number;
   resetDate?: string;
+  /** Billed per token in AI credits: the request counts stay at zero. */
+  tokenBasedBilling?: boolean;
 }
 
 /** The premium requests of a quota answer, in Seshboard's shape; null when Copilot says nothing about them. */
@@ -105,7 +111,8 @@ export function premiumQuota(snapshots: Record<string, CopilotQuotaSnapshot | un
   if (!premium) return null;
   const unlimited = premium.isUnlimitedEntitlement || premium.entitlementRequests < 0;
   const percentUsed = unlimited ? 0 : Math.min(100, Math.max(0, 100 - premium.remainingPercentage));
-  return { used: Math.max(0, premium.usedRequests), entitlement: unlimited ? null : premium.entitlementRequests, percentUsed, resetsAt: premium.resetDate ?? null };
+  const quota: ProviderQuota = { used: Math.max(0, premium.usedRequests), entitlement: unlimited ? null : premium.entitlementRequests, percentUsed, resetsAt: premium.resetDate ?? null };
+  return premium.tokenBasedBilling ? { ...quota, tokenBilling: true } : quota;
 }
 
 /** Makes the client for the user's `copilot` (the real one loads the SDK; tests pass a fake). */
@@ -363,15 +370,19 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
       /** The model it runs on (null: Copilot's `auto` before it picks one), which an effort change keeps. */
       let model = config.model;
       // A read-only step: Accept edits and Auto mode approve only reads by themselves; every other request is asked.
-      const approves = (request: Record<string, unknown>) => approvesItself(mode, request) && (!config.readOnly || request.kind === 'read');
+      // Seshboard's own `visualize` server only draws in the conversation: its tools never ask.
+      const ownTool = (request: Record<string, unknown>) => request.kind === 'mcp' && typeof request.serverName === 'string' && config.mcpServers?.[request.serverName] !== undefined;
+      const approves = (request: Record<string, unknown>) => ownTool(request) || (approvesItself(mode, request) && (!config.readOnly || request.kind === 'read'));
       const sessionOptions: CopilotSessionOptions = {
         workingDirectory: config.cwd,
         ...modelOptions(config.model),
         ...(config.model && config.effort && !isTierModel(config.model) ? { reasoningEffort: config.effort } : {}),
         streaming: true,
         clientName: SESHBOARD_CLIENT,
+        ...(config.mcpServers ? { mcpServers: Object.fromEntries(Object.entries(config.mcpServers).map(([name, server]) => [name, { type: 'local' as const, ...server, tools: ['*'] }])) } : {}),
         // For Rewind. On a resume it starts only when the session still has a baseline: earlier turns can't be restored.
         enableFileChangeTracking: true,
+        ...(config.appendSystem || config.instructions ? { systemMessage: { mode: 'append' as const, content: [config.appendSystem, config.instructions].filter(Boolean).join('\n\n') } } : {}),
         onPermissionRequest: (request) =>
           approves(request)
             ? Promise.resolve<PermissionAnswer>({ kind: 'approve-once' })

@@ -12,7 +12,10 @@ export const Effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export type Effort = z.infer<typeof Effort>;
 
 /** One of the models Auto can pick. */
-export const AutoTierSchema = z.enum(['haiku', 'sonnet', 'opus']);
+export const AutoTierSchema = z.enum(['haiku', 'sonnet', 'opus', 'fable']);
+
+/** The efforts Auto sets with its pick: never past `high`, where a bigger model is often cheaper. */
+export const AutoEffortSchema = z.enum(['low', 'medium', 'high']);
 
 /** What Auto decided for a session (see `AutoPickInfo`): kept with the session, so it survives a restart. */
 export const AutoPick = z.object({
@@ -21,7 +24,9 @@ export const AutoPick = z.object({
   reason: z.string().max(500),
   at: z.number(),
   tokens: z.number().int().min(0),
-  allowed: z.array(AutoTierSchema).max(3),
+  allowed: z.array(AutoTierSchema).max(4),
+  /** The effort Auto started it with; null or missing when your own effort was kept (or for an older pick). */
+  effort: AutoEffortSchema.nullable().optional(),
   /** You changed the model since. */
   left: z.boolean().optional(),
 });
@@ -76,6 +81,18 @@ export type QueuedMessage = z.infer<typeof QueuedMessage>;
 export const SendMode = z.enum(['queue', 'steer', 'now']);
 export type SendMode = z.infer<typeof SendMode>;
 
+/** One retry Claude Code is waiting on: which try of how many, the HTTP status that failed it (null: no response, a dropped connection), how long it waits, and when this was reported. */
+export const ApiRetry = z.object({
+  attempt: z.number().int(),
+  maxRetries: z.number().int(),
+  delayMs: z.number(),
+  status: z.number().int().nullable(),
+  at: z.number(),
+  /** The API sent no response at all within the first-byte window (its own, smaller, retry count). Missing: it failed. */
+  noResponse: z.boolean().optional(),
+});
+export type ApiRetry = z.infer<typeof ApiRetry>;
+
 export const SessionHostInfo = z.object({
   sessionId: z.string(),
   /** The session's working directory (the worktree path for worktree sessions, once known). */
@@ -94,6 +111,11 @@ export const SessionHostInfo = z.object({
    * requests fall back to standard speed while it still reports `on`. Null or missing: nothing stands in its way.
    */
   fastModeBlocked: z.string().nullable().optional(),
+  /**
+   * The model the last turn ran on when that was the fallback model (`fallbackModel`) and not the session's own: the
+   * full id Claude Code reported. Null or missing: the last turn ran on the session's model.
+   */
+  fallbackRan: z.string().nullable().optional(),
   /** Cost reported by Claude Code for this process so far. */
   costUsd: z.number(),
   contextPercent: z.number().nullable(),
@@ -131,6 +153,11 @@ export const SessionHostInfo = z.object({
   backgroundTasks: z.array(BackgroundTask),
   /** Claude Code is compacting the conversation (a `/compact` or an automatic one). Missing: it isn't. */
   compacting: z.boolean().optional(),
+  /**
+   * Claude Code is retrying a failed API call (overloaded, rate limited, a dropped connection), until the reply
+   * comes. Missing: it isn't.
+   */
+  apiRetry: ApiRetry.optional(),
   /** Auto picked the model this session started on (null or missing: it didn't). */
   autoPick: AutoPick.nullable().optional(),
   /** Auto is still picking the model this session starts on; your first message waits for it. */
@@ -164,6 +191,8 @@ export const PermissionRequest = z.object({
   blockedPath: z.string().nullable(),
   /** What "Always allow" would do, e.g. `Allow Bash(npm test:*) in this project`. Null when not offered. */
   alwaysLabel: z.string().nullable(),
+  /** The card also offers "Allow for this session" (the browser tools' cards): kept in memory until the engine restarts. */
+  sessionAllow: z.boolean().optional(),
   /** Set when a subagent asked. */
   agentId: z.string().nullable(),
   createdAt: z.number(),
@@ -175,6 +204,8 @@ export const PermissionDecision = z.discriminatedUnion('behavior', [
     behavior: z.literal('allow'),
     /** Apply Claude Code's suggested rule so it doesn't ask again. */
     always: z.boolean().default(false),
+    /** "Allow for this session", on a card that offers it (`sessionAllow`). */
+    session: z.boolean().optional(),
     /** Replaces the tool input, e.g. AskUserQuestion answers or an edited command. */
     updatedInput: z.record(z.string(), z.json()).optional(),
   }),
@@ -282,5 +313,7 @@ export const EditorInfo = z.object({
   id: z.string(),
   name: z.string(),
   kind: z.enum(['editor', 'terminal', 'finder']),
+  /** The app's bundle (macOS) or program (Windows), whose icon the app shows next to its name. Left out when there is none to show. */
+  icon: z.string().optional(),
 });
 export type EditorInfo = z.infer<typeof EditorInfo>;

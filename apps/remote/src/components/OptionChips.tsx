@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { ClaudeIcon } from './ClaudeIcon.tsx';
+import { CodexIcon } from './CodexIcon.tsx';
+import { AntigravityIcon } from './AntigravityIcon.tsx';
 import { CopilotIcon } from './CopilotIcon.tsx';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
-import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession, type RemoteProfile } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, remoteBaseChoices, remoteBaseName, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession, type RemoteProfile, type WorktreeBase } from '@seshboard/protocol/remote-client';
 import { branchChoices } from '../lib/branches.ts';
 import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, PROFILE_TEXT, profilesOf, projectProfile, takesEffort } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -17,6 +19,15 @@ import { Sheet } from './Sheet.tsx';
 type Look = 'chip' | 'row';
 
 const DEFAULT = '__default__';
+
+/** Each other provider's mark, by its id. */
+const PROVIDER_ICONS: Record<NonNullable<RemoteProfile['provider']>['id'], typeof CopilotIcon> = { copilot: CopilotIcon, codex: CodexIcon, antigravity: AntigravityIcon };
+
+/** Another provider's mark (GitHub Copilot's, OpenAI Codex's). */
+function ProviderIcon({ id, ...rest }: { id: keyof typeof PROVIDER_ICONS } & Parameters<typeof CopilotIcon>[0]) {
+  const Icon = PROVIDER_ICONS[id];
+  return <Icon {...rest} />;
+}
 
 /**
  * The Claude profile (login) a new session runs with, as on the computer: only with more than one profile. The
@@ -33,10 +44,9 @@ export function ProfileChip({ options, projectId, value, onPick, look }: { optio
       label="Claude profile"
       face={current?.name ?? 'Profile'}
       icon={
-        // Whose profile it is (Claude Code's, or another provider's: the phone has one, GitHub Copilot), in the
-        // profile's colour, so it needs no dot.
+        // Whose profile it is (Claude Code's, or another provider's), in the profile's colour, so it needs no dot.
         current?.provider ? (
-          <CopilotIcon size={14} aria-label={current.provider.name} role="img" className={`shrink-0 ${PROFILE_TEXT[current.color]}`} data-remote-profile-provider={current.provider.id} />
+          <ProviderIcon id={current.provider.id} size={14} aria-label={current.provider.name} role="img" className={`shrink-0 ${PROFILE_TEXT[current.color]}`} data-remote-profile-provider={current.provider.id} />
         ) : current ? (
           <ClaudeIcon size={14} aria-label="Claude Code" role="img" className={`shrink-0 ${PROFILE_TEXT[current.color]}`} data-remote-profile-provider="claude" />
         ) : (
@@ -161,6 +171,23 @@ export function WorkspaceChip({ value, onPick, disabled, look }: { value: boolea
         { value: false, label: 'This folder', description: 'Edits land in your working copy' },
         { value: true, label: 'New worktree', description: 'An isolated copy; your checkout stays untouched' },
       ]}
+      onPick={onPick}
+    />
+  );
+}
+
+/** Where a new worktree starts: the remote's default branch, the local HEAD, or another branch the computer lists. */
+export function BaseChip({ branches, value, onPick, look }: { branches: RemoteBranches; value: WorktreeBase; onPick: (base: WorktreeBase) => void; look?: Look }) {
+  return (
+    <ChoiceChip
+      label="Branch from"
+      face={remoteBaseName(value, branches)}
+      icon={look === 'row' ? undefined : <GitBranch className="size-3.5 text-muted" aria-hidden />}
+      look={look}
+      rowIcon={<GitBranch aria-hidden />}
+      selected={value}
+      hook="base"
+      options={remoteBaseChoices(branches, value).map((c) => ({ value: c.value, label: c.label, description: c.description ?? c.note, separatorAfter: c.separatorAfter }))}
       onPick={onPick}
     />
   );

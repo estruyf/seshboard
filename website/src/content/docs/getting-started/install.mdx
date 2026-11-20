@@ -28,7 +28,7 @@ Seshboard is a desktop app for macOS, Windows and Linux for running and keeping 
 
 <Steps>
 
-1. Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest).
+1. Download the `.dmg` from the [latest release](https://github.com/estruyf/seshboard/releases/latest).
 2. Open it and drag **Seshboard** to **Applications**.
 3. Open Seshboard from Applications or Spotlight.
 
@@ -42,7 +42,7 @@ Releases are signed and notarised by Apple, so macOS opens them without asking.
 
 ## Install on Windows
 
-Download `Seshboard-<version>-setup.exe` from the [latest release](https://github.com/estruyf/switchboard/releases/latest).
+Download `Seshboard-<version>-setup.exe` from the [latest release](https://github.com/estruyf/seshboard/releases/latest).
 
 <Steps>
 
@@ -58,7 +58,7 @@ If Windows SmartScreen says "Windows protected your PC", the installer isn't sig
 
 ## Install on Linux
 
-Every release has an AppImage, a `.deb` and an `.rpm`, for x64 and Arm64. Download the one for your distribution from the [latest release](https://github.com/estruyf/switchboard/releases/latest).
+Every release has an AppImage, a `.deb` and an `.rpm`, for x64 and Arm64. Download the one for your distribution from the [latest release](https://github.com/estruyf/seshboard/releases/latest).
 
 - **Debian, Ubuntu and their derivatives:** install the `.deb` with apt, which also installs what it needs:
 
@@ -101,7 +101,7 @@ brew upgrade --cask estruyf/tap/seshboard
 
 ## Build it from source
 
-You can also build the app from the [repository](https://github.com/estruyf/switchboard). You need Node 24 or later, and it takes a couple of minutes. `npm run dist` builds for the system it runs on: a `.dmg` on a Mac, an installer on Windows, and an AppImage, `.deb` and `.rpm` on Linux.
+You can also build the app from the [repository](https://github.com/estruyf/seshboard). You need Node 24 or later, and it takes a couple of minutes. `npm run dist` builds for the system it runs on: a `.dmg` on a Mac, an installer on Windows, and an AppImage, `.deb` and `.rpm` on Linux.
 
 ```bash
 npm install
@@ -137,7 +137,7 @@ xattr -dr com.apple.quarantine /Applications/Seshboard.app
 ```
 
 <Aside type="note">
-The signed releases from GitHub and Homebrew don't need this. The [repository's notes on building and signing](https://github.com/estruyf/switchboard/blob/main/docs/building-and-signing.md) have the details.
+The signed releases from GitHub and Homebrew don't need this. The [repository's notes on building and signing](https://github.com/estruyf/seshboard/blob/main/docs/building-and-signing.md) have the details.
 </Aside>
 
 </OnlyOn>
@@ -146,7 +146,7 @@ The signed releases from GitHub and Homebrew don't need this. The [repository's 
 
 ## If Windows blocks the installer
 
-An installer you build yourself is unsigned. On another PC, Windows SmartScreen stops it with "Windows protected your PC". Choose **More info**, then **Run anyway**. The [repository's notes on building and signing](https://github.com/estruyf/switchboard/blob/main/docs/building-and-signing.md#windows) have the details.
+An installer you build yourself is unsigned. On another PC, Windows SmartScreen stops it with "Windows protected your PC". Choose **More info**, then **Run anyway**. The [repository's notes on building and signing](https://github.com/estruyf/seshboard/blob/main/docs/building-and-signing.md#windows) have the details.
 
 </OnlyOn>
 

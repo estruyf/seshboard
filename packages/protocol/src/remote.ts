@@ -2,10 +2,11 @@ import { z } from 'zod';
 import { isProviderFeature, OPTIONAL_PROVIDERS } from './providerConstants.ts';
 import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
+import { ActivityDay, RemoteActivityEntry } from './activity.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
 import { ClonePlan, CloneProgress } from './clone.ts';
-import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { ApiRetry, AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, SlashCommand, StreamDelta, WorktreeBaseSchema } from './host.ts';
 import { Pipeline, PipelineRun, PipelineRunStep, PushPreview } from './pipelineSchema.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
@@ -63,6 +64,11 @@ export const RemoteSession = z.object({
    * don't apply. Null or left out: Claude Code.
    */
   provider: z.enum(OPTIONAL_PROVIDERS).nullable().optional(),
+  /**
+   * Its provider can't continue it here (OpenAI Codex, read-only for now): the phone shows the command that continues it
+   * in the provider's own CLI in place of the message box. Left out: it can be sent to.
+   */
+  readOnly: z.object({ resumeCommand: z.string() }).optional(),
   /** While it runs in Seshboard: its model, effort and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
   /** Null: the model's own. Left out by a Seshboard from before a phone could change it. */
@@ -80,6 +86,8 @@ export const RemoteSession = z.object({
    * can be stopped with `session.stopTask`. Left out by a Seshboard from before phones knew them.
    */
   background: z.array(BackgroundTask).optional(),
+  /** Claude Code is retrying a failed API call; the line under the conversation says so. Left out when it isn't, and by a Seshboard from before phones knew it. */
+  apiRetry: ApiRetry.optional(),
   /**
    * The session or run row it sits under: a pipeline step's sub-session under the session the run started from, or
    * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Seshboard from before phones knew runs.
@@ -147,6 +155,28 @@ export const RemoteSessions = z.object({
   runs: z.array(RemoteRunState).optional(),
 });
 export type RemoteSessions = z.infer<typeof RemoteSessions>;
+
+/**
+ * A session in Done (the sidebar's Archived): archived by hand or after the archive days. A phone only lists these
+ * and reopens them (`session.setFlags` with `archived: false`); it can't read them. With `REMOTE_FEATURE_ARCHIVED`.
+ */
+export const RemoteArchivedSession = z.object({
+  id: z.string(),
+  title: z.string(),
+  projectId: ProjectId,
+  projectName: z.string(),
+  branch: z.string().nullable(),
+  updatedAt: z.number(),
+  /** When it went to Done: when it was archived, or for one archived by itself, its last activity plus the archive days. */
+  archivedAt: z.number(),
+  /** It went to Done by itself, after the archive days without activity, rather than marked done. */
+  inactive: z.boolean(),
+  /** The Claude profile it ran with; null while there is only one profile. */
+  profile: RemoteSessionProfile.nullable(),
+  /** The sessions its pipeline runs started, which come back with it. */
+  steps: z.number().int().nonnegative(),
+});
+export type RemoteArchivedSession = z.infer<typeof RemoteArchivedSession>;
 
 export const RemoteProject = z.object({ id: ProjectId, name: z.string() });
 export type RemoteProject = z.infer<typeof RemoteProject>;
@@ -219,11 +249,23 @@ export const RemoteSessionOptions = z.object({
    * `REMOTE_FEATURE_BRANCHES`. Left out, the session starts on what is checked out. Not with a worktree.
    */
   checkoutBranch: z.string().min(1).max(250).optional(),
+  /**
+   * In a new worktree: where it starts (`fresh`, `head`, or a branch's full ref that `projects.branches` lists), with
+   * `REMOTE_FEATURE_WORKTREE_BASE`. Left out, the project's default base.
+   */
+  worktreeBase: WorktreeBaseSchema.optional(),
 });
 export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 
 /** A project's or a profile's defaults for new sessions (null: not set there). */
-export const RemoteDefaults = z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean().nullable() });
+export const RemoteDefaults = z.object({
+  model: z.string().nullable(),
+  effort: Effort.nullable(),
+  permissionMode: PermissionMode.nullable(),
+  worktree: z.boolean().nullable(),
+  /** Where a new worktree starts (null: not set there). With `REMOTE_FEATURE_WORKTREE_BASE`. */
+  baseRef: WorktreeBaseSchema.nullable().optional(),
+});
 export type RemoteDefaults = z.infer<typeof RemoteDefaults>;
 
 /** A provider's own mode for one of Seshboard's (Copilot's, described in its words). */
@@ -276,6 +318,12 @@ export const RemoteBranches = z.object({
   branches: z.array(z.string()),
   /** Checked out in another worktree: git won't check them out in the project's folder too. */
   checkedOutElsewhere: z.array(z.string()),
+  /** Remote branches (`origin/dev`), most recent first: a new worktree can start from one. With `REMOTE_FEATURE_WORKTREE_BASE`. */
+  remoteBranches: z.array(z.string()).optional(),
+  /** The remote a worktree from `fresh` starts from (origin when there is one); null without a remote. */
+  remote: z.string().nullable().optional(),
+  /** The branch `fresh` starts from: the project's default branch, else the remote's; null when unknown. */
+  baseBranch: z.string().nullable().optional(),
 });
 export type RemoteBranches = z.infer<typeof RemoteBranches>;
 
@@ -402,6 +450,8 @@ export const remoteContract = {
       }),
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
+    /** The sessions in Done, most recently done first. With `REMOTE_FEATURE_ARCHIVED`. */
+    'sessions.archived': { params: z.object({}), result: z.object({ sessions: z.array(RemoteArchivedSession) }) },
     'projects.list': { params: z.object({}), result: z.object({ projects: z.array(RemoteProject) }) },
     /** The branches New session offers for the project's folder, read from git each time. With `REMOTE_FEATURE_BRANCHES`. */
     'projects.branches': { params: z.object({ projectId: ProjectId }), result: RemoteBranches },
@@ -424,20 +474,28 @@ export const remoteContract = {
     /**
      * Sends a prompt, or queues it while Claude is working (`mode`, as on the Mac), with images pasted, dropped or
      * photographed, and files (`REMOTE_FEATURE_ATTACHMENTS`), which the prompt mentions by their path on the computer.
+     * The text may be empty when images or files go with it (`REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY`).
      */
     'session.send': {
-      params: z.object({
-        sessionId: SessionId,
-        text: Prompt,
-        mode: SendMode.default('queue'),
-        images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
-        files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
-      }),
+      params: z
+        .object({
+          sessionId: SessionId,
+          text: z.string().trim().max(MAX_PROMPT_LENGTH),
+          mode: SendMode.default('queue'),
+          images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
+          files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
+        })
+        // Images or files alone are a message too (`REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY`); an older computer wants text.
+        .refine((p) => p.text || p.images.length || p.files.length, { message: 'Type a message or attach something', path: ['text'] }),
       result: z.object({ queued: z.boolean() }),
     },
+    /** The skills, custom commands and plugin commands a session can run, for the / menu. With `REMOTE_FEATURE_COMMANDS`. */
+    'session.commands': { params: z.object({ sessionId: SessionId }), result: z.object({ commands: z.array(SlashCommand) }) },
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
     /** Sends one message from Up next now, stopping Claude's turn first; the rest keep waiting. With `REMOTE_FEATURE_QUEUE_SEND_NOW`. */
     'session.queue.sendNow': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
+    /** Puts one message from Up next at another place in it (`toIndex`, from 0). With `REMOTE_FEATURE_QUEUE_MOVE`. */
+    'session.queue.move': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200), toIndex: z.number().int().min(0).max(1000) }), result: z.object({}) },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (`RemoteSession.background`); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string().min(1).max(200) }), result: z.object({}) },
@@ -479,7 +537,10 @@ export const remoteContract = {
     'session.markRead': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Marks a session unread again: Undo after a swipe marked it read. With `REMOTE_FEATURE_MARK_UNREAD`. */
     'session.markUnread': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
-    /** Pins or archives a session; an archived one leaves the phone's list. */
+    /**
+     * Pins or archives a session; an archived one leaves the phone's list. `archived: false` also reopens a session in
+     * Done (`sessions.archived`), with its pipeline runs' sessions.
+     */
     'session.setFlags': { params: z.object({ sessionId: SessionId, pinned: z.boolean().optional(), archived: z.boolean().optional() }), result: z.object({}) },
     /** The model of a running session (null: the default). */
     'session.setModel': { params: z.object({ sessionId: SessionId, model: z.string().min(1).max(200).nullable() }), result: z.object({}) },
@@ -537,6 +598,14 @@ export const remoteContract = {
       }),
       result: z.object({ windows: z.array(WindowCost).nullable() }),
     },
+    /**
+     * What the sessions there did per day, as `activity.range` on that computer: the project as a name, no folders.
+     * With `REMOTE_FEATURE_ACTIVITY`.
+     */
+    'activity.range': {
+      params: z.object({ from: ActivityDay, to: ActivityDay, timeZone: z.string().max(100).default('UTC') }),
+      result: z.object({ entries: z.array(RemoteActivityEntry) }),
+    },
     /** The catch-up of a session's last turn, without paths outside its project. */
     'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
     /** What changed in the session's checkout (its worktree when it has one), not committed yet. */
@@ -546,6 +615,20 @@ export const remoteContract = {
     },
     /** One changed file's unified diff, at most `REMOTE_DIFF_LINES` lines. Only files `changes.get` lists. */
     'changes.diff': { params: z.object({ sessionId: SessionId, path: z.string().min(1).max(4096) }), result: z.object({ diff: z.string(), truncated: z.boolean() }) },
+    /**
+     * Reads a file the session made, to preview it: one Claude wrote with Write in this session, or one in the
+     * session's scratchpad. Any other path is NOT_FOUND, whether it exists or not. The shape of the app's `files.read`,
+     * with at most `REMOTE_FILE_TEXT_BYTES` of text and an HTML page's images left out. With `REMOTE_FEATURE_FILES`.
+     */
+    'files.read': {
+      params: z.object({ sessionId: SessionId, path: z.string().min(1).max(4096) }),
+      result: z.object({ kind: z.enum(['markdown', 'html', 'code']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+    },
+    /** An image the session made (as `files.read` decides), as base64, up to `REMOTE_FILE_IMAGE_BYTES`. With `REMOTE_FEATURE_FILES`. */
+    'files.image': {
+      params: z.object({ sessionId: SessionId, path: z.string().min(1).max(4096) }),
+      result: z.object({ mediaType: z.string(), data: z.string() }),
+    },
     /**
      * Commits every change in the session's checkout, without a terminal. A failed commit (a hook said no) is not an
      * error: `output` has the last lines of what it printed. It never pushes.

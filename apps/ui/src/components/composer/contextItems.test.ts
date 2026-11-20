@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@seshboard/protocol/client';
 import { MAX_PROMPT_LENGTH } from '@seshboard/protocol/client';
-import { addChips, chipLabel, chipsSummary, contextFromPrompt, fenceFor, isLongPaste, mentionFor, PASTE_CARD_CHARS, PASTE_CARD_LINES, pastedItem, pasteSize, pasteTooLongReason, promptWithContext, tooLongReason } from './contextItems.ts';
+import { addChips, chipLabel, chipsSummary, contextFromPrompt, fenceFor, fileLinesItem, isLongPaste, mentionFor, PASTE_CARD_CHARS, PASTE_CARD_LINES, pastedItem, pasteSize, pasteTooLongReason, promptWithContext, searchResultsItem, tooLongReason } from './contextItems.ts';
 
 const file = (path: string, extra: Partial<Extract<ContextItem, { kind: 'file' }>> = {}): Extract<ContextItem, { kind: 'file' }> => ({ kind: 'file', path, directory: false, ...extra });
 
@@ -173,5 +173,22 @@ describe('attached issues and pull requests', () => {
     expect(addChips(addChips([], [issue]), [{ ...issue, repo: 'Estruyf/Switchboard' }])).toHaveLength(1);
     expect(chipsSummary([issue, pr, file('/a')])).toBe('1 file, 1 issue and 1 pull request');
     expect(chipLabel(issue, null).label).toBe('#32 Start a session from a GitHub issue');
+  });
+});
+
+describe('lines from the Files panel', () => {
+  it('shows the file and lines on the chip, and sends the path over the lines', () => {
+    const item = fileLinesItem('/repo/src/cart/CartButton.tsx', { start: 6, end: 12 }, 'const a = 1;\n', 'tsx');
+    expect(chipLabel(item, '/repo').label).toBe('CartButton.tsx:6–12');
+    expect(promptWithContext('Why?', [item], '/repo')).toBe('Why?\n\nsrc/cart/CartButton.tsx:6-12:\n```tsx\nconst a = 1;\n```');
+    expect(fileLinesItem('/repo/a.ts', { start: 3, end: 3 }, 'x').label).toBe('a.ts:3');
+  });
+
+  it('lists search results as path and line, at most 50', () => {
+    const matches = Array.from({ length: 60 }, (_, i) => ({ path: 'a.ts', line: i + 1 }));
+    const item = searchResultsItem('Add to c', matches, 60);
+    expect(item.label).toBe('Search results for "Add to c"');
+    expect(item.text.split('\n')).toHaveLength(51);
+    expect(item.text.split('\n').at(-1)).toBe('… and 10 more');
   });
 });

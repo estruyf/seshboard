@@ -28,6 +28,7 @@ import {
   type DescriptionSource,
   type NoticeAction,
 } from './pullRequest.ts';
+import { openWebLink } from '../../state/browserActions.ts';
 
 /** Where the GitHub CLI's install instructions are. */
 const GH_INSTALL_URL = 'https://cli.github.com';
@@ -163,8 +164,8 @@ export function PullRequestDialog({
       if (progress.step === 'failed') return setError(progress.error);
       saveDraft(cwd, draft.branch, null);
       if (progress.compareUrl) {
-        window.open(progress.compareUrl, '_blank');
         onClose();
+        openWebLink(progress.compareUrl, sessionId);
       } else if (progress.pr) onCreated(progress.pr);
     });
     unlisten.current = off;
@@ -280,7 +281,12 @@ export function PullRequestDialog({
         );
       case 'view':
         return (
-          <Button key={kind} size="sm" onClick={() => shown?.pr && window.open(shown.pr.url, '_blank')} data-pr-action={kind}>
+          <Button key={kind} size="sm" onClick={() => {
+              if (!shown?.pr) return;
+              // The dialog would cover the session's browser.
+              onClose();
+              openWebLink(shown.pr.url, sessionId);
+            }} data-pr-action={kind}>
             View PR #{shown?.pr?.number}
           </Button>
         );

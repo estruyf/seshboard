@@ -1,4 +1,4 @@
-import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@seshboard/protocol/client';
+import { agentName, PROVIDER_NAMES, type ChecksFinished, type HostState, type LiveSession, type OptionalProvider, type PermissionRequest, type SessionHostInfo, type TerminalInfo } from '@seshboard/protocol/client';
 
 export interface AttentionEvent {
   kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped' | 'trigger-started' | 'trigger-paused' | 'pipeline-stopped' | 'pipeline-done' | 'reminder';
@@ -11,6 +11,19 @@ export interface AttentionEvent {
   scheduleId?: string;
   /** A trigger's news without a session (an issue picked up, a pause): a click opens this project on its Triggers tab. */
   triggerRoot?: string;
+}
+
+/**
+ * What a waiting prompt asks, as a notification's title: "Claude has a question", "Codex wants to use Bash". `agent`:
+ * who asks (`agentName`).
+ */
+export const askWords = (toolName: string, agent = 'Claude') =>
+  toolName === 'AskUserQuestion' ? `${agent} has a question` : toolName === 'ExitPlanMode' ? `${agent} has a plan for you` : `${agent} wants to use ${toolName}`;
+
+/** A failed turn's title: "Claude Code stopped with an error", "OpenAI Codex stopped with an error". */
+export function stoppedWords(provider: string | null | undefined): string {
+  const name = !provider ? 'Claude Code' : provider in PROVIDER_NAMES ? PROVIDER_NAMES[provider as OptionalProvider] : agentName(provider);
+  return `${name} stopped with an error`;
 }
 
 /** A folder's name, from a `/` or a Windows `\` path. */
@@ -33,6 +46,8 @@ export class Attention {
   private readonly cliRunning = new Set<string>();
   private readonly terminalExit = new Map<string, number | null>();
   private readonly titles = new Map<string, string>();
+  /** Another provider's sessions (Codex, Copilot), from their hosts: their news names that provider. */
+  private readonly providers = new Map<string, OptionalProvider>();
 
   /** `external`: whether sessions from other apps are shown (Settings); off, Terminal sessions are left alone. */
   constructor(private readonly options: { external?: () => boolean } = {}) {}
@@ -47,6 +62,8 @@ export class Attention {
   }
 
   onHost(info: SessionHostInfo): AttentionEvent[] {
+    if (info.provider) this.providers.set(info.sessionId, info.provider);
+    const provider = this.providers.get(info.sessionId);
     const previous = this.hostStates.get(info.sessionId);
     this.hostStates.set(info.sessionId, info.state);
     const busy = previous === 'running' || previous === 'needs-you';
@@ -55,17 +72,17 @@ export class Attention {
       return [{ kind: 'failed', sessionId: info.sessionId, title: 'Usage limit reached', body: this.label(info.sessionId, info.cwd) }];
     }
     if (busy && info.state === 'idle') {
-      return [{ kind: 'finished', sessionId: info.sessionId, title: 'Claude finished', body: this.label(info.sessionId, info.cwd), cwd: info.cwd }];
+      return [{ kind: 'finished', sessionId: info.sessionId, title: `${agentName(provider)} finished`, body: this.label(info.sessionId, info.cwd), cwd: info.cwd }];
     }
     if (info.state === 'error' && previous !== 'error') {
-      return [{ kind: 'failed', sessionId: info.sessionId, title: 'Claude Code stopped with an error', body: info.error ?? this.label(info.sessionId, info.cwd) }];
+      return [{ kind: 'failed', sessionId: info.sessionId, title: stoppedWords(provider), body: info.error ?? this.label(info.sessionId, info.cwd) }];
     }
     return [];
   }
 
   onPermission(request: PermissionRequest): AttentionEvent[] {
     this.pending.set(request.requestId, request);
-    const what = request.toolName === 'AskUserQuestion' ? 'Claude has a question' : request.toolName === 'ExitPlanMode' ? 'Claude has a plan for you' : `Claude wants to use ${request.toolName}`;
+    const what = askWords(request.toolName, agentName(this.providers.get(request.sessionId)));
     return [{ kind: 'needs-you', sessionId: request.sessionId, title: what, body: this.titles.get(request.sessionId) ?? 'Waiting for your approval' }];
   }
 

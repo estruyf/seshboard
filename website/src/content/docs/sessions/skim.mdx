@@ -1,0 +1,63 @@
+---
+title: Skim the conversation
+description: A finished turn with less to read, the numbers of what changed above the reply, and the sentences that matter least faded.
+sidebar:
+  label: Skim
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Related from '../../../components/Related.astro';
+
+When Claude is done, you want to know what happened, not read every message it wrote on the way. Skim shows a finished turn with less to read. Nothing is rewritten or summarised: what Claude wrote is all still there, one click away.
+
+Skim is on by default.
+
+## What changes
+
+Skim only changes a turn once it has finished. While Claude works, you see everything as it comes in, so text doesn't move under you.
+
+### Messages fold away
+
+Claude often writes a few lines between its tool calls ("Now I'll check the tests"). In Skim, those messages fold into the summary line of the tool calls around them, such as **3 messages and 9 steps**. Click the line to read them, with the steps between them.
+
+Claude's last reply in the turn never folds, and neither does an error.
+
+[Find in conversation](/sessions/search/#find-in-a-conversation) (<Kbd shortcut="find" />) still finds text in folded messages, and opens the one with the match.
+
+### What changed, above the reply
+
+A line above the reply says what the turn did, such as:
+
+`+42 −7 · 3 files · 2 tests fail · 4m 12s`
+
+The lines added and removed and the files come from the edits Claude made. The tests show when Seshboard knows how the turn's last test run went: **tests pass** in green, or how many failed in red. The time is Claude's own time for the turn. A turn that changed no files and ran no tests has no line.
+
+## Fading what matters least
+
+A long reply has a few sentences you need, such as a decision, a result or a question, and many you can skip. In Skim, the others fade, so your eye goes to what matters.
+
+The agent picks the sentences, not Seshboard: only the writer knows what it meant. Sessions that Seshboard starts or resumes, with Claude Code or GitHub Copilot, end a reply of 8 or more sentences with a hidden line that names its key ones. Seshboard hides the line and fades the rest. It needs no extra model call.
+
+A sentence always stays, whatever the agent says, when it:
+
+- says something failed, broke or is missing;
+- says something was skipped or not done;
+- says something is still to do;
+- asks something.
+
+Under a reply with faded sentences, **Show all text** brings them all back, with how many were faded, such as **9 of 14 sentences faded**. **Fade text** fades them again. When only a few sentences would fade, nothing does.
+
+The hidden line costs a few tokens per turn. When you open the session in a terminal, the line shows there as a comment at the end of the reply.
+
+## Turn it off
+
+- **Conversation view** in [Settings › Conversation](/settings/#conversation) has **Skim** and **Full**. **Full** shows every message open and nothing faded.
+- *Conversation: Full* and *Conversation: Skim* in the [command palette](/command-palette/) switch between them.
+- **Let the agent mark its key sentences**, in the same place, turns off the hidden line. Replies then don't fade, and the rest of Skim stays. The change applies to sessions you start or resume after it.
+
+With **Every step** chosen in the same place, messages between tool calls stay open, also in Skim.
+
+## Related
+
+<Related pages={['sessions/conversation', 'sessions/catch-up', 'settings']} />

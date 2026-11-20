@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
-import { isConfigDir, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
+import { isConfigDir, isTrashableAgySession, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
 
 // In this platform's form (C:Usersme.claude on Windows): the guard only takes normalised absolute paths.
 const config = resolve('/Users/me/.claude');
@@ -45,6 +45,79 @@ describe('isTrashableCopilotSession', () => {
         const link = '33333333-2222-4333-8444-555555555555';
         symlinkSync(join(home, 'other'), join(sessions, link));
         expect(isTrashableCopilotSession(join(sessions, link), home)).toBe(false);
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isTrashableAgySession', () => {
+  it("allows a conversation's history, annotations and folder, and nothing else", () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'trash-agy-')));
+    try {
+      const data = join(home, 'antigravity-cli');
+      for (const dir of ['conversations', 'annotations', join('brain', id), 'other']) mkdirSync(join(data, dir), { recursive: true });
+      writeFileSync(join(data, 'conversations', `${id}.db`), '');
+      writeFileSync(join(data, 'annotations', `${id}.pbtxt`), '');
+      writeFileSync(join(data, 'conversation_summaries.db'), '');
+      writeFileSync(join(data, 'other', `${id}.db`), '');
+      expect(isTrashableAgySession(join(data, 'conversations', `${id}.db`), home)).toBe(true);
+      expect(isTrashableAgySession(join(data, 'annotations', `${id}.pbtxt`), home)).toBe(true);
+      expect(isTrashableAgySession(join(data, 'brain', id), home)).toBe(true);
+      // Not Antigravity's own list, a file elsewhere, a folder in place of a file, or the folders themselves.
+      expect(isTrashableAgySession(join(data, 'conversation_summaries.db'), home)).toBe(false);
+      expect(isTrashableAgySession(join(data, 'other', `${id}.db`), home)).toBe(false);
+      expect(isTrashableAgySession(join(data, 'brain'), home)).toBe(false);
+      expect(isTrashableAgySession(join(data, 'brain', id, 'scratch'), home)).toBe(false);
+      mkdirSync(join(data, 'conversations', `${id.replace('1', '9')}.db`));
+      expect(isTrashableAgySession(join(data, 'conversations', `${id.replace('1', '9')}.db`), home)).toBe(false);
+      expect(isTrashableAgySession(join(data, 'conversations', `${id}.db`), join(home, '..'))).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isTrashableCodexSession', () => {
+  it("allows a thread's rollout file in a day's folder or the archive, and nothing else", () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'trash-codex-')));
+    try {
+      const day = join(home, 'sessions', '2026', '11', '06');
+      const archive = join(home, 'archived_sessions');
+      mkdirSync(day, { recursive: true });
+      mkdirSync(archive);
+      const rollout = `rollout-2026-11-06T10-00-00-${id}.jsonl`;
+      for (const name of [rollout, `${rollout}.zst`, 'notes.jsonl', `${rollout}.bak`]) writeFileSync(join(day, name), '');
+      writeFileSync(join(archive, rollout), '');
+      expect(isTrashableCodexSession(join(day, rollout), home)).toBe(true);
+      expect(isTrashableCodexSession(join(day, `${rollout}.zst`), home)).toBe(true);
+      expect(isTrashableCodexSession(join(archive, rollout), home)).toBe(true);
+      // Not another file, a folder, one that isn't there, or a rollout outside the day folders and the archive.
+      expect(isTrashableCodexSession(join(day, 'notes.jsonl'), home)).toBe(false);
+      expect(isTrashableCodexSession(join(day, `${rollout}.bak`), home)).toBe(false);
+      expect(isTrashableCodexSession(day, home)).toBe(false);
+      expect(isTrashableCodexSession(join(day, `rollout-2026-11-06T10-00-00-22222222-2222-4333-8444-555555555555.jsonl`), home)).toBe(false);
+      mkdirSync(join(day, `rollout-2026-11-06T11-00-00-${id}.jsonl`));
+      expect(isTrashableCodexSession(join(day, `rollout-2026-11-06T11-00-00-${id}.jsonl`), home)).toBe(false);
+      for (const folder of [join(home, 'sessions'), join(home, 'sessions', '2026', '11'), join(home, 'other', '2026', '11', '06'), home]) {
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, rollout), '');
+        expect(isTrashableCodexSession(join(folder, rollout), home)).toBe(false);
+      }
+      // Not a path that isn't normalised, or a relative one.
+      expect(isTrashableCodexSession(`${day}${sep}..${sep}06${sep}${rollout}`, home)).toBe(false);
+      expect(isTrashableCodexSession(join('sessions', '2026', '11', '06', rollout), home)).toBe(false);
+      if (canSymlink()) {
+        // A link named like a rollout, or a day folder that is a link to elsewhere: refused.
+        const outside = join(home, 'elsewhere');
+        mkdirSync(outside);
+        writeFileSync(join(outside, rollout), '');
+        const linked = `rollout-2026-11-06T12-00-00-${id}.jsonl`;
+        symlinkSync(join(outside, rollout), join(day, linked));
+        expect(isTrashableCodexSession(join(day, linked), home)).toBe(false);
+        symlinkSync(outside, join(home, 'sessions', '2026', '11', '07'));
+        expect(isTrashableCodexSession(join(home, 'sessions', '2026', '11', '07', rollout), home)).toBe(false);
       }
     } finally {
       rmSync(home, { recursive: true, force: true });

@@ -41,14 +41,14 @@ if (mode === 'offline') { process.stderr.write('error connecting to api.github.c
 
   it('asks GitHub whether Seshboard is starred', async () => {
     expect(await githubStarStatus(gh, scratch, env())).toBe('starred');
-    expect(ghLog().argv).toEqual(['api', '--silent', '/user/starred/estruyf/switchboard']);
+    expect(ghLog().argv).toEqual(['api', '--silent', '/user/starred/estruyf/seshboard']);
     expect(await githubStarStatus(gh, scratch, env('not-starred'))).toBe('not-starred');
     expect(await githubStarStatus(gh, scratch, env('offline'))).toBe('unavailable');
   });
 
   it('stars it with a PUT', async () => {
     await starSeshboard(gh, scratch, env());
-    expect(ghLog().argv).toEqual(['api', '--silent', '--method', 'PUT', '/user/starred/estruyf/switchboard']);
+    expect(ghLog().argv).toEqual(['api', '--silent', '--method', 'PUT', '/user/starred/estruyf/seshboard']);
   });
 
   it('says why starring failed', async () => {

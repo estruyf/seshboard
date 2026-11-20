@@ -11,6 +11,9 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 // Straight from the source file: Node runs these scripts as they are, and the package's index has TypeScript it can't strip.
 import { BUILT_IN_PIPELINES, changesMessage, fillStepPrompt } from '../../../packages/protocol/src/pipelines.ts';
+import { CODEX_DEMO_THREADS, codexDemoRollout } from '../../../packages/engine/src/providers/codex/codexDemo.ts';
+import { AGY_DEMO_SESSIONS, agyDemoLog } from '../../../packages/engine/src/providers/antigravity/agyDemo.ts';
+import { agyLogFile } from '../../../packages/engine/src/providers/antigravity/agyFiles.ts';
 import type { PipelineClaudeStep, StepActionResult } from '../../../packages/protocol/src/pipelineSchema.ts';
 
 const VERSION = '2.1.287';
@@ -22,7 +25,7 @@ const DAY = 24 * HOUR;
 export interface DemoWorld {
   home: string;
   /** Session ids the screenshot tour opens. */
-  sessions: { hero: string; working: string; needsYou: string; copilot: string };
+  sessions: { hero: string; working: string; needsYou: string; copilot: string; codex: string[]; antigravity: string[] };
   /** The older sessions by title, with the config folder each was written to (the website's Auto model pictures). */
   history: Record<string, { id: string; configDir: string }>;
   /** Processes that stand in for Claude Code running in a terminal; stop them when done. */
@@ -51,6 +54,21 @@ function repo(dir: string, files: Files, options: { branch?: string; changes?: F
   git(dir, 'commit', '-q', '-m', 'Initial commit');
   if (options.branch) git(dir, 'switch', '-q', '-c', options.branch);
   if (options.changes) write(dir, options.changes);
+}
+
+/**
+ * Commits made during a demo session, for the Shipped part of Activity's bars: empty commits from `at` on, on a ref of
+ * their own (`refs/demo/…`, not a branch), so the working tree, the branches and their diffs stay as they are. Activity
+ * finds them because it reads `git log --all`, and gives each to the session whose moment is nearest.
+ */
+function commitsAt(dir: string, at: number, ref: string, messages: readonly string[]): void {
+  let parent = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  messages.forEach((message, i) => {
+    const date = new Date(at + i * 20_000).toISOString();
+    const env = { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date };
+    parent = execFileSync('git', ['-c', 'user.name=Demo', '-c', 'user.email=demo@example.com', 'commit-tree', `${parent}^{tree}`, '-p', parent, '-m', message], { cwd: dir, encoding: 'utf8', env }).trim();
+  });
+  git(dir, 'update-ref', ref, parent);
 }
 
 const icon = (from: string, to: string, glyph: string) =>
@@ -129,10 +147,22 @@ class Transcript {
     };
   }
 
-  results(...results: Array<{ id: string; text: string; error?: boolean }>): this {
-    const content = results.map((r) => ({ tool_use_id: r.id, type: 'tool_result', content: r.text, ...(r.error ? { is_error: true } : {}) }));
+  results(...results: Array<{ id: string; text: string; error?: boolean; image?: string }>): this {
+    const content = results.map((r) => ({
+      tool_use_id: r.id,
+      type: 'tool_result',
+      content: r.image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: r.image } }] : r.text,
+      ...(r.error ? { is_error: true } : {}),
+    }));
     this.lines.push(JSON.stringify({ ...this.base('user'), message: { role: 'user', content } }));
     return this;
+  }
+
+  /** Claude reading an image file: a tool call that returns the image (base64 PNG). */
+  readImage(file_path: string, image: string): this {
+    const id = `toolu_${randomUUID().replaceAll('-', '').slice(0, 24)}`;
+    this.assistant({ type: 'tool_use', id, name: 'Read', input: { file_path } });
+    return this.results({ id, text: '', image });
   }
 
   /** One tool call and its result, as two records. */
@@ -150,6 +180,11 @@ class Transcript {
 
   say(text: string): this {
     return this.assistant({ type: 'text', text });
+  }
+
+  /** When the last record so far happened. */
+  get at(): number {
+    return this.last;
   }
 
   /** Writes the transcript and returns its file. */
@@ -233,7 +268,28 @@ const READING_SECOND = [
   'await change(line.id, { quantity: 3 });',
   '```',
   '',
+  // A drafted message in a quote, a break in a table cell, an alert and a task list: the "markdown in replies" smoke step looks for them.
+  'Here is a message you can post in the team channel:',
+  '',
+  '> Hi all, the checkout is faster now. Two things to know:',
+  '>',
+  '> 1. The cart loads **once**, so the total no longer jumps.',
+  '> 2. Run `npm test` before you merge.',
+  '',
+  '| Case | What you see |',
+  '| --- | --- |',
+  '| Offline change | The new total<br>and a sync later |',
+  '',
+  '> [!NOTE]',
+  '> The old endpoints stay until the next release.',
+  '',
+  '- [x] Cart query shared',
+  '- [ ] Old endpoints removed',
+  '',
   'If all three behave, the old shipping and tax endpoints can go in the next release. I would remove them in a separate change, so that if something does go wrong, undoing it is one revert and not a search through a larger diff.',
+  '',
+  // Skim's marks: the line Seshboard asks the agent to end a long reply with. The app hides it and fades the rest.
+  '<!-- keep: "The cart is fetched once" | "The time until the first stable total" | "One more thing changed" -->',
 ].join('\n');
 
 const numbered = (text: string) =>
@@ -392,7 +448,41 @@ const ATTACHED_ISSUE = [
 // ---------------------------------------------------------------------------------------------------------
 
 /** `home` is an empty folder to build in; a new temporary one by default (by its long name on Windows, as Claude Code records it). */
-export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpdir(), 'seshboard-demo-')))): DemoWorld {
+/** Plain colour PNGs, each its own shape, for the demo's images. */
+/** The Copilot demo's visual: the cart total's three steps as an SVG in the ramp classes. */
+const CART_VISUAL = `<svg width="100%" viewBox="0 0 680 100" role="img"><title>Cart total</title><desc>Lines are summed, then rounded to whole cents.</desc>
+  <g class="c-gray"><rect x="40" y="30" width="160" height="44" rx="4" /><text x="120" y="57" text-anchor="middle" class="th">Cart lines</text></g>
+  <line x1="200" y1="52" x2="260" y2="52" class="arr" />
+  <g class="c-teal"><rect x="260" y="30" width="160" height="44" rx="4" /><text x="340" y="57" text-anchor="middle" class="th">Sum of price × qty</text></g>
+  <line x1="420" y1="52" x2="480" y2="52" class="arr" />
+  <g class="c-purple"><rect x="480" y="30" width="160" height="44" rx="4" /><text x="560" y="57" text-anchor="middle" class="th">Math.round</text></g>
+</svg>`;
+
+/** A visual with an SVG in the theme's colours, a slider and a button that asks Claude (`sendPrompt`). */
+const CHECKOUT_VISUAL = `<div style="display: flex; flex-direction: column; gap: 12px; padding: 4px 0">
+  <svg width="100%" viewBox="0 0 520 80" role="img" aria-label="Checkout flow">
+    <g class="c-blue"><rect x="10" y="20" width="140" height="40" rx="8" /><text x="80" y="45" text-anchor="middle" class="t">Cart</text></g>
+    <line x1="150" y1="40" x2="190" y2="40" class="arr" />
+    <g class="c-teal"><rect x="190" y="20" width="140" height="40" rx="8" /><text x="260" y="45" text-anchor="middle" class="t">Payments</text></g>
+    <line x1="330" y1="40" x2="370" y2="40" class="arr" />
+    <g class="c-amber"><rect x="370" y="20" width="140" height="40" rx="8" /><text x="440" y="45" text-anchor="middle" class="t">Orders</text></g>
+  </svg>
+  <label style="display: flex; gap: 8px; align-items: center; color: var(--text-secondary)">Payment retries <input id="retries" type="range" min="0" max="5" value="2" /> <output id="retries-value">2</output></label>
+  <div><button id="ask" type="button">Ask about the retries</button></div>
+</div>
+<script>
+  const range = document.getElementById('retries');
+  const shown = document.getElementById('retries-value');
+  range.addEventListener('input', () => { shown.textContent = range.value; });
+  document.getElementById('ask').addEventListener('click', () => sendPrompt(\`Why does the payment step retry \${range.value} times?\`));
+  document.body.dataset.scripted = 'yes';
+</script>`;
+
+const YELLOW_PNG = 'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAQklEQVR4nO3OQQ0AIAwAsfnCvwP8gAuOR5MK6Jy9vjL5QEhISKgeCAkJCdUDISEhoXogJCQkVA+EhISE6oGQkNBjF4safw8qIqCKAAAAAElFTkSuQmCC';
+const GREEN_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAGAAAAAwCAIAAABhdOiYAAAAZElEQVR4nO3QMQ0AIADAMOziAaeYwQGc7GgyAUvH3EuXxveDeIAAAQIEKBwgQIAAAQoHCBAgQIDCAQIECBCgcIAAAQIEKBwgQIAAAQoHCBAgQIDCAQIECBCgcIAAAQIEKBygRwfkzIHS+1UEqQAAAABJRU5ErkJggg==';
+const BLUE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAADAAAABgCAIAAADU7mYnAAAAY0lEQVR4nO3OMQ0AIBAAsTeIUgSy4oJjaFIBnbXPVyYfCAkJCdUDISEhoXogJCQkVA+EhISE6oGQkJBQPRASEhKqB0JCQkL1QEhISKgeCAkJCdUDISEhoXogJCQkVA+EhIQeu1a0z//LyywRAAAAAElFTkSuQmCC';
+
+export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdir(), 'seshboard-demo-')))): DemoWorld {
   // Personal projects run on the personal login, payments-api on the work one.
   const configDir = join(home, '.claude');
   const workConfigDir = join(home, '.claude-work');
@@ -479,7 +569,7 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     .tool('Bash', { command: 'npm test -- theme', description: 'Run the theme tests' }, ' RUN  v3.2.4 /acme-store\n\n ✓ src/lib/theme.test.ts (6 tests) 12ms\n\n Test Files  1 passed (1)\n      Tests  6 passed (6)\n   Duration  412ms')
     .say(
       [
-        'Dark mode is in. The Settings page has a new **Appearance** section with a System / Light / Dark toggle.',
+        'I went through the theme code and the Settings page first. Dark mode is in. The Settings page has a new **Appearance** section with a System / Light / Dark toggle.',
         '',
         '- `src/lib/theme.ts` now has a `ThemeChoice` that defaults to `system` and follows `prefers-color-scheme` live.',
         '- The choice is saved in `localStorage` and removed again when someone goes back to System.',
@@ -495,6 +585,8 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
         '```',
         '',
         'All 6 theme tests pass. Want me to add a keyboard shortcut for switching themes too?',
+        '',
+        '<!-- keep: "Dark mode is in" | "The Settings page has a new" | "`src/lib/theme.ts` now has" | "All 6 theme tests pass" -->',
       ].join('\n'),
     );
   hero.write(configDir, 'Add dark mode toggle to settings');
@@ -564,6 +656,25 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     .say(READING_SECOND);
   reading.write(configDir, 'Speed up the checkout page');
 
+  // Two images in one reply and one in the next, for the lightbox (the smoke test's "image viewer").
+  new Transcript(acme, 'main', now - 6 * HOUR)
+    .user('Check the banner sizes in public/banners.')
+    .readImage(`${acme}/public/banners/square.png`, YELLOW_PNG)
+    .readImage(`${acme}/public/banners/wide.png`, GREEN_PNG)
+    .say('Both banners are sharp.')
+    .user('And the tall one?')
+    .readImage(`${acme}/public/banners/tall.png`, BLUE_PNG)
+    .say('That one is sharp too.')
+    .write(configDir, 'Check the banner sizes');
+
+  // A visual between the text of a reply, as the Claude desktop app writes it (the smoke test's "inline visual").
+  new Transcript(acme, 'main', now - 7 * HOUR)
+    .user('Show me how a checkout request goes through the services.')
+    .tool('mcp__visualize__read_me', { modules: ['diagram'] }, 'Use the c-* colour classes for boxes, and sendPrompt() for follow-ups.')
+    .tool('mcp__visualize__show_widget', { title: 'checkout_flow', loading_messages: ['Laying out the services', 'Drawing the arrows'], widget_code: CHECKOUT_VISUAL }, 'Visual shown.', 'Here is the flow from the cart to the order.')
+    .say('Each box is a service in `src/services`. The retry count is an example value: press the button to ask about it.')
+    .write(configDir, 'Show the checkout flow');
+
   // How heavy each one was, and on which model, for the Usage view.
   const usage: Record<string, TranscriptUsage> = {
     'Refactor auth middleware': { scale: 1.6 },
@@ -572,12 +683,21 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     'Add pull to refresh on the orders list': { model: 'claude-sonnet-5-5', scale: 0.9 },
     'Add CSV export to the reports endpoint': { model: 'claude-haiku-5-5', scale: 0.6 },
   };
+  // What some of them committed, so Activity's bars have a Shipped part.
+  const commits: Record<string, string[]> = {
+    'Refactor auth middleware': ['Split session and API-key checks', 'Move routes to the new middlewares', 'Test both middlewares'],
+    'Investigate flaky checkout test': ['Wait for shipping options before paying'],
+    'Add pull to refresh on the orders list': ['Add pull to refresh to the orders list', 'Keep the scroll position on refresh'],
+    'Add CSV export to the reports endpoint': ['Stream reports as CSV for text/csv', 'Test the CSV export'],
+    'Fix broken links after the docs move': ['Fix links to the moved API docs', 'Redirect the old /api/v1 URLs'],
+  };
   const written: DemoWorld['history'] = {};
   for (const [cwd, branch, title, ago, prompt, answer] of history) {
     const t = new Transcript(cwd, branch, now - ago, usage[title])
       .user(prompt)
-      .tool('Grep', { pattern: title.split(' ').at(-1)!.toLowerCase(), path: `${cwd}/src` }, 'Found 3 files')
-      .say(answer);
+      .tool('Grep', { pattern: title.split(' ').at(-1)!.toLowerCase(), path: `${cwd}/src` }, 'Found 3 files');
+    if (commits[title]) commitsAt(cwd, t.at, `refs/demo/${t.id}`, commits[title]);
+    t.say(answer);
     t.write(cwd === payments ? workConfigDir : configDir, title);
     written[title] = { id: t.id, configDir: cwd === payments ? workConfigDir : configDir };
   }
@@ -596,10 +716,12 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
 
   written['Speed up the checkout page'] = { id: reading.id, configDir };
   const copilot = writeCopilotDemo(home, acme, now - 3 * HOUR);
+  const codex = writeCodexDemo(home, acme, now - 2 * HOUR);
+  const antigravity = writeAgyDemo(home, acme, now - 4 * HOUR);
 
   return {
     home,
-    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot },
+    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot, codex, antigravity },
     history: written,
     stop: () => sleepers.forEach((child) => child.kill()),
   };
@@ -625,6 +747,16 @@ function writeCopilotDemo(home: string, cwd: string, at: number): string {
       data: { model: 'gpt-5.3-codex', content: '', toolRequests: [{ toolCallId: 'call_edit', name: 'edit', arguments: { path: file, old_str: 'return lines.reduce(', new_str: 'return Math.round(lines.reduce(' } }] },
     },
     { type: 'tool.execution_complete', data: { toolCallId: 'call_edit', success: true, result: { content: 'File edited.' } } },
+    // A visual through Seshboard's visualize server, as Copilot names an MCP tool (the smoke test's "providers").
+    {
+      type: 'assistant.message',
+      data: {
+        model: 'gpt-5.3-codex',
+        content: 'Here is where the rounding happens.',
+        toolRequests: [{ toolCallId: 'call_visual', name: 'visualize-show_widget', mcpServerName: 'visualize', mcpToolName: 'show_widget', arguments: { title: 'cart_total', loading_messages: ['Drawing the total'], widget_code: CART_VISUAL } }],
+      },
+    },
+    { type: 'tool.execution_complete', data: { toolCallId: 'call_visual', success: true, result: { content: 'The visual is shown to the user in the conversation, where you called show_widget.' } } },
     { type: 'assistant.message', data: { model: 'gpt-5.3-codex', content: 'The total is now rounded to whole cents.', toolRequests: [] } },
   ].map((event, i) => ({ ...event, id: randomUUID(), timestamp: time(i * 4) }));
   writeFileSync(join(dir, 'events.jsonl'), `${events.map((e) => JSON.stringify(e)).join('\n')}\n`);
@@ -633,6 +765,40 @@ function writeCopilotDemo(home: string, cwd: string, at: number): string {
     [`id: ${id}`, `cwd: ${cwd}`, `git_root: ${cwd}`, 'branch: main', 'client_name: github/cli', 'name: Round the cart total', `created_at: ${time(0)}`, `updated_at: ${time(30)}`, ''].join('\n'),
   );
   return id;
+}
+
+/**
+ * OpenAI Codex CLI sessions on acme-store (#276), as rollout files in `~/.codex/sessions/YYYY/MM/DD/`: shown once a
+ * Codex profile is added. The demo's Codex (SESHBOARD_STUB_CODEX) lists the threads that have a file here and answers
+ * their conversations itself; a file holds only its `session_meta` line. Returns their ids, newest first.
+ */
+function writeCodexDemo(home: string, cwd: string, at: number): string[] {
+  return CODEX_DEMO_THREADS.map((thread, i) => {
+    const time = new Date(at - i * 5 * HOUR);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dir = join(home, '.codex', 'sessions', String(time.getFullYear()), pad(time.getMonth() + 1), pad(time.getDate()));
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `rollout-${time.toISOString().slice(0, 19).replace(/:/g, '-')}-${thread.id}.jsonl`);
+    writeFileSync(file, codexDemoRollout(thread, cwd, time));
+    utimesSync(file, time, time);
+    return thread.id;
+  });
+}
+
+/**
+ * Google Antigravity CLI sessions on acme-store (#272), as step logs in `~/.gemini/antigravity-cli/brain/<id>/`: shown
+ * once an Antigravity profile is added. The demo's Antigravity (SESHBOARD_STUB_AGY) lists the conversations that have a
+ * log here and replays them itself. Returns their ids, newest first.
+ */
+function writeAgyDemo(home: string, cwd: string, at: number): string[] {
+  return AGY_DEMO_SESSIONS.map((session, i) => {
+    const time = new Date(at - i * 6 * HOUR);
+    const file = agyLogFile(join(home, '.gemini'), session.id);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, agyDemoLog(session, cwd, time));
+    utimesSync(file, time, time);
+    return session.id;
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -767,4 +933,48 @@ export function linkClaude(home: string): void {
     symlinkSync(claude, join(home, '.local', 'bin', 'claude'));
     return;
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Two sessions Auto started on Sonnet that grew past their first prompt, for the smoke test's step-up note.
+
+/** What `writeAutoSuggestDemo` wrote: the session ids and the picks to seed (`DemoUsage.autoPicks`). */
+export interface AutoSuggestDemo {
+  /** Ten files edited: the note suggests more effort first. */
+  effort: string;
+  /** A later message asks to plan a refactor across all modules: the note suggests the next model. */
+  model: string;
+  autoPicks: Array<{ configDir: string; sessionId: string; pick: { model: 'sonnet'; reason: string; at: number; tokens: number; allowed: Array<'haiku' | 'sonnet' | 'opus'> }; routingModel: string; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number } }>;
+}
+
+/**
+ * Finished sessions on acme-store from a few hours ago, on Sonnet as Auto picked. Written only for the smoke run, so
+ * no website picture shows them.
+ */
+export function writeAutoSuggestDemo(home: string, now = Date.now()): AutoSuggestDemo {
+  const configDir = join(home, '.claude');
+  const acme = join(home, 'Developer', 'acme-store');
+  const usage = { model: 'claude-sonnet-5-5' };
+  const effort = new Transcript(acme, 'main', now - 3 * HOUR, usage).user('Add a bulk order discount to each price rule.');
+  for (let i = 1; i <= 10; i++) {
+    const file = `${acme}/src/pricing/rule${i}.ts`;
+    effort.tool('Edit', { file_path: file, old_string: 'discount: 0', new_string: 'discount: bulkDiscount(quantity)' }, `The file ${file} has been updated.`);
+  }
+  effort.say('Each of the ten price rules now takes the bulk discount.').write(configDir, 'Add a bulk discount to the price rules');
+  const model = new Transcript(acme, 'main', now - 4 * HOUR, usage)
+    .user('Fix the typo in the cart button label.')
+    .tool('Edit', { file_path: `${acme}/src/cart/CartButton.tsx`, old_string: 'Chekout', new_string: 'Checkout' }, `The file ${acme}/src/cart/CartButton.tsx has been updated.`)
+    // The link is for the browser's smoke step: a reply's link opens in the session's browser.
+    .say('Fixed: the button reads Checkout, as the [button guidelines](https://example.com/guidelines/buttons) spell it.')
+    .user('Now plan a refactor of the pricing code across all modules.')
+    .say('Here is a first outline: one pricing module, rules as data, and the cart and checkout reading from it.');
+  model.write(configDir, 'Fix the cart button typo');
+  const pick = (sessionId: string, at: number) => ({
+    configDir,
+    sessionId,
+    pick: { model: 'sonnet' as const, reason: 'A small, local change.', at, tokens: 1_000, allowed: ['haiku' as const, 'sonnet' as const, 'opus' as const] },
+    routingModel: 'claude-haiku-5-5',
+    tokens: { input: 960, output: 40, cacheRead: 0, cacheWrite: 0 },
+  });
+  return { effort: effort.id, model: model.id, autoPicks: [pick(effort.id, now - 3 * HOUR), pick(model.id, now - 4 * HOUR)] };
 }

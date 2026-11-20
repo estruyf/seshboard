@@ -15,6 +15,15 @@ describe('the Start button', () => {
     ]);
   });
 
+  it('starts an orchestrator now, as one session: no queue, schedule or worktree in the menu, also at the focus limit', () => {
+    const state = startButtonState({ ...ready, orchestrator: true, canSchedule: true, canTrigger: true, atFocusLimit: 'nudge' });
+    expect(state).toMatchObject({ main: 'start', label: 'Start orchestrator', disabled: false, reason: null });
+    expect(state.items.map((i) => [i.action, i.label])).toEqual([['start', 'Start orchestrator']]);
+    expect(startButtonState({ ...ready, orchestrator: true, hasMessage: false, hasText: false })).toMatchObject({ disabled: true, reason: 'Type the tasks first' });
+    // A question is never an orchestrator.
+    expect(startButtonState({ ...ready, orchestrator: true, question: true })).toMatchObject({ label: 'Ask' });
+  });
+
   it('leads with Add to queue when opened to follow a session, with starting in the menu', () => {
     const state = startButtonState({ ...ready, queueFirst: true });
     expect(state).toMatchObject({ main: 'queue', shortcut: 'new-session.queue', label: 'Add to queue', disabled: false, reason: null });
@@ -192,5 +201,41 @@ describe('Schedule a session', () => {
     const some = startButtonState({ ...base, provider: { reason: 'Not with GitHub Copilot yet', supports: ['later', 'schedule', 'trigger'] } });
     expect(some.main).toBe('schedule');
     expect(some.items.filter((i) => i.disabled).map((i) => [i.action, i.reason])).toEqual([['start-worktree', 'Not with GitHub Copilot yet']]);
+  });
+
+  describe('at the focus limit', () => {
+    const atLimit = (mode: 'nudge' | 'strict', extra: Partial<StartButtonInput> = {}) =>
+      startButtonState({ ...ready, atFocusLimit: mode, startBlocked: focusStartBlock({ limit: 3, count: 3, mode }), ...extra });
+
+    it('reads Add to queue on the key that starts, with Start anyway in the menu (Nudge)', () => {
+      const state = atLimit('nudge');
+      expect(state).toMatchObject({ main: 'queue', label: 'Add to queue', shortcut: 'new-session.start', disabled: false, reason: null });
+      expect(state.items.map((i) => i.label)).toEqual(['Add to queue', 'Start anyway', 'Start in a new worktree']);
+      expect(state.items.find((i) => i.action === 'start-anyway')?.disabled).toBe(false);
+    });
+
+    it('leaves Start anyway out (Strict), and can still add to the queue', () => {
+      const state = atLimit('strict');
+      expect(state).toMatchObject({ main: 'queue', label: 'Add to queue', disabled: false });
+      expect(state.items.map((i) => i.action)).not.toContain('start-anyway');
+      expect(state.items.map((i) => i.action)).not.toContain('start');
+    });
+
+    it('waits for text, since images stay behind', () => {
+      expect(atLimit('nudge', { hasText: false })).toMatchObject({ disabled: true, reason: 'Type a message first' });
+    });
+
+    it('keeps Ask for a quick question, and Run pipeline for a pipeline', () => {
+      expect(atLimit('nudge', { question: true })).toMatchObject({ main: 'start', label: 'Ask' });
+      expect(atLimit('nudge', { canPipeline: true, runAs: { id: 'p', name: 'Plan' } })).toMatchObject({ main: 'pipeline', label: 'Run pipeline' });
+    });
+
+    it('keeps Start for a provider without the queue', () => {
+      expect(atLimit('nudge', { provider: { reason: 'Not yet', supports: [] } })).toMatchObject({ main: 'start', label: 'Start' });
+    });
+
+    it('stays Start under the limit', () => {
+      expect(startButtonState({ ...ready, atFocusLimit: null })).toMatchObject({ main: 'start', label: 'Start' });
+    });
   });
 });

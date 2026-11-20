@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import sessionsStore from '../state/sessionsStore.ts?raw';
-import { navGroups, SETTINGS_SECTIONS, settingsPageOrder } from './settingsSections.ts';
+import { navGroups, SETTINGS_SECTIONS, settingsPageOrder, settingsPageShown } from './settingsSections.ts';
 
 /** Every page the app routes on, from the `SettingsSection` union. */
 const PAGES = [.../export type SettingsSection = ([^;]+);/.exec(sessionsStore)![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
@@ -10,7 +10,7 @@ describe('navGroups', () => {
 
   it('lists the groups and their pages in the menu order', () => {
     expect(groups.map((g) => [g.group, g.pages.map((p) => p.id)])).toEqual([
-      ['app', ['general', 'theme', 'sidebar', 'notifications', 'focus']],
+      ['app', ['general', 'browser', 'theme', 'sidebar', 'notifications', 'focus']],
       ['claude', ['conversation', 'profiles', 'usage', 'memory']],
       ['work', ['projects', 'sessions', 'prompts', 'pipelines']],
       ['connect', ['vscode', 'remote', 'mods']],
@@ -31,6 +31,14 @@ describe('navGroups', () => {
 
   it('skips a group with no pages', () => {
     expect(navGroups([{ group: 'connect' as const }, { group: 'app' as const }]).map((g) => g.group)).toEqual(['app', 'connect']);
+  });
+});
+
+describe('settingsPageShown', () => {
+  it('shows Browser only with the browser on, and every other page always', () => {
+    expect(settingsPageShown('browser', { browser: true })).toBe(true);
+    expect(settingsPageShown('browser', { browser: false })).toBe(false);
+    expect(settingsPageShown('general', { browser: false })).toBe(true);
   });
 });
 

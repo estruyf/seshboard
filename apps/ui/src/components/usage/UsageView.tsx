@@ -1,5 +1,6 @@
+import { ViewHeader } from '../ViewHeader.tsx';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronDown, Gauge, RefreshCw } from 'lucide-react';
+import { ChevronDown, RefreshCw } from 'lucide-react';
 import type { ProfileColor, SessionProvider, UsagePeriod } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { thisComputerName } from '../../lib/platform.ts';
@@ -10,11 +11,11 @@ import { closeUsage, useUsageView, type UsageComputers, type UsageTab } from '..
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { PROFILE_TEXT } from '../profiles/ProfileBadge.tsx';
 import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { fetchUsage, useUsageFor } from '../UsageBand.tsx';
-import { LimitsTab } from './LimitsTab.tsx';
+import { LimitsTab, PlanWindows } from './LimitsTab.tsx';
+import { hasPlanUsage, planWindowsOnly } from '../providers/quotaText.ts';
 import { ProviderUsagePanel } from './ProviderUsagePanel.tsx';
 import { TokensTab } from './TokensTab.tsx';
 import { PERIOD_LABEL, PERIODS } from './usageModel.ts';
@@ -60,8 +61,12 @@ export function UsageView() {
   const paired = useComputers((s) => s.status?.computers.length ?? 0) > 0;
   const profiles = useProfiles((s) => s.profiles);
   const profile = profiles.find((p) => p.id === profileId);
-  /** A profile of another provider (GitHub Copilot): its premium requests, not Claude Code's limits and tokens. */
-  const provider = profile && profile.provider !== 'claude' ? profile.provider : null;
+  /** A profile of another provider with premium requests (GitHub Copilot): those in Limits, not Claude Code's limits. */
+  const provider = profile && profile.provider !== 'claude' && !hasPlanUsage(profile.provider) ? profile.provider : null;
+  /** A profile with plan windows only (OpenAI Codex): its windows in Limits, without Claude Code's history and costs. */
+  const windowsOnly = !!profile && planWindowsOnly(profile.provider);
+  /** Another provider's Limits tab has no periods: its numbers are the account's now. */
+  const noPeriods = (!!provider || windowsOnly) && tab === 'limits';
   const [quotaAsked, setQuotaAsked] = useState(0);
   const entry = useUsageFor(provider ? null : profileId);
   const connection = useEngineConnection();
@@ -129,11 +134,7 @@ export function UsageView() {
   const fetchedAt = entry?.usage?.fetchedAt ?? null;
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-usage-view data-usage-profile={profileId}>
-      <header className="drag shrink-0 border-b border-border px-6 pt-2.5">
-        <div className="flex min-h-9 items-center gap-2.5">
-          <SidebarToggle />
-          <Gauge size={18} className="shrink-0 text-muted" aria-hidden />
-          <h1 className="text-hero leading-tight font-semibold">Usage</h1>
+      <ViewHeader title="Usage">
           <button
             ref={menuButton}
             type="button"
@@ -173,8 +174,10 @@ export function UsageView() {
               Back
             </Button>
           </div>
-        </div>
-        <div className={`no-drag mt-2 flex items-end gap-3 ${provider ? 'hidden' : ''}`}>
+      </ViewHeader>
+      {/* The tabs, under the header. */}
+      <div className="shrink-0 border-b border-border px-6 @max-[860px]:px-4">
+        <div className="no-drag flex items-end gap-3">
           <div role="tablist" aria-label="Usage" className="-mb-px flex gap-1" onKeyDown={onTabKey}>
             {TABS.map(({ id, label }) => (
               <button
@@ -197,7 +200,7 @@ export function UsageView() {
               </button>
             ))}
           </div>
-          {paired && (
+          {paired && !noPeriods && (
             <SegmentedControl<UsageComputers>
               mode="radio"
               label="Computers"
@@ -213,21 +216,23 @@ export function UsageView() {
           <SegmentedControl<UsagePeriod>
             mode="radio"
             label="Period"
-            className={`mb-1.5 ${paired ? '' : 'ml-auto'}`}
+            className={`mb-1.5 ${paired ? '' : 'ml-auto'} ${noPeriods ? 'invisible' : ''}`}
             value={period}
             onChange={setPeriod}
             segments={PERIODS.map((value, i) => ({ value, label: PERIOD_LABEL[value], kbd: String(i + 1), data: { 'data-usage-period': value } }))}
           />
         </div>
-      </header>
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div role="tabpanel" id="usage-tab-panel" aria-labelledby={`usage-tab-${tab}`} className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)] gap-4 px-6 py-5">
-          {provider ? (
-            <ProviderUsagePanel profileId={profileId} provider={provider} refresh={quotaAsked} />
-          ) : tab === 'limits' ? (
-            <LimitsTab profileId={profileId} period={period} />
-          ) : (
+          {tab === 'tokens' ? (
             <TokensTab profileId={profileId} profileName={profile?.name ?? 'Claude'} period={period} />
+          ) : provider ? (
+            <ProviderUsagePanel profileId={profileId} provider={provider} refresh={quotaAsked} />
+          ) : windowsOnly ? (
+            <PlanWindows profileId={profileId} />
+          ) : (
+            <LimitsTab profileId={profileId} period={period} />
           )}
         </div>
       </div>

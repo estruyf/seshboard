@@ -3,6 +3,7 @@ import { showInChanges } from '../../state/showInChanges.ts';
 import { toast } from '../../state/toastStore.ts';
 import { sameScope } from './fillModel.ts';
 import { engineClient } from './savedPromptsStore.ts';
+import type { StarterPrompt } from './starterPrompts.ts';
 
 /** The project's shared settings file, where shared prompts are kept with its actions. */
 export const SHARED_FILE = '.seshboard.json';
@@ -84,5 +85,17 @@ export async function duplicatePrompt(prompt: SavedPrompt): Promise<void> {
     await client().call('savedPrompts.save', { prompt: { name: `${prompt.name} copy`.slice(0, 60), text: prompt.text, scope: prompt.scope } });
   } catch (error) {
     toast(`Couldn't duplicate “${prompt.name}”: ${(error as Error).message}`);
+  }
+}
+
+/** Adds a starter prompt to every project's list and says so (a failure in a toast too). */
+export async function addStarterPrompt(starter: StarterPrompt): Promise<boolean> {
+  try {
+    await client().call('savedPrompts.save', { prompt: { name: starter.name, text: starter.text, scope: { kind: 'global' } } });
+    toast(`Added “${starter.name}”`, { data: { 'data-prompt-starter-toast': starter.id } });
+    return true;
+  } catch (error) {
+    toast(`Couldn't add “${starter.name}”: ${(error as Error).message}`);
+    return false;
   }
 }

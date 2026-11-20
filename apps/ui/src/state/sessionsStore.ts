@@ -13,12 +13,12 @@ import { toast } from './toastStore.ts';
 
 /**
  * `project` is one project's page (`useProjectPage` says which); `projects` is the list of them; `remote` is a session
- * on another computer, or that computer's page (`useComputers` says which). `upcoming` is everything queued and
+ * on another computer, or that computer's page (`useComputers` says which). `activity` is what you did per day, `upcoming` is everything queued and
  * scheduled (`useUpcoming` has its filters).
  */
-export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote' | 'upcoming';
+export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote' | 'upcoming' | 'activity' | 'browser';
 /** The pages of Settings, listed in its own sidebar. */
-export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'usage' | 'memory' | 'prompts' | 'pipelines' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
+export type SettingsSection = 'general' | 'browser' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'usage' | 'memory' | 'prompts' | 'pipelines' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
 
 /** Shown when there is no room for another pane (a session opened beside, or a pane dropped where it doesn't fit). */
 const NO_ROOM = 'There is no room for that. Make the window larger or close a pane first.';

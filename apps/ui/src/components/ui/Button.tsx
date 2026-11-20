@@ -14,8 +14,8 @@ interface BaseProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   kbd?: string;
   /** A shortcut from the registry (`lib/shortcuts.ts`) that does the same: shown like `kbd`, and every alternative announced. */
   shortcut?: ShortcutId;
-  /** Hide the shortcut in a narrow pane, where the label alone has to fit. */
-  kbdHideNarrow?: boolean;
+  /** Hide the shortcut in a narrow pane, where the label alone has to fit (`small`: only in a very narrow one, as `Kbd`). */
+  kbdHideNarrow?: boolean | 'small';
   /** Danger: the solid red button that confirms a destructive dialog. Side: the solid blue send button of the Ask panel. */
   filled?: boolean;
   /** A circle rather than a rounded square (with `iconOnly`). */

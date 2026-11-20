@@ -1,12 +1,12 @@
 ---
 title: Seshboard
-description: A fast app for macOS, Windows and Linux that runs and keeps track of your Claude Code sessions, across all your Claude accounts.
+description: A fast app for macOS, Windows and Linux that runs your Claude Code, GitHub Copilot, Codex and Antigravity sessions, with your issue tracker, pull requests and running app open right next to them.
 template: splash
 tableOfContents: false
 editUrl: false
 hero:
-  title: All your Claude Code sessions, in one window.
-  tagline: Run several sessions at once and always know which one needs you, which one is working and what each one did. With the Claude Code you already have, on Mac, Windows and Linux.
+  title: All your AI sessions and tools, in one window.
+  tagline: Run Claude Code, GitHub Copilot, Codex and Antigravity sessions side by side, and always know which one needs you. Open Jira, Productive or GitHub right next to them, so you follow up without switching apps. With the agents you already have, on Mac, Windows and Linux.
 ---
 
 import CopyCommand from '../../components/CopyCommand.astro';
@@ -18,12 +18,12 @@ import Related from '../../components/Related.astro';
 
 <section class="sb-proof not-content" aria-label="Why it fits in">
   <div>
-    <h2>Your own Claude Code</h2>
-    <p>It runs the <code>claude</code> you already use, with your login, settings, commands and skills. Nothing new to sign in to.</p>
+    <h2>Your own agents</h2>
+    <p>It runs the <code>claude</code>, <code>copilot</code>, <code>codex</code> and <code>agy</code> you already use, with your logins, settings, commands and skills. Nothing new to sign in to.</p>
   </div>
   <div>
     <h2>Stays on your computer</h2>
-    <p>Your prompts and sessions only go where Claude Code sends them. Remote runs only when you turn it on, encrypted from your phone to your computer.</p>
+    <p>Your prompts and sessions only go where your agent sends them. Remote runs only when you turn it on, encrypted from your phone to your computer.</p>
   </div>
   <div>
     <h2>Free and open source</h2>
@@ -31,20 +31,44 @@ import Related from '../../components/Related.astro';
   </div>
 </section>
 
+<section class="sb-switch not-content" aria-labelledby="sb-switch-title">
+  <p class="sb-switch-eyebrow">Less switching</p>
+  <h2 id="sb-switch-title">Stop switching apps to follow up</h2>
+  <p class="sb-switch-intro">The ticket, the pull request and the running app sit in a browser next to the session. Read the task, check the review and answer the agent, all in the same window.</p>
+  <ul class="sb-switch-cards" role="list">
+    <li>
+      <h3>Your project tool</h3>
+      <p>Keep the Jira, Productive or Linear ticket open beside the session that works on it. Copy the acceptance criteria straight into the prompt.</p>
+    </li>
+    <li>
+      <h3>Your pull requests</h3>
+      <p>Open the pull request on GitHub next to its session, read the review and the failing check, and send Claude the fix.</p>
+    </li>
+    <li>
+      <h3>Your running app</h3>
+      <p>See the dev server's page while Claude changes it. Claude can open it too, click through it and read the console to check its own work.</p>
+    </li>
+  </ul>
+  <p class="sb-switch-note">Favourites, bookmarks per project and pinned tabs bring your pages back after a restart. Your sign-ins stay, and browser profiles keep several accounts of one site side by side. Pick an element on the page to put it in your message, or give the browser a window of its own on another screen.</p>
+  <p class="sb-switch-links"><a href="/browser/overview/">The browser</a><a href="/browser/agents/">Agents in the browser</a><a href="/browser/profiles/">Browser profiles</a><a href="/browser/in-a-session/#send-a-page-to-the-message">Pick an element</a><a href="/browser/in-a-session/#the-browser-in-its-own-window">Its own window</a></p>
+</section>
+
 <Feature eyebrow="Stay on top" title="See which session needs you" shot="home" focus="62% 45%" alt="Home: a session that needs you, one that is working, the queue, project tiles to start in, and the usage of two Claude profiles" href="/sessions/sidebar/" linkText="How the sidebar works">
-  <p>Every session sits in one list, across every project and every Claude account: the ones you start here and the ones in your terminal. Sessions that <Pill tone="needs-you">Needs you</Pill> go to the top, then the ones that are <Pill tone="working">Working</Pill>, then the rest by day.</p>
-  <p>A notification tells you when Claude asks or finishes, so you can look away. <Kbd shortcut="session.next-needs-you" /> jumps to the next session that needs you, from anywhere.</p>
+  <p>Every session sits in one list, across every project, agent and account: the ones you start here and the ones in your terminal. Sessions that <Pill tone="needs-you">Needs you</Pill> go to the top, then the ones that are <Pill tone="working">Working</Pill>, then the rest by day.</p>
+  <p>A notification tells you when Claude asks or finishes, so you can look away. <Kbd shortcut="session.next-needs-you" /> jumps to the next session that needs you, from anywhere. At the end of the day, **Activity** shows what you did, per project, ready for your standup.</p>
 
   - [Session states](/sessions/states/)
   - [Home](/sessions/home/)
+  - [Activity](/sessions/activity/)
   - [Notifications and sounds](/settings/notifications/)
   - [Focus limit](/focus-limit/)
 </Feature>
 
 <Feature eyebrow="Review" title="Catch up in seconds" shot="catch-up-banner" focus="78% 0%" alt="A finished session with its catch-up over the conversation: what Claude did, Commit the changes, 14 tests passed and Followed the plan" href="/sessions/catch-up/" linkText="How catch-up works" flip>
   <p>When a session finishes, a short briefing says what Claude did, what it skipped, and the one thing it needs from you. It shows whether the tests passed, how much changed, and whether Claude stayed inside what you asked for.</p>
-  <p>Want to know more? **Ask about this session** in a panel next to it, while it keeps working. Nothing is added to the conversation.</p>
+  <p>Reading the reply itself? **Skim** fades the sentences that matter least, and keeps failures, skipped work and questions in full. Want to know more? **Ask about this session** in a panel next to it, while it keeps working.</p>
 
+  - [Skim](/sessions/skim/)
   - [Ask about this session](/sessions/ask/)
   - [Quickest to unblock](/sessions/catch-up/#quickest-to-unblock)
   - [Agents panel](/sessions/agents/)
@@ -53,8 +77,10 @@ import Related from '../../components/Related.astro';
 
 <Feature eyebrow="In parallel" title="Many tasks at once, without the mess" shot="split" focus="20% 30%" alt="Two sessions side by side in split view, each with its own conversation" href="/guides/parallel-sessions/" linkText="Run sessions in parallel">
   <p>Start each task in its own worktree, on its own branch, so sessions never step on each other. Queue the prompts that have to wait, and start them with one click when their project is free.</p>
+  <p>Have a list of tasks? Send it to an **orchestrator**. It starts a session for each, with Claude Code, Copilot or Codex, and tells you which ones need you and which pull requests are ready.</p>
   <p>Watch two sessions side by side, or give one its own window on another screen. Set a focus limit, and Seshboard asks before you start one more.</p>
 
+  - [Orchestrator](/sessions/orchestrator/)
   - [Worktrees](/new-session/worktrees/)
   - [Queue](/new-session/queue/)
   - [Split view](/sessions/split-view/)
@@ -81,17 +107,29 @@ import Related from '../../components/Related.astro';
 </Feature>
 
 <Feature eyebrow="Ship" title="From changed files to a pull request" shot="git-checks" focus="100% 0%" alt="A session with the git button showing the pull request's checks, one failing, and Fix failing checks with Claude" href="/terminal-changes-git/git/" linkText="Git in Seshboard" flip>
-  <p>See what Claude changed in the **Changes** panel (<Kbd shortcut="changes.toggle" />): stage, unstage or revert files, and open any diff inline. The git button offers the next step: commit, push or create a pull request.</p>
-  <p>Once the pull request is open, its checks show on the same button. When one fails, let Claude fix it. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
+  <p>See what Claude changed in the **Changes** panel (<Kbd shortcut="changes.toggle" />): stage, unstage or revert files, and open any diff inline. Comment on lines as in a pull request review, and send all your comments to Claude at once. Changed images show before and after. The git button offers the next step: commit, push or create a pull request.</p>
+  <p>Once the pull request is open, its checks show on the same button, and the pull request opens in the browser beside the session. When a check fails, let Claude fix it. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
 
   - [Changes](/terminal-changes-git/changes/)
+  - [Comment on lines](/terminal-changes-git/changes/#comment-on-lines)
   - [Terminal](/terminal-changes-git/terminal/)
   - [Worktrees tab](/projects/worktrees/)
   - [Project actions](/projects/actions/)
 </Feature>
 
-<Feature eyebrow="Anywhere" title="Answer Claude from your phone" shots={[{ name: 'remote-phone-first-screen', alt: 'The remote app on a phone: what needs you, what is working, and the usage of every profile' }, { name: 'remote-phone-drawer', alt: 'The remote app on a phone with the sessions drawer open' }]} shotWidth={300} href="/remote-access/" linkText="Set up Remote">
+<Feature eyebrow="Files" title="Read the code without leaving the session" shot="file-preview" focus="70% 30%" alt="A session with a Markdown plan open in the side panel: a heading, a Note alert, a table of steps, a code block and a folded Open questions block" href="/sessions/files/" linkText="How Files works">
+  <p>Every session has a rail of tools at its right edge: **Files**, Changes, the terminal, the browser and the apps you pin, each with a badge for what is in it. Files shows the project as a tree, opens any file beside the conversation and adds the lines you select to your message.</p>
+  <p>**Quick open** (<Kbd shortcut="files.quick-open" />) finds a file by part of its name. **Search in files** (<Kbd shortcut="files.search" />) looks through all of them, and Claude can get the results in one click.</p>
+
+  - [Quick open](/sessions/files/#quick-open)
+  - [Search in files](/sessions/files/#search-in-files)
+  - [The tool rail](/sessions/tool-rail/)
+  - [Preview files](/sessions/file-preview/)
+</Feature>
+
+<Feature eyebrow="Anywhere" title="Answer Claude from your phone" shots={[{ name: 'remote-phone-first-screen', alt: 'The remote app on a phone: what needs you, what is working, and the usage of every profile' }, { name: 'remote-phone-drawer', alt: 'The remote app on a phone with the sessions drawer open' }]} shotWidth={300} href="/remote-access/" linkText="Set up Remote" flip>
   <p>Turn on **Remote** and pair your phone. Follow your sessions, allow what Claude asks, send the next prompt or start a new session, wherever you are. Your phone gets a notification when a session needs you.</p>
+  <p>Tap **Listen** and your phone reads a reply aloud, with its own voice. Swipe a session to **Mark as unread** and come back to it later.</p>
   <p>Have a laptop and a desktop? Their sessions show in the same sidebar, and New session can start one on the other computer.</p>
 
   - [Other computers](/other-computers/)
@@ -99,16 +137,17 @@ import Related from '../../components/Related.astro';
   - [VS Code companion](/vscode-companion/)
 </Feature>
 
-<Feature eyebrow="Accounts" title="Every Claude account, and what it used" shot="usage-limits" focus="45% 25%" alt="The Usage view: the 5-hour and weekly limits with what is left, when they reset, and how they went over time" href="/usage/" linkText="See the Usage view" flip>
-  <p>Add a profile for each Claude account, such as a personal plan and a work one. Each session's rail shows which account it uses, and a project can always start on its own.</p>
-  <p>See what is left of your 5-hour and weekly limits, when they come back, and which sessions, projects and models used them, with what that would cost at API prices.</p>
+<Feature eyebrow="Accounts" title="Every account, and what it used" shot="usage-limits" focus="45% 25%" alt="The Usage view: the 5-hour and weekly limits with what is left, when they reset, and how they went over time" href="/usage/" linkText="See the Usage view">
+  <p>Add a profile for each account: a personal Claude plan and a work one, GitHub Copilot, OpenAI Codex or Google Antigravity. Each session shows which agent and account it uses, and a project can always start on the same one.</p>
+  <p>See what is left of your 5-hour and weekly limits, Codex's windows or Copilot's premium requests, when they come back, and which sessions, projects and models used them.</p>
 
   - [Profiles](/settings/claude-profiles/)
+  - [Other agents](/settings/other-agents/)
   - [Work and personal accounts](/guides/two-accounts/)
   - [Auto model](/new-session/auto-model/)
 </Feature>
 
-<Feature eyebrow="Memory" title="What Claude remembers, in plain Markdown" shot="project-memory" focus="45% 25%" alt="A project's Memory tab: what loads in a session at the top, the project's memories with their type, the instructions the team shares, and personal memory" href="/memory/overview/" linkText="About memory">
+<Feature eyebrow="Memory" title="What Claude remembers, in plain Markdown" shot="project-memory" focus="45% 25%" alt="A project's Memory tab: what loads in a session at the top, the project's memories with their type, the instructions the team shares, and personal memory" href="/memory/overview/" linkText="About memory" flip>
   <p>See and edit what Claude Code remembers about each project, and what loads at the start of every session. Share a memory with the team in <code>CLAUDE.md</code>, or bring your memory over from the Claude app.</p>
   <p>Everything stays plain Markdown where Claude Code already looks, so it works the same in the terminal.</p>
 
@@ -143,7 +182,7 @@ import Related from '../../components/Related.astro';
 <section class="sb-more not-content">
   <h2>And a lot more</h2>
   <p>Small things that save you time every day. Each card opens its page.</p>
-  <Related pages={['sessions/github-issues', 'sessions/file-preview', 'sessions/saved-prompts', 'new-session/quick-questions', 'sessions/unsent-drafts', 'links', 'projects/clone-from-github', 'sessions/commands', 'sessions/mods', 'sessions/search', 'themes/built-in', 'settings/backup', 'permissions', 'new-session/auto-model']} />
+  <Related pages={['sessions/visuals', 'sessions/replies', 'sessions/github-issues', 'sessions/saved-prompts', 'new-session/quick-questions', 'sessions/unsent-drafts', 'links', 'projects/clone-from-github', 'sessions/commands', 'sessions/mods', 'sessions/search', 'themes/built-in', 'settings/backup', 'permissions', 'new-session/auto-model']} />
   <div class="sb-more-links">
     <a class="sb-button secondary" href="/features/">See all features</a>
   </div>
@@ -163,15 +202,15 @@ import Related from '../../components/Related.astro';
 
 <section class="sb-name not-content">
   <h2>Why Seshboard?</h2>
-  <p><strong>Sesh</strong> is short for sessions: the sessions your agents run. <strong>Board</strong> is the one app where you manage them all.</p>
+  <p><strong>Sesh</strong> is short for sessions: the sessions your agents run. <strong>Board</strong> is the one app where you manage them all, with the tools you follow them up in.</p>
 </section>
 
 <section class="sb-cta not-content">
   <h2>Try it on the sessions you already have</h2>
-  <p>Seshboard picks up your existing Claude Code sessions the moment it opens. Nothing to set up first.</p>
+  <p>Seshboard picks up your existing Claude Code sessions the moment it opens. Add a Copilot, Codex or Antigravity profile, and their sessions show up too.</p>
   <div class="sb-cta-actions">
-    <a class="sb-button primary large sb-os-mac" href="https://github.com/estruyf/switchboard/releases/latest">Download for Mac</a>
-    <a class="sb-button primary large sb-os-windows" href="https://github.com/estruyf/switchboard/releases/latest">Download for Windows</a>
+    <a class="sb-button primary large sb-os-mac" href="https://github.com/estruyf/seshboard/releases/latest">Download for Mac</a>
+    <a class="sb-button primary large sb-os-windows" href="https://github.com/estruyf/seshboard/releases/latest">Download for Windows</a>
     <a class="sb-button secondary large" href="/getting-started/install/">Install guide</a>
   </div>
   <p class="sb-cta-linux">On Linux? Get the AppImage, <code>.deb</code> or <code>.rpm</code>: <a href="/getting-started/install/#install-on-linux">install on Linux</a>.</p>
@@ -184,6 +223,18 @@ import Related from '../../components/Related.astro';
   .sb-proof h2 { margin: 0; font-size: var(--sb-text-title); font-weight: 600; color: var(--sb-text); }
   .sb-proof p { margin: 0.4rem 0 0; font-size: var(--sb-text-ui); line-height: 1.55; color: var(--sb-muted); }
   .sb-proof code { font-size: 0.9em; }
+  .sb-switch { margin-top: 3rem; padding: 3.5rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
+  .sb-switch-eyebrow { margin: 0; font-size: var(--sb-text-meta); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sb-accent-ink); }
+  .sb-switch h2 { margin: 0.5rem 0 0; font-size: calc(var(--sb-text-hero) * 1.2); line-height: 1.25; font-weight: 600; color: var(--sb-text); }
+  .sb-switch-intro, .sb-switch-note { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
+  .sb-switch-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin: 2rem 0 0; padding: 0; list-style: none; text-align: start; }
+  .sb-switch-cards li { margin: 0; padding: 1.1rem 1.25rem; border: 1px solid var(--sb-border); border-top: 2px solid var(--sb-accent); border-radius: var(--sb-radius-card); background: var(--sb-card); }
+  .sb-switch-cards h3 { margin: 0; font-size: var(--sb-text-title); font-weight: 600; color: var(--sb-text); }
+  .sb-switch-cards p { margin: 0.4rem 0 0; font-size: var(--sb-text-ui); line-height: 1.55; color: var(--sb-muted); }
+  .sb-switch-note { margin-top: 1.5rem; font-size: var(--sb-text-ui); }
+  .sb-switch-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.25rem; margin: 1rem 0 0; font-size: var(--sb-text-ui); }
+  .sb-switch-links a { color: var(--sb-link); text-decoration: none; }
+  .sb-switch-links a:hover { text-decoration: underline; }
   .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-name, .sb-cta { padding: 3.5rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
   .sb-keys h2, .sb-more h2, .sb-tour h2, .sb-companion h2, .sb-name h2, .sb-cta h2 { margin: 0; font-size: calc(var(--sb-text-hero) * 1.2); font-weight: 600; color: var(--sb-text); }
   .sb-keys > p, .sb-more > p, .sb-companion p, .sb-name p, .sb-cta p { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
@@ -202,7 +253,8 @@ import Related from '../../components/Related.astro';
   @media (max-width: 40rem) {
     .sb-proof { margin-top: 2.5rem; gap: 0.75rem; }
     .sb-proof > div { padding: 0.9rem 1rem; }
-    .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-name, .sb-cta { padding: 2.5rem 0; }
+    .sb-switch, .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-name, .sb-cta { padding: 2.5rem 0; }
+    .sb-switch { margin-top: 2rem; }
     .sb-keys ul { grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 1.5rem; }
     .sb-keys li { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0.75rem; }
     .sb-more-links { margin-top: -0.5rem; }
