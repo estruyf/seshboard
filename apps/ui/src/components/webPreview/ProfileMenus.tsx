@@ -95,7 +95,8 @@ export function profileSwitchMenu(tab: Pick<BrowserTab, 'id' | 'owner' | 'profil
 
 /**
  * The toolbar's browser profile switcher, after the address bar: the tab's profile as its dot and name (a quiet person
- * icon for Default, so the bar stays calm without profiles). In a narrow toolbar only the dot stays. Its menu is
+ * icon for Default, so the bar stays calm without profiles). In a narrow toolbar only the dot stays, and in the
+ * narrowest it goes to ⋯ (Browser profile there), so the address bar and × keep their room. Its menu is
  * `profileSwitchMenu`.
  */
 export function ProfileSwitch({ tab }: { tab: Pick<BrowserTab, 'id' | 'owner' | 'profileId'> }) {
@@ -119,7 +120,7 @@ export function ProfileSwitch({ tab }: { tab: Pick<BrowserTab, 'id' | 'owner' | 
         aria-haspopup="menu"
         aria-expanded={menu ? true : undefined}
         onClick={show}
-        className={profile ? 'max-w-32 @max-[520px]/toolbar:px-1.5' : ''}
+        className={`@max-[360px]/toolbar:hidden ${profile ? 'max-w-32 @max-[520px]/toolbar:px-1.5' : ''}`}
         data-browser-profile-switch={profile?.id ?? 'default'}
       >
         {profile && <span className="min-w-0 truncate @max-[520px]/toolbar:hidden">{profile.name}</span>}

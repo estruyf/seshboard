@@ -1,4 +1,4 @@
-import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, SquareDashedMousePointer, Star, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, SquareDashedMousePointer, Star, Trash2, UserRound, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type RefObject, type MouseEvent, type ReactNode } from 'react';
 import { addressBarUrl, browserNavigation, copiedAddress, type BrowserHistoryEntry, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -20,7 +20,8 @@ import { Popover } from '../ui/Popover.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { addressSuggestions, autoPick, type AddressSuggestion } from './addressSuggestions.ts';
 import { tabMenu } from './tabMenu.tsx';
-import { ProfileMark, ProfileSwitch, useNewTabMenu } from './ProfileMenus.tsx';
+import { ProfileMark, ProfileSwitch, profileSwitchMenu, useNewTabMenu } from './ProfileMenus.tsx';
+import { useBrowserProfiles } from '../../state/browserProfilesStore.ts';
 import { BROWSER_OWNER, sameGroup, tabName, zoomLabel, type BrowserTab } from './browserTabs.ts';
 import { NewTabSections } from './NewTabPage.tsx';
 import { openFavoriteInTab } from '../../state/browserViewStore.ts';
@@ -615,7 +616,8 @@ export const NARROW_HIDDEN = '@max-[520px]/toolbar:hidden';
 
 /**
  * The toolbar's ⋯: what is used less often for the page on screen, and Clear all browsing data. Pin, the bookmark,
- * Open in browser and a session's Open browser in new window are here too, as a narrow toolbar hides their buttons.
+ * Open in browser, a session's Open browser in new window and the Browser profile are here too, as a narrow toolbar
+ * hides their buttons.
  */
 function pageMenu(tab: BrowserTab, bookmarked: boolean): MenuEntry[] {
   const blank = !tab.url;
@@ -624,6 +626,8 @@ function pageMenu(tab: BrowserTab, bookmarked: boolean): MenuEntry[] {
     { label: bookmarked ? 'Edit bookmark…' : 'Bookmark this page…', icon: <Star size={13} aria-hidden />, hint: formatKeys(keysFor('browser.bookmark')), disabled: blank, onSelect: () => bookmarkPage(tab), data: { 'data-page-bookmark': true } },
     { label: 'Open in browser', icon: <ExternalLink size={13} aria-hidden />, disabled: blank, onSelect: () => tab.url && window.open(tab.url, '_blank'), data: { 'data-page-open-external': true } },
     ...(tab.owner !== BROWSER_OWNER && !browserPopoutSession ? [{ label: 'Open browser in new window', icon: <AppWindow size={13} aria-hidden />, onSelect: () => popOutBrowser(tab.owner), data: { 'data-page-pop-out': true } }] : []),
+    // The toolbar's profile switch, which the narrowest toolbar hides.
+    { label: 'Browser profile', icon: <UserRound size={13} aria-hidden />, submenu: profileSwitchMenu(tab, useBrowserProfiles.getState().profiles).filter((entry) => typeof entry !== 'object' || !('heading' in entry)), data: { 'data-page-profile': true } },
     'separator',
     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-page-rename': true } },
     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: blank, onSelect: () => copyAddress(tab) },

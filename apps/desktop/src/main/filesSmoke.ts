@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { isAbsolutePath } from '@seshboard/protocol';
-import { setFieldValue, waitInPage } from './pageDriver.ts';
+import { setFieldValue, settle, waitInPage } from './pageDriver.ts';
 import { platformModifiers } from './smokeKeys.ts';
 
 // The smoke steps of the Files panel: the tree, Quick open, Search in files, lines to the message, and a file link
@@ -242,5 +242,8 @@ export async function runFilesFromLinkStep(win: BrowserWindow): Promise<string> 
   if (await js(win, `!!document.querySelector('${S} [data-file-preview-place="panel"]')`)) return 'the old Preview panel opened too';
   if (line && !(await waitInPage(win, `${PANEL}.querySelector('[data-files-viewer] [data-line="${line}"][data-line-marked]')`, 5_000))) return `${link.target} opened, but not at line ${line}`;
   await js(win, `${PANEL}.querySelector('[data-files-close]').click()`);
+  // Closed and the conversation back at its width, so the next step doesn't measure a view that is still growing.
+  if (!(await waitInPage(win, `!${PANEL}`, 3_000))) return 'Files did not close';
+  await settle(win);
   return `ok: ${link.target} opened in Files${line ? ` at line ${line}` : ''}`;
 }

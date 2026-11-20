@@ -253,7 +253,11 @@ export async function runBrowserPinStep(win: BrowserWindow, deps: BrowserSmokeDe
   const listed = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].find((t) => t.textContent.includes('Smoke browser'))`;
   const tile = q(`[data-browser-favorites-bar] [data-browser-favorite="${url}"]`);
   const menuOn = (target: string) => js(`(() => { const t = ${target}; const r = t.getBoundingClientRect(); t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.bottom })); })()`);
+  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}?.click()`);
   if (!(await waitInPage(win, listed, 3_000))) return 'no Smoke browser tab in the list (run "browser view" first)';
+  // The toolbar works on the tab in front: bring the Smoke browser tab there, whatever earlier steps left open.
+  await js(`${listed}.click()`);
+  if (!(await waitInPage(win, `${listed}.getAttribute('aria-current') === 'page'`, 3_000))) return 'a click on the Smoke browser tab did not bring it to the front';
   // Pinned from the toolbar: first in the list above a line, and still a pinned tab (not a tile) after a reload.
   const pin = q('[data-browser-view] [data-web-preview-pin]');
   const pinnedRow = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab][data-browser-pinned]')].find((t) => t.textContent.includes('Smoke browser'))`;
@@ -528,16 +532,18 @@ export async function runBrowserPickStep(win: BrowserWindow, deps: BrowserSmokeD
   const page = pageWithTitle('Smoke pick')!;
   if (!(await until(() => isSessionPage(page.id), 5_000))) return "the session's page is not marked as one: its menu would not offer Quote in message";
 
-  // Dragged as narrow as it goes, the toolbar keeps room to type an address: Pin, the star and Open in browser move
-  // to ⋯, the sizes become one button that names the size, and Pick an element stays.
+  // Dragged as narrow as it goes, the toolbar keeps room to type an address: Pin, the star, Open in browser and the
+  // browser profile move to ⋯, the sizes become one button that names the size, and Pick an element stays.
   for (let i = 0; i < 40; i++) await js(`${q(`${P} [role=separator]`)}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`);
   const addressWidth = `Math.round(${q(`${P} [data-browser-address]`)}.getBoundingClientRect().width)`;
   const sizeMenu = q(`${P} [data-web-preview-size-menu]`);
   // Every button keeps its size, and the last one (×) ends inside the toolbar.
   const toolbarFits = `(() => { const bar = ${q(`${P} [data-web-preview-toolbar]`)}; const r = bar.getBoundingClientRect(); return [...bar.querySelectorAll('button')].filter((b) => b.checkVisibility()).every((b) => { const box = b.getBoundingClientRect(); return box.right <= r.right + 0.5 && box.width >= 20; }); })()`;
-  if (!(await waitInPage(win, `${addressWidth} >= 80 && ${toolbarFits} && !${q(`${P} [data-web-preview-pin]`)}.checkVisibility() && ${sizeMenu}?.checkVisibility() && ${sizeMenu}.textContent.includes('Side')`, 3_000))) return `in a narrow panel the address bar is ${String(await js(addressWidth))}px wide, a button is squeezed or past the edge (${String(await js(toolbarFits))}), Pin still takes the toolbar, or the size button doesn't show Side`;
+  // The buttons that don't fit, by their label, width and where they end, so a failure says which one.
+  const misfits = `(() => { const bar = ${q(`${P} [data-web-preview-toolbar]`)}; const r = bar.getBoundingClientRect(); return [...bar.querySelectorAll('button')].filter((b) => b.checkVisibility()).filter((b) => { const box = b.getBoundingClientRect(); return !(box.right <= r.right + 0.5 && box.width >= 20); }).map((b) => (b.getAttribute('aria-label') || b.textContent.trim()) + ' ' + Math.round(b.getBoundingClientRect().width) + 'px wide, ' + Math.round(b.getBoundingClientRect().right - r.right) + 'px past the edge').join('; ') + ' in a ' + Math.round(r.width) + 'px toolbar'; })()`;
+  if (!(await waitInPage(win, `${addressWidth} >= 80 && ${toolbarFits} && !${q(`${P} [data-web-preview-pin]`)}.checkVisibility() && ${sizeMenu}?.checkVisibility() && ${sizeMenu}.textContent.includes('Side')`, 3_000))) return `in a narrow panel the address bar is ${String(await js(addressWidth))}px wide, a button is squeezed or past the edge (${(await js(toolbarFits)) ? 'no' : String(await js(misfits))}), Pin still takes the toolbar, or the size button doesn't show Side`;
   await js(`${q(`${P} [data-web-preview-more]`)}.click()`);
-  if (!(await waitInPage(win, q('[role="menu"] [data-page-pin]'), 2_000))) return 'in a narrow panel ⋯ has no Pin tab';
+  if (!(await waitInPage(win, `${q('[role="menu"] [data-page-pin]')} && ${q('[role="menu"] [data-page-profile]')}`, 2_000))) return 'in a narrow panel ⋯ has no Pin tab or Browser profile';
   escape(win);
   if (!(await waitInPage(win, `!${q('[role="menu"] [data-page-pin]')}`, 2_000))) return 'Esc did not close ⋯';
   await js(`${sizeMenu}.click()`);
@@ -1005,6 +1011,10 @@ export async function runBrowserTextPageStep(win: BrowserWindow, deps: BrowserSm
     if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
     if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
     if (!(await waitInPage(win, q('[data-browser-tab-list] [data-browser-open-tab]'), 3_000))) return 'no Browser view';
+    // The tabs already open, so the ones this step opens can be closed again: later steps (browser pin) work on the
+    // tab in front, and expect the Smoke browser tab there.
+    const tabIds = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].map((t) => t.dataset.browserTab)`;
+    const before = (await js(tabIds)) as string[];
     const seen: string[] = [];
     for (const path of Object.keys(RAW)) {
       await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
@@ -1020,6 +1030,9 @@ export async function runBrowserTextPageStep(win: BrowserWindow, deps: BrowserSm
       seen.push(`${path} ${String(await page!.executeJavaScript(colours))}`);
     }
     await deps.shot('browser-text-page');
+    const opened = ((await js(tabIds)) as string[]).filter((id) => !before.includes(id));
+    for (const id of opened) await js(`${q(`[data-browser-tab-list] [data-browser-tab="${id}"]`)}?.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
+    if (!(await waitInPage(win, `${tabIds}.length === ${before.length}`, 3_000))) return `the ${opened.length} tabs it opened did not close on a middle click`;
     return `ok: dark canvas under ${seen.join(', ')}`;
   } finally {
     deps.setPrefs({ colorScheme: 'system' });

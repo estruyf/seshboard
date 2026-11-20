@@ -7398,18 +7398,20 @@ async function runLongPromptStep(win: BrowserWindow): Promise<string> {
   const found = (await js(`(() => { const row = ${row}; if (!row) return null; row.dataset.smokeLongPrompt = '1'; return true; })()`)) as boolean | null;
   if (!found) return 'ok: no long prompt on screen';
   const target = "document.querySelector('[data-smoke-long-prompt]')";
+  // The toggle shows once the prompt measures long, and a view that just changed width measures it again: wait for it.
+  if (!(await waitInPage(win, `!!${target}?.querySelector('[data-prompt-toggle]')`, 3_000))) return 'ok: no long prompt on screen once the view settled';
   // A prompt that mounts open (Show less) is closed first, so the check starts from the cut.
-  if (await js(`${target}.querySelector('[data-prompt-toggle]').getAttribute('aria-expanded') === 'true'`)) await js(`${target}.querySelector('[data-prompt-toggle]').click()`);
+  if (await js(`${target}?.querySelector('[data-prompt-toggle]')?.getAttribute('aria-expanded') === 'true'`)) await js(`${target}?.querySelector('[data-prompt-toggle]')?.click()`);
   if (!(await waitInPage(win, `!!${target}?.querySelector('[data-prompt-clamped]')`, 3_000))) return 'the long prompt is not cut';
   const lines = (await js(
     `(() => { const el = ${target}.querySelector('[data-prompt-clamped]'); return Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)); })()`,
   )) as number;
   if (lines !== 2) return `the cut prompt shows ${lines} lines, expected 2`;
-  await js(`${target}.querySelector('[data-prompt-toggle]').click()`);
+  await js(`${target}?.querySelector('[data-prompt-toggle]')?.click()`);
   if (!(await waitInPage(win, `!${target}?.querySelector('[data-prompt-clamped]') && ${target}?.querySelector('[data-prompt-toggle]')?.innerText.trim() === 'Show less'`, 3_000))) return 'Show more did not open the prompt';
-  await js(`${target}.querySelector('[data-prompt-toggle]').click()`);
+  await js(`${target}?.querySelector('[data-prompt-toggle]')?.click()`);
   if (!(await waitInPage(win, `!!${target}?.querySelector('[data-prompt-clamped]')`, 3_000))) return 'Show less did not cut the prompt again';
-  await js(`delete ${target}.dataset.smokeLongPrompt`);
+  await js(`(() => { const row = ${target}; if (row) delete row.dataset.smokeLongPrompt; })()`);
   return 'ok: a long prompt shows 2 lines, Show more opens it, Show less cuts it again';
 }
 
