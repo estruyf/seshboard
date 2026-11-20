@@ -110,12 +110,13 @@ import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSeshboard } from './git/githubStar.ts';
-import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { baseBranch, checkoutFacts, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { diffImages } from './git/diffImages.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { WorktreeFactsRunner } from './git/worktreeFacts.ts';
 import { fetchPullRequests, ignoredFiles, measureSize, readWorktrees, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
+import { FRESH_MS, GitStatusHub } from './git/gitStatusHub.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
@@ -583,6 +584,19 @@ export function createEngine(options: EngineOptions): Engine {
   const lane = new ConfigDirLane();
   /** Parsed transcripts, shared by every reader (the open transcript, search, catch-up, the phone, links). */
   const transcriptCache = new TranscriptCache();
+  /**
+   * Git status per checkout, shared by every view, card and the palette (`gitStatusHub.ts`): one look at a time, pushed
+   * to watching windows, looked at again when something may have changed.
+   */
+  const gitStatus = new GitStatusHub({
+    topLevel,
+    facts: (root) => checkoutFacts(root, root),
+    list: (root, base, facts) => listChanges(root, base, facts),
+    gitDir: (root) => git(root, ['rev-parse', '--absolute-git-dir']).then((dir) => dir.trim() || null, () => null),
+    log: (message) => log('debug', message),
+  });
+  /** A session wrote to its transcript or ended a turn: its checkout may have changed (set once the sessions' folders are known). */
+  let touchGit: (sessionId: string) => void = () => {};
   /** A session's transcript file, from the session index once it exists. */
   let transcriptPath: (sessionId: string) => string | null = () => null;
   const sdkSources = new Map<string, SessionSource>();
@@ -756,7 +770,10 @@ export function createEngine(options: EngineOptions): Engine {
       scheduleSearchSync();
       if (change.complete) scanCompleteHook();
     },
-    onTranscriptChanged: (id) => transcripts.changed(id),
+    onTranscriptChanged: (id) => {
+      transcripts.changed(id);
+      touchGit(id);
+    },
   });
   transcriptPath = (id) => sessions.transcriptFile(id);
   // Full-text search: indexed in the background, a little after anything changes.
@@ -900,6 +917,13 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** Transcript subscriptions per connection, so `transcript.unwatch` and disconnects can clean up. */
   const subscriptions = new WeakMap<HandlerContext<Contract>, Map<string, () => void>>();
+  /** How many views of a window watch each checkout (`git.watch`). */
+  const gitWatchCounts = new WeakMap<HandlerContext<Contract>, Map<string, number>>();
+  const countsFor = (context: HandlerContext<Contract>) => {
+    let counts = gitWatchCounts.get(context);
+    if (!counts) gitWatchCounts.set(context, (counts = new Map()));
+    return counts;
+  };
   const subscriptionsFor = (context: HandlerContext<Contract>) => {
     let map = subscriptions.get(context);
     if (!map) {
@@ -1173,6 +1197,7 @@ export function createEngine(options: EngineOptions): Engine {
       // While this app runs a turn, the live messages show it: the file is read once the turn ends or waits for you.
       transcripts.running(info.sessionId, info.state === 'running' || info.state === 'starting');
       if (info.state === 'idle') {
+        touchGit(info.sessionId);
         transcripts.settled(info.sessionId);
         // The turn's messages are searchable now, not once the session has been quiet for a while.
         search.settled(info.sessionId);
@@ -1695,6 +1720,10 @@ export function createEngine(options: EngineOptions): Engine {
   });
   /** Where a session works now: its process's folder (a worktree once it has one), else what its transcript says. */
   const sessionCwd = (id: string) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null;
+  touchGit = (id) => {
+    const cwd = sessionCwd(id);
+    if (cwd) gitStatus.touch(cwd);
+  };
   const catchUpStore = new CatchUpStore(cache.db);
   for (const card of options.demoUsage?.catchUps ?? []) catchUpStore.save(card);
   const catchUp = new CatchUpService({
@@ -1703,7 +1732,7 @@ export function createEngine(options: EngineOptions): Engine {
     cwd: (id) => sessionCwd(id),
     profileOf: sessionProfile,
     agentOf: (id) => agentName(providerAdapterOf(id)?.id),
-    changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
+    changes: (cwd) => gitStatus.changes(cwd, 'uncommitted').catch(() => null),
     summarize: (profileId, sessionId, input, system) => summarizer.ask(profileId, sessionId, input, system),
     useModel: () => catchUpSummaries,
     emit: (sessionId, card) => broadcast('catchup.changed', { sessionId, catchUp: card }),
@@ -2993,7 +3022,7 @@ export function createEngine(options: EngineOptions): Engine {
         const cwd = sessionCwd(sessionId);
         if (!cwd) return null;
         try {
-          return await listChanges(cwd, 'uncommitted');
+          return await gitStatus.changes(cwd, 'uncommitted');
         } catch (error) {
           throw new RpcError('GIT_FAILED', (error as Error).message);
         }
@@ -3205,7 +3234,8 @@ export function createEngine(options: EngineOptions): Engine {
   looseEnds = new LooseEndsWatcher(
     {
       repos: looseEndRepos,
-      facts: async (root) => repoFacts(root, { env: (await shell.ready).env, pullRequests: pullRequestsFor(root, false) }),
+      // A checkout a session view watches was looked at moments ago: its count of changed files is reused.
+      facts: async (root) => repoFacts(root, { env: (await shell.ready).env, pullRequests: pullRequestsFor(root, false), uncommitted: (path) => gitStatus.fresh(path, 'uncommitted', 30_000)?.files.length ?? null }),
       ownerOf: looseEndsOwner,
       merged: moveMerged,
       emit: (map) => broadcast('sessions.looseEnds', { looseEnds: Object.fromEntries([...map].map(([owner, ends]) => [owner, [...ends]])) }),
@@ -4274,12 +4304,35 @@ export function createEngine(options: EngineOptions): Engine {
       syncMemorySearch(10_000);
       return { memories: memorySearch.bySession(sessionId) };
     },
-    'git.changes': async ({ cwd, base }) => {
+    'git.changes': async ({ cwd, base, fresh }) => {
       try {
-        return await listChanges(cwd, base);
+        return await gitStatus.changes(cwd, base, fresh ? 0 : FRESH_MS);
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
       }
+    },
+    // One watch per checkout and window, counted: two panes of a window on the same folder share it, and it ends
+    // when the last of them stops watching.
+    'git.watch': ({ cwd, base }, context) => {
+      const map = subscriptionsFor(context);
+      const key = `git\0${base}\0${cwd}`;
+      const count = (gitWatchCounts.get(context)?.get(key) ?? 0) + 1;
+      countsFor(context).set(key, count);
+      if (count === 1) map.set(key, gitStatus.watch(cwd, base, (changes, error) => context.emit('git.changed', { cwd, base, changes, error })));
+      return {};
+    },
+    'git.unwatch': ({ cwd, base }, context) => {
+      const map = subscriptionsFor(context);
+      const key = `git\0${base}\0${cwd}`;
+      const count = (gitWatchCounts.get(context)?.get(key) ?? 0) - 1;
+      if (count > 0) {
+        countsFor(context).set(key, count);
+        return {};
+      }
+      gitWatchCounts.get(context)?.delete(key);
+      map.get(key)?.();
+      map.delete(key);
+      return {};
     },
     'git.diff': async ({ cwd, base, path }) => {
       try {
@@ -5074,6 +5127,7 @@ export function createEngine(options: EngineOptions): Engine {
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setAppUpdate: (update) => remote?.setAppUpdate(update),
     setForeground: (foreground) => {
+      gitStatus.setForeground(foreground);
       checksWatcher.setForeground(foreground);
       looseEnds?.setForeground(foreground);
       foregroundNow = foreground;
@@ -5108,6 +5162,7 @@ export function createEngine(options: EngineOptions): Engine {
     close() {
       clearInterval(dailyCleanup);
       search.stop();
+      gitStatus.stop();
       browserBridge.close();
       orchestratorBridge.close();
       clearInterval(providerLiveTimer);

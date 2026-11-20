@@ -11,6 +11,8 @@ export interface FactsOptions {
   gh?: GhCommand;
   /** The pull requests by branch, when the caller keeps them already (the engine reads them every few minutes). */
   pullRequests?: Promise<Map<string, WorktreePullRequest> | null>;
+  /** A checkout's count of changed files from a recent look (the session views' git status), or null to read it. */
+  uncommitted?: (path: string) => number | null;
 }
 
 /**
@@ -22,7 +24,7 @@ export interface FactsOptions {
 export async function repoFacts(root: string, options: FactsOptions): Promise<{ facts: RepoFacts | null; github: boolean }> {
   const gh = options.gh ?? defaultGh();
   const prsPromise = options.pullRequests ?? fetchPullRequests(root, options.env, gh);
-  const list = await listWorktrees(root).catch(() => null);
+  const list = await listWorktrees(root, options.uncommitted ? { uncommitted: options.uncommitted } : {}).catch(() => null);
   const prs = await prsPromise.catch(() => null);
   if (!list) return { facts: null, github: false };
   const base = list.baseBranch;

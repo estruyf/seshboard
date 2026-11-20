@@ -1258,6 +1258,34 @@ describe('engine over a MessagePort', () => {
   });
 });
 
+describe('git status for watching windows', () => {
+  it('sends a checkout\u2019s changes to a window until its last view of it stops watching', async () => {
+    const { client } = connect({ path: process.env.PATH ?? '' });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-git-watch-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'first']);
+    const seen: string[][] = [];
+    client.on('git.changed', (event) => event.cwd === repo && seen.push(event.changes?.files.map((f) => f.path) ?? []));
+    // Two panes of the window on the same folder: one watch, counted twice.
+    await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
+    await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
+    await vi.waitFor(() => expect(seen).toEqual([[]]));
+    await client.call('git.unwatch', { cwd: repo, base: 'uncommitted' });
+    writeFileSync(join(repo, 'new.txt'), 'hello\n');
+    const changes = await client.call('git.changes', { cwd: repo, base: 'uncommitted', fresh: true });
+    expect(changes.files.map((f) => f.path)).toEqual(['new.txt']);
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(['new.txt']));
+    // The last view stops: nothing more comes.
+    await client.call('git.unwatch', { cwd: repo, base: 'uncommitted' });
+    const count = seen.length;
+    writeFileSync(join(repo, 'other.txt'), 'hi\n');
+    await client.call('git.changes', { cwd: repo, base: 'uncommitted', fresh: true });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(seen.length).toBe(count);
+  });
+});
+
 describe('quick questions', () => {
   /** A session in /work/parser and one in the questions folder (known once the engine has a data folder). */
   function connectWithQuestion(sdk?: SdkRuntime) {

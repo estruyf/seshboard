@@ -11,6 +11,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Seshboard checks your plan usage less often.** At most once a minute per profile while you work, and the check no longer runs your hooks or starts your MCP servers.
 - **A big session list stays smooth.** The sidebar no longer redraws every row when one session changes, when you type in a message box or while you scroll the list: about 20 times fewer rows are redrawn in each case. With about 750 sessions, scrolling takes about 60% less script time.
 - **Animations rest while Seshboard is in the background.** The spinners, pulses and the working animation pause while the window has no focus, so a window you aren't using costs next to nothing. The working animation also uses about a third of the CPU it used to.
+- **Git runs far less often.** The changed files of a project are checked once for every view that shows them, when something changed (Claude wrote a file, a turn ended, you staged or committed, the window came to the front) and otherwise every 5 seconds while a window shows them. With nothing open on a project, or the window hidden, nothing runs.
 
 ### Fixed
 
