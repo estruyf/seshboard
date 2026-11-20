@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LiveSession, SessionHostInfo, SessionSummary } from '@seshboard/protocol/client';
 import { useHosts } from './hostsStore.ts';
 import { currentRows, useRows } from './rowsStore.ts';
@@ -12,6 +12,8 @@ const host = (id: string, over: Partial<SessionHostInfo> = {}): SessionHostInfo 
   ({ sessionId: id, cwd: '/p/a', state: 'running', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: 5, promptedAt: 6, queue: [], queueHold: null, profileId: 'default', backgroundTasks: [], ...over }) as SessionHostInfo;
 
 describe('toRows with a cache', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('gives back the same row object while the summary, registry entry and host are the same objects', () => {
     const sessions = new Map([['a', summary('a')], ['b', summary('b')]]);
     const entries = new Map([['a', live('a')]]);
@@ -35,6 +37,8 @@ describe('toRows with a cache', () => {
     const entries = new Map([['a', live('a', { status: 'running', updatedAt: 9_000 })], ['pending', live('pending', { cwd: '/p/b', projectRoot: '/p/b' })]]);
     const hosts = new Map([['h', host('h')]]);
     const kept = new Set(['a']);
+    // A row with no time of its own takes the current one: both builds must see the same clock.
+    vi.spyOn(Date, 'now').mockReturnValue(1_795_000_000_000);
     expect(toRows(sessions, entries, hosts, kept, new Map())).toEqual(toRows(sessions, entries, hosts, kept));
   });
 

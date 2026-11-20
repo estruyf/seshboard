@@ -47,12 +47,15 @@ interface Entry {
   summary: RawSummary;
   path: string | null;
   mtime: number | null;
+  /** The file's size when it was read; null for an entry loaded from the cache, which stores only the mtime. */
+  size: number | null;
   entrypoint: string | null;
 }
 
 interface TranscriptFile {
   path: string;
   mtime: number;
+  size: number;
   profileId: string;
 }
 
@@ -176,6 +179,7 @@ export class SessionIndex {
           summary,
           path: (row.jsonl_path as string | null) ?? null,
           mtime: (row.jsonl_mtime as number | null) ?? null,
+          size: null,
           entrypoint: (row.entrypoint as string | null) ?? null,
         });
       } catch {
@@ -502,7 +506,7 @@ export class SessionIndex {
       if (provider) {
         for (const [id, path] of provider.files()) {
           const stat = statSync(path, { throwIfNoEntry: false });
-          if (stat?.isFile()) files.set(id, { path, mtime: Math.round(stat.mtimeMs), profileId });
+          if (stat?.isFile()) files.set(id, { path, mtime: Math.round(stat.mtimeMs), size: stat.size, profileId });
         }
         continue;
       }
@@ -527,7 +531,7 @@ export class SessionIndex {
           if (!stat?.isFile()) continue;
           // The same session in two folders (a moved project): the first, as the SDK's reader finds it.
           if (files.has(match[2]!)) duplicates.add(match[2]!);
-          else files.set(match[2]!, { path, mtime: Math.round(stat.mtimeMs), profileId });
+          else files.set(match[2]!, { path, mtime: Math.round(stat.mtimeMs), size: stat.size, profileId });
         }
       }
     }
@@ -548,8 +552,9 @@ export class SessionIndex {
     const firstPrompt = info.firstPrompt ? withoutContext(info.firstPrompt) : '';
     const title = oneLine(info.customTitle || info.summary || firstPrompt || 'Untitled session', TITLE_MAX);
     // The SDK's lastModified is the file's mtime, which moves when Claude Code merely exits or
-    // reopens the session; use the last message instead. Read again only when the file changed.
-    const unchanged = previous && file && previous.mtime === file.mtime;
+    // reopens the session; use the last message instead. Read again only when the file changed: two writes
+    // can share an mtime (the same millisecond, or the same clock tick on Linux), so the size counts too.
+    const unchanged = previous && file && previous.mtime === file.mtime && (previous.size === null || previous.size === file.size);
     const updatedAt = info.provider ? info.lastModified : unchanged ? previous.summary.updatedAt : ((file && readLastActivity(file.path)) ?? info.lastModified);
     const summary: RawSummary = {
       id: info.sessionId,
@@ -570,7 +575,7 @@ export class SessionIndex {
       profileId: info.profileId ?? file?.profileId ?? previous?.summary.profileId ?? BUILTIN_PROFILE_ID,
       ...(info.provider ? { provider: info.provider } : {}),
     };
-    return { summary, path: file?.path ?? previous?.path ?? null, mtime: file?.mtime ?? previous?.mtime ?? null, entrypoint };
+    return { summary, path: file?.path ?? previous?.path ?? null, mtime: file?.mtime ?? previous?.mtime ?? null, size: file?.size ?? previous?.size ?? null, entrypoint };
   }
 
   private apply(upserted: Entry[], removed: string[]): void {
@@ -667,7 +672,7 @@ export class SessionIndex {
       if (info) {
         const stat = statSync(path, { throwIfNoEntry: false });
         const previous = this.entries.get(sessionId);
-        const entry = this.build(info, { path, mtime: Math.round(stat?.mtimeMs ?? Date.now()), profileId }, previous);
+        const entry = this.build(info, { path, mtime: Math.round(stat?.mtimeMs ?? Date.now()), size: stat?.size ?? 0, profileId }, previous);
         if (!previous || JSON.stringify(previous.summary) !== JSON.stringify(entry.summary)) {
           if (previous && this.mayWait(previous, entry)) this.defer(entry);
           else this.apply([entry], []);
