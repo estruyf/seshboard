@@ -9,6 +9,12 @@ ipcRenderer.on(IpcChannel.enginePort, (event) => {
 
 const theme = (command: ThemeCommand) => ipcRenderer.invoke(IpcChannel.themeCommand, command);
 
+// Whether the window can be seen, from main: kept here from the start, so the page reads the latest whenever it asks.
+let windowShown = ipcRenderer.sendSync(IpcChannel.getWindowShown) as boolean;
+ipcRenderer.on(IpcChannel.windowShown, (_event, shown: boolean) => {
+  windowShown = shown;
+});
+
 const bridge: SeshboardBridge = {
   platform: process.platform,
   requestEnginePort: () => ipcRenderer.send(IpcChannel.requestEnginePort),
@@ -111,6 +117,12 @@ const bridge: SeshboardBridge = {
     const handler = (_event: unknown, active: boolean) => listener(active);
     ipcRenderer.on(IpcChannel.windowActive, handler);
     return () => ipcRenderer.off(IpcChannel.windowActive, handler);
+  },
+  windowShown: () => windowShown,
+  onWindowShown(listener) {
+    const handler = (_event: unknown, shown: boolean) => listener(shown);
+    ipcRenderer.on(IpcChannel.windowShown, handler);
+    return () => ipcRenderer.off(IpcChannel.windowShown, handler);
   },
   popout: new URLSearchParams(window.location.search).get(POPOUT_QUERY),
   popouts: ipcRenderer.sendSync(IpcChannel.getPopouts) as string[],

@@ -13,6 +13,7 @@ import { useHomeFolder } from '../../state/homeStore.ts';
 import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useStreaming, useStreamingKind } from '../../state/streamingStore.ts';
+import { useStreamWatch } from '../../state/streamWatch.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
 import { trustRepository } from '../../state/repoTrust.ts';
@@ -771,6 +772,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // Sessions running elsewhere (a terminal, Claude desktop) count too: their status comes from the registry.
   const working = running || live?.status === 'running' || live?.status === 'needs-you';
   // Only what Claude is doing (thinking, a tool), not the text it writes: the view doesn't render again for every word.
+  // This view shows the session's streaming text: the engine sends it here while the view is up and can be seen.
+  useStreamWatch(sessionId);
   const streamShape = useStreamingKind(sessionId);
   const streamKind = streamShape?.kind ?? null;
   const streamTool = streamShape?.kind === 'tool' ? streamShape.text : null;

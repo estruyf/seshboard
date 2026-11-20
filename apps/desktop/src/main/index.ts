@@ -14,7 +14,7 @@ import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
 import { DOCK_LOOKS, DockActivity } from './dockActivity.ts';
-import { trackWindowActivity, windowIsActive } from './windowActivity.ts';
+import { trackWindowActivity, windowIsActive, windowIsShown } from './windowActivity.ts';
 import { MenuBar, PANEL_WIDTH, panelHeight, panelPosition, quitsWhenAllClosed, trayMenu, type MenuBarCounts } from './menuBar.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { QuickStart, quickStartBounds } from './quickStart.ts';
@@ -1493,10 +1493,22 @@ app.on('browser-window-created', (_event, win) => {
   trackWindowActivity(win, (active) => {
     if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(IpcChannel.windowActive, active);
   });
+  // And whether it can be seen: a window out of sight gets no streamed text (the views stop watching).
+  trackWindowActivity(
+    win,
+    (shown) => {
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(IpcChannel.windowShown, shown);
+    },
+    windowIsShown,
+  );
 });
 ipcMain.on(IpcChannel.getWindowActive, (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   event.returnValue = win ? windowIsActive(win) : true;
+});
+ipcMain.on(IpcChannel.getWindowShown, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  event.returnValue = win ? windowIsShown(win) : true;
 });
 
 ipcMain.on(IpcChannel.getPopouts, (event) => {

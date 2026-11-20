@@ -32,7 +32,7 @@ describe('toRows with a cache', () => {
 
   it('builds what it always built: the same rows with and without a cache', () => {
     const sessions = new Map([['a', summary('a', { updatedAt: 500 })]]);
-    const entries = new Map([['a', live('a', { status: 'running', updatedAt: 9_000 })], ['pending', live('pending', { cwd: '/p/b', projectRoot: '/p/b' })]]);
+    const entries = new Map([['a', live('a', { status: 'running', updatedAt: 9_000 })], ['pending', live('pending', { cwd: '/p/b', projectRoot: '/p/b', startedAt: 7_000 })]]);
     const hosts = new Map([['h', host('h')]]);
     const kept = new Set(['a']);
     expect(toRows(sessions, entries, hosts, kept, new Map())).toEqual(toRows(sessions, entries, hosts, kept));

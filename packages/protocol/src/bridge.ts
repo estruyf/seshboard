@@ -108,6 +108,8 @@ export const IpcChannel = {
   /** Main to a window: it moved to or from the foreground (shown, not minimised, focused). */
   windowActive: "seshboard:window-active",
   getWindowActive: "seshboard:get-window-active",
+  windowShown: "seshboard:window-shown",
+  getWindowShown: "seshboard:get-window-shown",
   relayDrafts: "seshboard:relay-drafts",
   draftsRelayed: "seshboard:drafts-relayed",
   requestDrafts: "seshboard:request-drafts",
@@ -1295,6 +1297,13 @@ export interface SeshboardBridge {
    */
   readonly windowActive: boolean;
   onWindowActive(listener: (active: boolean) => void): () => void;
+  /**
+   * Whether this window can be seen now (shown and not minimised, focused or not): the preload keeps main's latest word,
+   * so one sent before the page asks isn't lost. Follow `onWindowShown`. A window out of sight stops getting the text
+   * Claude streams.
+   */
+  windowShown(): boolean;
+  onWindowShown(listener: (shown: boolean) => void): () => void;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
   readonly popouts: readonly string[];
   /** Fires in every window when a pop-out opens or closes. */

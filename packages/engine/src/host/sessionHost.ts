@@ -769,6 +769,8 @@ export class SessionHost {
     const message = failureMessage(error instanceof Error ? error.message : String(error), this.config.claudePath);
     this.events.log('error', `Session ${this.sessionId} failed: ${message}`);
     this.initReject(new Error(message));
+    // What was streaming goes out before the state, which drops it everywhere: none of it may come after.
+    this.flushStream();
     this.update({ state: 'error', error: message, ...(this.early?.length ? { unsent: this.early.length } : {}), ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
   }
 
@@ -781,7 +783,10 @@ export class SessionHost {
           this.events.log('warn', `Could not handle ${message.type} message: ${(error as Error).message}`);
         }
       }
-      if (!this.closing) this.update({ state: 'closed' });
+      if (!this.closing) {
+        this.flushStream();
+        this.update({ state: 'closed' });
+      }
     } catch (error) {
       if (this.closing) return;
       this.fail(error);

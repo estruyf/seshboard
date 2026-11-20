@@ -7,6 +7,7 @@ import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { useStreamingKind } from '../../state/streamingStore.ts';
+import { useStreamWatch } from '../../state/streamWatch.ts';
 import { waitingLabel } from '../../state/sidebarRows.ts';
 import { reviewLabel } from '../catchUp/catchUpModel.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -114,6 +115,8 @@ export function WorkingLane({ rows, ctx }: { rows: readonly SessionRowData[]; ct
 /** One Working card: it reads its own session's host and what it streams, so another session's turn doesn't render it. */
 function WorkingCard({ row, ctx, now }: { row: SessionRowData; ctx: LaneContext; now: number }) {
   const host = useHosts((s) => s.hosts.get(row.id));
+  // What Claude is doing there (Thinking, Using Edit) comes with the session's stream.
+  useStreamWatch(row.id);
   const block = useStreamingKind(row.id);
   const said = workingLabel({ waiting: false, compacting: host?.compacting === true, block, retry: host?.apiRetry ? apiRetryLine(host.apiRetry, now) : null });
   // Without a turn streaming here (Claude Code elsewhere), what runs in the background, or who works on it.
