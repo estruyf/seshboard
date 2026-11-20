@@ -44,6 +44,9 @@ const command = packaged ? packagedApp() : (createRequire(import.meta.url)('elec
 const started = performance.now();
 const childEnv: NodeJS.ProcessEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
+// Quick start was used yesterday, so its panel is made at launch, as for someone who uses it (the step that destroys it covers the
+// panel made on the first press).
+childEnv.SESHBOARD_QUICK_START_USED ??= String(Date.now() - 24 * 60 * 60_000);
 
 // Each --only adds a pattern; a step runs when its label matches any of them.
 const patterns = process.argv.flatMap((arg, i) => (arg === '--only' ? [process.argv[i + 1] ?? ''] : arg.startsWith('--only=') ? [arg.slice('--only='.length)] : []));

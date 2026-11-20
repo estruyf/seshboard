@@ -130,6 +130,8 @@ export const IpcChannel = {
   menuBarShown: "seshboard:menu-bar-shown",
   quickStartCommand: "seshboard:quick-start-command",
   quickStartPassClicks: "seshboard:quick-start-pass-clicks",
+  /** From the quick start panel: its field is mounted and can take the focus (lighter than the ready report). */
+  quickStartReady: "seshboard:quick-start-ready",
   quickStartShown: "seshboard:quick-start-shown",
   quickStartKey: "seshboard:quick-start-key",
   getQuickStartStatus: "seshboard:get-quick-start-status",
@@ -1357,6 +1359,11 @@ export interface SeshboardBridge {
    * under it; or back over the panel or one of its menus (`false`).
    */
   quickStartPassClicks(pass: boolean): void;
+  /**
+   * From the quick start panel: its field is mounted and can take the focus. A press that made the panel waits for this
+   * before it shows the window.
+   */
+  quickStartReady(): void;
   /**
    * In the quick start panel: the global shortcut showed it. `keepDraft` is false when it was hidden long enough
    * (5 minutes) for what was typed to go.
