@@ -9,6 +9,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **The Dock animation is lighter.** Settings › Theme › App icon › Show when Claude is working now has Off, Light and Smooth. Light is the new default: the same motion at about 3 frames a second, using about 2% of a CPU core while Claude works instead of 20%. Smooth keeps the old 13 frames a second. If you had it on, you get Light, and if you had it off, it stays off.
 - **Busy sessions use far less CPU.** While Claude works, Seshboard reads only what was added to the transcript instead of the whole file, shows a session it runs from the live messages, and sends the sidebar a busy session's new time about every 15 seconds. Switching back to a session you just looked at is quicker. Search adds a session's new messages when its turn ends, or once it has been quiet for 30 seconds.
 - **Seshboard checks your plan usage less often.** At most once a minute per profile while you work, and the check no longer runs your hooks or starts your MCP servers.
+- **A big session list stays smooth.** The sidebar no longer redraws every row when one session changes, when you type in a message box or while you scroll the list: about 20 times fewer rows are redrawn in each case. With about 750 sessions, scrolling takes about 60% less script time.
 
 ### Fixed
 

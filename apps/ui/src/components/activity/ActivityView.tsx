@@ -7,7 +7,8 @@ import { useComputers } from '../../state/computersStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useActivity, type ActivitySpan } from '../../state/activityStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
 import { ComputerChip } from '../computers/ComputerChip.tsx';
 import { useMinute } from '../focus/useMinute.ts';
 import { ProjectIcon, useProjectColor } from '../ProjectIcon.tsx';
@@ -676,10 +677,8 @@ function WhatYouDid({ rows, known, span, today, scroller }: { rows: readonly Act
     [groups, collapsible, openProjects],
   );
   // What needs you now, on this computer: the same list as Home's.
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
-  const needs = useMemo(() => new Set(homeSessions(toRows(sessions, live, hosts)).needs.map((row) => row.id)), [sessions, live, hosts]);
+  const baseRows = useRows((s) => s.rows);
+  const needs = useMemo(() => new Set(homeSessions(baseRows).needs.map((row) => row.id)), [baseRows]);
 
   // Virtualised only for long lists; the page scrolls, so the list's place in it is the scroll margin. What is above it can grow.
   const list = useRef<HTMLDivElement>(null);

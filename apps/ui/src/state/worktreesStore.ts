@@ -5,9 +5,9 @@ import type { EngineClient } from '../engine/connection.ts';
 import { addEarly, applyEarly, listIsFresh, pendingCount, PENDING_STALE_MS, type EarlyFacts } from './worktreeFactsFeed.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { NO_SESSIONS, worktreeRows, type WorktreeRow, type WorktreeSessions } from '../components/worktrees/worktreeGroups.ts';
-import { useHosts } from './hostsStore.ts';
 import { isBusy } from './queue.ts';
-import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
+import { useRows } from './rowsStore.ts';
+import { type SessionRowData } from './sessionsStore.ts';
 import { rowStatus } from './sidebarRows.ts';
 
 /** A project's worktrees as last read. */
@@ -164,11 +164,8 @@ export function sessionsIn(entry: WorktreeEntry, rows: ReadonlyMap<string, Sessi
 }
 
 /** Every session the app knows, with its live state, by id. */
-export function useAllSessionRows(): Map<string, SessionRowData> {
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
-  return useMemo(() => new Map(toRows(sessions, live, hosts).map((row) => [row.id, row])), [sessions, live, hosts]);
+export function useAllSessionRows(): ReadonlyMap<string, SessionRowData> {
+  return useRows((s) => s.byId);
 }
 
 /** A project's worktrees grouped for the overview, with their sessions' live state. */

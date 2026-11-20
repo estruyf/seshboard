@@ -3,7 +3,8 @@ import { basename } from '../../lib/format.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useHud } from '../../state/sessionNav.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
 import { statusLine } from '../../state/sidebarOrder.ts';
 import { rowStatus } from '../../state/sidebarRows.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -23,9 +24,7 @@ export function SessionHud() {
   const message = useHud((s) => s.message);
   const nonce = useHud((s) => s.nonce);
   const [visible, setVisible] = useState(false);
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
+  const baseRows = useRows((s) => s.rows);
   const projects = useProjects((s) => s.projects);
   const remoteRows = useRemoteRows();
 
@@ -37,8 +36,8 @@ export function SessionHud() {
   }, [message, nonce]);
 
   const session = useMemo(
-    () => (message?.kind === 'session' ? ([...toRows(sessions, live, hosts), ...remoteRows].find((row) => row.id === message.id) ?? null) : null),
-    [message, sessions, live, hosts, remoteRows],
+    () => (message?.kind === 'session' ? ([...baseRows, ...remoteRows].find((row) => row.id === message.id) ?? null) : null),
+    [message, baseRows, remoteRows],
   );
   const project = session ? projects.get(session.projectRoot) : undefined;
   const line = session ? statusLine(rowStatus(session)) : null;

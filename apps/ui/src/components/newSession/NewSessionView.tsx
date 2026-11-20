@@ -43,7 +43,8 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { markKept, useSessions } from '../../state/sessionsStore.ts';
 import { inScope } from '../../state/sidebarRows.ts';
 import { PromptChips } from '../savedPrompts/PromptChips.tsx';
 import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
@@ -115,11 +116,11 @@ function LocalNewSession() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const sessions = useSessions((s) => s.sessions);
+  const baseRows = useRows((s) => s.rows);
   const select = useSessions((s) => s.select);
   const models = useHosts((s) => s.models);
   const commandsVersion = useHosts((s) => s.commandsVersion);
   const focusRequest = useSessions((s) => s.newSessionRequest);
-  const hosts = useHosts((s) => s.hosts);
   const live = useSessions((s) => s.live);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
@@ -349,7 +350,7 @@ function LocalNewSession() {
   // The sessions the sidebar lists (sessions from other apps only when the scope shows them): the
   // tiles' status lines and "Pick up in" come from these.
   const kept = useKeptSessions();
-  const rows = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
+  const rows = useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
   const activity = useMemo(() => activityByProject(rows), [rows]);
   const ordered = useMemo(
     () => orderProjects(folders, projectOrder, (root) => Math.max(projects.get(root)?.lastActivity ?? 0, activity.get(root)?.lastActivity ?? 0) || null),
