@@ -115,7 +115,7 @@ describe('SearchIndex', () => {
     expect(index.search('unique', 5)).toHaveLength(0);
   });
 
-  it('adds only the new messages of a transcript that grew, and indexes it whole again after a rewrite', async () => {
+  it('BUDGET: adds only the new messages of a transcript that grew, and indexes it whole again after a rewrite', async () => {
     const transcripts = { a: [user('a1', 'first prompt'), claude('a2', 'first answer')] };
     const versions = { a: '1' };
     const { index, rows, rowOf } = setup(transcripts, versions);
@@ -155,7 +155,7 @@ describe('SearchIndex', () => {
     expect(index.search('complete', 5).map((h) => h.messageUuid)).toEqual(['a2']);
   });
 
-  it('waits for a session being written to be quiet, unless its turn ended', async () => {
+  it('BUDGET: waits for a session being written to be quiet, unless its turn ended', async () => {
     let now = 100_000;
     const writtenAt: Record<string, number> = { busy: now - 1_000, quiet: now - 60_000 };
     const versions: Record<string, string> = { busy: '1', quiet: '1' };

@@ -217,7 +217,7 @@ describe('UsageMonitor nudges', () => {
     return { monitor, counters, wait: (ms: number) => vi.advanceTimersByTimeAsync(ms) };
   };
 
-  it('starts at most one helper a minute for nudges, however often a turn ends', async () => {
+  it('BUDGET: starts at most one helper a minute for nudges, however often a turn ends', async () => {
     const { monitor, counters, wait } = await start();
     expect(counters.fetches).toBe(1);
     // A turn ends every 20 s for three minutes.
