@@ -15,6 +15,8 @@ export const appIconNote = (platform = currentPlatform()) =>
       ? 'Pinned shortcuts and the Start menu keep the original icon.'
       : 'The app menu keeps the original icon.';
 
-/** Settings › Theme › App icon's switch for the Dock's working animation (macOS only: the Dock has the icon to animate). */
+/** Settings › Theme › App icon's choice for the Dock's working animation (macOS only: the Dock has the icon to animate). */
 export const DOCK_ACTIVITY_LABEL = 'Show when Claude is working';
 export const DOCK_ACTIVITY_DETAIL = 'The empty jacks in the Dock icon light up in turn, and light runs along the cables, while a session works.';
+/** Under the choice while Smooth is picked: its motion costs CPU (measured: about 20% of a core while Claude works). */
+export const DOCK_ACTIVITY_SMOOTH_NOTE = 'Smoother motion, but uses about 20% of a CPU core while Claude works.';

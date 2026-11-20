@@ -4,6 +4,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
+### Changed
+
+- **The Dock animation is lighter.** Settings › Theme › App icon › Show when Claude is working now has Off, Light and Smooth. Light is the new default: the same motion at about 3 frames a second, using about 2% of a CPU core while Claude works instead of 20%. Smooth keeps the old 13 frames a second. If you had it on, you get Light, and if you had it off, it stays off.
+
 ### Fixed
 
 - **Copilot sessions on GPT models answer again.** A Copilot session on a GPT model failed every message with "Function 'browser.browser-click' is not allowed in reserved namespace 'browser'". Seshboard's browser tools now go by another name for these agents, and still show as browser tools in the transcript.

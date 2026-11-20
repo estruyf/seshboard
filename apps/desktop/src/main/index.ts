@@ -13,7 +13,7 @@ import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } fro
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
-import { DockActivity } from './dockActivity.ts';
+import { DOCK_LOOKS, DockActivity } from './dockActivity.ts';
 import { MenuBar, PANEL_WIDTH, panelHeight, panelPosition, quitsWhenAllClosed, trayMenu, type MenuBarCounts } from './menuBar.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { QuickStart, quickStartBounds } from './quickStart.ts';
@@ -285,9 +285,9 @@ function updatePreferences(patch: unknown): void {
   const next = preferences.update(patch);
   if (next.appIcon !== appIcon.key) {
     appIcon.apply(next.appIcon);
-    dockActivity.iconChanged();
+    dockActivity.refresh();
   }
-  dockActivity.setEnabled(next.dockActivity && !dockHidden);
+  dockActivity.setMode(dockHidden ? 'off' : next.dockActivity);
   menuBar.setEnabled(next.menuBar);
   if (app.isReady()) quickStart.setShortcut(next.quickStartShortcut);
   // Hide from the Dock: turned on with no window open hides it now; turned off shows it again.
@@ -832,6 +832,8 @@ const menuBar = new MenuBar<NativeImage>({
   },
 });
 nativeTheme.on('updated', () => menuBar.refresh());
+// Reduce motion and the Dock's file are read when the animation starts, so a change of appearance asks it to look again.
+nativeTheme.on('updated', () => dockActivity.refresh());
 
 /** The icon's right-click menu (on Linux its only one): the counts, Open Seshboard, New session…, Pause notifications, Quit. */
 function trayContextMenu(): Menu {
@@ -1073,7 +1075,7 @@ function hideDock(): void {
   if (process.platform !== 'darwin' || dockHidden || !app.dock) return;
   dockHidden = true;
   // The Dock's activity has no icon to draw on while it is hidden.
-  dockActivity.setEnabled(false);
+  dockActivity.setMode('off');
   app.dock.hide();
 }
 
@@ -1083,7 +1085,7 @@ function showDock(): void {
   dockHidden = false;
   void app.dock.show().then(() => {
     appIcon.apply(preferences.get().appIcon);
-    dockActivity.setEnabled(preferences.get().dockActivity);
+    dockActivity.setMode(preferences.get().dockActivity);
     notifier?.refreshBadge();
   });
 }
@@ -6397,13 +6399,14 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
  * file as the next launch reads it, then Reset to Graphite.
  */
 /**
- * Settings › Theme › App icon › Show when Claude is working: on by default on macOS, where it animates the Dock's icon
- * (held here, as nothing works in the demo) and stops when turned off; no switch elsewhere. Leaves it on.
+ * Settings › Theme › App icon › Show when Claude is working: Light by default on macOS, where it animates the Dock's icon
+ * (held here, as nothing works in the demo); Smooth animates it too, Off stops it; no choice elsewhere. Leaves it on Light.
  */
 async function runDockActivityStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
-  const switchIs = (on: boolean) => waitInPage(win, `document.querySelector('[data-dock-activity][role="switch"]')?.getAttribute('aria-checked') === '${on}'`, 2_000);
+  const modeIs = (mode: string) => waitInPage(win, `document.querySelector('[data-dock-activity-mode="${mode}"]')?.getAttribute('aria-checked') === 'true'`, 2_000);
+  const pick = (mode: string) => click(`[data-dock-activity-mode="${mode}"]`);
 
   if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
   await click('[data-settings-section="theme"]');
@@ -6411,28 +6414,40 @@ async function runDockActivityStep(win: BrowserWindow): Promise<string> {
   if (process.platform !== 'darwin') {
     const shown = await js("Boolean(document.querySelector('[data-dock-activity]'))");
     await click('[data-close-settings]');
-    return shown ? 'failed: the switch shows without a Dock' : 'ok (no Dock here, no switch)';
+    return shown ? 'failed: the choice shows without a Dock' : 'ok (no Dock here, no choice)';
   }
-  if (!(await switchIs(true)) || !preferences.get().dockActivity) return 'failed: Show when Claude is working is not on by default';
+  if (!(await modeIs('light')) || preferences.get().dockActivity !== 'light') return 'failed: Show when Claude is working is not on Light by default';
+  if (await js("Boolean(document.querySelector('[data-dock-activity-note]'))")) return 'failed: the CPU note shows on Light';
 
   // Reduce motion shows one still frame instead of the animation. A session still working from an earlier step may
   // have put it there already, and then it also keeps showing after the step lets go.
   const still = systemPreferences.getAnimationSettings().prefersReducedMotion;
-  const before = dockActivity.shown;
   const workingAlready = dockActivity.showing;
   dockActivity.hold(true);
   try {
-    if (!(await until(() => dockActivity.showing && (still ? dockActivity.shown > 0 : dockActivity.shown >= before + 4), 3_000))) return `failed: the Dock showed ${dockActivity.shown - before} frames`;
-    await click('[data-dock-activity]');
-    if (!(await switchIs(false)) || !(await until(() => !preferences.get().dockActivity && !dockActivity.showing, 2_000))) return 'failed: turning it off did not stop the animation';
-    await click('[data-dock-activity]');
-    if (!(await switchIs(true)) || !(await until(() => preferences.get().dockActivity && dockActivity.showing, 2_000))) return 'failed: turning it on again did not start it';
+    // The pace says which look runs: Light's frames last 300 ms, Smooth's 75.
+    const animated = async (what: string, ms: number) => {
+      const before = dockActivity.shown;
+      if (!(await until(() => dockActivity.showing && (still ? dockActivity.shown > 0 : dockActivity.shown >= before + 4), 3_000))) return `failed: the Dock showed ${dockActivity.shown - before} frames on ${what}`;
+      return dockActivity.frameMs === ms ? null : `failed: ${what} shows a frame every ${dockActivity.frameMs} ms, not ${ms}`;
+    };
+    const lightFailed = await animated('Light', DOCK_LOOKS.light.ms);
+    if (lightFailed) return lightFailed;
+    await pick('smooth');
+    if (!(await modeIs('smooth')) || !(await until(() => preferences.get().dockActivity === 'smooth' && dockActivity.showing, 2_000))) return 'failed: Smooth did not keep the animation going';
+    if (!(await waitInPage(win, "Boolean(document.querySelector('[data-dock-activity-note]'))", 2_000))) return 'failed: Smooth shows no CPU note';
+    const smoothFailed = await animated('Smooth', DOCK_LOOKS.smooth.ms);
+    if (smoothFailed) return smoothFailed;
+    await pick('off');
+    if (!(await modeIs('off')) || !(await until(() => preferences.get().dockActivity === 'off' && !dockActivity.showing, 2_000))) return 'failed: turning it off did not stop the animation';
+    await pick('light');
+    if (!(await modeIs('light')) || !(await until(() => preferences.get().dockActivity === 'light' && dockActivity.showing, 2_000))) return 'failed: choosing Light again did not start it';
   } finally {
     dockActivity.hold(false);
   }
   if (dockActivity.showing && !workingAlready) return 'failed: still animating with nothing working';
   await click('[data-close-settings]');
-  return `ok (${still ? 'a still frame, Reduce motion is on' : 'animated'}, off and on again, the icon put back)`;
+  return `ok (${still ? 'a still frame, Reduce motion is on' : 'animated'}, Light, Smooth, Off and Light again, the icon put back)`;
 }
 
 async function runAppIconStep(win: BrowserWindow): Promise<string> {
@@ -15570,7 +15585,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   // Every built-in theme in both modes: about 11 s here, and over 120 s on the macOS runners, so it gets room.
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 240_000 });
   await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
-  await step('settings › theme › app icon: Show when Claude is working animates the Dock and stops when off', () => runDockActivityStep(win));
+  await step('settings › theme › app icon: Show when Claude is working animates the Dock (Light, Smooth) and stops when off', () => runDockActivityStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
   rendering = (await js(
@@ -15602,7 +15617,7 @@ app.whenReady().then(() => {
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);
-  dockActivity.setEnabled(preferences.get().dockActivity);
+  dockActivity.setMode(preferences.get().dockActivity);
   menuBar.setEnabled(preferences.get().menuBar);
   keepAwake.apply(preferences.get().keepAwake);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
