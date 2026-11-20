@@ -1003,8 +1003,8 @@ export function createEngine(options: EngineOptions): Engine {
    */
   /** The last plan usage a provider's driver reported (Codex's windows), for the cost of its windows. */
   const providerSnapshots = new Map<string, UsageSnapshot | null>();
-  const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
-    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh);
+  const planUsage = async (profileId: string, refresh: boolean, maxAgeMs?: number): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
+    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh, maxAgeMs);
     const driver = providerProfiles.adapter(profileId)?.driver;
     if (!driver?.planUsage) return null;
     if (providerUsageWatch.get(profileId)?.driver !== driver) {
@@ -3893,10 +3893,10 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),
-    'usage.get': async ({ refresh, profileId }) => {
+    'usage.get': async ({ refresh, profileId, maxAgeMs }) => {
       // Plan usage is Claude Code's, and a provider's whose driver reports windows of its own (Codex's rate limits).
       // Copilot's premium requests are `providers.quota`.
-      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh);
+      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh, maxAgeMs);
       if (!usage) throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId!)]} has premium requests, not plan usage`);
       return usage;
     },
@@ -5008,6 +5008,8 @@ export function createEngine(options: EngineOptions): Engine {
     wake: () => {
       scheduler.wake();
       checkReminders();
+      // Plan usage moved on while it slept (the 5-hour window may have reset).
+      for (const monitor of usageMonitors.values()) monitor.nudge();
     },
     advanceScheduleClock: (ms) => {
       if (!options.stubQueueStarts) return;

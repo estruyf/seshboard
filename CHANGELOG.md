@@ -4,6 +4,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
+### Changed
+
+- **Seshboard checks your plan usage less often.** At most once a minute per profile while you work, and the check no longer runs your hooks or starts your MCP servers.
+
 ### Fixed
 
 - **Copilot sessions on GPT models answer again.** A Copilot session on a GPT model failed every message with "Function 'browser.browser-click' is not allowed in reserved namespace 'browser'". Seshboard's browser tools now go by another name for these agents, and still show as browser tools in the transcript.
