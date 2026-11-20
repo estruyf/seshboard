@@ -593,7 +593,6 @@ export function createEngine(options: EngineOptions): Engine {
     facts: (root) => checkoutFacts(root, root),
     list: (root, base, facts) => listChanges(root, base, facts),
     gitDir: (root) => git(root, ['rev-parse', '--absolute-git-dir']).then((dir) => dir.trim() || null, () => null),
-    log: (message) => log('debug', message),
   });
   /** A session wrote to its transcript or ended a turn: its checkout may have changed (set once the sessions' folders are known). */
   let touchGit: (sessionId: string) => void = () => {};
@@ -1217,6 +1216,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     onStream: (delta) => broadcast('session.stream', delta),
     onMessages: (id, messages, held) => {
+      // Copilot's and Codex's sessions write no Claude transcript: their messages say the checkout may have changed.
+      touchGit(id);
       transcripts.pushLive(id, messages, held);
       catchUp.messages(id, messages);
     },
@@ -1766,6 +1767,8 @@ export function createEngine(options: EngineOptions): Engine {
     onExit: (info, run) => {
       reportRun(info, run);
       signInEnded(info);
+      // A command run there (a commit, a pull, a switch) may have changed the checkout.
+      gitStatus.touch(info.cwd);
     },
     log,
   });
@@ -3044,6 +3047,8 @@ export function createEngine(options: EngineOptions): Engine {
           return await commitAll(cwd, message, (await shell.ready).env);
         } catch (error) {
           throw new RpcError('GIT_FAILED', (error as Error).message);
+        } finally {
+          gitStatus.touch(cwd);
         }
       },
       clonePlan: (url, name) => clones.plan(url, name),
@@ -3646,6 +3651,8 @@ export function createEngine(options: EngineOptions): Engine {
       const instructions = (named === undefined ? saved.orchestratorInstructions : named)?.trim();
       const planInstructions = (namedPlan === undefined ? saved.planModeInstructions : namedPlan)?.trim();
       projects.setDefaults(root, { ...rest, ...(instructions ? { orchestratorInstructions: instructions } : {}), ...(planInstructions ? { planModeInstructions: planInstructions } : {}) });
+      // Its default branch is the base branch git status compares with.
+      gitStatus.settingsChanged();
       return {};
     },
     'projects.reorder': ({ roots }) => {
@@ -4319,6 +4326,12 @@ export function createEngine(options: EngineOptions): Engine {
       const count = (gitWatchCounts.get(context)?.get(key) ?? 0) + 1;
       countsFor(context).set(key, count);
       if (count === 1) map.set(key, gitStatus.watch(cwd, base, (changes, error) => context.emit('git.changed', { cwd, base, changes, error })));
+      // Another view of the window on the same folder: it gets the current result too (a fresh one costs no git).
+      else
+        void gitStatus.changes(cwd, base).then(
+          (changes) => context.emit('git.changed', { cwd, base, changes, error: null }),
+          (error: Error) => context.emit('git.changed', { cwd, base, changes: null, error: error.message }),
+        );
       return {};
     },
     'git.unwatch': ({ cwd, base }, context) => {
@@ -4365,6 +4378,8 @@ export function createEngine(options: EngineOptions): Engine {
         return { current: (await listBranches(cwd)).current };
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(cwd);
       }
     },
     'git.github': async ({ cwd }) => (resolver.resolve(cwd).gitDir ? githubPage(cwd) : null),
@@ -4373,6 +4388,8 @@ export function createEngine(options: EngineOptions): Engine {
         await stage(cwd, paths, staged);
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(cwd);
       }
       return {};
     },
@@ -4382,6 +4399,8 @@ export function createEngine(options: EngineOptions): Engine {
         if (untracked.length) await trash(untracked, { repoRoot: root });
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(cwd);
       }
       return {};
     },
@@ -4411,6 +4430,8 @@ export function createEngine(options: EngineOptions): Engine {
         return await worktreeStatus(cwd);
       } catch (error) {
         throw new RpcError(error instanceof DivergedError ? 'DIVERGED' : 'GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(cwd);
       }
     },
     'git.commit': async ({ sessionId, cwd, message }) => {
@@ -4548,6 +4569,8 @@ export function createEngine(options: EngineOptions): Engine {
         await removeWorktree(status, deleteBranch);
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(status.root);
       }
       return { terminalId: null };
     },

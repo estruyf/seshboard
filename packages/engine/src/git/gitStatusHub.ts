@@ -12,8 +12,16 @@ export const SAFETY_POLL_MS = 5_000;
 const SETTLE_MS = 250;
 /** While a session keeps writing, a checkout is looked at no more often than this. */
 const MIN_GAP_MS = 1_000;
-/** What a checkout's facts (branch, base branch) may be at most, even without a sign that they changed. */
-const FACTS_MS = 60_000;
+/**
+ * How long a checkout's facts (branch, base branch) are kept: long while its git folder is watched (a change there
+ * clears them), short without a watch (on Windows, or a checkout only asked about now and then).
+ */
+const FACTS_WATCHED_MS = 60_000;
+const FACTS_UNWATCHED_MS = 5_000;
+/** A checkout nobody watches is forgotten this long after its last look. */
+const FORGET_MS = 60_000;
+/** A watched folder that isn't a checkout (yet) is asked again at most this often (and on a touch or focus). */
+const RETRY_ROOT_MS = 30_000;
 
 /** What a status needs that changes only with HEAD or settings (`CheckoutFacts` in gitChanges.ts). */
 export interface Facts {
@@ -32,10 +40,12 @@ export interface GitStatusHubOptions {
   list(root: string, base: ChangesBase, facts: Facts): Promise<GitChanges>;
   /** The folder with the checkout's own HEAD and index (`.git`, or `.git/worktrees/<name>` for a worktree). */
   gitDir(root: string): Promise<string | null>;
-  /** Watches a folder (not recursive); tests pass a fake. */
-  watch?(dir: string, onChange: (file: string | null) => void): { close(): void } | null;
+  /**
+   * Watches a folder (not recursive); tests pass a fake. Null: no watch (the default on Windows, where a watch on
+   * `.git` can keep the project's folder from being renamed or moved to the Trash: polls and touches do the work there).
+   */
+  watch?: ((dir: string, onChange: (file: string | null) => void) => { close(): void } | null) | null;
   now?(): number;
-  log?(message: string): void;
 }
 
 export type StatusListener = (changes: GitChanges | null, error: string | null) => void;
@@ -53,8 +63,6 @@ interface Entry {
   running: Promise<void> | null;
   follow: Promise<void> | null;
   listeners: Set<StatusListener>;
-  /** What the listeners were last told, to tell them only news. */
-  told: string | null;
   settle: ReturnType<typeof setTimeout> | null;
 }
 
@@ -64,29 +72,43 @@ interface Watched {
   users: number;
 }
 
+/** A watch on a folder that isn't a checkout yet (`git init` or a clone may make it one). */
+interface Pending {
+  base: ChangesBase;
+  listener: StatusListener;
+  /** Starts the watch once the folder is a checkout. */
+  attach(root: string): void;
+}
+
 const keyOf = (root: string, base: ChangesBase) => `${base}\0${root}`;
-const signature = (changes: GitChanges | null, error: string | null) => JSON.stringify([changes, error]);
+/** Files in the git folder that change with a stage but say nothing about the branch, the base or a first commit. */
+const INDEX_ONLY = new Set(['index', 'index.lock']);
 
 /**
  * One source of git status per checkout and base, for everything that shows it: the session views (`git.watch`, which
  * pushes `git.changed`), the palette, catch-up and permission cards (`changes`). One look at a time; requests during a
  * look share the one after it; a result younger than `FRESH_MS` answers without git. A checkout someone watches is
  * looked at again when git's own files change (a commit, a stage, a branch switch), when `touch` says something may
- * have changed (a session wrote to its transcript, a window came to the front), and every `SAFETY_POLL_MS` while
- * watched. With nobody watching, nothing runs by itself. The checkout's folder and its facts (branch, base
- * branch, whether it has a commit) are kept, so a look is two git runs.
+ * have changed (a session wrote, Seshboard ran a git action there, a window came to the front), and every
+ * `SAFETY_POLL_MS` while watched; every look goes to the watchers (an open diff reloads with it). With nobody
+ * watching, nothing runs by itself. The checkout's folder and its facts (branch, base branch, whether it has a commit)
+ * are kept, so a look is two git runs.
  */
 export class GitStatusHub {
   private readonly entries = new Map<string, Entry>();
   private readonly roots = new Map<string, Promise<string>>();
   private readonly facts = new Map<string, { at: number; facts: Promise<Facts> }>();
   private readonly watched = new Map<string, Watched>();
+  /** Watches on folders that aren't checkouts yet, by folder, and when each was last asked. */
+  private readonly pending = new Map<string, { since: number; items: Set<Pending> }>();
   private foreground = true;
   private poll: ReturnType<typeof setInterval> | null = null;
   private readonly now: () => number;
+  private readonly watchDir: ((dir: string, onChange: (file: string | null) => void) => { close(): void } | null) | null;
 
   constructor(private readonly options: GitStatusHubOptions) {
     this.now = options.now ?? Date.now;
+    this.watchDir = options.watch === undefined ? (process.platform === 'win32' ? null : watchFolder) : options.watch;
   }
 
   /**
@@ -94,55 +116,83 @@ export class GitStatusHub {
    * `listChanges` does.
    */
   async changes(cwd: string, base: ChangesBase, maxAgeMs = FRESH_MS): Promise<GitChanges> {
+    this.prune();
     const entry = this.entry(await this.rootOf(cwd), base);
     if (maxAgeMs === 0 || entry.dirty || !entry.at || this.now() - entry.at > maxAgeMs) await this.request(entry, maxAgeMs);
     if (entry.error !== null || !entry.result) throw new Error(entry.error ?? 'No changes read');
     return entry.result;
   }
 
-  /** The last result for a checkout, when it is at most `maxAgeMs` old (loose ends counts uncommitted files with it). */
+  /**
+   * The last result for a checkout a view watches (so it is kept current), when at most `maxAgeMs` old: loose ends
+   * counts uncommitted files with it instead of running git itself.
+   */
   fresh(root: string, base: ChangesBase, maxAgeMs: number): GitChanges | null {
     const entry = this.entries.get(keyOf(root, base));
-    return entry?.result && !entry.dirty && this.now() - entry.at <= maxAgeMs ? entry.result : null;
+    return entry?.listeners.size && entry.result && !entry.dirty && this.now() - entry.at <= maxAgeMs ? entry.result : null;
   }
 
   /**
-   * Follows `cwd`'s checkout: `listener` gets every new result (and the first one), and the checkout is looked at
-   * whenever something may have changed. Returns the way to stop.
+   * Follows `cwd`'s checkout: `listener` gets the result of every look (the first one too, or the last one at once),
+   * and the checkout is looked at whenever something may have changed. A folder that isn't a checkout says so, and is
+   * followed once it becomes one. Returns the way to stop.
    */
   watch(cwd: string, base: ChangesBase, listener: StatusListener): () => void {
     let stopped = false;
     let entry: Entry | null = null;
-    void this.rootOf(cwd).then(
-      (root) => {
-        if (stopped) return;
-        entry = this.entry(root, base);
-        entry.listeners.add(listener);
-        this.useWatcher(root, 1);
-        this.updatePoll();
-        // A result already here goes at once; a look follows if it may be old.
-        if (entry.result || entry.error !== null) listener(entry.result, entry.error);
-        if (!entry.at || entry.dirty || this.now() - entry.at > FRESH_MS) void this.request(entry, FRESH_MS);
-      },
-      (error: Error) => !stopped && listener(null, error.message),
-    );
+    const attach = (root: string) => {
+      if (stopped) return;
+      entry = this.entry(root, base);
+      entry.listeners.add(listener);
+      this.useWatcher(root, 1);
+      this.updatePoll();
+      // A result already here goes at once; a look follows if it may be old.
+      if (entry.result || entry.error !== null) listener(entry.result, entry.error);
+      if (!entry.at || entry.dirty || this.now() - entry.at > FRESH_MS) void this.request(entry, FRESH_MS);
+    };
+    const waiting: Pending = { base, listener, attach };
+    void this.rootOf(cwd).then(attach, (error: Error) => {
+      if (stopped) return;
+      listener(null, error.message);
+      let pending = this.pending.get(cwd);
+      if (!pending) this.pending.set(cwd, (pending = { since: this.now(), items: new Set() }));
+      pending.items.add(waiting);
+      this.updatePoll();
+    });
     return () => {
       if (stopped) return;
       stopped = true;
-      if (!entry) return;
-      entry.listeners.delete(listener);
-      this.useWatcher(entry.root, -1);
-      if (entry.listeners.size === 0) entry.told = null;
+      const pending = this.pending.get(cwd);
+      if (pending?.items.delete(waiting) && pending.items.size === 0) this.pending.delete(cwd);
+      if (entry) {
+        entry.listeners.delete(listener);
+        this.useWatcher(entry.root, -1);
+      }
       this.updatePoll();
     };
   }
 
   /**
-   * Something may have changed in or under `path` (a session there wrote, its turn ended), or anywhere (no path: a
-   * window came to the front). Watched checkouts there are looked at again shortly.
+   * Something may have changed in `path` (a session there wrote, its turn ended, Seshboard ran a git action there), or
+   * anywhere (no path: a window came to the front). The checkout `path` is in is looked at again shortly: the deepest
+   * one, so a write in a worktree doesn't look at the main checkout around it.
    */
   touch(path?: string | null): void {
-    for (const entry of this.entries.values()) if (!path || isSameOrInside(path, entry.root)) this.touchEntry(entry);
+    if (!path) {
+      for (const entry of this.entries.values()) this.touchEntry(entry);
+      this.retryPending(true);
+      return;
+    }
+    let deepest = '';
+    for (const entry of this.entries.values()) if (isSameOrInside(path, entry.root) && entry.root.length > deepest.length) deepest = entry.root;
+    for (const entry of this.entries.values()) if (entry.root === deepest) this.touchEntry(entry);
+    for (const cwd of this.pending.keys()) if (isSameOrInside(path, cwd) || isSameOrInside(cwd, path)) this.retryRoot(cwd);
+  }
+
+  /** The project's settings changed (its default branch): every checkout's base branch is read again. */
+  settingsChanged(): void {
+    this.facts.clear();
+    this.touch();
   }
 
   /** Whether a window has focus: coming to the front looks at once (you may have changed files elsewhere). */
@@ -158,13 +208,14 @@ export class GitStatusHub {
     for (const entry of this.entries.values()) if (entry.settle) clearTimeout(entry.settle);
     for (const w of this.watched.values()) w.watcher?.close();
     this.watched.clear();
+    this.pending.clear();
   }
 
   private entry(root: string, base: ChangesBase): Entry {
     const key = keyOf(root, base);
     let entry = this.entries.get(key);
     if (!entry) {
-      entry = { root, base, result: null, error: null, at: 0, startedAt: 0, dirty: false, running: null, follow: null, listeners: new Set(), told: null, settle: null };
+      entry = { root, base, result: null, error: null, at: 0, startedAt: 0, dirty: false, running: null, follow: null, listeners: new Set(), settle: null };
       this.entries.set(key, entry);
     }
     return entry;
@@ -181,9 +232,31 @@ export class GitStatusHub {
     return root;
   }
 
+  /** Asks again whether waiting folders are checkouts now: all on a touch, else those not asked for `RETRY_ROOT_MS`. */
+  private retryPending(all: boolean): void {
+    for (const [cwd, pending] of this.pending) if (all || this.now() - pending.since >= RETRY_ROOT_MS) this.retryRoot(cwd);
+  }
+
+  private retryRoot(cwd: string): void {
+    const pending = this.pending.get(cwd);
+    if (!pending) return;
+    pending.since = this.now();
+    void this.rootOf(cwd).then(
+      (root) => {
+        const now = this.pending.get(cwd);
+        if (!now) return;
+        this.pending.delete(cwd);
+        for (const item of now.items) item.attach(root);
+        this.updatePoll();
+      },
+      () => {},
+    );
+  }
+
   private factsOf(root: string): Promise<Facts> {
     const kept = this.facts.get(root);
-    if (kept && this.now() - kept.at <= FACTS_MS) return kept.facts;
+    const lifetime = this.watched.get(root)?.watcher ? FACTS_WATCHED_MS : FACTS_UNWATCHED_MS;
+    if (kept && this.now() - kept.at <= lifetime) return kept.facts;
     const facts = this.options.facts(root);
     this.facts.set(root, { at: this.now(), facts });
     facts.catch(() => this.facts.delete(root));
@@ -220,11 +293,10 @@ export class GitStatusHub {
       entry.at = this.now();
       entry.running = null;
     }
-    const told = signature(entry.result, entry.error);
-    if (entry.listeners.size && told !== entry.told) {
-      entry.told = told;
-      for (const listener of entry.listeners) listener(entry.result, entry.error);
-    }
+    // Every look, also one that found the same: an open diff reloads with it (an edit can keep its counts).
+    for (const listener of entry.listeners) listener(entry.result, entry.error);
+    // Changed while it looked: once more.
+    if (entry.dirty && entry.listeners.size) this.soon(entry);
   }
 
   private soon(entry: Entry): void {
@@ -245,14 +317,17 @@ export class GitStatusHub {
       w = { watcher: null, users: 0 };
       this.watched.set(root, w);
       const kept = w;
-      void this.options.gitDir(root).then((dir) => {
-        if (!dir || this.watched.get(root) !== kept || kept.users === 0) return;
-        kept.watcher = (this.options.watch ?? watchFolder)(dir, (file) => {
-          // A new HEAD is a switch or a commit: the branch and base may be new too.
-          if (!file || file === 'HEAD' || file.startsWith('refs')) this.facts.delete(root);
-          for (const entry of this.entries.values()) if (entry.root === root) this.touchEntry(entry);
+      const watchDir = this.watchDir;
+      if (watchDir) {
+        void this.options.gitDir(root).then((dir) => {
+          if (!dir || this.watched.get(root) !== kept || kept.users === 0) return;
+          kept.watcher = watchDir(dir, (file) => {
+            // Anything but the index (a stage) may be a commit, a switch or new refs: the facts are read again.
+            if (!file || !INDEX_ONLY.has(file)) this.facts.delete(root);
+            for (const entry of this.entries.values()) if (entry.root === root) this.touchEntry(entry);
+          });
         });
-      });
+      }
     }
     w.users += delta;
     if (w.users <= 0) {
@@ -266,11 +341,23 @@ export class GitStatusHub {
     if (entry.listeners.size) this.soon(entry);
   }
 
+  /** Forgets checkouts nobody watches, not looked at for `FORGET_MS`. */
+  private prune(): void {
+    const now = this.now();
+    for (const [key, entry] of this.entries) {
+      if (entry.listeners.size || entry.running || entry.settle || now - entry.at < FORGET_MS) continue;
+      this.entries.delete(key);
+      if (![...this.entries.values()].some((e) => e.root === entry.root)) this.facts.delete(entry.root);
+    }
+  }
+
   private updatePoll(): void {
-    const want = [...this.entries.values()].some((e) => e.listeners.size > 0);
+    const want = this.pending.size > 0 || [...this.entries.values()].some((e) => e.listeners.size > 0);
     if (want && !this.poll) {
       this.poll = setInterval(() => {
         for (const entry of this.entries.values()) if (entry.listeners.size && !entry.running) void this.request(entry);
+        this.retryPending(false);
+        this.prune();
       }, SAFETY_POLL_MS);
       this.poll.unref?.();
     } else if (!want && this.poll) {

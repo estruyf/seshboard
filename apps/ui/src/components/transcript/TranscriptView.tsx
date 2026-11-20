@@ -342,34 +342,43 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
+  /** A result for this checkout, from the engine's push or an answer. */
+  const apply = useCallback((result: GitChanges | null) => {
+    if (!result) {
+      setChanges(null);
+      setIsRepo(false);
+      return;
+    }
+    // The open panel takes every new list (its open diffs reload with it); the header's count only needs news.
+    setChanges((current) => (!openRef.current && sameChanges(current, result) ? current : result));
+    setIsRepo(true);
+  }, []);
   // The engine looks at the checkout when something may have changed (a write, a turn's end, git's own files, the
-  // window coming to the front) and sends each new result: one look per checkout, however many views show it.
+  // window coming to the front) and sends each result: one look per checkout, however many views show it. The first
+  // result is asked for too, so a view doesn't depend on being the first of its window to watch.
   useEffect(() => {
     if (!client || !cwd || !visible) return;
+    let live = true;
     const off = client.on('git.changed', (event) => {
-      if (event.cwd !== cwd || event.base !== base) return;
-      if (!event.changes) {
-        setChanges(null);
-        setIsRepo(false);
-        return;
-      }
-      const result = event.changes;
-      // The open panel takes every new list (its open diffs reload with it); the header's count only needs news.
-      setChanges((current) => (!openRef.current && sameChanges(current, result) ? current : result));
-      setIsRepo(true);
+      if (event.cwd === cwd && event.base === base) apply(event.changes);
     });
     void client.call('git.watch', { cwd, base }).catch(() => {});
+    void client.call('git.changes', { cwd, base }).then(
+      (result) => live && apply(result),
+      () => live && apply(null),
+    );
     return () => {
+      live = false;
       off();
       void client.call('git.unwatch', { cwd, base }).catch(() => {});
     };
-  }, [client, cwd, base, visible]);
-  /** Asks for a look now; the result comes as `git.changed` (to every view of the checkout). */
+  }, [client, cwd, base, visible, apply]);
+  /** Looks again now; every view of the checkout gets the result. */
   const lookAgain = useCallback(() => {
-    if (client && cwd) void client.call('git.changes', { cwd, base, fresh: true }).catch(() => {});
-  }, [client, cwd, base]);
-  // The branch changed here (a switch from the header): look again at once. Turns and writes reach the engine itself,
-  // and the first result comes with the watch.
+    if (!client || !cwd) return;
+    void client.call('git.changes', { cwd, base, fresh: true }).then(apply, () => apply(null));
+  }, [client, cwd, base, apply]);
+  // The branch changed here (a switch from the header): look again at once. Turns and writes reach the engine itself.
   const seen = useRef(activity);
   useEffect(() => {
     if (seen.current === activity) return;
@@ -1523,9 +1532,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const failed = !activeHost && host?.state === 'error';
   const statusLabel = live ? liveLabel(live, agentName) : failed ? 'Failed' : 'Not running';
   const statusTone = live ? (live.status === 'idle' && live.background?.length ? 'text-ok' : STATUS_TONE[live.status]) : failed ? 'text-error' : 'text-muted';
-  // The git button reads the branch's state again when a turn starts or ends or the branch changes (here, or as git
-  // status sees it), not for every message or file; its count of changed files comes from the live list.
-  const gitActivity = `${live?.status ?? ''}:${branchSwitches}:${changes?.branch ?? ''}`;
+  // The git button reads the branch's state again when a turn starts or ends, the branch changes (here, or as git status
+  // sees it) or the checkout turns clean or changed (a commit), not for every message or file; its count of changed files
+  // comes from the live list.
+  const gitActivity = `${live?.status ?? ''}:${branchSwitches}:${changes?.branch ?? ''}:${changes ? (changes.files.length ? 'changed' : 'clean') : ''}`;
   const contextLive =
     activeHost && activeHost.contextTokens !== null && activeHost.contextMax
       ? { tokens: activeHost.contextTokens, max: activeHost.contextMax, percent: activeHost.contextPercent ?? (activeHost.contextTokens / activeHost.contextMax) * 100 }

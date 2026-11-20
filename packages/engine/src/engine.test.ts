@@ -1267,10 +1267,11 @@ describe('git status for watching windows', () => {
     await git(repo, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'first']);
     const seen: string[][] = [];
     client.on('git.changed', (event) => event.cwd === repo && seen.push(event.changes?.files.map((f) => f.path) ?? []));
-    // Two panes of the window on the same folder: one watch, counted twice.
-    await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
+    // Two panes of the window on the same folder: one watch, counted twice, and each pane gets a result.
     await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
     await vi.waitFor(() => expect(seen).toEqual([[]]));
+    await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
+    await vi.waitFor(() => expect(seen).toEqual([[], []]));
     await client.call('git.unwatch', { cwd: repo, base: 'uncommitted' });
     writeFileSync(join(repo, 'new.txt'), 'hello\n');
     const changes = await client.call('git.changes', { cwd: repo, base: 'uncommitted', fresh: true });
