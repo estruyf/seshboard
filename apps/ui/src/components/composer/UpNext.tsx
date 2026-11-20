@@ -1,5 +1,5 @@
 import { GripVertical, Pencil, Play, X, Zap } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { withoutContext, type QueuedMessage, type SessionHostInfo } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { moveTarget } from '../../state/queue.ts';
@@ -35,9 +35,10 @@ function edgeMask(edges: { above: boolean; below: boolean }): string | undefined
 /**
  * The messages you sent while Claude was working, pinned above the message box until their turn comes: one goes
  * each time Claude finishes. Each can be edited (back into the message box), removed, moved (drag, or ⌥↑ ⌥↓) or
- * sent now. They are not in the conversation yet, so none of this changes what Claude has seen.
+ * sent now. They are not in the conversation yet, so none of this changes what Claude has seen. Memoised: it renders
+ * again only when the queue, its state or its (stable) actions change.
  */
-export function UpNext({ queue, hold, limited = false, actions }: { queue: readonly QueuedMessage[]; hold: SessionHostInfo['queueHold']; limited?: boolean; actions: UpNextActions }) {
+export const UpNext = memo(function UpNext({ queue, hold, limited = false, actions }: { queue: readonly QueuedMessage[]; hold: SessionHostInfo['queueHold']; limited?: boolean; actions: UpNextActions }) {
   const listRef = useRef<HTMLUListElement>(null);
   const idsRef = useRef<string[]>([]);
   idsRef.current = queue.map((m) => m.id);
@@ -166,4 +167,4 @@ export function UpNext({ queue, hold, limited = false, actions }: { queue: reado
       </ul>
     </section>
   );
-}
+});
