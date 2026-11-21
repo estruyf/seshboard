@@ -24,6 +24,7 @@ export * from './locale.ts';
 export * from './contextCache.ts';
 export { modelName } from './modelName.ts';
 export { apiRetryCause, apiRetryLine } from './apiRetry.ts';
+export { nextStreamBlock, type StreamBlock } from './streamBlock.ts';
 export { accountKey } from './accountKey.ts';
 export type * from './profiles.ts';
 export type * from './providers.ts';

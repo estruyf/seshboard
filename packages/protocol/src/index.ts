@@ -7,6 +7,7 @@ export * from './sessionNote.ts';
 export * from './looseEnds.ts';
 export * from './permissionModes.ts';
 export * from './host.ts';
+export * from './streamBlock.ts';
 export * from './terminal.ts';
 export * from './actions.ts';
 export * from './git.ts';
