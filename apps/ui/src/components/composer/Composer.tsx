@@ -1,5 +1,5 @@
 import { AtSign, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
@@ -214,7 +214,11 @@ function isTypingElsewhere(prompt: HTMLElement): boolean {
   return active.matches('input, textarea, select, [contenteditable]') || !!active.closest('[role=menu], [role=dialog], [role=alertdialog], [role=listbox]');
 }
 
-export function Composer(props: ComposerProps) {
+/**
+ * The message box. Memoised: give it stable callbacks (`useCallback`, `useStableCallback`) and memoised objects and
+ * elements, and it doesn't render with every render of its view.
+ */
+export const Composer = memo(function Composer(props: ComposerProps) {
   if (RENDER_COUNTS) countRender('Composer');
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -1381,7 +1385,7 @@ export function Composer(props: ComposerProps) {
       {(props.controls || props.info || props.meter || props.tools) && <ComposerTray controls={props.controls} tools={props.tools} info={props.info} usage={props.usage} meter={props.meter} />}
     </div>
   );
-}
+});
 
 /** A session in the `@` list: its status dot, title, branch and how long ago it was active. */
 function LinkOption({ session }: { session: SessionSummary }) {

@@ -159,12 +159,16 @@ export function QuickStartPanel() {
 
   useEffect(() => {
     focusField();
-    return bridge()?.onQuickStartShown((keepDraft) => {
+    const off = bridge()?.onQuickStartShown((keepDraft) => {
       // Projects added or changed in the main window since the panel last showed.
       useProjects.getState().reload();
       if (!keepDraft) reset();
       requestAnimationFrame(() => (document.querySelector<HTMLElement>('[data-quick-start-task]') ?? inputRef.current)?.focus());
     });
+    // The field is there and the listener is set: a press that made this panel can show the window now. The engine's own
+    // ready report (the lists, the pings) takes longer and the panel doesn't need it to be typed in.
+    requestAnimationFrame(() => bridge()?.quickStartReady());
+    return off;
   }, []);
   useEffect(() => {
     if (field.project) taskRef.current?.focus();

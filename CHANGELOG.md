@@ -6,11 +6,16 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **Seshboard uses about 100 MB less when you don't use Quick start.** Its panel loads at launch only if you opened it in the last 14 days. Otherwise it loads on the first press of its shortcut, which then takes about 0.2 seconds. The menu bar panel closes after an hour out of sight and opens again on the next click.
 - **The Dock animation is lighter.** Settings › Theme › App icon › Show when Claude is working now has Off, Light and Smooth. Light is the new default: the same motion at about 3 frames a second, using about 2% of a CPU core while Claude works instead of 20%. Smooth keeps the old 13 frames a second. If you had it on, you get Light, and if you had it off, it stays off.
 - **Busy sessions use far less CPU.** While Claude works, Seshboard reads only what was added to the transcript instead of the whole file, shows a session it runs from the live messages, and sends the sidebar a busy session's new time about every 15 seconds. Switching back to a session you just looked at is quicker. Search adds a session's new messages when its turn ends, or once it has been quiet for 30 seconds.
 - **Seshboard checks your plan usage less often.** At most once a minute per profile while you work, and the check no longer runs your hooks or starts your MCP servers.
 - **A big session list stays smooth.** The sidebar no longer redraws every row when one session changes, when you type in a message box or while you scroll the list: about 20 times fewer rows are redrawn in each case. With about 750 sessions, scrolling takes about 60% less script time.
+- **Seshboard opens a little faster.** The window shows about 100 ms sooner, because the app no longer loads code at startup that only its background engine needs.
 - **Animations rest while Seshboard is in the background.** The spinners, pulses and the working animation pause while the window has no focus, so a window you aren't using costs next to nothing. The working animation also uses about a third of the CPU it used to.
+- **Git runs far less often.** All the views of a project share one check of its changed files. It runs when something changed (Claude wrote a file, a turn ended, you staged or committed, the window came to the front), and otherwise every 5 seconds while a window shows the project.
+- **Smoother typing and scrolling while Claude writes.** The session view no longer redraws for every word of a reply.
+- **Windows you aren't looking at stay quiet while Claude writes.** The text Claude is writing goes only to the views that show that session. A hidden window, the Quick start panel and a minimised pop-out no longer receive it.
 
 ### Fixed
 

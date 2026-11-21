@@ -3,7 +3,7 @@
  * so the UI bundle doesn't pay for runtime validation it never runs.
  */
 export { createRpcClient, RpcError, type RpcClient, type ClientOptions, type EventPayload, type ParamsOf, type ResultOf } from './rpc.ts';
-export { messagePortTransport, type Transport, type WireMessage } from './wire.ts';
+export { isWireMessage, messagePortTransport, type Transport, type WireMessage } from './wire.ts';
 export type * from './contract.ts';
 export * from './bridge.ts';
 export type * from './sessions.ts';
@@ -24,6 +24,7 @@ export * from './locale.ts';
 export * from './contextCache.ts';
 export { modelName } from './modelName.ts';
 export { apiRetryCause, apiRetryLine } from './apiRetry.ts';
+export { nextStreamBlock, type StreamBlock } from './streamBlock.ts';
 export { accountKey } from './accountKey.ts';
 export type * from './profiles.ts';
 export type * from './providers.ts';

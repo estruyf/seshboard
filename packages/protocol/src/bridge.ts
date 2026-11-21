@@ -108,6 +108,8 @@ export const IpcChannel = {
   /** Main to a window: it moved to or from the foreground (shown, not minimised, focused). */
   windowActive: "seshboard:window-active",
   getWindowActive: "seshboard:get-window-active",
+  windowShown: "seshboard:window-shown",
+  getWindowShown: "seshboard:get-window-shown",
   relayDrafts: "seshboard:relay-drafts",
   draftsRelayed: "seshboard:drafts-relayed",
   requestDrafts: "seshboard:request-drafts",
@@ -130,6 +132,8 @@ export const IpcChannel = {
   menuBarShown: "seshboard:menu-bar-shown",
   quickStartCommand: "seshboard:quick-start-command",
   quickStartPassClicks: "seshboard:quick-start-pass-clicks",
+  /** From the quick start panel: its field is mounted and can take the focus (lighter than the ready report). */
+  quickStartReady: "seshboard:quick-start-ready",
   quickStartShown: "seshboard:quick-start-shown",
   quickStartKey: "seshboard:quick-start-key",
   getQuickStartStatus: "seshboard:get-quick-start-status",
@@ -1295,6 +1299,13 @@ export interface SeshboardBridge {
    */
   readonly windowActive: boolean;
   onWindowActive(listener: (active: boolean) => void): () => void;
+  /**
+   * Whether this window can be seen now (shown and not minimised, focused or not): the preload keeps main's latest word,
+   * so one sent before the page asks isn't lost. Follow `onWindowShown`. A window out of sight stops getting the text
+   * Claude streams.
+   */
+  windowShown(): boolean;
+  onWindowShown(listener: (shown: boolean) => void): () => void;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
   readonly popouts: readonly string[];
   /** Fires in every window when a pop-out opens or closes. */
@@ -1357,6 +1368,11 @@ export interface SeshboardBridge {
    * under it; or back over the panel or one of its menus (`false`).
    */
   quickStartPassClicks(pass: boolean): void;
+  /**
+   * From the quick start panel: its field is mounted and can take the focus. A press that made the panel waits for this
+   * before it shows the window.
+   */
+  quickStartReady(): void;
   /**
    * In the quick start panel: the global shortcut showed it. `keepDraft` is false when it was hidden long enough
    * (5 minutes) for what was typed to go.

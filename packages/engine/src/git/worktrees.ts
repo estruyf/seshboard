@@ -76,6 +76,13 @@ const readUncommitted = (path: string, timeout?: number): Promise<number | null>
 /** The same, for a removal: a status that fails counts as none (`git worktree remove` itself refuses a dirty one). */
 export const countUncommitted = async (path: string, timeout?: number) => (await readUncommitted(path, timeout)) ?? 0;
 
+export interface WorktreeOptions {
+  sessions?: readonly SessionPlace[];
+  pullRequests?: ReadonlyMap<string, WorktreePullRequest> | null;
+  /** A worktree's count of changed files from a recent look elsewhere (`GitStatusHub.fresh`), or null to read it. */
+  uncommitted?: (path: string) => number | null;
+}
+
 /** A session that may be in one of the worktrees. */
 export interface SessionPlace {
   id: string;
@@ -101,7 +108,7 @@ export interface WorktreeListing {
  * worktree that holds their folder (worktrees under `.claude/worktrees/` sit inside the main checkout).
  * `pullRequests` maps branch names to their newest pull request (null: unknown, `gh` isn't there).
  */
-export async function readWorktrees(root: string, options: { sessions?: readonly SessionPlace[]; pullRequests?: ReadonlyMap<string, WorktreePullRequest> | null } = {}): Promise<WorktreeListing> {
+export async function readWorktrees(root: string, options: WorktreeOptions = {}): Promise<WorktreeListing> {
   const raw = checkoutsOf(await git(root, ['worktree', 'list', '--porcelain']));
   if (raw.length === 0) throw new GitError('No worktrees listed');
   const mainPath = raw[0]!.path;
@@ -182,7 +189,8 @@ export async function readWorktrees(root: string, options: { sessions?: readonly
     const isMain = w.path === mainPath;
     const tip = w.branch ?? w.head;
     // The changes are the slowest part (the whole folder is walked) and need nothing from the rest: they go side by side.
-    const changes = missingOf.get(path) ? Promise.resolve(0) : readUncommitted(w.path, STATUS_TIMEOUT);
+    const known = options.uncommitted?.(w.path) ?? null;
+    const changes = missingOf.get(path) ? Promise.resolve(0) : known !== null ? Promise.resolve(known) : readUncommitted(w.path, STATUS_TIMEOUT);
     const commits = async () => {
       let ahead: number | null = null;
       let behind: number | null = null;
@@ -237,7 +245,7 @@ export async function readWorktrees(root: string, options: { sessions?: readonly
  * Every worktree of the repository at `root` with all its facts: what it takes to decide whether it can go. Reads them
  * six worktrees at a time and waits for all (`readWorktrees` is the quick look the overview shows first).
  */
-export async function listWorktrees(root: string, options: { sessions?: readonly SessionPlace[]; pullRequests?: ReadonlyMap<string, WorktreePullRequest> | null } = {}): Promise<WorktreeList> {
+export async function listWorktrees(root: string, options: WorktreeOptions = {}): Promise<WorktreeList> {
   const { list, facts } = await readWorktrees(root, options);
   return mergeFacts(list, await mapLimit(list.worktrees, 6, (w) => facts(w.path)));
 }

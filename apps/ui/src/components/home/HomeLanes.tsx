@@ -6,6 +6,8 @@ import { useSecondClock } from '../../lib/secondClock.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { useStreamingKind } from '../../state/streamingStore.ts';
+import { useStreamWatch } from '../../state/streamWatch.ts';
 import { waitingLabel } from '../../state/sidebarRows.ts';
 import { reviewLabel } from '../catchUp/catchUpModel.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -98,29 +100,36 @@ export function NeedsLane({ rows, ctx }: { rows: readonly SessionRowData[]; ctx:
 
 /** Working: what Claude is doing now in each, with the line under a reply ("Using Edit"), the one you set going last first. */
 export function WorkingLane({ rows, ctx }: { rows: readonly SessionRowData[]; ctx: LaneContext }) {
-  const hosts = useHosts((s) => s.hosts);
-  const streaming = useHosts((s) => s.streaming);
+  const retrying = useHosts((s) => rows.some((row) => !!s.hosts.get(row.id)?.apiRetry));
   // A session retrying an API call counts its wait down on its card.
-  const now = useSecondClock(rows.some((row) => !!hosts.get(row.id)?.apiRetry));
+  const now = useSecondClock(retrying);
   return (
     <Lane id="working" title="Working" tone="working" count={rows.length} empty="Claude isn't working on anything.">
-      {rows.map((row) => {
-        const host = hosts.get(row.id);
-        const said = workingLabel({ waiting: false, compacting: host?.compacting === true, block: streaming.get(row.id), retry: host?.apiRetry ? apiRetryLine(host.apiRetry, now) : null });
-        // Without a turn streaming here (Claude Code elsewhere), what runs in the background, or who works on it.
-        const label = said !== 'Working' ? said : (row.live?.background?.[0] ?? `${agentNameOf(row.summary ?? { provider: host?.provider ?? null })} is working`);
-        return (
-          <CardLink key={row.id} id={row.id} label={`${titleOf(row)}: ${label}`} className="bg-text/6 hover:bg-text/10" data-home-working={row.id}>
-            <CardTop row={row} ctx={ctx} />
-            <span className="truncate text-meta text-muted">{where(row, ctx.nameOf(row.projectRoot))}</span>
-            <span className="flex min-w-0 items-center gap-2 text-ui text-muted">
-              <WorkingPanel state={host?.compacting === true ? 'compacting' : 'working'} />
-              <span className="truncate">{label}</span>
-            </span>
-          </CardLink>
-        );
-      })}
+      {rows.map((row) => (
+        <WorkingCard key={row.id} row={row} ctx={ctx} now={now} />
+      ))}
     </Lane>
+  );
+}
+
+/** One Working card: it reads its own session's host and what it streams, so another session's turn doesn't render it. */
+function WorkingCard({ row, ctx, now }: { row: SessionRowData; ctx: LaneContext; now: number }) {
+  const host = useHosts((s) => s.hosts.get(row.id));
+  // What Claude is doing there (Thinking, Using Edit) comes with the session's stream.
+  useStreamWatch(row.id);
+  const block = useStreamingKind(row.id);
+  const said = workingLabel({ waiting: false, compacting: host?.compacting === true, block, retry: host?.apiRetry ? apiRetryLine(host.apiRetry, now) : null });
+  // Without a turn streaming here (Claude Code elsewhere), what runs in the background, or who works on it.
+  const label = said !== 'Working' ? said : (row.live?.background?.[0] ?? `${agentNameOf(row.summary ?? { provider: host?.provider ?? null })} is working`);
+  return (
+    <CardLink id={row.id} label={`${titleOf(row)}: ${label}`} className="bg-text/6 hover:bg-text/10" data-home-working={row.id}>
+      <CardTop row={row} ctx={ctx} />
+      <span className="truncate text-meta text-muted">{where(row, ctx.nameOf(row.projectRoot))}</span>
+      <span className="flex min-w-0 items-center gap-2 text-ui text-muted">
+        <WorkingPanel state={host?.compacting === true ? 'compacting' : 'working'} />
+        <span className="truncate">{label}</span>
+      </span>
+    </CardLink>
   );
 }
 

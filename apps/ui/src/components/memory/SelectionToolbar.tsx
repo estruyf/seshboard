@@ -50,7 +50,14 @@ export function anchorIn(root: HTMLElement | null, source = REMEMBER_SOURCE): An
  * text the selection has to lie in (inside `container`).
  */
 export function useSelectionChip(container: RefObject<HTMLElement | null>, source = REMEMBER_SOURCE) {
-  const [chip, setChip] = useState<Anchor | null>(null);
+  const [chip, setShown] = useState<Anchor | null>(null);
+  // What was set last: scrolling hides the toolbar on every frame, and a set to the same null still renders the view.
+  const shown = useRef<Anchor | null>(null);
+  const setChip = (next: Anchor | null) => {
+    if (next === null && shown.current === null) return;
+    shown.current = next;
+    setShown(next);
+  };
   const toolbarRef = useRef<HTMLDivElement>(null);
   const showTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hide = () => {

@@ -297,8 +297,9 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
 /**
  * The session's changes in git: uncommitted work (stage, unstage, revert), or the
  * whole branch compared with where it left its base branch (what a merge or PR contains).
+ * Memoised: it renders again when a prop changes, `changes` by identity (each check is a new load).
  */
-export function ChangesPanel({
+export const ChangesPanel = memo(function ChangesPanel({
   sessionId,
   cwd,
   changes,
@@ -667,4 +668,4 @@ export function ChangesPanel({
       )}
     </aside>
   );
-}
+});

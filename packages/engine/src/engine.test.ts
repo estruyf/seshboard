@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRpcClient, mergeFacts, messagePortTransport, ProfileDefaults, ProjectDefaults,type WorktreeFacts, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
+import { createRpcClient, mergeFacts, messagePortTransport, ProfileDefaults, ProjectDefaults,type WorktreeFacts, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate, type RpcClient } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine, type EngineOptions, type TrashScope } from './engine.ts';
 import { fakeAppServer, thread } from './providers/codex/codexFakes.ts';
@@ -1255,6 +1255,118 @@ describe('engine over a MessagePort', () => {
     await client.call('actions.trust', { projectRoot: project, id: 'dev', seen: { type: 'shell', command: 'npm run dev -- --open', runOnWorktreeCreate: false } });
     await client.call('terminal.restart', { id: run.terminalId });
     expect(spawned[2]!.args).toEqual(shell.run('npm run dev -- --open'));
+  });
+});
+
+describe('git status for watching windows', () => {
+  it('sends a checkout\u2019s changes to a window until its last view of it stops watching', async () => {
+    const { client } = connect({ path: process.env.PATH ?? '' });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-git-watch-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'first']);
+    const seen: string[][] = [];
+    client.on('git.changed', (event) => event.cwd === repo && seen.push(event.changes?.files.map((f) => f.path) ?? []));
+    // Two panes of the window on the same folder: one watch, counted twice, and each pane gets a result.
+    await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
+    await vi.waitFor(() => expect(seen).toEqual([[]]));
+    await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
+    await vi.waitFor(() => expect(seen).toEqual([[], []]));
+    await client.call('git.unwatch', { cwd: repo, base: 'uncommitted' });
+    writeFileSync(join(repo, 'new.txt'), 'hello\n');
+    const changes = await client.call('git.changes', { cwd: repo, base: 'uncommitted', fresh: true });
+    expect(changes.files.map((f) => f.path)).toEqual(['new.txt']);
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(['new.txt']));
+    // The last view stops: nothing more comes.
+    await client.call('git.unwatch', { cwd: repo, base: 'uncommitted' });
+    const count = seen.length;
+    writeFileSync(join(repo, 'other.txt'), 'hi\n');
+    await client.call('git.changes', { cwd: repo, base: 'uncommitted', fresh: true });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(seen.length).toBe(count);
+  });
+});
+
+describe('events each window gets', () => {
+  it('sends streamed text only to the views that watch the session, from the start of the reply, and only the events a port asks for', async () => {
+    let push: (text: string) => void = () => {};
+    const sdk: SdkRuntime = {
+      query: ({ prompt }) =>
+        ({
+          async *[Symbol.asyncIterator]() {
+            for await (const _message of prompt) {
+              yield { type: 'system', subtype: 'session_state_changed', state: 'running' };
+              yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', content_block: { type: 'text' } } };
+              for (;;) {
+                const text = await new Promise<string>((resolve) => (push = resolve));
+                if (text === '<idle>') {
+                  yield { type: 'system', subtype: 'session_state_changed', state: 'idle' };
+                  continue;
+                }
+                yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } };
+              }
+            }
+          },
+          interrupt: async () => {},
+          close: () => {},
+          setPermissionMode: async () => {},
+          setModel: async () => {},
+          supportedCommands: async () => [],
+          supportedModels: async () => [],
+        }) as never,
+      startup: async () => ({ query: () => ({}) as never, close: () => {} }) as never,
+    };
+    const { engine, client } = connect({ sdk });
+    // A second window, and main's notifier, which asks for a few events only.
+    const ports = [new MessageChannel(), new MessageChannel()];
+    const [other, main] = ports.map(({ port1, port2 }) => {
+      const detach = engine.attach(messagePortTransport(asDomPort(port1)));
+      const rpc = createRpcClient<Contract>(messagePortTransport(asDomPort(port2)));
+      cleanups.push(() => (rpc.dispose(), detach(), port1.close(), port2.close()));
+      return rpc;
+    }) as [RpcClient<Contract>, RpcClient<Contract>];
+    await main.call('events.only', { names: ['session.host', 'computers.event:sessions.changed'] });
+    const heard = { window: [] as string[], other: [] as string[], main: [] as string[], mainEvents: new Set<string>(), windowEvents: new Set<string>() };
+    client.on('session.stream', (d) => heard.window.push(`${d.kind}:${d.text}`));
+    other.on('session.stream', (d) => heard.other.push(`${d.kind}:${d.text}`));
+    main.on('session.stream', (d) => heard.main.push(`${d.kind}:${d.text}`));
+    for (const name of ['session.host', 'sessions.changed', 'profiles.changed'] as const) {
+      main.on(name, () => heard.mainEvents.add(name));
+      client.on(name, () => heard.windowEvents.add(name));
+    }
+
+    const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-stream-')));
+    cleanups.push(() => rmSync(folder, { recursive: true, force: true }));
+    const { sessionId } = await client.call('session.create', { cwd: folder, prompt: 'Write it' });
+    // Nothing streams yet: a watch starts clean.
+    await client.call('stream.watch', { sessionId });
+    await vi.waitFor(() => expect(heard.window).toEqual(['clear:']));
+    await vi.waitFor(() => expect(heard.mainEvents.has('session.host')).toBe(true));
+    push('Hello');
+    await vi.waitFor(() => expect(heard.window.join('')).toContain('Hello'));
+    // The other window opens the session mid-reply: it gets the reply from its start.
+    await other.call('stream.watch', { sessionId });
+    await vi.waitFor(() => expect(heard.other).toEqual(['clear:', 'text:Hello']));
+    push(' world');
+    await vi.waitFor(() => expect(heard.other.at(-1)).toBe('text: world'));
+    // It looks away: no more for it.
+    await other.call('stream.unwatch', { sessionId });
+    push('!');
+    await vi.waitFor(() => expect(heard.window.at(-1)).toBe('text:!'));
+    expect(heard.other.at(-1)).toBe('text: world');
+    // The turn ends: a watch after it gets a clean start and nothing of the old reply.
+    push('<idle>');
+    await vi.waitFor(async () => expect((await client.call('hosts.list', {})).hosts.find((h) => h.sessionId === sessionId)?.state).toBe('idle'));
+    heard.other.length = 0;
+    await other.call('stream.watch', { sessionId });
+    await vi.waitFor(() => expect(heard.other).toEqual(['clear:']));
+    // A window gets every event; main only those it asked for, and never streamed text.
+    await client.call('profiles.add', { name: 'Work', color: 'blue', configDir: join(folder, 'work-profile') }).catch(() => {});
+    await vi.waitFor(() => expect(heard.windowEvents.has('profiles.changed')).toBe(true));
+    // A round trip on main's port: anything sent to it before has arrived.
+    await main.call('system.ping', { sentAt: Date.now() });
+    expect(heard.main).toEqual([]);
+    expect([...heard.mainEvents]).toEqual(['session.host']);
   });
 });
 

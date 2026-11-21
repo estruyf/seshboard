@@ -1,5 +1,5 @@
 import type { MessagePortMain } from 'electron';
-import { isWireMessage, type Transport } from '@seshboard/protocol';
+import { isWireMessage, type Transport } from '@seshboard/protocol/client';
 
 /** Adapts Electron's MessagePortMain (main and utility processes) to the protocol Transport. */
 export function mainPortTransport(port: MessagePortMain): Transport {

@@ -482,6 +482,18 @@ export const contract = {
       params: z.object({ sessionId: SessionId }),
       result: TranscriptDiagnosis,
     },
+    /**
+     * Which broadcast events this connection wants (main's notifier needs a few): the others are not sent to it. A
+     * connection that never says gets them all. `computers.event:<name>` takes only that event of another computer's.
+     * Per-connection events (`transcript.updated`, a watched `session.stream`) are not affected.
+     */
+    'events.only': { params: z.object({ names: z.array(z.string().max(100)).max(200) }), result: z.object({}) },
+    /**
+     * Sends `session.stream` for the session (what Claude is writing now) until `stream.unwatch`: only views that show a
+     * session's streaming text get it. It starts with a `clear`, then the block so far when a reply is under way.
+     */
+    'stream.watch': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    'stream.unwatch': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Subscribes this window to `transcript.updated` for one session until unwatched or disconnected. */
     'transcript.watch': {
       params: z.object({ sessionId: SessionId }),
@@ -1010,8 +1022,14 @@ export const contract = {
     'memory.bySession': { params: z.object({ sessionId: SessionId }), result: z.object({ memories: z.array(MemoryHit) }) },
 
     // --- Git -----------------------------------------------------------------------------------
-    /** What changed in the checkout a session works in (see ChangesBase). */
-    'git.changes': { params: z.object({ cwd: AbsolutePath, base: ChangesBase }), result: GitChanges },
+    /**
+     * What changed in the checkout a session works in (see ChangesBase), from a look at most a second old; `fresh`
+     * looks again (after an action that changed it). Watching windows get the result as `git.changed` too.
+     */
+    'git.changes': { params: z.object({ cwd: AbsolutePath, base: ChangesBase, fresh: z.boolean().optional() }), result: GitChanges },
+    /** Sends `git.changed` for the checkout with every new result (the first one too) until `git.unwatch`. */
+    'git.watch': { params: z.object({ cwd: AbsolutePath, base: ChangesBase }), result: z.object({}) },
+    'git.unwatch': { params: z.object({ cwd: AbsolutePath, base: ChangesBase }), result: z.object({}) },
     'git.diff': {
       params: z.object({ cwd: AbsolutePath, base: ChangesBase, path: z.string().max(4096) }),
       result: z.object({ diff: z.string(), truncated: z.boolean() }),
@@ -1788,6 +1806,8 @@ export const contract = {
     /** Every session's loose ends, whenever one changes (sessions without any left out). */
     'sessions.looseEnds': z.object({ looseEnds: LooseEndsMap }),
     'transcript.updated': TranscriptUpdate,
+    /** A watched checkout's changes (`git.watch`), for the cwd and base it was watched with; null and `error` outside git. */
+    'git.changed': z.object({ cwd: z.string(), base: ChangesBase, changes: GitChanges.nullable(), error: z.string().nullable() }),
     'session.host': SessionHostInfo,
     /** Claude Code reported a new model list (replaces the one from `models.list`). */
     'models.changed': z.object({ models: z.array(ModelOption) }),
