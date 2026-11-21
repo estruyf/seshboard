@@ -1,5 +1,5 @@
 import { PanelRight } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { memo, useInsertionEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { matches } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { RAIL_ORDER } from '@seshboard/protocol/bridge';
@@ -10,6 +10,7 @@ import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { Badged } from '../ui/Badged.tsx';
+import { sameRailItems } from './railItems.ts';
 import { moveRailButton, RAIL_GITHUB, RAIL_MENU, railGroup, sameRailGroup, stepRailButton, toggleRailApp, toggleRailTool, type RailAppId, type RailToolId, type RailToolState } from './toolRail.ts';
 
 /** One of the rail's buttons, as the session view resolves it. */
@@ -33,13 +34,41 @@ export interface RailButton {
 export type RailItem = RailButton | 'divider';
 
 /**
+ * The rail's items for this render, kept the same array while they draw the same (`sameRailItems`), so the memoised
+ * rail doesn't render with its view. Each button's click is a stable function that runs the latest item's handler.
+ */
+export function useRailItems(items: readonly RailItem[]): readonly RailItem[] {
+  const latest = useRef(items);
+  useInsertionEffect(() => {
+    latest.current = items;
+  });
+  const clicks = useRef(new Map<string, () => void>());
+  const kept = useRef<readonly RailItem[] | null>(null);
+  const next = items.map((item) => {
+    if (item === 'divider') return item;
+    let onClick = clicks.current.get(item.id);
+    if (!onClick) {
+      const id = item.id;
+      onClick = () => (latest.current.find((i) => i !== 'divider' && i.id === id) as RailButton | undefined)?.onClick();
+      clicks.current.set(id, onClick);
+    }
+    return { ...item, onClick };
+  });
+  // Kept during render on purpose: like useMemo, with the rail's own idea of equal.
+  if (kept.current && sameRailItems(kept.current, next)) return kept.current;
+  kept.current = next;
+  return next;
+}
+
+/**
  * The session's tools as a vertical toolbar at the right edge of its view (Changes, Terminal, Browser, Preview, Ask,
  * Agents, Commands and mods' panes). The tool in front has the selected fill and an accent mark on its left edge; an
  * open one behind it has an accent dot under its icon. Apps pinned from its menu (VS Code, Finder) come last, by their own
  * icons, and open the session's folder. Hide panel at the bottom closes whatever the side shows. A right-click picks
  * which tools and apps show. ↑ ↓ move between the buttons. Drag a button (or ⌥↑ ⌥↓ on it) to move it inside its group.
+ * Memoised: it renders again only when its items (`useRailItems` keeps them the same while unchanged) or `onHide` change.
  */
-export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide: (() => void) | null }) {
+export const ToolRail = memo(function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide: (() => void) | null }) {
   const hidden = usePreferences((s) => s.prefs.railHidden);
   const apps = usePreferences((s) => s.prefs.railApps);
   const editors = useHosts((s) => s.editors);
@@ -185,4 +214,4 @@ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide
       {menu && <Menu x={menu.x} y={menu.y} width={230} label="Tools" entries={entries} onClose={() => setMenu(null)} />}
     </div>
   );
-}
+});

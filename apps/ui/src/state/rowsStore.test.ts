@@ -160,9 +160,9 @@ describe('the rows store', () => {
   it('keeps the same state, so nobody re-renders, when a change leaves every row as it was', () => {
     useSessions.setState({ sessions: new Map([['a', summary('a')]]) });
     const state = useRows.getState();
-    // Another Map with the same session, a stream delta, the selected session: nothing the rows are made of.
+    // Another Map with the same session, a hosts update with the same hosts, the selected session: nothing the rows are made of.
     useSessions.setState({ sessions: new Map(useSessions.getState().sessions) });
-    useHosts.setState({ streaming: new Map([['a', { kind: 'text', text: 'hi' }]]) });
+    useHosts.setState({ hosts: useHosts.getState().hosts });
     useSessions.setState({ selectedId: 'a' });
     expect(useRows.getState()).toBe(state);
   });

@@ -6,14 +6,8 @@ import type {
   ModelOption,
   PermissionRequest,
   SessionHostInfo,
-  StreamDelta,
 } from '@seshboard/protocol/client';
 import type { Wait } from '../components/transcript/turns.ts';
-
-export interface StreamingBlock {
-  kind: 'text' | 'thinking' | 'tool';
-  text: string;
-}
 
 interface HostsState {
   hosts: Map<string, SessionHostInfo>;
@@ -26,8 +20,6 @@ interface HostsState {
    * for the time a turn waited on you. Kept in memory only; a turn without a record shows no waiting.
    */
   waits: Map<string, readonly Wait[]>;
-  /** The block Claude is writing right now, per session. */
-  streaming: Map<string, StreamingBlock>;
   models: ModelOption[];
   editors: EditorInfo[];
   defaultEditorId: string | null;
@@ -36,7 +28,6 @@ interface HostsState {
 
   reset(hosts: SessionHostInfo[], permissions: PermissionRequest[]): void;
   upsertHost(info: SessionHostInfo): void;
-  applyStream(delta: StreamDelta): void;
   addPermission(request: PermissionRequest): void;
   removePermission(requestId: string): void;
   setModels(models: ModelOption[]): void;
@@ -52,7 +43,6 @@ export const useHosts = create<HostsState>()((set) => ({
   loaded: false,
   permissions: new Map(),
   waits: new Map(),
-  streaming: new Map(),
   models: [],
   editors: [],
   defaultEditorId: null,
@@ -63,28 +53,8 @@ export const useHosts = create<HostsState>()((set) => ({
       hosts: new Map(hosts.map((h) => [h.sessionId, h])),
       loaded: true,
       permissions: new Map(permissions.map((p) => [p.requestId, p])),
-      streaming: new Map(),
     }),
-  upsertHost: (info) =>
-    set((state) => {
-      const hosts = new Map(state.hosts).set(info.sessionId, info);
-      if (info.state === 'idle' || info.state === 'closed' || info.state === 'error') {
-        const streaming = new Map(state.streaming);
-        streaming.delete(info.sessionId);
-        return { hosts, streaming };
-      }
-      return { hosts };
-    }),
-  applyStream: (delta) =>
-    set((state) => {
-      const streaming = new Map(state.streaming);
-      const current = streaming.get(delta.sessionId);
-      if (delta.kind === 'clear') streaming.delete(delta.sessionId);
-      else if (delta.kind === 'tool') streaming.set(delta.sessionId, { kind: 'tool', text: delta.text });
-      else if (current?.kind === delta.kind) streaming.set(delta.sessionId, { kind: delta.kind, text: current.text + delta.text });
-      else streaming.set(delta.sessionId, { kind: delta.kind, text: delta.text });
-      return { streaming };
-    }),
+  upsertHost: (info) => set((state) => ({ hosts: new Map(state.hosts).set(info.sessionId, info) })),
   addPermission: (request) => set((state) => ({ permissions: new Map(state.permissions).set(request.requestId, request) })),
   removePermission: (requestId) =>
     set((state) => {
