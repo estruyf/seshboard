@@ -16,7 +16,7 @@ import {
   Sparkles,
   Wrench,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { PrCheck, PrChecks, GitSyncAction, WorktreePullRequest, WorktreeStatus } from '@seshboard/protocol/client';
 import { useReadOnlyFork } from '../../state/githubOriginStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -60,7 +60,8 @@ function CheckIcon({ bucket, size = 13 }: { bucket: PrCheck['bucket'] | 'none'; 
  * output stays visible;
  * Create PR opens the Create pull request dialog. With an open pull request, its checks show as an icon on View PR
  * and as a Checks group in the menu, where failed ones can be handed to Claude with their logs.
- * `activity` changes when the session does something, so the status follows along.
+ * `activity` changes when the session's turn starts or ends or the branch changes, so the status follows along;
+ * `uncommitted`, the count of changed files from the session's live git status, keeps that count current in between.
  */
 export function GitButton({
   sessionId,
@@ -68,6 +69,7 @@ export function GitButton({
   busy,
   active,
   activity,
+  uncommitted = null,
   isWorktree,
   projectBase,
   onBranchMenu,
@@ -79,6 +81,8 @@ export function GitButton({
   /** This session's pane is the active one: ⌘⇧L pulls here. */
   active: boolean;
   activity: string;
+  /** The changed files now (the Changes list's count), when known: newer than the status read at the last `activity`. */
+  uncommitted?: number | null;
   isWorktree: boolean;
   /** The project's default branch, where a pull request goes into first. */
   projectBase: string | null;
@@ -94,7 +98,9 @@ export function GitButton({
   const exited = useTerminals((s) => [...s.terminals.values()].filter((t) => t.sessionId === sessionId && t.exitCode !== null).length);
   const menu = useMenu();
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<WorktreeStatus | null>(null);
+  const [read, setStatus] = useState<WorktreeStatus | null>(null);
+  // The branch's state as read, with the live count of changed files.
+  const status = useMemo(() => (read && uncommitted !== null && uncommitted !== read.uncommitted ? { ...read, uncommitted } : read), [read, uncommitted]);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [committing, setCommitting] = useState(false);

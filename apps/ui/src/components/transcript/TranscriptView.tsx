@@ -162,7 +162,7 @@ import { useTranscript } from './useTranscript.ts';
 import { PromptOutline } from './PromptOutline.tsx';
 import { currentPrompt, isPrompt, LAND_OFFSET, MIN_PROMPTS, MIN_WIDTH, nextPrompt, outlinePrompts, previousPrompt, promptKeysBlocked, type OutlinePrompt } from './promptOutline.ts';
 import { startNewSession } from '../newSession/startSession.ts';
-import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
+import { sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut, modKey } from '../../lib/shortcuts.ts';
 import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
@@ -350,72 +350,63 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
   const client = connection.status === 'connected' ? connection.client : null;
   const [changes, setChanges] = useState<GitChanges | null>(null);
   const [isRepo, setIsRepo] = useState(true);
-  /** Asks for a check after `delay` ms (a later ask replaces a waiting one); a no-op without a folder. */
-  const request = useRef<(delay: number) => void>(() => {});
   const openRef = useRef(open);
   openRef.current = open;
+  // A hidden window stops watching (the engine then stops looking for it) and watches again when it shows.
+  const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
   useEffect(() => {
-    if (!client || !cwd) return;
-    let cancelled = false;
-    // One git.changes at a time: an ask while one runs checks again once it is back.
-    let busy = false;
-    let again = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const load = () => {
-      timer = undefined;
-      if (busy) {
-        again = true;
-        return;
-      }
-      busy = true;
-      client
-        .call('git.changes', { cwd, base })
-        .then(
-          (result) => {
-            if (cancelled) return;
-            // The open panel takes every new list (its open diffs reload with it); the header's count only needs news.
-            setChanges((current) => (!openRef.current && sameChanges(current, result) ? current : result));
-            setIsRepo(true);
-          },
-          () => !cancelled && (setChanges(null), setIsRepo(false)),
-        )
-        .finally(() => {
-          busy = false;
-          if (cancelled || !again) return;
-          again = false;
-          load();
-        });
-    };
-    const ask = (delay: number) => {
-      if (timer !== undefined) clearTimeout(timer);
-      timer = setTimeout(load, delay);
-    };
-    request.current = ask;
-    ask(500);
-    const visible = () => document.visibilityState === 'visible';
-    // Nothing is checked while the window is hidden; it checks once it shows again.
-    const poll = setInterval(() => visible() && !busy && timer === undefined && load(), GIT_POLL_MS);
-    const onVisible = () => visible() && ask(0);
-    const onFocus = () => ask(500);
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onFocus);
+    const onVisibility = () => setVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+  /** A result for this checkout, from the engine's push or an answer. */
+  const apply = useCallback((result: GitChanges | null) => {
+    if (!result) {
+      setChanges(null);
+      setIsRepo(false);
+      return;
+    }
+    // The open panel takes every new list (its open diffs reload with it); the header's count only needs news.
+    setChanges((current) => (!openRef.current && sameChanges(current, result) ? current : result));
+    setIsRepo(true);
+  }, []);
+  // The engine looks at the checkout when something may have changed (a write, a turn's end, git's own files, the
+  // window coming to the front) and sends each result: one look per checkout, however many views show it. The first
+  // result is asked for too, so a view doesn't depend on being the first of its window to watch.
+  useEffect(() => {
+    if (!client || !cwd || !visible) return;
+    let live = true;
+    const off = client.on('git.changed', (event) => {
+      if (event.cwd === cwd && event.base === base) apply(event.changes);
+    });
+    void client.call('git.watch', { cwd, base }).catch(() => {});
+    void client.call('git.changes', { cwd, base }).then(
+      (result) => live && apply(result),
+      () => live && apply(null),
+    );
     return () => {
-      cancelled = true;
-      if (timer !== undefined) clearTimeout(timer);
-      clearInterval(poll);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onFocus);
-      request.current = () => {};
+      live = false;
+      off();
+      void client.call('git.unwatch', { cwd, base }).catch(() => {});
     };
-  }, [client, cwd, base]);
-  // The session did something (or the branch changed): check again once it settles.
-  useEffect(() => request.current(500), [activity]);
+  }, [client, cwd, base, visible, apply]);
+  /** Looks again now; every view of the checkout gets the result. */
+  const lookAgain = useCallback(() => {
+    if (!client || !cwd) return;
+    void client.call('git.changes', { cwd, base, fresh: true }).then(apply, () => apply(null));
+  }, [client, cwd, base, apply]);
+  // The branch changed here (a switch from the header): look again at once. Turns and writes reach the engine itself.
+  const seen = useRef(activity);
+  useEffect(() => {
+    if (seen.current === activity) return;
+    seen.current = activity;
+    lookAgain();
+  }, [activity, lookAgain]);
   // Opening the panel shows what is there now, not what was there at the last check.
   useEffect(() => {
-    if (open) request.current(0);
-  }, [open]);
-  const refresh = useCallback(() => request.current(500), []);
-  return { changes, isRepo, refresh };
+    if (open) lookAgain();
+  }, [open, lookAgain]);
+  return { changes, isRepo, refresh: lookAgain };
 }
 
 /**
@@ -579,7 +570,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const [changesBase, setChangesBase] = useState<ChangesBase>('uncommitted');
   // A branch switch (here or in another pane on the same checkout) changes what the panel shows.
   const branchSwitches = useCheckoutBranches((s) => s.switches);
-  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, `${items.length}:${live?.status ?? ''}:${branchSwitches}`, changesOpen);
+  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, String(branchSwitches), changesOpen);
   const isRepo = options.git && inRepo;
   // The badge on the Changes button counts uncommitted files only (the panel can compare with a branch too).
   const changedCount = changesBase === 'uncommitted' && changes ? changes.files.length : 0;
@@ -1581,7 +1572,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const failed = !activeHost && host?.state === 'error';
   const statusLabel = live ? liveLabel(live, agentName) : failed ? 'Failed' : 'Not running';
   const statusTone = live ? (live.status === 'idle' && live.background?.length ? 'text-ok' : STATUS_TONE[live.status]) : failed ? 'text-error' : 'text-muted';
-  const gitActivity = `${items.length}:${live?.status ?? ''}:${branchSwitches}`;
+  // The git button reads the branch's state again when a turn starts or ends, the branch changes (here, or as git status
+  // sees it) or the checkout turns clean or changed (a commit), not for every message or file; its count of changed files
+  // comes from the live list.
+  const gitActivity = `${live?.status ?? ''}:${branchSwitches}:${changes?.branch ?? ''}:${changes ? (changes.files.length ? 'changed' : 'clean') : ''}`;
   const contextTokens = activeHost?.contextTokens ?? null;
   const contextMax = activeHost?.contextMax ?? null;
   const contextPercent = activeHost?.contextPercent ?? null;
@@ -1958,6 +1952,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             busy={working}
             active={active}
             activity={gitActivity}
+            uncommitted={changesBase === 'uncommitted' && changes ? changes.files.length : null}
             isWorktree={isWorktree}
             projectBase={project ? projectPrBase(project.defaults) : null}
             onBranchMenu={() => setBranchMenuRequest((n) => n + 1)}

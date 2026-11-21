@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { lstatSync, readFileSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
+import { lstat, readFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { remoteOnlyBranches, type ChangedFile, type ChangesBase, type GitChanges, type GitSyncAction, type WorktreeStatus } from '@seshboard/protocol';
 import { programPath } from '../system/program.ts';
@@ -271,13 +272,13 @@ export const hasHead = async (root: string) => (await git(root, ['rev-parse', '-
 
 /**
  * Lines in a new file, as `git diff --numstat` would count them: 0 for a binary file (a NUL byte in
- * its first 8000 bytes, git's own test), 1 for a symbolic link (its target).
+ * its first 8000 bytes, git's own test), 1 for a symbolic link (its target). Read without blocking the engine.
  */
-export function countNewLines(path: string): { lines: number; bytes: number } {
-  const stat = lstatSync(path);
+export async function countNewLines(path: string): Promise<{ lines: number; bytes: number }> {
+  const stat = await lstat(path);
   if (stat.isSymbolicLink()) return { lines: 1, bytes: 0 };
   if (!stat.isFile() || stat.size >= MAX_DIFF_BYTES) return { lines: 0, bytes: 0 };
-  const data = readFileSync(path);
+  const data = await readFile(path);
   if (data.subarray(0, 8000).includes(0)) return { lines: 0, bytes: data.length };
   let lines = 0;
   for (let at = data.indexOf(10); at !== -1; at = data.indexOf(10, at + 1)) lines++;
@@ -286,14 +287,31 @@ export function countNewLines(path: string): { lines: number; bytes: number } {
 }
 
 /**
+ * What a checkout's status needs that changes only with HEAD or its settings: the status source (`gitStatusHub.ts`)
+ * keeps it per checkout, so a check is two git runs instead of six.
+ */
+export interface CheckoutFacts {
+  root: string;
+  branch: string | null;
+  baseBranch: string | null;
+  hasHead: boolean;
+}
+
+/** Reads `CheckoutFacts` for the checkout `cwd` is in. Throws outside git. */
+export async function checkoutFacts(cwd: string, root?: string): Promise<CheckoutFacts> {
+  const top = root ?? (await topLevel(cwd));
+  const [branch, baseName, head] = await Promise.all([git(top, ['branch', '--show-current']), baseBranch(top), hasHead(top)]);
+  return { root: top, branch: branch.trim() || null, baseBranch: baseName, hasHead: head };
+}
+
+/**
  * What changed in a checkout. `uncommitted`: the working tree and index against HEAD,
  * plus untracked files. `branch`: everything since the branch left its base (commits and
- * uncommitted work together), which is what a merge or PR would contain.
+ * uncommitted work together), which is what a merge or PR would contain. `known`: the checkout's facts, when the
+ * caller keeps them.
  */
-export async function listChanges(cwd: string, base: ChangesBase): Promise<GitChanges> {
-  const root = await topLevel(cwd);
-  const branch = (await git(root, ['branch', '--show-current'])).trim() || null;
-  const baseName = await baseBranch(root);
+export async function listChanges(cwd: string, base: ChangesBase, known?: CheckoutFacts): Promise<GitChanges> {
+  const { root, branch, baseBranch: baseName, hasHead: headExists } = known ?? (await checkoutFacts(cwd));
   const files = new Map<string, ChangedFile>();
 
   if (base === 'branch') {
@@ -315,7 +333,7 @@ export async function listChanges(cwd: string, base: ChangesBase): Promise<GitCh
       const kind = x === '?' ? 'untracked' : x === 'U' || y === 'U' ? 'conflicted' : (STATUS[x !== ' ' ? x : y] ?? 'modified');
       files.set(path, { path, status: kind, additions: 0, deletions: 0, staged: x !== ' ' && x !== '?' && y === ' ' });
     }
-    if (await hasHead(root)) {
+    if (headExists) {
       for (const [path, stat] of parseNumstat(await git(root, [...DIFF, 'HEAD', '--numstat', '-z', '-M']))) {
         const file = files.get(path);
         if (file) Object.assign(file, stat);
@@ -327,7 +345,7 @@ export async function listChanges(cwd: string, base: ChangesBase): Promise<GitCh
     for (const file of files.values()) {
       if (file.status !== 'untracked' || budget <= 0) continue;
       try {
-        const { lines, bytes } = countNewLines(join(root, file.path));
+        const { lines, bytes } = await countNewLines(join(root, file.path));
         file.additions = lines;
         budget -= bytes;
       } catch {
