@@ -77,6 +77,28 @@ describe('TranscriptCache', () => {
     expect(cache.stats).toMatchObject({ full: 1, appended: 1 });
   });
 
+  it('BUDGET: a big transcript is read in full once, however many writes follow', async () => {
+    const { file, cache, cached } = setup();
+    let parent: string | null = null;
+    let lines: object[] = [];
+    for (let i = 0; i < 300; i++) {
+      const next = turn(parent, `Task ${i}`);
+      lines = lines.concat(next.lines);
+      parent = next.last;
+    }
+    writeFileSync(file, jsonl(lines));
+    await cached.messages(SESSION);
+    expect(cache.stats.full).toBe(1);
+    // Fifty more turns, one read after each, as the window does while a session writes.
+    for (let i = 0; i < 50; i++) {
+      const next = turn(parent, `More ${i}`);
+      parent = next.last;
+      appendFileSync(file, jsonl(next.lines));
+      await cached.messages(SESSION);
+    }
+    expect(cache.stats).toMatchObject({ full: 1, appended: 50 });
+  });
+
   it('serves an unchanged file from memory, one read for reads that come together', async () => {
     const { file, cache, cached } = setup();
     writeFileSync(file, jsonl(turn(null, 'Only task').lines));

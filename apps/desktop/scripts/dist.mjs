@@ -4,7 +4,7 @@
 // and Linux builds kept Chromium's English locale.
 // Usage: node scripts/dist.mjs [electron-builder arguments]   (npm run dist runs electron-vite build first)
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -37,6 +37,22 @@ const ARCHIVES = {
   win32: ['win-unpacked/resources/app.asar', 'win-arm64-unpacked/resources/app.asar'],
   linux: ['linux-unpacked/resources/app.asar', 'linux-arm64-unpacked/resources/app.asar'],
 };
+/**
+ * Fails before packaging when out/ holds a smoke build: those count renders (apps/ui/src/lib/renderCounts.ts) and keep the
+ * engine's port where the smoke driver reaches it, which a release must not carry. A build made by `npm run build` or
+ * `npm run dist` has neither; one left in out/ by `npm run smoke` has both.
+ */
+function checkNoSmokeBuild() {
+  const assets = join(appDir, 'out', 'renderer', 'assets');
+  if (!existsSync(assets)) return null;
+  for (const name of readdirSync(assets)) {
+    if (name.endsWith('.js') && /__renders|enginePort/.test(readFileSync(join(assets, name), 'utf8'))) {
+      return `out/renderer/assets/${name} comes from a smoke build (it counts renders). Run npm run dist, which builds first, not the packaging alone after npm run smoke.`;
+    }
+  }
+  return null;
+}
+
 /** What may be at the top of app.asar. Anything else (src, scripts, .smoke with screenshots of real sessions) got in through a `files` pattern. */
 const PACKAGED = new Set(['out', 'node_modules', 'package.json']);
 
@@ -81,6 +97,12 @@ function builderArgs(passed) {
   const file = join(dir, 'electron-builder.windows.json');
   writeFileSync(file, JSON.stringify({ extends: resolve(appDir, built.base), ...built.config }, null, 2));
   return { args: ['--config', file, ...built.rest], cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+const stale = checkNoSmokeBuild();
+if (stale) {
+  console.error(`✗ ${stale}`);
+  process.exit(1);
 }
 
 const { args, cleanup } = builderArgs(process.argv.slice(2));

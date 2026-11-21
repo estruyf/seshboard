@@ -257,6 +257,39 @@ describe('SessionIndex', () => {
     expect(index.get(ID_A)).toMatchObject({ updatedAt: 1_000, unread: false });
   });
 
+  it('BUDGET: a busy session\'s writes make no sessions.changed and no stored summary within the hold, and one change after it', async () => {
+    // The hold is a timer: timers and the clock are the test's, file reads stay real.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const hold = 15_000;
+      const t = setup([info(ID_A, { fileSize: 100 })], undefined, hold);
+      const file = join(t.projectsDir, '-repo', `${ID_A}.jsonl`);
+      const line = (at: number) => `${JSON.stringify({ type: 'assistant', entrypoint: 'cli', timestamp: new Date(at).toISOString() })}\n`;
+      const start = Date.now() - 60_000;
+      writeFileSync(file, line(start));
+      await t.index.refresh();
+      const stored = () => (t.db.db.prepare('SELECT summary_json FROM sessions WHERE id = ?').get(ID_A) as { summary_json: string }).summary_json;
+      const sent = t.changes.length;
+      const before = stored();
+      // Forty writes, each with a later time and a bigger file: the numbers every write moves.
+      for (let i = 1; i <= 40; i++) {
+        appendFileSync(file, line(start + i * 500));
+        t.infos.set(ID_A, info(ID_A, { fileSize: 100 + i * 100 }));
+        await t.index.reread(ID_A);
+      }
+      // Nearly the whole hold later: still nothing sent, nothing stored.
+      await vi.advanceTimersByTimeAsync(hold - 1_000);
+      expect(t.changes.length).toBe(sent);
+      expect(stored()).toBe(before);
+      // Past it: one change, with the latest.
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(t.changes.length).toBe(sent + 1);
+      expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ updatedAt: start + 40 * 500, fileSize: 4_100 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('sends a newer time and size a while later, but a session turning unread or renamed at once', async () => {
     const t = setup([info(ID_A, { fileSize: 100 })], undefined, 300);
     const file = join(t.projectsDir, '-repo', `${ID_A}.jsonl`);
@@ -642,7 +675,7 @@ describe('TranscriptHub', () => {
 });
 
 describe('TranscriptHub during a turn this app runs', () => {
-  it('reads the file once the turn ends, not on every write, and once more for a window that opens during it', async () => {
+  it('BUDGET: reads the file once the turn ends, not on every write, and once more for a window that opens during it', async () => {
     const { source, messages } = fakeSource([]);
     messages.set(ID_A, [msg('1')]);
     let reads = 0;

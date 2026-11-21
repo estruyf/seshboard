@@ -14,7 +14,7 @@ const host = (id: string, over: Partial<SessionHostInfo> = {}): SessionHostInfo 
 describe('toRows with a cache', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('gives back the same row object while the summary, registry entry and host are the same objects', () => {
+  it('BUDGET: gives back the same row object while the summary, registry entry and host are the same objects', () => {
     const sessions = new Map([['a', summary('a')], ['b', summary('b')]]);
     const entries = new Map([['a', live('a')]]);
     const hosts = new Map([['b', host('b')]]);
@@ -145,7 +145,7 @@ describe('the rows store', () => {
     useHosts.setState({ hosts: new Map() });
   });
 
-  it('builds the rows once per change, and a host event for one session makes one new row', () => {
+  it('BUDGET: builds the rows once per change, and a host event for one session makes one new row', () => {
     useSessions.setState({ sessions: new Map([['a', summary('a')], ['b', summary('b')], ['c', summary('c')]]) });
     const before = currentRows();
     expect(before.map((r) => r.id)).toEqual(['a', 'b', 'c']);

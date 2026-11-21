@@ -14,6 +14,7 @@ import { paletteRoom, type PaletteRoom } from './paletteRoom.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
+import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
 import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
@@ -218,6 +219,7 @@ function isTypingElsewhere(prompt: HTMLElement): boolean {
  * elements, and it doesn't render with every render of its view.
  */
 export const Composer = memo(function Composer(props: ComposerProps) {
+  if (RENDER_COUNTS) countRender('Composer');
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [saved] = useState(() => (props.draftKey === undefined ? undefined : useDrafts.getState().drafts[props.draftKey]));

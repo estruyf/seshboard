@@ -4,6 +4,7 @@ import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, FileDiff, 
 import { lazy, memo, Suspense, useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
 import { apiRetryLine, isAbsolutePath, joinPath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { fastCommand, fastModeFace } from '../../lib/fastMode.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -432,6 +433,7 @@ const NO_FEATURES: readonly ProviderFeature[] = [];
 const NO_MESSAGES: ReadonlySet<string> = new Set();
 
 export function TranscriptView({ sessionId, tiled = false, active = true, leading = true }: { sessionId: string; tiled?: boolean; active?: boolean; leading?: boolean }) {
+  if (RENDER_COUNTS) countRender('TranscriptView');
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const summary = useSessions((s) => s.sessions.get(sessionId) ?? null);
