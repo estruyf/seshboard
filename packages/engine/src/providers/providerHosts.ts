@@ -77,8 +77,8 @@ export interface ProviderHostsDeps {
   onPermission(request: PermissionRequest): void;
   onPermissionResolved(requestId: string, sessionId: string): void;
   onTurnEnd?(sessionId: string, outcome: TurnOutcome): void;
-  /** A session this app started (it counts as a Seshboard session). */
-  onCreated(sessionId: string): void;
+  /** A session this app started (it counts as a Seshboard session), and the folder it was started in. */
+  onCreated(sessionId: string, cwd: string): void;
   /** You sent a message to a session started elsewhere. */
   onContinued?(sessionId: string): void;
   log(level: LogLevel, message: string): void;
@@ -168,7 +168,7 @@ export class ProviderHosts {
     host.info = { ...host.info, sessionId: session.sessionId };
     this.hosts.set(session.sessionId, host);
     this.deps.settings?.set(session.sessionId, { model: params.model, effort, permissionMode });
-    this.deps.onCreated(session.sessionId);
+    this.deps.onCreated(session.sessionId, params.cwd);
     this.deps.onInfo(host.info);
     // A new worktree's setup actions (installing its dependencies) run before the first message, as for Claude Code.
     await params.beforeFirstMessage?.(session.sessionId).catch((error: Error) => this.deps.log('warn', `Worktree setup for ${session.sessionId}: ${error.message}`));

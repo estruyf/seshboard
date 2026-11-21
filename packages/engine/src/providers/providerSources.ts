@@ -1,3 +1,4 @@
+import { parse } from 'node:path';
 import type { OptionalProvider } from '@seshboard/protocol';
 import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -28,6 +29,8 @@ export class ProviderSources implements SessionSource {
     private readonly ignore: (sessionId: string) => boolean = () => false,
     /** What a provider's session showed that its file doesn't have (`ProviderNotes`), put back in its place. */
     private readonly notes: (sessionId: string) => RawSessionMessage[] = () => [],
+    /** The folder Seshboard started a provider's session in: Antigravity lists one started in a worktree under `/`. */
+    private readonly startedIn: (sessionId: string) => string | undefined = () => undefined,
   ) {}
 
   /** The Claude profile a session was last found in. */
@@ -61,7 +64,7 @@ export class ProviderSources implements SessionSource {
         if (seen.has(info.sessionId) || this.ignore(info.sessionId)) continue;
         seen.add(info.sessionId);
         this.owners.set(info.sessionId, profileId);
-        all.push({ ...info, provider, profileId });
+        all.push({ ...this.placed(info), provider, profileId });
       }
     });
     return all;
@@ -72,7 +75,7 @@ export class ProviderSources implements SessionSource {
     const other = this.sourceOf(sessionId);
     if (other) {
       const info = await other.source.info(sessionId);
-      return info && { ...info, provider: other.provider, profileId: other.profileId };
+      return info && { ...this.placed(info), provider: other.provider, profileId: other.profileId };
     }
     const info = await this.claude.info(sessionId);
     if (info) return info;
@@ -80,7 +83,7 @@ export class ProviderSources implements SessionSource {
       const found = await source.info(sessionId).catch(() => undefined);
       if (found) {
         this.owners.set(sessionId, profileId);
-        return { ...found, provider, profileId };
+        return { ...this.placed(found), provider, profileId };
       }
     }
     return undefined;
@@ -107,6 +110,13 @@ export class ProviderSources implements SessionSource {
     const other = this.sourceOf(sessionId);
     if (other) return other.source.rename ? other.source.rename(sessionId, title) : Promise.reject(new Error('Renaming is not available for this provider'));
     return this.claude.rename(sessionId, title);
+  }
+
+  /** A provider's session that names no folder, or the file system's root, is in the folder Seshboard started it in. */
+  private placed(info: RawSessionInfo): RawSessionInfo {
+    if (info.cwd && parse(info.cwd).root !== info.cwd) return info;
+    const cwd = this.startedIn(info.sessionId);
+    return cwd ? { ...info, cwd } : info;
   }
 
   private sourceOf(sessionId: string): ProviderSource | undefined {

@@ -672,9 +672,15 @@ export function createEngine(options: EngineOptions): Engine {
     () => providerProfiles.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })),
     (id) => ephemeral.has(id),
     (id) => providerNotes.list(id),
+    (id) => startedFolders.get(id),
   );
   /** What another provider's sessions showed but their files don't have (Copilot's slash command answers). */
   const providerNotes = new ProviderNotes(cache.db);
+  /** The folder each provider session started here was started in (`owned_sessions.cwd`). */
+  const startedFolders = new Map(
+    (cache.db.prepare('SELECT id, cwd FROM owned_sessions WHERE cwd IS NOT NULL').all() as Array<{ id: string; cwd: string }>).map((r) => [r.id, r.cwd]),
+  );
+  const markStartedIn = cache.db.prepare('UPDATE owned_sessions SET cwd = ? WHERE id = ?');
   /** What `providers.detect` found, asked once per run (it starts each provider's CLI for a moment); Check again asks again. */
   let detected: Promise<ProviderDetection[]> | null = null;
   const detectProviders = (refresh: boolean) => {
@@ -1568,6 +1574,11 @@ export function createEngine(options: EngineOptions): Engine {
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
     ...hostEvents,
+    onCreated: (id, cwd) => {
+      hostEvents.onCreated(id);
+      startedFolders.set(id, cwd);
+      markStartedIn.run(cwd, id);
+    },
     log,
   });
   // Every way to a session goes through `hosts`: a provider's sessions are routed to their own hosts from here on.
@@ -3326,6 +3337,7 @@ export function createEngine(options: EngineOptions): Engine {
     providerForks.forget(sessionId);
     pinnedTabs.forget(sessionId);
     owned.delete(sessionId);
+    startedFolders.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
     unmarkContinued.run(sessionId);

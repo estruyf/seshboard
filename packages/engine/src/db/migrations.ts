@@ -1059,4 +1059,10 @@ export const migrations: readonly string[] = [
   ALTER TABLE transcript_indexed ADD COLUMN prefix TEXT;
   ALTER TABLE transcript_indexed ADD COLUMN last_rowid INTEGER;
   `,
+
+  // v67: The folder Seshboard started another provider's session in. Antigravity lists a session started in a worktree
+  // under `/`, so the sidebar puts it in the folder it was started in. Like the rest of owned_sessions, never dropped.
+  `
+  ALTER TABLE owned_sessions ADD COLUMN cwd TEXT;
+  `,
 ];
