@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BrowserWindow } from 'electron';
-import { isAbsolutePath } from '@seshboard/protocol';
+import { isAbsolutePath } from '@seshboard/protocol/paths';
 import { setFieldValue, settle, waitInPage } from './pageDriver.ts';
 import { platformModifiers } from './smokeKeys.ts';
 

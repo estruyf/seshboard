@@ -70,6 +70,8 @@ import {
   type CatchUp,
   type QueuedMessage,
   type StreamDelta,
+  nextStreamBlock,
+  type StreamBlock,
   type PermissionDecision,
   type PermissionRequest,
   type PromptScope,
@@ -538,8 +540,26 @@ export function createEngine(options: EngineOptions): Engine {
   /** Set once memory search exists: every memory change (Seshboard's or a watcher's) re-indexes the files that changed. */
   let memoryChangedHook: () => void = () => {};
   let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The broadcast events a connection asked for (`events.only`); a connection that never asked gets them all. */
+  const eventFilters = new WeakMap<HandlerContext<Contract>, ReadonlySet<string>>();
+  /** The sessions whose `session.stream` a connection watches (`stream.watch`). */
+  const streamWatches = new WeakMap<HandlerContext<Contract>, Set<string>>();
+  /** What each session is writing now, so a view that starts watching mid-reply gets it whole. */
+  const streamBlocks = new Map<string, StreamBlock>();
   const broadcast: RpcServer<Contract>['emit'] = (name, payload) => {
-    for (const server of servers) server.emit(name, payload);
+    if (name === 'session.stream') {
+      // Only to the views that show the session's streaming text: about 30 a second while a reply streams.
+      const { sessionId } = payload as StreamDelta;
+      for (const server of servers) if (streamWatches.get(server.context)?.has(sessionId)) server.emit(name, payload);
+    } else {
+      // Another computer's events can be asked for one by one (`computers.event:sessions.changed`): its streamed text
+      // is one of them.
+      const sub = name === 'computers.event' ? `computers.event:${(payload as { name: string }).name}` : null;
+      for (const server of servers) {
+        const only = eventFilters.get(server.context);
+        if (!only || only.has(name) || (sub !== null && only.has(sub))) server.emit(name, payload);
+      }
+    }
     if (name === 'sessions.changed' || name === 'sessions.live' || name === 'session.host' || name === 'session.permission' || name === 'session.permissionResolved') {
       companion?.sessionsChanged();
       remote?.sessionsChanged();
@@ -1195,6 +1215,8 @@ export function createEngine(options: EngineOptions): Engine {
     onInfo: (info) => {
       // While this app runs a turn, the live messages show it: the file is read once the turn ends or waits for you.
       transcripts.running(info.sessionId, info.state === 'running' || info.state === 'starting');
+      // A turn that ended, or a session that closed or failed, writes nothing more.
+      if (info.state === 'idle' || info.state === 'closed' || info.state === 'error') streamBlocks.delete(info.sessionId);
       if (info.state === 'idle') {
         touchGit(info.sessionId);
         transcripts.settled(info.sessionId);
@@ -1214,7 +1236,12 @@ export function createEngine(options: EngineOptions): Engine {
       runner?.onHost(info);
       runner?.check();
     },
-    onStream: (delta) => broadcast('session.stream', delta),
+    onStream: (delta) => {
+      const block = nextStreamBlock(streamBlocks.get(delta.sessionId), delta);
+      if (block) streamBlocks.set(delta.sessionId, block);
+      else streamBlocks.delete(delta.sessionId);
+      broadcast('session.stream', delta);
+    },
     onMessages: (id, messages, held) => {
       // Copilot's and Codex's sessions write no Claude transcript: their messages say the checkout may have changed.
       touchGit(id);
@@ -3705,6 +3732,24 @@ export function createEngine(options: EngineOptions): Engine {
       const image = await transcripts.image(sessionId, imageId);
       if (!image) throw new RpcError('NOT_FOUND', 'Image not found in this transcript');
       return image;
+    },
+    'events.only': ({ names }, context) => {
+      eventFilters.set(context, new Set(names));
+      return {};
+    },
+    'stream.watch': ({ sessionId }, context) => {
+      let watched = streamWatches.get(context);
+      if (!watched) streamWatches.set(context, (watched = new Set()));
+      watched.add(sessionId);
+      // From a clean start, whatever this window had: then a reply already under way, whole.
+      context.emit('session.stream', { sessionId, kind: 'clear', text: '' });
+      const block = streamBlocks.get(sessionId);
+      if (block) context.emit('session.stream', { sessionId, kind: block.kind, text: block.text });
+      return {};
+    },
+    'stream.unwatch': ({ sessionId }, context) => {
+      streamWatches.get(context)?.delete(sessionId);
+      return {};
     },
     'transcript.watch': ({ sessionId }, context) => {
       const map = subscriptionsFor(context);

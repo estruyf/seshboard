@@ -1,7 +1,7 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, FileDiff, Folder, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, NotebookPen, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
 import { apiRetryLine, isAbsolutePath, joinPath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
@@ -12,6 +12,8 @@ import { nextMode } from '../../lib/modes.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
+import { useStreaming, useStreamingKind } from '../../state/streamingStore.ts';
+import { useStreamWatch } from '../../state/streamWatch.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
 import { trustRepository } from '../../state/repoTrust.ts';
@@ -35,7 +37,7 @@ import { RunFailedNotice } from '../session/RunFailedNotice.tsx';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
-import { Composer } from '../composer/Composer.tsx';
+import { Composer, type SubmitApi } from '../composer/Composer.tsx';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
@@ -61,6 +63,8 @@ import { LargeContextNotice } from '../session/LargeContextNotice.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
 import { useHeight } from '../ui/useHeight.ts';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
+import { followEnd } from './followEnd.ts';
+import { useStableCallback, useStableHandlers } from '../../lib/useStableCallback.ts';
 import { useCleanCopy } from './useCleanCopy.ts';
 import { anchorAt, recallScroll, rememberScroll } from './scrollMemory.ts';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
@@ -138,7 +142,7 @@ import { ProviderSessionControls } from '../providers/ProviderSessionControls.ts
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab, panelWidthFor } from '../ask/askWidth.ts';
-import { ToolRail, type RailItem } from './ToolRail.tsx';
+import { ToolRail, useRailItems, type RailItem } from './ToolRail.tsx';
 import { AppIcon } from '../AppIcon.tsx';
 import { GitHubIcon } from '../GitHubIcon.tsx';
 import { useGithubPage, useOpenIn } from '../OpenInButton.tsx';
@@ -226,8 +230,21 @@ function SpinnerSlot({ sessionId, message, children }: { sessionId: string; mess
   );
 }
 
-function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: string; since: number | null; showIndicator: boolean; live: LiveTurnInfo }) {
-  const block = useHosts((s) => s.streaming.get(sessionId));
+/** No models yet (another provider's readiness not known): one array, so memoised props don't change with it. */
+const NO_MODELS: never[] = [];
+/** Nothing in Up next: one array, so the memoised list doesn't render for a new empty one. */
+const NO_QUEUE: never[] = [];
+/** The GitHub button's icon on the rail: one element, so the rail's items compare as unchanged. */
+const GITHUB_RAIL_ICON = <GitHubIcon size={18} aria-hidden />;
+
+/**
+ * What Claude is writing now, or the working line. The only part of the view that reads the streaming text: it renders
+ * once per frame while a reply streams, and keeps the end in view itself (`onGrow`), so the view doesn't render with it.
+ */
+const StreamingBlock = memo(function StreamingBlock({ sessionId, since, showIndicator, live, onGrow }: { sessionId: string; since: number | null; showIndicator: boolean; live: LiveTurnInfo; onGrow(): void }) {
+  const block = useStreaming((s) => s.blocks.get(sessionId));
+  // Before anything measures the view (its scroll edges), so following the end never shows a frame away from it.
+  useLayoutEffect(() => onGrow(), [block, onGrow]);
   // Waiting on a permission or a question is still the turn: the line says so, with the panel in its waiting frame.
   const running = useHosts((s) => {
     const state = s.hosts.get(sessionId)?.state;
@@ -281,7 +298,7 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
       </SpinnerSlot>
     </div>
   );
-}
+});
 
 /** How the turn that just ended went, as the setting shows it, for its announcement: " It took 2 minutes 14 seconds, 18.4 thousand tokens." */
 function finishedDetails(live: LiveTurnInfo | null): string {
@@ -678,73 +695,79 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   useEffect(() => {
     if (showChanges) useTerminals.getState().setMaximized(sessionId, false);
   }, [showChanges, sessionId]);
+  // The view's keys read this render's state; the listener is added once, not again on every render.
+  const onViewKey = useEffectEvent((event: KeyboardEvent) => {
+    // Behind the Settings sheet the session stays mounted (inert); its shortcuts wait until Settings closes.
+    if (useSessions.getState().view !== 'session') return;
+    // A key something else already took (a shortcut recorder), or one pressed while a dialog is open, isn't for this view.
+    if (event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+    if (active && isShortcut(event, 'changes.toggle')) {
+      event.preventDefault();
+      toggleChangesHere();
+    }
+    if (active && isShortcut(event, 'agents.toggle')) {
+      event.preventDefault();
+      toggleAgentsHere();
+    }
+    if (active && isShortcut(event, 'commands.toggle')) {
+      event.preventDefault();
+      toggleCommandsHere();
+    }
+    if (active && cwd && isShortcut(event, 'files.toggle')) {
+      event.preventDefault();
+      toggleFilesHere();
+    }
+    // ⌘⌥F: Search in files, with the text selected in the viewer as the query.
+    if (active && cwd && isShortcut(event, 'files.search')) {
+      event.preventDefault();
+      const picked = window.getSelection();
+      const text = picked && !picked.isCollapsed && (picked.anchorNode?.parentElement?.closest('[data-files-viewer]') ?? null) ? picked.toString().trim() : '';
+      const files = useFilesPanel.getState();
+      if (text && !text.includes('\n')) files.setSearch(sessionId, { query: text });
+      files.setOpen(sessionId, true);
+      files.setMode(sessionId, 'search');
+      files.command(sessionId, 'search');
+    }
+    if (active && cwd && isShortcut(event, 'files.go-to-line') && showFiles && filesState.front) {
+      event.preventDefault();
+      const files = useFilesPanel.getState();
+      files.setOpen(sessionId, true);
+      files.setMode(sessionId, 'files');
+      files.command(sessionId, 'goto');
+    }
+    if (active && isShortcut(event, 'web.toggle') && previewAllowed()) {
+      event.preventDefault();
+      toggleWebHere();
+    }
+    // ⌘F finds in this conversation (the terminal keeps its own keys).
+    if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm, [data-web-preview-page], [data-browser-address], [data-browser-find], [data-files-viewer], [data-files-search]')) {
+      event.preventDefault();
+      setFindQuery((q) => q ?? '');
+      setFindFocus((n) => n + 1);
+    }
+    // ⌘⇧↑ / ⌘⇧↓ move between your prompts, also with the rail hidden. Not in the terminal, nor in a field with
+    // text, where they select to the start or the end.
+    const promptStep = isShortcut(event, 'transcript.prompt-previous') ? -1 : isShortcut(event, 'transcript.prompt-next') ? 1 : 0;
+    if (active && promptStep !== 0 && !(event.target as HTMLElement | null)?.closest?.('.xterm') && !promptKeysBlocked(document.activeElement as HTMLElement | null)) {
+      event.preventDefault();
+      stepPrompt(promptStep);
+    }
+  });
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      // Behind the Settings sheet the session stays mounted (inert); its shortcuts wait until Settings closes.
-      if (useSessions.getState().view !== 'session') return;
-      // A key something else already took (a shortcut recorder), or one pressed while a dialog is open, isn't for this view.
-      if (event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
-      if (active && isShortcut(event, 'changes.toggle')) {
-        event.preventDefault();
-        toggleChangesHere();
-      }
-      if (active && isShortcut(event, 'agents.toggle')) {
-        event.preventDefault();
-        toggleAgentsHere();
-      }
-      if (active && isShortcut(event, 'commands.toggle')) {
-        event.preventDefault();
-        toggleCommandsHere();
-      }
-      if (active && cwd && isShortcut(event, 'files.toggle')) {
-        event.preventDefault();
-        toggleFilesHere();
-      }
-      // ⌘⌥F: Search in files, with the text selected in the viewer as the query.
-      if (active && cwd && isShortcut(event, 'files.search')) {
-        event.preventDefault();
-        const picked = window.getSelection();
-        const text = picked && !picked.isCollapsed && (picked.anchorNode?.parentElement?.closest('[data-files-viewer]') ?? null) ? picked.toString().trim() : '';
-        const files = useFilesPanel.getState();
-        if (text && !text.includes('\n')) files.setSearch(sessionId, { query: text });
-        files.setOpen(sessionId, true);
-        files.setMode(sessionId, 'search');
-        files.command(sessionId, 'search');
-      }
-      if (active && cwd && isShortcut(event, 'files.go-to-line') && showFiles && filesState.front) {
-        event.preventDefault();
-        const files = useFilesPanel.getState();
-        files.setOpen(sessionId, true);
-        files.setMode(sessionId, 'files');
-        files.command(sessionId, 'goto');
-      }
-      if (active && isShortcut(event, 'web.toggle') && previewAllowed()) {
-        event.preventDefault();
-        toggleWebHere();
-      }
-      // ⌘F finds in this conversation (the terminal keeps its own keys).
-      if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm, [data-web-preview-page], [data-browser-address], [data-browser-find], [data-files-viewer], [data-files-search]')) {
-        event.preventDefault();
-        setFindQuery((q) => q ?? '');
-        setFindFocus((n) => n + 1);
-      }
-      // ⌘⇧↑ / ⌘⇧↓ move between your prompts, also with the rail hidden. Not in the terminal, nor in a field with
-      // text, where they select to the start or the end.
-      const promptStep = isShortcut(event, 'transcript.prompt-previous') ? -1 : isShortcut(event, 'transcript.prompt-next') ? 1 : 0;
-      if (active && promptStep !== 0 && !(event.target as HTMLElement | null)?.closest?.('.xterm') && !promptKeysBlocked(document.activeElement as HTMLElement | null)) {
-        event.preventDefault();
-        stepPrompt(promptStep);
-      }
-    };
+    const onKey = (event: KeyboardEvent) => onViewKey(event);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, []);
 
   // What to call the run of steps Claude is on now (summary mode), between steps.
   // Sessions running elsewhere (a terminal, Claude desktop) count too: their status comes from the registry.
   const working = running || live?.status === 'running' || live?.status === 'needs-you';
-  const streamKind = useHosts((s) => s.streaming.get(sessionId)?.kind ?? null);
-  const streamTool = useHosts((s) => (s.streaming.get(sessionId)?.kind === 'tool' ? s.streaming.get(sessionId)!.text : null));
+  // Only what Claude is doing (thinking, a tool), not the text it writes: the view doesn't render again for every word.
+  // This view shows the session's streaming text: the engine sends it here while the view is up and can be seen.
+  useStreamWatch(sessionId);
+  const streamShape = useStreamingKind(sessionId);
+  const streamKind = streamShape?.kind ?? null;
+  const streamTool = streamShape?.kind === 'tool' ? streamShape.text : null;
   const activeLabel =
     live?.status === 'needs-you' ? 'Waiting for you' : streamKind === 'thinking' ? 'Thinking' : streamKind === 'tool' && streamTool ? usingLabel(streamTool) : null;
   // When your last message went in, for the "9s · Thinking" timer.
@@ -754,8 +777,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const turnDetails = usePreferences((s) => s.prefs.turnDetails);
   // Reading mode: a portal from here, so it has this view's providers; the conversation stays mounted under it.
   const reading = useReadMode((s) => (active && s.open?.sessionId === sessionId ? s.open : null));
-  const readingText = useHosts((s) => {
-    const block = s.streaming.get(sessionId);
+  // Reading mode shows the reply as it streams; without it open, the text is the streaming block's alone.
+  const readingText = useStreaming((s) => {
+    if (!reading) return null;
+    const block = s.blocks.get(sessionId);
     return block?.kind === 'text' ? block.text : null;
   });
   const readReplyNow = useMemo(() => {
@@ -866,9 +891,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const stickToBottom = useRef(returnTo === null);
   // Away from the end while not following: shows Jump to latest.
   const [away, setAway] = useState(false);
+  // What `away` was last set to: the end that grows while you read further up sets it again and again, and a set to
+  // the same value still renders the view once.
+  const awayNow = useRef(false);
   const syncAway = () => {
     const el = scrollRef.current;
-    setAway(Boolean(el) && !stickToBottom.current && distanceFromEnd(el!) > AWAY_PX);
+    const next = Boolean(el) && !stickToBottom.current && distanceFromEnd(el!) > AWAY_PX;
+    if (next === awayNow.current) return;
+    awayNow.current = next;
+    setAway(next);
   };
   const follow = (on: boolean) => {
     stickToBottom.current = on;
@@ -902,13 +933,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) markUserScroll();
     if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) leaveEnd();
   };
+  // The streaming reply grew: still at the end, it stays there (only refs, so it is the same function every render).
+  const followTheEnd = useCallback(() => void followEnd(scrollRef.current, stickToBottom.current), []);
   const jumpToLatest = () => {
     const el = scrollRef.current;
     if (!el) return;
     follow(true);
     el.scrollTop = el.scrollHeight;
   };
-  const streamingText = useHosts((s) => s.streaming.get(sessionId)?.text.length ?? 0);
   // Rows start at an estimated height and grow once measured, so follow the total size too:
   // otherwise the first jump lands short of the end and the last message sits under the composer.
   // This sets scrollTop itself: the virtualizer's scrollToIndex keeps chasing its target for seconds,
@@ -946,7 +978,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       el.scrollTop = el.scrollHeight;
       requestAnimationFrame(() => stickToBottom.current && (el.scrollTop = el.scrollHeight));
     } else syncAway();
-  }, [renderItems.length, totalSize, streamingText, permissions.length, virtualizer, status]);
+  }, [renderItems.length, totalSize, permissions.length, virtualizer, status]);
   // Leaving the session (another one takes this pane): keep where you were reading, or nothing when at the end.
   useEffect(
     () => () => {
@@ -961,7 +993,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // and the browser keeps scrollTop without a scroll event, so the last lines slide under the box.
   // The "Working…" line below the list grows the end the same way: on a session's first message it
   // appears only once Claude Code has started, after everything above has settled.
-  // Following the end again on every height change keeps them in sight.
+  // Following the end again on every height change keeps them in sight. The streaming reply grows the end too: this
+  // follows it, so the view itself doesn't render for every word.
   // The list too: right after a commit that grows it, scrollHeight can still read the old height, so the follow above lands
   // short. Nothing else moves the view afterwards when the message box doesn't animate (Reduce motion).
   const tailRef = useRef<HTMLDivElement>(null);
@@ -976,6 +1009,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       if (height === lastHeight && !contentChanged) return;
       lastHeight = height;
       if (stickToBottom.current && height > 0) el.scrollTop = el.scrollHeight;
+      else syncAway();
     });
     observer.observe(el);
     if (tailRef.current) observer.observe(tailRef.current);
@@ -1026,10 +1060,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     return currentPrompt(promptStarts(), el.scrollTop);
   };
   const [currentMark, setCurrentMark] = useState(-1);
+  const currentMarkNow = useRef(-1);
   const currentFrame = useRef(0);
   const scheduleCurrent = () => {
     cancelAnimationFrame(currentFrame.current);
-    currentFrame.current = requestAnimationFrame(() => setCurrentMark(findCurrentPrompt()));
+    currentFrame.current = requestAnimationFrame(() => {
+      // Scrolling asks on every frame: only a new prompt sets it (a set to the same one still renders the view).
+      const next = findCurrentPrompt();
+      if (next !== currentMarkNow.current) setCurrentMark((currentMarkNow.current = next));
+    });
   };
   useEffect(() => {
     if (showOutline) scheduleCurrent();
@@ -1056,7 +1095,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       pinnedPrompt.current = { index, top: el.scrollTop };
     };
     place();
-    setCurrentMark(index);
+    setCurrentMark((currentMarkNow.current = index));
     // The rows around it are measured once they render: settle on the exact spot over the next frames.
     requestAnimationFrame(() => {
       place();
@@ -1260,7 +1299,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     const kept = useDrafts.getState().drafts[sessionId];
     if (kept?.startIn) presetBox(kept.text, kept.attachments);
   }, [restarting, sessionId]);
-  const onDraftLoaded = (draft: ComposerDraft) => setRestored(draft.seeded ? null : draft);
+  const onDraftLoaded = useCallback((draft: ComposerDraft) => setRestored(draft.seeded ? null : draft), []);
   const onDraftText = useCallback((text: string) => setRestored((current) => (current && draftMessage(current) !== text ? null : current)), []);
 
   // Fork, edit and rewind from a message.
@@ -1439,7 +1478,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // Up next: the messages queued while Claude works. Edit brings one back into the message box. A session that isn't
   // running here (stopped, or from before the app quit) shows what the engine kept, waiting for you.
   const keptUpNext = useUpNext((s) => s.queues.get(sessionId));
-  const upNext = activeHost ? activeHost.queue : (keptUpNext ?? []);
+  const upNext = activeHost ? activeHost.queue : (keptUpNext ?? NO_QUEUE);
   const upNextHold = activeHost ? activeHost.queueHold : upNext.length ? 'saved' : null;
   // The profile is at a usage limit: Up next waits for it rather than sending into it.
   const limitHeld = useLimits((s) => profileId !== null && s.state.limits.some((l) => l.profileId === profileId));
@@ -1477,7 +1516,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (context.length) useDrafts.getState().addContext(sessionId, context);
     return { text, attachments };
   };
-  const upNextActions: UpNextActions = {
+  // The same object on every render, each action reading this render's state: Up next is memoised.
+  const upNextActions = useStableHandlers<UpNextActions>({
     edit: (message) => void takeBack(message.id).catch((e: Error) => setActionError(`Could not take the message back: ${e.message}`)),
     remove: (message) =>
       void client
@@ -1509,7 +1549,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       void resumeAllowed()
         .then((go) => (go ? client?.call('session.queue.resume', { sessionId }) : undefined))
         .catch((e: Error) => setActionError(`Could not send the next message: ${e.message}`)),
-  };
+  });
 
   const isWorktree = Boolean(summary?.worktree || (cwd && inWorktree(cwd)));
   // On this checkout the branch button shows the live branch; the transcript's is out of date once you switch.
@@ -1536,10 +1576,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // sees it) or the checkout turns clean or changed (a commit), not for every message or file; its count of changed files
   // comes from the live list.
   const gitActivity = `${live?.status ?? ''}:${branchSwitches}:${changes?.branch ?? ''}:${changes ? (changes.files.length ? 'changed' : 'clean') : ''}`;
-  const contextLive =
-    activeHost && activeHost.contextTokens !== null && activeHost.contextMax
-      ? { tokens: activeHost.contextTokens, max: activeHost.contextMax, percent: activeHost.contextPercent ?? (activeHost.contextTokens / activeHost.contextMax) * 100 }
-      : null;
+  const contextTokens = activeHost?.contextTokens ?? null;
+  const contextMax = activeHost?.contextMax ?? null;
+  const contextPercent = activeHost?.contextPercent ?? null;
+  const contextLive = useMemo(
+    () => (contextTokens !== null && contextMax ? { tokens: contextTokens, max: contextMax, percent: contextPercent ?? (contextTokens / contextMax) * 100 } : null),
+    [contextTokens, contextMax, contextPercent],
+  );
   const checkTranscript = () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: summary ? title : null });
   // While Claude works here, Enter queues or steers (Settings › Conversation); Send now stops the current turn first.
   const canSendNow = running && Boolean(activeHost);
@@ -1549,7 +1592,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const parentRun = useRunOfParent(sessionId);
   const toRun = (text: string) => (parentRun ? withRunStub(text, parentRun.run) : text);
   const runPlaceholder = useRunPlaceholder(sessionId);
-  const compact = activeHost ?() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)) : undefined;
+  // Stable, so the context meter in the message box doesn't make the memoised box render with every update.
+  const compactNow = useStableCallback(() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)));
+  const compact = activeHost ? compactNow : undefined;
   /** The last reply, for another provider's ⋯ › Copy the last reply. */
   const lastReply = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i--) {
@@ -1613,7 +1658,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (id === `app:${RAIL_GITHUB}` && githubPage) {
       return {
         id,
-        icon: <GitHubIcon size={18} aria-hidden />,
+        icon: GITHUB_RAIL_ICON,
         label: `Open ${githubPage.repo} on GitHub`,
         ariaLabel: `Open ${githubPage.repo} on GitHub`,
         state: 'closed',
@@ -1634,7 +1679,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       },
     };
   };
-  const railItems: RailItem[] = railEntries(
+  const railItemsNow: RailItem[] = railEntries(
     {
       // Files reads the session's folder on this computer.
       files: Boolean(cwd),
@@ -1653,8 +1698,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     railHidden,
     railOrder,
   ).map((entry) => (entry.kind === 'divider' ? 'divider' : entry.kind === 'app' ? railApp(entry.id) : railTool(entry.id)));
+  // The same array while the rail draws the same: the rail is memoised.
+  const railItems = useRailItems(railItemsNow);
   /** Hide panel: closes whatever the right side shows. */
-  const hidePanels = () => {
+  const hidePanels = useStableCallback(() => {
     if (whyRequest) useWhy.getState().close();
     if (showChanges) closeChanges(sessionId);
     if (ask.open) closeAskHere();
@@ -1665,7 +1712,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (showWeb) useWebPreview.getState().hide(sessionId);
     if (terminalOnRight) useTerminals.getState().togglePanel(sessionId, false);
     for (const pane of modPanes) closeModPane(pane.id);
-  };
+  });
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
@@ -1683,6 +1730,125 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     </Suspense>
   );
 
+  // The message box and Changes are memoised: what they get stays the same from render to render unless what it says
+  // changed, so they don't render with every render of this view (a new message, a host update).
+  const boxSavedPrompts = useMemo(() => ({ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }), [options.projectActions, projectRoot, projectName]);
+  const boxLinks = useMemo(() => ({ sessionId, root: projectRoot }), [sessionId, projectRoot]);
+  const boxGithub = useMemo(() => ({ root: options.projectActions ? projectRoot : null }), [options.projectActions, projectRoot]);
+  const boxStatus = useMemo(() => <ModFooterChips sessionId={sessionId} profileId={profileId} />, [sessionId, profileId]);
+  const submitBox = useStableCallback((text: string, attachments: ImageAttachment[]) => send(toRun(text), attachments, openElsewhere, false, whileWorking));
+  const submitNow = useStableCallback((text: string, attachments: ImageAttachment[]) => send(toRun(text), attachments, false, false, 'now'));
+  const submitOther = useStableCallback((text: string, attachments: ImageAttachment[]) => send(toRun(text), attachments, false, false, otherMode));
+  const boxSecondary = useMemo(() => (canSendNow ? { shortcut: 'composer.send-now' as const, onSubmit: submitNow } : undefined), [canSendNow, submitNow]);
+  const boxOthers = useMemo(() => (canSendNow ? [{ shortcut: 'composer.send-other' as const, onSubmit: submitOther, steers: otherMode === 'steer' }] : undefined), [canSendNow, submitOther, otherMode]);
+  const recallQueued = useStableCallback(() => {
+    const last = lastQueued(upNext);
+    if (!last) return false;
+    upNextActions.edit(last);
+    return true;
+  });
+  // Drawn while the box renders, so not a stable callback: it changes with what Enter does while Claude works.
+  const queueControl = useCallback(
+    (box: SubmitApi) => (
+      <QueueButton
+        state={queueButtonState({ ...box, whileWorking })}
+        onAction={(action) => (action === 'send-now' ? box.submitSecondary() : action === whileWorking ? box.submit() : box.submitOther('composer.send-other'))}
+      />
+    ),
+    [whileWorking],
+  );
+  const interrupt = useStableCallback(() => void client?.call('session.interrupt', { sessionId }));
+  const askInBox = useStableCallback(askHere);
+  const openAskInBox = useStableCallback(() => void openAsk(client, sessionId));
+  const boxAsk = useMemo(() => (canAsk ? { onAsk: askInBox, onOpen: openAskInBox, open: ask.open, ready: ask.ready } : undefined), [canAsk, askInBox, openAskInBox, ask.open, ask.ready]);
+  const escapeBox = useStableCallback(() => {
+    // Esc after Reply leaves the message box and goes back to the catch-up.
+    if (useCatchUp.getState().replying !== sessionId) return false;
+    useCatchUp.getState().setReplying(null);
+    (document.activeElement as HTMLElement | null)?.blur();
+    return true;
+  });
+  const cycleMode = useStableCallback(() => {
+    if (!activeHost) return;
+    if (otherProvider && otherInfo?.modes.length) {
+      // The provider's own modes, in its order.
+      const modes = otherInfo.modes.map((m) => m.value);
+      const next = modes[(modes.indexOf(activeHost.permissionMode) + 1) % modes.length]!;
+      void client?.call('session.setPermissionMode', { sessionId, mode: next });
+    } else if (!otherProvider) void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) });
+  });
+  const canCycleMode = Boolean(activeHost && (otherProvider ? otherInfo?.modes.length : true));
+  const otherModels = otherReadiness?.models ?? NO_MODELS;
+  const hostState = host?.state;
+  const boxControls = useMemo(
+    () =>
+      otherProvider ? (
+        <ProviderSessionControls provider={otherProvider} profileId={otherProfileId} sessionId={sessionId} host={activeHost} models={otherModels} />
+      ) : activeHost ? (
+        <SessionControls host={activeHost} />
+      ) : !restart && (!registryLive || leftover) ? (
+        // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
+        // Why the last run failed is in the notice above the message box, where it has room.
+        <SavedSessionControls sessionId={sessionId} profileId={profileId} />
+      ) : (
+        <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-session-elsewhere>
+          {hostState === 'error' ? (
+            'Last run failed. Send a message to start it again.'
+          ) : registryLive ? (
+            `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Seshboard.`
+          ) : (
+            'Not running in Seshboard. Send a message to pick it up here.'
+          )}
+        </span>
+      ),
+    [otherProvider, otherProfileId, sessionId, activeHost, otherModels, restart, registryLive, leftover, profileId, hostState],
+  );
+  const openTools = useStableCallback(() => useOverlay.getState().show('tools'));
+  // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a ring, with every
+  // number in its tooltip.
+  const boxInfo = useMemo(
+    () =>
+      foldFooter ? null : otherProvider && !planUsage ? (
+        otherProfileId && (
+          <>
+            <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
+            <SessionCost sessionId={sessionId} profileId={otherProfileId} />
+          </>
+        )
+      ) : otherProvider ? (
+        // Codex's windows, and the session's cost from its rollout files.
+        otherProfileId && (
+          <>
+            <UsageBand profileId={otherProfileId} footer />
+            <SessionCost sessionId={sessionId} profileId={otherProfileId} />
+          </>
+        )
+      ) : (
+        <>
+          <UsageBand profileId={profileId} footer />
+          <SessionCost sessionId={sessionId} profileId={profileId} />
+        </>
+      ),
+    [foldFooter, otherProvider, planUsage, otherProfileId, sessionId, profileId],
+  );
+  const openUsageHere = useStableCallback(() => openUsage(otherProvider ? otherProfileId : profileId));
+  const boxUsage = useMemo(
+    () => (usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: openUsageHere } : null),
+    [usageLines, openUsageHere],
+  );
+  const boxMeter = useMemo(
+    () =>
+      foldFooter ? (
+        <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />
+      ) : (
+        // Another provider's context shows once it reports it; Compact sends its /compact, as for Claude Code.
+        (!otherProvider || contextLive) && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
+      ),
+    [foldFooter, sessionId, contextLive, messages, compact, usageLines, otherProvider],
+  );
+  const closeChangesHere = useStableCallback(() => closeChanges(sessionId));
+  const changesShared = right.tabs || halfPanel;
+  const changesSharedWidth = useMemo(() => (changesShared ? { width: panelWidth, setWidth: setRightWidth } : undefined), [changesShared, panelWidth, setRightWidth]);
   return (
     // The session's column, then its rail of tools at the right edge, full height.
     <div className="flex h-full min-h-0" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
@@ -2020,7 +2186,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 </div>
               )}
               <div ref={tailRef}>
-                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} live={liveTurnInfo} />
+                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} live={liveTurnInfo} onGrow={followTheEnd} />
               </div>
               {/* Sticks to the bottom of the view while you read further up; takes no room at the end. */}
               {away && (
@@ -2246,10 +2412,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   draftKey={sessionId}
                   ultrathink={!otherProvider}
                   steers={whileWorking === 'steer'}
-                  savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
-                  links={{ sessionId, root: projectRoot }}
-                  github={{ root: options.projectActions ? projectRoot : null }}
-                  status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
+                  savedPrompts={boxSavedPrompts}
+                  links={boxLinks}
+                  github={boxGithub}
+                  status={boxStatus}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}
                   restored={restored !== null}
@@ -2277,100 +2443,20 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : `Messages go to ${agentName} now`} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
                       : undefined
                   }
-                  onSubmit={(text, attachments) => send(toRun(text), attachments, openElsewhere, false, whileWorking)}
-                  secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, 'now') } : undefined}
-                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, otherMode), steers: otherMode === 'steer' }] : undefined}
-                  onRecallQueued={() => {
-                    const last = lastQueued(upNext);
-                    if (!last) return false;
-                    upNextActions.edit(last);
-                    return true;
-                  }}
-                  submitControl={
-                    canSendNow
-                      ? (box) => (
-                          <QueueButton
-                            state={queueButtonState({ ...box, whileWorking })}
-                            onAction={(action) => (action === 'send-now' ? box.submitSecondary() : action === whileWorking ? box.submit() : box.submitOther('composer.send-other'))}
-                          />
-                        )
-                      : undefined
-                  }
-                  onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
-                  ask={!canAsk ? undefined : { onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
-                  onEscape={() => {
-                    // Esc after Reply leaves the message box and goes back to the catch-up.
-                    if (useCatchUp.getState().replying !== sessionId) return false;
-                    useCatchUp.getState().setReplying(null);
-                    (document.activeElement as HTMLElement | null)?.blur();
-                    return true;
-                  }}
-                  onCycleMode={
-                    activeHost && otherProvider && otherInfo?.modes.length
-                      ? () => {
-                          // The provider's own modes, in its order.
-                          const modes = otherInfo.modes.map((m) => m.value);
-                          const next = modes[(modes.indexOf(activeHost.permissionMode) + 1) % modes.length]!;
-                          void client?.call('session.setPermissionMode', { sessionId, mode: next });
-                        }
-                      : activeHost && !otherProvider ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
-                  }
-                  controls={
-                    otherProvider ? (
-                      <ProviderSessionControls provider={otherProvider} profileId={otherProfileId} sessionId={sessionId} host={activeHost} models={otherReadiness?.models ?? []} />
-                    ) : activeHost ? (
-                      <SessionControls host={activeHost} />
-                    ) : !restart && (!registryLive || leftover) ? (
-                      // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
-                      // Why the last run failed is in the notice above the message box, where it has room.
-                      <SavedSessionControls sessionId={sessionId} profileId={profileId} />
-                    ) : (
-                      <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-session-elsewhere>
-                        {host?.state === 'error' ? (
-                          'Last run failed. Send a message to start it again.'
-                        ) : registryLive ? (
-                          `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Seshboard.`
-                        ) : (
-                          'Not running in Seshboard. Send a message to pick it up here.'
-                        )}
-                      </span>
-                    )
-                  }
-                  tools={cwd && !readOnly ? () => useOverlay.getState().show('tools') : null}
-                  // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a
-                  // ring, with every number in its tooltip.
-                  info={
-                    foldFooter ? null : otherProvider && !planUsage ? (
-                      otherProfileId && (
-                        <>
-                          <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
-                          <SessionCost sessionId={sessionId} profileId={otherProfileId} />
-                        </>
-                      )
-                    ) : otherProvider ? (
-                      // Codex's windows, and the session's cost from its rollout files.
-                      otherProfileId && (
-                        <>
-                          <UsageBand profileId={otherProfileId} footer />
-                          <SessionCost sessionId={sessionId} profileId={otherProfileId} />
-                        </>
-                      )
-                    ) : (
-                      <>
-                        <UsageBand profileId={profileId} footer />
-                        <SessionCost sessionId={sessionId} profileId={profileId} />
-                      </>
-                    )
-                  }
-                  usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(otherProvider ? otherProfileId : profileId) } : null}
-                  meter={
-                    foldFooter ? (
-                      <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />
-                    ) : (
-                      // Another provider's context shows once it reports it; Compact sends its /compact, as for Claude Code.
-                      (!otherProvider || contextLive) && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
-                    )
-                  }
+                  onSubmit={submitBox}
+                  secondary={boxSecondary}
+                  others={boxOthers}
+                  onRecallQueued={recallQueued}
+                  submitControl={canSendNow ? queueControl : undefined}
+                  onInterrupt={interrupt}
+                  ask={boxAsk}
+                  onEscape={escapeBox}
+                  onCycleMode={canCycleMode ? cycleMode : undefined}
+                  controls={boxControls}
+                  tools={cwd && !readOnly ? openTools : null}
+                  info={boxInfo}
+                  usage={boxUsage}
+                  meter={boxMeter}
                 />
               </div>
               )}
@@ -2389,9 +2475,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             base={changesBase}
             onBase={setChangesBase}
             onRefresh={refreshChanges}
-            onClose={() => closeChanges(sessionId)}
+            onClose={closeChangesHere}
             outside={catchUp?.signals.outOfScope}
-            shared={right.tabs || halfPanel ? { width: panelWidth, setWidth: setRightWidth } : undefined}
+            shared={changesSharedWidth}
           />
         )}
         {!whyRequest && right.tab === 'ask' && !terminalMaximized && (

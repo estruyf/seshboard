@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { trackWindowActivity, windowIsActive, type ActivityWindow } from './windowActivity.ts';
+import { trackWindowActivity, windowIsActive, windowIsShown, type ActivityWindow } from './windowActivity.ts';
 
 function fakeWindow(initial: Partial<{ visible: boolean; minimized: boolean; focused: boolean; destroyed: boolean }> = {}) {
   const state = { visible: true, minimized: false, focused: true, destroyed: false, ...initial };
@@ -22,6 +22,27 @@ describe('windowIsActive', () => {
     expect(windowIsActive(fakeWindow({ visible: false }).win)).toBe(false);
     expect(windowIsActive(fakeWindow({ minimized: true }).win)).toBe(false);
     expect(windowIsActive(fakeWindow({ destroyed: true }).win)).toBe(false);
+  });
+});
+
+describe('windowIsShown', () => {
+  it('is a window that can be seen, focused or not', () => {
+    expect(windowIsShown(fakeWindow({ focused: false }).win)).toBe(true);
+    expect(windowIsShown(fakeWindow({ minimized: true }).win)).toBe(false);
+    expect(windowIsShown(fakeWindow({ visible: false }).win)).toBe(false);
+  });
+
+  it('is tracked like the foreground, without blur and focus changing it', () => {
+    const w = fakeWindow();
+    const sent: boolean[] = [];
+    trackWindowActivity(w.win, (shown) => sent.push(shown), windowIsShown);
+    w.state.focused = false;
+    w.emit('blur');
+    w.state.minimized = true;
+    w.emit('minimize');
+    w.state.minimized = false;
+    w.emit('restore');
+    expect(sent).toEqual([false, true]);
   });
 });
 

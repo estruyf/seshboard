@@ -114,8 +114,11 @@ export class Notifier {
     this.options.engine.connect(port1);
     const client = createRpcClient<Contract>(mainPortTransport(port2), { timeoutMs: 15_000 });
     this.client = client;
+    // Only the events main reads: the engine leaves out the rest (streamed text, transcripts, usage, terminals' output).
+    const wanted = new Set<string>();
+    const on: typeof client.on = (name, listener) => (wanted.add(name), client.on(name, listener));
 
-    client.on('sessions.changed', ({ upserted, removed }) => {
+    on('sessions.changed', ({ upserted, removed }) => {
       upserted.forEach((s) => this.attention.setTitle(s.id, s.title));
       const before = this.reminded.size;
       for (const s of upserted) this.trackReminder(s);
@@ -123,7 +126,7 @@ export class Notifier {
       if (this.reminded.size !== before) this.updateBadge();
     });
     // Remind me later: "Reminder: <title>", with your note; one missed while Seshboard was closed says when it was for.
-    client.on('sessions.remindersDue', ({ reminders }) =>
+    on('sessions.remindersDue', ({ reminders }) =>
       this.handle(
         reminders.map((r) => ({
           kind: 'reminder' as const,
@@ -133,25 +136,25 @@ export class Notifier {
         })),
       ),
     );
-    client.on('session.host', (info) => {
+    on('session.host', (info) => {
       this.handle(this.attention.onHost(info));
       this.cache.onHost(info);
     });
-    client.on('session.permission', (request) => this.handle(this.attention.onPermission(request)));
-    client.on('session.permissionResolved', ({ requestId }) => {
+    on('session.permission', (request) => this.handle(this.attention.onPermission(request)));
+    on('session.permissionResolved', ({ requestId }) => {
       this.attention.onPermissionResolved(requestId);
       this.updateBadge();
     });
-    client.on('sessions.live', ({ live }) => this.handle(this.attention.onLive(live)));
-    client.on('terminals.changed', ({ terminals }) => this.handle(this.attention.onTerminals(terminals)));
-    client.on('limits.resumed', ({ sessionId }) => this.handle(this.attention.onResumed(sessionId)));
-    client.on('git.checksFinished', (event) => this.handle(this.attention.onChecksFinished(event)));
-    client.on('later.changed', (queue) => void (this.queue = queue));
+    on('sessions.live', ({ live }) => this.handle(this.attention.onLive(live)));
+    on('terminals.changed', ({ terminals }) => this.handle(this.attention.onTerminals(terminals)));
+    on('limits.resumed', ({ sessionId }) => this.handle(this.attention.onResumed(sessionId)));
+    on('git.checksFinished', (event) => this.handle(this.attention.onChecksFinished(event)));
+    on('later.changed', (queue) => void (this.queue = queue));
     // Queued items that start by themselves: the engine started one, or one didn't start after an error or a stop.
-    client.on('later.autoStarted', ({ sessionId, prompt, projectName }) =>
+    on('later.autoStarted', ({ sessionId, prompt, projectName }) =>
       this.handle([{ kind: 'queue-started', sessionId, title: `Started: ${promptLabel(prompt, 80)}`, body: projectName }]),
     );
-    client.on('later.autoSkipped', ({ prompt, sessionId, title, outcome }) =>
+    on('later.autoSkipped', ({ prompt, sessionId, title, outcome }) =>
       this.handle([
         {
           kind: 'queue-skipped',
@@ -163,15 +166,15 @@ export class Notifier {
       ]),
     );
     // Scheduled runs (#173): started, queued, skipped or not started; several missed runs at once give one.
-    client.on('schedules.ran', ({ runs }) => {
+    on('schedules.ran', ({ runs }) => {
       this.options.recordRuns?.(runs);
       this.handle(scheduleAlerts(runs));
     });
     // Event triggers (#180): a session started, an issue picked up, a trigger paused.
-    client.on('triggers.notice', ({ notices }) => this.handle(triggerAlerts(notices)));
+    on('triggers.notice', ({ notices }) => this.handle(triggerAlerts(notices)));
     // Pipelines (#179): a run waits for you, stopped, or is done. Its steps' turns are its news: no Finished for them.
-    client.on('runs.notice', ({ notice }) => this.handle(pipelineAlerts(notice)));
-    client.on('runs.changed', ({ state }) => {
+    on('runs.notice', ({ notice }) => this.handle(pipelineAlerts(notice)));
+    on('runs.changed', ({ state }) => {
       this.runs.set(state.run.id, state);
       this.steps = stepSessions(this.runs.values());
     });
@@ -186,13 +189,17 @@ export class Notifier {
       this.computerInfo = new Map(status.computers.map((c) => [c.id, { name: c.name, notify: c.notify, mineHere: c.mineHere }]));
       for (const computer of status.computers) if (computer.state !== 'connected') this.remote.forget(computer.id);
     };
-    client.on('computers.changed', computers);
+    on('computers.changed', computers);
     void client.call('computers.status', {}).then(computers, () => {});
-    client.on('computers.event', ({ computerId, name, payload }) => {
+    on('computers.event', ({ computerId, name, payload }) => {
       if (name !== 'sessions.changed') return;
       const info = this.computerInfo.get(computerId);
       this.handle(this.remote.onList({ id: computerId, name: info?.name ?? 'another computer', notify: info?.notify ?? 'all', mineHere: info?.mineHere ?? [] }, payload as unknown as RemoteSessions));
     });
+    // Of other computers' events, only their lists.
+    wanted.delete('computers.event');
+    wanted.add('computers.event:sessions.changed');
+    void client.call('events.only', { names: [...wanted] }).catch(() => {});
 
     // Seed state silently: only changes from here on deserve a notification.
     void Promise.all([client.call('sessions.list', {}), client.call('hosts.list', {}), client.call('terminal.list', {})])

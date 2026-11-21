@@ -52,6 +52,8 @@ export class RpcError extends Error {
 
 export interface RpcServer<C extends ContractShape> {
   emit<E extends EventName<C>>(name: E, payload: z.input<C['events'][E]>): void;
+  /** The context its handlers get: what a handler keeps per connection is found by it. */
+  context: HandlerContext<C>;
   dispose(): void;
 }
 
@@ -138,6 +140,7 @@ export function serveRpc<C extends ContractShape>(
 
   return {
     emit: context.emit,
+    context,
     dispose() {
       if (disposed) return;
       disposed = true;

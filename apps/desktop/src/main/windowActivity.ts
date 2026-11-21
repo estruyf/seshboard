@@ -21,11 +21,19 @@ export function windowIsActive(win: Pick<ActivityWindow, 'isDestroyed' | 'isVisi
   return !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused();
 }
 
-/** Tells `send` when the window moves to or from the foreground (once per change, not per event). */
-export function trackWindowActivity(win: ActivityWindow, send: (active: boolean) => void): void {
-  let last = windowIsActive(win);
+/** Shown and not minimised, focused or not: a window somebody can see (it gets the streaming text of what it shows). */
+export function windowIsShown(win: Pick<ActivityWindow, 'isDestroyed' | 'isVisible' | 'isMinimized'>): boolean {
+  return !win.isDestroyed() && win.isVisible() && !win.isMinimized();
+}
+
+/**
+ * Tells `send` when the window moves to or from the foreground (once per change, not per event), or, with `is`
+ * `windowIsShown`, into or out of sight.
+ */
+export function trackWindowActivity(win: ActivityWindow, send: (active: boolean) => void, is: (win: ActivityWindow) => boolean = windowIsActive): void {
+  let last = is(win);
   const check = () => {
-    const now = windowIsActive(win);
+    const now = is(win);
     if (now === last) return;
     last = now;
     send(now);

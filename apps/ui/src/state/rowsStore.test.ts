@@ -34,7 +34,7 @@ describe('toRows with a cache', () => {
 
   it('builds what it always built: the same rows with and without a cache', () => {
     const sessions = new Map([['a', summary('a', { updatedAt: 500 })]]);
-    const entries = new Map([['a', live('a', { status: 'running', updatedAt: 9_000 })], ['pending', live('pending', { cwd: '/p/b', projectRoot: '/p/b' })]]);
+    const entries = new Map([['a', live('a', { status: 'running', updatedAt: 9_000 })], ['pending', live('pending', { cwd: '/p/b', projectRoot: '/p/b', startedAt: 7_000 })]]);
     const hosts = new Map([['h', host('h')]]);
     const kept = new Set(['a']);
     // A row with no time of its own takes the current one: both builds must see the same clock.
@@ -160,9 +160,9 @@ describe('the rows store', () => {
   it('keeps the same state, so nobody re-renders, when a change leaves every row as it was', () => {
     useSessions.setState({ sessions: new Map([['a', summary('a')]]) });
     const state = useRows.getState();
-    // Another Map with the same session, a stream delta, the selected session: nothing the rows are made of.
+    // Another Map with the same session, a hosts update with the same hosts, the selected session: nothing the rows are made of.
     useSessions.setState({ sessions: new Map(useSessions.getState().sessions) });
-    useHosts.setState({ streaming: new Map([['a', { kind: 'text', text: 'hi' }]]) });
+    useHosts.setState({ hosts: useHosts.getState().hosts });
     useSessions.setState({ selectedId: 'a' });
     expect(useRows.getState()).toBe(state);
   });
