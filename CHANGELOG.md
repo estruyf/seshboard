@@ -4,6 +4,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
+### Added
+
+- **Messages from other Claude sessions stand out.** When another Claude Code session sends a message to yours, the conversation shows it on the left in a dashed box, with "From another session" and the sender's name over it. You see only what the other session wrote, not Claude Code's guidance around it. Your phone, search and the catch-up show it the same way, and ↑ in the message box skips it.
+
 ### Changed
 
 - **Home and New session sit in the middle of a tall window.** On a big screen they no longer start at the top edge, so you don't have to look up to use them.

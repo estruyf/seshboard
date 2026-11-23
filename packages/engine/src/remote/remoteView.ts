@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { skimMarks,
+  parsePeerMessage,
+  peerName,
   inheritedDefault,
   inheritedPermissionMode,
   isAbsolutePath,
@@ -260,6 +262,8 @@ function remoteTurn(role: RemoteMessage['role'], blocks: RemoteBlock[]): Pick<Re
   if (trimmed.startsWith('<task-notification>')) return notice(tag(trimmed, 'summary') ?? 'Background task finished');
   // The saved transcript puts a line before an agent's hand-back; the live stream sends the tag on its own.
   if (/^(Another Claude session sent a message:\s*)?<agent-message from="/.test(trimmed)) return notice('An agent reported back');
+  const peer = parsePeerMessage(trimmed);
+  if (peer) return { role, blocks: [{ type: 'text', text: `From another session, ${peerName(peer)}:\n\n${peer.text}` }] };
   const command = tag(text, 'command-name');
   if (command) {
     const args = tag(text, 'command-args') ?? '';

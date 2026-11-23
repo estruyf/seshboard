@@ -1,10 +1,10 @@
-import { Bot, ChevronRight, ClipboardList } from 'lucide-react';
+import { Bot, ChevronRight, ClipboardList, MessagesSquare } from 'lucide-react';
 import type { HookableComponent } from '@seshboard/protocol/client';
 import { useMods } from '../../state/modsStore.ts';
 import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
 import { replaceableOf } from '../mods/modReplace.ts';
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
-import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs, parseSessionUpdate, VISUAL_TOOL } from '@seshboard/protocol/client';
+import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs, parseSessionUpdate, peerName, VISUAL_TOOL } from '@seshboard/protocol/client';
 import { SessionUpdateNote } from '../orchestrator/OrchestratorOverview.tsx';
 import { LinkedSessions } from './LinkedSessions.tsx';
 import { GithubAttached } from './GithubAttached.tsx';
@@ -243,6 +243,38 @@ function ToolOrMemory({ item, cwd, sessionId }: { item: ToolItem; cwd: string | 
   return <ToolCard item={item} cwd={cwd} sessionId={sessionId} />;
 }
 
+/**
+ * A message another Claude Code session sent to this one. It starts a turn like your prompt, but you didn't write it:
+ * it sits on the left, in a dashed box with the sender's name over it, so it stands out from your prompts and Claude's
+ * replies. Only Copy, since it isn't yours to edit.
+ */
+function PeerMessageItem({ item, peer }: { item: Extract<DisplayItem, { kind: 'user' }>; peer: NonNullable<Extract<DisplayItem, { kind: 'user' }>['peer']> }) {
+  const name = peerName(peer);
+  return (
+    <div className="flex justify-start">
+      <div
+        className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-dashed border-edge bg-text/6 px-3.5 py-2.5"
+        data-message-key={item.key}
+        data-peer-message={name}
+        data-tooltip={item.at !== null ? sentLine(item.at, null) : undefined}
+      >
+        <Speaker name={`Message from the session ${name}`} />
+        <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly />
+        <p className="mb-1 flex min-w-0 items-center gap-1.5 text-meta text-muted">
+          <MessagesSquare className="size-3.5 shrink-0" aria-hidden />
+          <span className="shrink-0">From another session</span>
+          <span className="min-w-0 truncate font-mono text-text" data-tooltip={peer.name ? peer.from : undefined}>
+            {name}
+          </span>
+        </p>
+        <ClampedPrompt itemKey={item.key} className="text-body [overflow-wrap:anywhere] [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+          <Markdown text={item.text} />
+        </ClampedPrompt>
+      </div>
+    </div>
+  );
+}
+
 /** Your prompt, on the right as a card; hovering it says when you sent it, and from which paired device. */
 function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'user' }>; sessionId: string }) {
   const device = useRemote((s) => s.sentFrom.get(messageUuid(item.key)) ?? null);
@@ -342,7 +374,7 @@ function BuiltInItem({
   reveal?: boolean;
 }) {
   if (item.kind === 'activity') return <ActivityGroupView group={item} cwd={cwd} sessionId={sessionId} active={active} activeLabel={activeLabel} live={live} reveal={reveal} />;
-  if (item.kind === 'user') return <PromptItem item={item} sessionId={sessionId} />;
+  if (item.kind === 'user') return item.peer ? <PeerMessageItem item={item} peer={item.peer} /> : <PromptItem item={item} sessionId={sessionId} />;
   const indent = 'subagent' in item && item.subagent ? 'ml-6 border-l border-border pl-3' : '';
   switch (item.kind) {
     case 'command':

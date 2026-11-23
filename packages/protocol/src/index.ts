@@ -63,6 +63,7 @@ export * from './accountKey.ts';
 export * from './savedPrompts.ts';
 export * from './savedPromptSchema.ts';
 export * from './sessionLinks.ts';
+export * from './peerMessage.ts';
 export * from './github.ts';
 export * from './githubContext.ts';
 export * from './focus.ts';

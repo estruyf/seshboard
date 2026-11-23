@@ -2587,6 +2587,11 @@
       "page": "sessions/agents"
     },
     {
+      "id": "feature:peer-messages",
+      "name": "Messages from other Claude sessions",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:agents-stop",
       "name": "Stop a background agent from the panel",
       "page": "sessions/agents"

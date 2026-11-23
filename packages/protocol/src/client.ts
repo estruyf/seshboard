@@ -51,6 +51,7 @@ export { commandLabel } from './commandLabel.ts';
 export { gerund, mcpLabel, toolStepLabel, type StepLabel } from './toolSteps.ts';
 export type * from './context.ts';
 export * from './sessionLinks.ts';
+export * from './peerMessage.ts';
 export type * from './github.ts';
 export * from './githubContext.ts';
 export type * from './companion.ts';

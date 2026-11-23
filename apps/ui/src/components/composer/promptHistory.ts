@@ -128,7 +128,8 @@ export function sessionHistory(items: readonly DisplayItem[]): string[] {
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]!;
     // A pipeline run's brief went with a message to its parent: ↑ brings back what you typed (sending links the run again).
-    const text = item.kind === 'user' && !item.subagent ? parseRunBriefs(item.text).text : item.kind === 'command' ? (item.args ? `${item.name} ${item.args}` : item.name) : '';
+    // Another session's message isn't something you typed.
+    const text = item.kind === 'user' && !item.subagent && !item.peer ? parseRunBriefs(item.text).text : item.kind === 'command' ? (item.args ? `${item.name} ${item.args}` : item.name) : '';
     if (text.trim()) entries.push(text);
   }
   return withoutRepeats(entries);

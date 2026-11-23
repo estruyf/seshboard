@@ -154,6 +154,8 @@ describe('the turn', () => {
     expect(promptText(user('3', '[Request interrupted by user]'))).toBeNull();
     expect(promptText(user('4', '<task-notification><task-id>t</task-id></task-notification>'))).toBeNull();
     expect(promptText({ ...user('5', 'sub'), parent_tool_use_id: 'task' })).toBeNull();
+    // Another session's message asks for the work: its words, without the wrapper.
+    expect(promptText(user('6', 'Another Claude session sent a message:\n<cross-session-message from=\"uds:/tmp/s.sock\" from-name=\"dev-2f\">\nKeep off versions.ts.\n</cross-session-message>\n\nThis came from another Claude session.'))).toBe('Keep off versions.ts.');
   });
 
   it('takes the prompt before a short reply as the ask', () => {

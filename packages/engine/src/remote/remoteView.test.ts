@@ -24,6 +24,10 @@ describe('remoteMessage', () => {
     expect(user('Another Claude session sent a message:\n<agent-message from="a1">The report follows:\n  Done.\n</agent-message>')).toMatchObject({ role: 'system', blocks: [{ type: 'text', text: 'An agent reported back' }] });
   });
 
+  it('shows a message from another session with who sent it, without Claude Code\'s guidance', () => {
+    expect(user('Another Claude session sent a message:\n<cross-session-message from=\"uds:/tmp/s.sock\" from-name=\"dev-2f\">\nKeep off versions.ts.\n</cross-session-message>\n\nThis came from another Claude session.')).toMatchObject({ role: 'user', blocks: [{ type: 'text', text: 'From another session, dev-2f:\n\nKeep off versions.ts.' }] });
+  });
+
   it('reads slash commands, command output and interrupts as the app does', () => {
     expect(user('<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>--fast</command-args>')).toMatchObject({ role: 'user', blocks: [{ type: 'text', text: '/review --fast' }] });
     expect(user('<local-command-stdout>Compacted</local-command-stdout>')).toMatchObject({ role: 'system', blocks: [{ type: 'text', text: 'Compacted' }] });

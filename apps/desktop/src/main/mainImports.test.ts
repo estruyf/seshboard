@@ -105,6 +105,7 @@ const PROTOCOL_FILES_MAIN_REACHES = [
   'notificationPause.ts',
   'orchestrator.ts',
   'paths.ts',
+  'peerMessage.ts',
   'permissionModes.ts',
   'pipelineView.ts',
   'pipelines.ts',

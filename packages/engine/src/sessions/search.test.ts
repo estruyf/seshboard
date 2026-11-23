@@ -52,6 +52,7 @@ describe('searchableText and toFtsQuery', () => {
     expect(searchableText(msg('user', '<command-name>/review</command-name><command-args>--fast</command-args>'))).toBe('/review --fast');
     expect(searchableText(msg('user', '<local-command-stdout>x</local-command-stdout>'))).toBeNull();
     expect(searchableText(msg('user', '[Request interrupted by user]'))).toBeNull();
+    expect(searchableText(msg('user', 'Another Claude session sent a message:\n<cross-session-message from=\"uds:/tmp/s.sock\" from-name=\"dev-2f\">\nKeep off versions.ts.\n</cross-session-message>\n\nThis came from another Claude session.'))).toBe('Keep off versions.ts.');
     // A linked session's brief is that session's: only what you typed is searched here.
     expect(searchableText(msg('user', `stack on @Usage cost\n\n${writeStub('Usage cost', 'id-1').replace('session: id-1', 'session: id-1\nbranch: worktree-usage-cost')}`))).toBe('stack on @Usage cost');
   });
