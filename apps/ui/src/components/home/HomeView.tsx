@@ -16,7 +16,7 @@ import { Button } from '../ui/Button.tsx';
 import { SchedulesCard } from '../schedules/SchedulesCard.tsx';
 import { StartInProject, UpNext } from './HomeBelow.tsx';
 import { NeedsLane, ReviewLane, WorkingLane } from './HomeLanes.tsx';
-import { HOME_WIDTH } from '../newSession/newSessionLayout.ts';
+import { HOME_HEIGHT, HOME_WIDTH } from '../newSession/newSessionLayout.ts';
 import { greeting, homeSessions, homeSummary, reviewSessions } from './homeModel.ts';
 import { HomeStartBox } from './HomeStartBox.tsx';
 import { HomeUsage } from './HomeUsage.tsx';
@@ -78,7 +78,7 @@ export function HomeView() {
       <ViewHeader title="Home" />
       {/* The container: the breakpoints follow the view (beside the sidebar and panels), not the window. */}
       <div className="@container flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className={`mx-auto grid w-full ${HOME_WIDTH} grid-cols-[minmax(0,1fr)] gap-7 pt-2 pb-12`} data-home>
+        <div className={`mx-auto grid w-full ${HOME_WIDTH} ${HOME_HEIGHT} grid-cols-[minmax(0,1fr)] gap-7 pt-2 pb-12`} data-home>
           <header className="min-w-0">
             {/* The greeting, a little larger than text-title; the header names the view. */}
             <h2 className="text-hero leading-tight font-semibold">{greeting(now)}</h2>

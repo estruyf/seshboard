@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTENT_MAX, contentWidthOf, HOME_WIDTH, NARROW_VIEW, NEW_SESSION_GRID, newSessionLayout, projectsThatFit, VIEW_PADDING, type NewSessionMode } from './newSessionLayout.ts';
+import { CONTENT_MAX, CONTENT_MAX_HEIGHT, contentWidthOf, HOME_HEIGHT, HOME_WIDTH, NARROW_VIEW, NEW_SESSION_GRID, newSessionLayout, projectsThatFit, VIEW_PADDING, type NewSessionMode } from './newSessionLayout.ts';
 
 const SIDEBAR = 300;
 const atWindow = (width: number, sidebar = SIDEBAR) => newSessionLayout(contentWidthOf(width - sidebar));
@@ -70,6 +70,14 @@ describe('newSessionLayout', () => {
     expect(NEW_SESSION_GRID).toContain('px-6 ');
     expect(HOME_WIDTH).toContain(`@min-[${NARROW_VIEW}px]:px-10`);
     expect(NEW_SESSION_GRID).toContain(`@min-[${NARROW_VIEW}px]/new-session:px-10`);
+  });
+
+  it('centres both in a tall view, at the same height', () => {
+    expect(NEW_SESSION_GRID).toContain('my-auto ');
+    expect(NEW_SESSION_GRID).not.toContain('my-0');
+    expect(NEW_SESSION_GRID).toContain(`@min-[860px]/new-session:max-h-[${CONTENT_MAX_HEIGHT}px]`);
+    expect(HOME_HEIGHT).toContain('my-auto ');
+    expect(HOME_HEIGHT).toContain(`min-h-[min(100%,${CONTENT_MAX_HEIGHT}px)]`);
   });
 });
 
