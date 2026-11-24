@@ -40,7 +40,7 @@ export function RunAsChip({
   editable?: boolean;
   /**
    * Orchestrator (docs/orchestrator.md) as a third choice: the session hands the tasks to sessions it starts. Left out
-   * where it can't be one (another computer, a question).
+   * where it can't be one (a question, another computer without `REMOTE_FEATURE_ORCHESTRATOR`).
    */
   orchestrator?: { on: boolean; onChange(on: boolean): void };
   /** Why no pipeline can be picked (another provider has none yet); Orchestrator and One session still can. */

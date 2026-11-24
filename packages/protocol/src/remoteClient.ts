@@ -27,6 +27,8 @@ export { overlayShadow } from './themeShadow.ts';
 export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';
 export { checkRemoteSessions, unreadableLine, type CheckedSessions } from './remoteSessionsCheck.ts';
+export { remoteOrchestratorOf, remoteOrchestratorOfWorker, remoteOverview, type RemoteOverviewGroup, type RemoteOverviewRow, type RemoteWorker } from './remoteOrchestrator.ts';
+export { workersLine, WORKER_GROUPS, type WorkerState } from './orchestrator.ts';
 export { parseBriefs, withoutBriefs, type Brief } from './sessionLinks.ts';
 export { parseGithubBlocks, withoutContext, type GithubBlock } from './githubContext.ts';
 export type { Pipeline, PipelineClaudeStep, PipelinePushStep, PipelineRunStatus, PipelineStep, PipelineStepStatus, PipelineWait, PushPreview, StepVerdict } from './pipelineSchema.ts';

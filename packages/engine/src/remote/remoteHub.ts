@@ -71,6 +71,7 @@ import {
   REMOTE_DESKTOP_ORIGIN,
   type RemoteProfile,
   type TriggerSession,
+  type OrchestratorInfo,
   remoteOnlyBranches,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
@@ -198,6 +199,8 @@ export interface RemoteHubOptions {
   sources(): SessionSources;
   /** The sessions and runs triggers started, for the bolt and "Started by …" on the phone. */
   triggerSessions?(): readonly TriggerSession[];
+  /** Every orchestrator and the sessions it started (docs/orchestrator.md), for the overview on the phone. */
+  orchestrators?(): readonly OrchestratorInfo[];
   archiveAfterDays(): number;
   /** The sidebar's scope, so the phone lists what the sidebar lists. */
   scope(): 'switchboard' | 'all';
@@ -227,8 +230,11 @@ export interface RemoteHubOptions {
   respond(requestId: string, decision: PermissionDecision): void;
   /** The slash commands (skills, custom and plugin commands) a session can run, as its / menu on the computer lists them. */
   commands?(sessionId: string): Promise<SlashCommand[]>;
-  /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
-  create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
+  /**
+   * A new session in `root`, with what the phone chose and the project's defaults for the rest. `orchestrator`: it
+   * starts as the project's orchestrator (docs/orchestrator.md).
+   */
+  create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[], orchestrator?: boolean): Promise<{ sessionId: string }>;
   /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
   providerOfProfile?(profileId: string): RemoteProfile['provider'] | null;
   /** Providers whose sessions are read-only here (Codex), with the command that continues one in its own CLI. */
@@ -859,7 +865,8 @@ export class RemoteHub {
     const runs = this.options.pipelines?.runs();
     const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
     const triggers = this.options.triggerSessions?.();
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
+    const orchestrators = this.options.orchestrators?.();
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(orchestrators ? { orchestrators } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
   }
 
   /** The sessions in Done, which a phone may list and reopen (nothing else). */
@@ -1081,14 +1088,15 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId: prompt.sessionId, messageUuid: null, requestId, device: device.name, deviceId: device.id, answer: { toolName: prompt.toolName, allowed: decision.behavior === 'allow' } });
         return {};
       },
-      'session.create': async ({ projectId, prompt, images, files, ...options }) => {
+      'session.create': async ({ projectId, prompt, images, files, orchestrator, ...options }) => {
         const project = this.project(projectId);
         checkAttachments(images, files);
         // A provider profile (GitHub Copilot) runs in its own modes: one it doesn't have is refused, not passed on.
         const provider = options.profileId ? this.options.providerOfProfile?.(options.profileId) : null;
         if (provider && options.permissionMode && !provider.modes.some((m) => m.value === options.permissionMode)) throw new RpcError('INVALID_PARAMS', `${provider.name} has no such mode`);
         const choice = await this.choiceFor(project, options);
-        const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
+        const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images, orchestrator === true);
+        if (orchestrator) this.log('info', `Remote: ${device.name} started an orchestrator in ${project.name}`);
         this.origins.add(created.sessionId, device);
         // Its first prompt: the sidebar's last action for the device.
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });

@@ -109,6 +109,7 @@ Every other session (not an orchestrator, not read-only) gets one tool, `start_s
 - **Session updates** in the orchestrator's conversation show as quiet dashed rows, not as prompts of yours.
 - **A project's Settings tab:** Orchestrator instructions, up to 16,000 characters. A save of the project's other defaults keeps them.
 - **The command palette:** *Go to orchestrator* opens the open session's project's orchestrator, or the newest one.
+- **The phone and other computers:** New session's Run as has Orchestrator where the computer says `REMOTE_FEATURE_ORCHESTRATOR` in `hello`. Start sends `session.create` with `orchestrator: true`, and that computer starts it through its own `createSession`. The sessions it starts sit under it there through `RemoteSession.parentId`. `sessions.list` sends the orchestrators among the sessions listed (`RemoteSessions.orchestrators`, without folders), and a new list goes out on `orchestrator.changed`. `remoteOverview` (`packages/protocol/src/remoteOrchestrator.ts`) groups them as the computer does. The phone shows a bar under the orchestrator's header that opens the overview in a sheet, and a bar back to it in a session it started (`OrchestratorParts.tsx`). Another computer shows the same card as here (`RemoteOrchestratorOverview`) and the way back in the header (`RemoteOrchestratorCrumb`).
 
 ## Engine
 
@@ -124,7 +125,6 @@ Every other session (not an orchestrator, not read-only) gets one tool, `start_s
 - **Pause a project:** one switch that stops the orchestrator's sessions and holds its queue, schedules and triggers.
 - **Resolved:** marking a started session done from the overview, and by itself once its pull request merges.
 - **Starting a pipeline** as one of the orchestrator's tasks.
-- **Other computers and the phone:** the orchestrator's row and its sessions show there as sessions; the overview and Run as › Orchestrator don't yet.
 - **Codex**, checked against a real Codex CLI.
 - **The website's page and screenshots**, which wait for the release ([releasing.md](releasing.md)).
 
