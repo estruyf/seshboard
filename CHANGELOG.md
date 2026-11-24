@@ -33,6 +33,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **No toast for each queued message on another computer.** A message you send while Claude works on another computer no longer shows an "Added to Up next" toast over the message box. It shows in Up next, right above the box, with **Send now**.
 - **Copilot sessions on GPT models answer again.** A Copilot session on a GPT model failed every message with "Function 'browser.browser-click' is not allowed in reserved namespace 'browser'". Seshboard's browser tools now go by another name for these agents, and still show as browser tools in the transcript.
 - **New session keeps your choices when you pick another project.** A profile, model, effort, permission mode or worktree you set by hand stays when you switch to another project, instead of going back to that project's defaults. The branch you picked still belongs to its own project.
 - **Antigravity sessions in a worktree show under their project.** A session you start with Antigravity in a worktree now shows its project's icon, branch and name, instead of `/`. Antigravity reports these sessions under `/`, so Seshboard now uses the folder it started them in. This works for new sessions only.

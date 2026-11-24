@@ -826,13 +826,13 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     const { images, files } = attachments;
     void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode, images, ...(files.length ? { files } : {}) })
       .then(
-        ({ queued }) => {
+        () => {
           // Also when you went to another session while it was sending.
+          // A queued message needs no toast: it shows in Up next, right above the box (#372).
           clearRemoteDraft(draftKey);
           setDraft('');
           savedPrompts.sent(sentFill);
           attachments.clear();
-          if (queued) toast('Added to Up next', { icon: 'queue', body: `Claude is working on ${name}. It goes next.` });
         },
         (e: Error) => toast(e.message),
       )
