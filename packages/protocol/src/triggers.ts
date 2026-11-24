@@ -6,7 +6,7 @@ import { fenceFor } from './contextBlocks.ts';
 import { stripFences, writeGithubContext } from './githubContext.ts';
 import { isSameOrInside } from './paths.ts';
 import type { Pipeline, PipelineRun } from './pipelineSchema.ts';
-import type { StateLabels, Trigger, TriggerEvent, TriggerSource } from './triggerSchema.ts';
+import type { StateLabels, Trigger, TriggerEvent, TriggerEventKind, TriggerSource } from './triggerSchema.ts';
 
 /** The state labels' names when you don't rename them. Triggers saved before the rename keep theirs (switchboard: …). */
 export const DEFAULT_STATE_LABELS = { working: 'seshboard: working', needsInput: 'seshboard: needs input', prOpen: 'seshboard: pr open', failed: 'seshboard: failed' } as const;
@@ -36,7 +36,7 @@ export const TRIGGER_FAILURES_TO_PAUSE = 5;
 export const TRIGGER_RATE_LIMIT_MS = 60 * 60_000;
 /** Lines of a failed job's log a CI session gets as context. */
 export const TRIGGER_LOG_LINES = 300;
-/** Issues one check reads at most. */
+/** Issues (or pull requests) one check reads at most. */
 export const TRIGGER_ISSUE_LIMIT = 100;
 /** Failed runs one check reads at most. */
 export const TRIGGER_RUN_LIMIT = 20;
@@ -44,6 +44,8 @@ export const TRIGGER_RUN_LIMIT = 20;
 export const TRIGGER_RUNS_REMEMBERED = 100;
 /** The fields of `gh issue list --json` a check reads. */
 export const ISSUE_FIELDS = 'number,title,url,labels,assignees,author,body,updatedAt';
+/** The fields of `gh pr list --json` a reviews check reads. */
+export const PR_FIELDS = 'number,title,url,labels,author,body,updatedAt,headRefName,baseRefName,headRefOid,isCrossRepository,headRepositoryOwner';
 /** The fields of `gh run list --json` a check reads. */
 export const RUN_FIELDS = 'databaseId,number,workflowName,headSha,headBranch,url,createdAt,displayTitle';
 /** Who counts as a collaborator: GitHub's `authorAssociation` for the repository's owners, members and collaborators. */
@@ -75,9 +77,28 @@ export interface IssueItem {
   updatedAt?: string;
 }
 
-export type SourceItem = CiRunItem | IssueItem;
+/** An open pull request that asks for a review, as `gh pr list --json` gives it, with its author's association read apart. */
+export interface PrItem {
+  number: number;
+  title: string;
+  url: string;
+  labels: ReadonlyArray<{ name: string }>;
+  author?: { login: string } | null;
+  authorAssociation?: string | null;
+  body?: string | null;
+  updatedAt?: string;
+  headRefName: string;
+  baseRefName?: string;
+  headRefOid?: string;
+  isCrossRepository?: boolean;
+  /** The owner of the repository its branch is in (a fork's owner). */
+  headRepositoryOwner?: { login: string } | null;
+}
+
+export type SourceItem = CiRunItem | IssueItem | PrItem;
 
 const isIssue = (item: SourceItem): item is IssueItem => 'number' in item && 'assignees' in item;
+const isPr = (item: SourceItem): item is PrItem => 'headRefName' in item && !('databaseId' in item);
 
 /**
  * The arguments of `gh issue list` for an issues trigger: open issues with its label, assigned to its assignee
@@ -100,6 +121,21 @@ export function issueQuery(trigger: { source: TriggerSource }): string[] {
   ];
 }
 
+/** A search term's value in quotes, without quotes of its own (a label with spaces). */
+const quoted = (value: string) => `"${value.replace(/"/g, '')}"`;
+
+/**
+ * The arguments of `gh pr list` for a reviews trigger: open pull requests, not drafts, that ask its reviewer for a
+ * review (`@me` is gh's own account; a request to one of their teams counts), with its label, as JSON. One search, so
+ * GitHub does the filtering. A review takes the request off, so a pull request leaves the answer until it asks again.
+ */
+export function reviewQuery(trigger: { source: TriggerSource }): string[] {
+  const source = trigger.source;
+  if (source.kind !== 'reviews') throw new Error('Not a reviews trigger');
+  const terms = ['draft:false', ...(source.reviewer ? [`review-requested:${source.reviewer}`] : []), ...(source.label ? [`label:${quoted(source.label)}`] : [])];
+  return ['pr', 'list', '--state', 'open', '--search', terms.join(' '), '--json', PR_FIELDS, '--limit', String(TRIGGER_ISSUE_LIMIT)];
+}
+
 /** The arguments of `gh run list` for a CI trigger on `branch`. */
 export function runQuery(branch: string): string[] {
   return ['run', 'list', '--branch', branch, '--status', 'failure', '--json', RUN_FIELDS, '--limit', String(TRIGGER_RUN_LIMIT)];
@@ -107,14 +143,14 @@ export function runQuery(branch: string): string[] {
 
 /**
  * What tells an event apart. A failed run: its workflow and head commit, so a re-run that fails again on the same
- * commit isn't a second event. An issue: its number.
+ * commit isn't a second event. An issue or pull request: its number.
  */
 export function eventKey(source: Pick<TriggerSource, 'kind'>, item: SourceItem): string {
   if (source.kind === 'ci') {
     const run = item as CiRunItem;
     return `${run.workflowName}@${run.headSha}`;
   }
-  return `#${(item as IssueItem).number}`;
+  return `#${(item as IssueItem | PrItem).number}`;
 }
 
 /**
@@ -131,13 +167,13 @@ export type SeenState = Record<string, 'match' | 'held' | 'released'>;
 /** An event a check found, before it is stored. */
 export interface FoundEvent {
   key: string;
-  kind: 'ci' | 'issue';
+  kind: TriggerEventKind;
   title: string;
   url: string;
   fields: Record<string, string>;
   /** When it happened on GitHub (the run, the issue's last update), for the order of a batch. */
   at: number;
-  /** What Claude gets to read: the issue's text. A run's log is read when it starts. */
+  /** What Claude gets to read: the issue's or pull request's text. A run's log is read when it starts. */
   context: string | null;
 }
 
@@ -191,9 +227,34 @@ export const assignsOnPickUp = (trigger: Pick<Trigger, 'source' | 'assignOnPickU
 /** Whether GitHub's association counts as a collaborator. */
 export const isCollaborator = (association: string | null | undefined) => !!association && (COLLABORATOR_ASSOCIATIONS as readonly string[]).includes(association.toUpperCase());
 
-/** A run or an issue as an event. `branch` is the branch a CI trigger watches. */
+/** A run, an issue or a pull request as an event. `branch` is the branch a CI trigger watches. */
 export function toEvent(trigger: Pick<Trigger, 'source'>, item: SourceItem, branch: string | null = null): FoundEvent {
   const key = eventKey(trigger.source, item);
+  if (isPr(item)) {
+    const owner = item.headRepositoryOwner?.login ?? '';
+    return {
+      key,
+      kind: 'pr',
+      title: item.title,
+      url: item.url,
+      at: timeOf(item.updatedAt),
+      context: item.body ?? null,
+      fields: {
+        number: String(item.number),
+        title: item.title,
+        url: item.url,
+        author: item.author?.login ?? '',
+        labels: item.labels.map((l) => l.name).join(', '),
+        branch: item.headRefName,
+        base: item.baseRefName ?? '',
+        sha: item.headRefOid ?? '',
+        commit: (item.headRefOid ?? '').slice(0, 7),
+        // Where its branch is, for the worktree: a fork's branch is fetched from the pull request, not origin.
+        fork: item.isCrossRepository ? 'yes' : '',
+        owner,
+      },
+    };
+  }
   if (!isIssue(item)) {
     const run = item;
     const onBranch = run.headBranch || branch || '';
@@ -270,6 +331,17 @@ export function newEvents(trigger: Pick<Trigger, 'source' | 'stateLabels' | 'ass
       events.push(event);
       continue;
     }
+    if (isPr(item) && trigger.source.kind === 'reviews') {
+      // No state labels on a pull request: it is new when it asks for the review and didn't in the last answer.
+      next[event.key] = 'match';
+      if (before === 'match' || before === 'released') continue;
+      if (trigger.source.collaboratorsOnly && !isCollaborator(item.authorAssociation)) {
+        skipped.push({ ...event, reason: "opened by someone outside the repository's collaborators" });
+        continue;
+      }
+      events.push(event);
+      continue;
+    }
     // A run listed twice (a re-run that failed again on the same commit) is one event.
     const twice = next[event.key] === 'match';
     next[event.key] = 'match';
@@ -305,7 +377,7 @@ export function effectiveMaxAtOnce(trigger: AtOnce): number {
 /** An event in the line for a slot. */
 export interface SlotEvent {
   id: string;
-  kind: 'ci' | 'issue';
+  kind: TriggerEventKind;
   fields: Record<string, string>;
   createdAt: number;
 }
@@ -436,6 +508,17 @@ export function fillTriggerPrompt(prompt: string, event: Pick<TriggerEvent, 'tit
 
 /** The fields an event of a source has, for the `{{` list in the editor. */
 export function eventFields(kind: TriggerSource['kind']): Array<{ name: string; detail: string }> {
+  if (kind === 'reviews')
+    return [
+      { name: 'title', detail: "The pull request's title" },
+      { name: 'url', detail: 'The link to the pull request' },
+      { name: 'number', detail: "The pull request's number" },
+      { name: 'author', detail: 'Who opened it' },
+      { name: 'branch', detail: 'Its branch' },
+      { name: 'base', detail: 'The branch it goes into' },
+      { name: 'commit', detail: 'The short hash of its latest commit' },
+      { name: 'labels', detail: 'Its labels' },
+    ];
   return kind === 'ci'
     ? [
         { name: 'title', detail: "The run's title (its commit's first line)" },
@@ -455,20 +538,38 @@ export function eventFields(kind: TriggerSource['kind']): Array<{ name: string; 
       ];
 }
 
-/** A session's title from its event: "Fix test on main" or "#212 Pinned sessions lose their order". */
+/** A session's title from its event: "Fix test on main", "#212 Pinned sessions lose their order" or "Review #88 Add a dark theme". */
 export function triggerSessionTitle(event: Pick<TriggerEvent, 'kind' | 'title' | 'fields'>): string {
   if (event.kind === 'ci') return `Fix ${event.fields.workflow || 'CI'} on ${event.fields.branch || 'the branch'}`;
+  if (event.kind === 'pr') return `Review #${event.fields.number ?? ''} ${event.title}`.trim();
   return `#${event.fields.number ?? ''} ${event.title}`.trim();
 }
 
-/** How an event is named in a line: "CI #4512" or "#212". */
+/** How an event is named in a line: "CI #4512", "#212" or "PR #88". */
 export function eventRef(event: Pick<TriggerEvent, 'kind' | 'fields'>): string {
-  return event.kind === 'ci' ? `CI #${event.fields.number || event.fields.run || ''}` : `#${event.fields.number ?? ''}`;
+  if (event.kind === 'ci') return `CI #${event.fields.number || event.fields.run || ''}`;
+  return `${event.kind === 'pr' ? 'PR ' : ''}#${event.fields.number ?? ''}`;
 }
 
-/** A trigger's name when you don't give one: "CI fails on main", "Issues for you". */
+/**
+ * The pull request a review session works on (`LaterDraft.pullRequest`): its number, repository and the branch its
+ * worktree gets (`owner/branch` for a fork's, as New session from a pull request names it). Null for any other event,
+ * or one whose repository can't be told from its link.
+ */
+export function eventPullRequest(event: Pick<TriggerEvent, 'kind' | 'url' | 'fields'>): { number: number; repo: string; branch: string; fork: boolean } | null {
+  if (event.kind !== 'pr') return null;
+  const repo = repoOfUrl(event.url);
+  const number = Number(event.fields.number);
+  const head = event.fields.branch;
+  if (!repo || !Number.isInteger(number) || number <= 0 || !head) return null;
+  const fork = event.fields.fork === 'yes';
+  return { number, repo, branch: fork && event.fields.owner ? `${event.fields.owner}/${head}` : head, fork };
+}
+
+/** A trigger's name when you don't give one: "CI fails on main", "Issues for you", "Reviews for you". */
 export function defaultTriggerName(source: TriggerSource, defaultBranch: string | null = null): string {
   if (source.kind === 'ci') return `CI fails on ${source.branch || defaultBranch || 'the default branch'}`;
+  if (source.kind === 'reviews') return 'Reviews for you';
   return 'Issues for you';
 }
 
@@ -476,6 +577,8 @@ export function defaultTriggerName(source: TriggerSource, defaultBranch: string 
 export function triggerProblem(trigger: { name?: string; prompt: string; source: TriggerSource; draft: { permissionMode?: string | null }; start?: { kind: 'session' } | { kind: 'pipeline'; pipelineId: string; unattended?: boolean; autoPush?: boolean } }): string | null {
   const pipeline = trigger.start?.kind === 'pipeline';
   if (trigger.source.kind === 'issues' && !trigger.source.label?.trim() && !trigger.source.assignee?.trim()) return 'Pick a label, an assignee, or both.';
+  if (trigger.source.kind === 'reviews' && !trigger.source.label?.trim() && !trigger.source.reviewer?.trim()) return 'Pick a reviewer, a label, or both.';
+  if (trigger.start?.kind === 'pipeline' && trigger.source.kind === 'reviews') return 'A review starts a session on the pull request, not a pipeline.';
   if (trigger.start?.kind === 'pipeline' && !trigger.start.pipelineId) return 'Pick a pipeline.';
   if (!pipeline && trigger.draft.permissionMode === 'bypassPermissions') return 'A trigger never bypasses permissions. Pick another mode.';
   if (!trigger.prompt.trim()) return pipeline ? 'Write the task for the pipeline.' : 'Write what the session should do.';
@@ -499,19 +602,24 @@ export function triggerNextDue(trigger: Pick<Trigger, 'paused' | 'blockedUntil' 
 
 /** The most characters of a failed job's log a session gets. */
 export const TRIGGER_LOG_CHARS = 60_000;
-/** The most characters of an issue's text and comments a session gets. */
+/** The most characters of an issue's (or pull request's) text and comments a session gets. */
 export const TRIGGER_ISSUE_CHARS = 16_000;
 
 /** What a session gets to read about its event, read when it starts. */
 export interface TriggerContext {
-  /** The issue's text, and its comments. */
+  /** The issue's or pull request's text, and its comments. */
   body?: string | null;
   comments?: ReadonlyArray<{ author: string | null; body: string }>;
+  /** A pull request's reviews so far, with what each said: what a re-review looks at again. */
+  reviews?: ReadonlyArray<{ author: string | null; state: string; body: string }>;
   /** The end of the failed jobs' log; null when it couldn't be read. */
   log?: string | null;
 }
 
 const repoOfUrl = (url: string) => /github\.com\/([^/]+\/[^/]+)\/(?:issues|pull|actions)\//i.exec(url)?.[1] ?? null;
+
+/** Who said what, for a block: `@login: text`, a review with its verdict (`@login (changes requested): text`). */
+const said = (who: string | null, text: string, state?: string) => `@${who ?? 'unknown'}${state ? ` (${state.toLowerCase().replace(/_/g, ' ')})` : ''}: ${text.trim()}`;
 
 /**
  * What a triggered session starts with: the trigger's prompt with the event's fields filled in, then what it read
@@ -530,6 +638,49 @@ export function triggerPrompt(prompt: string, event: Pick<TriggerEvent, 'kind' |
  * issue whose repository or number can't be told from the event.
  */
 export function triggerContextBlock(event: Pick<TriggerEvent, 'kind' | 'title' | 'url' | 'fields'>, context: TriggerContext = {}): string | null {
+  if (event.kind === 'pr') {
+    const pr = eventPullRequest(event);
+    if (!pr) return null;
+    const comments = context.comments ?? [];
+    const reviews = (context.reviews ?? []).filter((r) => r.body.trim() || r.state);
+    const text = [
+      (context.body ?? '').trim(),
+      ...(comments.length ? [`Comments (${comments.length}):`, ...comments.map((c) => said(c.author, c.body))] : []),
+      ...(reviews.length ? [`Reviews (${reviews.length}):`, ...reviews.map((r) => said(r.author, r.body || '(no text)', r.state))] : []),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const labels = (event.fields.labels ?? '')
+      .split(',')
+      .map((name) => ({ name: name.trim(), color: '' }))
+      .filter((l) => l.name);
+    return writeGithubContext(
+      {
+        type: 'pr',
+        repo: pr.repo,
+        number: pr.number,
+        title: event.title,
+        state: 'open',
+        labels,
+        author: event.fields.author || null,
+        createdAt: 0,
+        updatedAt: 0,
+        url: event.url,
+        body: text,
+        comments: comments.length,
+        headRefName: event.fields.branch ?? '',
+        baseRefName: event.fields.base || 'the default branch',
+        headOid: event.fields.sha ?? '',
+        isDraft: false,
+        isCrossRepository: pr.fork,
+        headOwner: event.fields.owner || null,
+        // A review doesn't push; the line about pushing to a fork would only distract.
+        canPush: true,
+        reviewComments: [],
+      },
+      TRIGGER_ISSUE_CHARS,
+    );
+  }
   if (event.kind === 'issue') {
     const repo = repoOfUrl(event.url);
     const number = Number(event.fields.number);

@@ -31,23 +31,26 @@ export async function readIssues(gh: GhRun, root: string, source: TriggerSource)
   return { ok: true, value: issues };
 }
 
-/** `owner/name` from an issue's link. */
-export const repoOfIssueUrl = (url: string) => /github\.com\/([^/]+)\/([^/]+)\/issues\//i.exec(url);
+/** `owner/name` from an issue's or pull request's link. */
+export const repoOfIssueUrl = (url: string) => /github\.com\/([^/]+)\/([^/]+)\/(?:issues|pull)\//i.exec(url);
 
-/** Who opened each issue, to the repository (`OWNER`, `MEMBER`, `COLLABORATOR`, `NONE`, …), in one GraphQL call. */
-export async function readAssociations(gh: GhRun, root: string, issues: readonly IssueItem[]): Promise<SourceRead<Map<number, string>>> {
+/**
+ * Who opened each issue (or pull request, with `kind`), to the repository (`OWNER`, `MEMBER`, `COLLABORATOR`, `NONE`,
+ * …), in one GraphQL call.
+ */
+export async function readAssociations(gh: GhRun, root: string, items: ReadonlyArray<{ number: number; url: string }>, kind: 'issue' | 'pullRequest' = 'issue'): Promise<SourceRead<Map<number, string>>> {
   const out = new Map<number, string>();
-  const where = issues.length ? repoOfIssueUrl(issues[0]!.url) : null;
+  const where = items.length ? repoOfIssueUrl(items[0]!.url) : null;
   if (!where) return { ok: true, value: out };
-  const fields = issues.map((i) => `i${i.number}: issue(number: ${i.number}) { authorAssociation }`).join('\n');
+  const fields = items.map((i) => `i${i.number}: ${kind}(number: ${i.number}) { authorAssociation }`).join('\n');
   const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {\n${fields}\n} }`;
   const result = await gh(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${where[1]}`, '-f', `name=${where[2]}`], root, 20_000);
   if (result.code !== 0 || result.missing) return readFailure(result);
   const data = (json(result.stdout) as { data?: { repository?: Record<string, { authorAssociation?: unknown } | null> | null } } | null)?.data?.repository;
   if (!data) return { ok: false, message: "gh's answer didn't read", rateLimited: false };
-  for (const issue of issues) {
-    const association = data[`i${issue.number}`]?.authorAssociation;
-    if (typeof association === 'string') out.set(issue.number, association);
+  for (const item of items) {
+    const association = data[`i${item.number}`]?.authorAssociation;
+    if (typeof association === 'string') out.set(item.number, association);
   }
   return { ok: true, value: out };
 }

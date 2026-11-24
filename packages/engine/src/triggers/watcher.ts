@@ -2,6 +2,7 @@ import {
   assignsOnPickUp,
   blockingStateLabel,
   eventKey,
+  eventPullRequest,
   eventRef,
   fillTriggerPrompt,
   newEvents,
@@ -24,6 +25,7 @@ import {
   type LaterDraft,
   type Pipeline,
   type PipelineRunState,
+  type PrItem,
   type SourceItem,
   type Trigger,
   type TriggerContext,
@@ -36,6 +38,7 @@ import type { RunHold } from '../schedules/scheduler.ts';
 import { readFailedLog, readFailedRuns } from './sources/ci.ts';
 import { readLogin, readRepo, type GhRun, type SourceRead } from './sources/gh.ts';
 import { editIssue, ensureStateLabels, readAssociations, readIssue, readIssues } from './sources/issues.ts';
+import { readPullRequest, readReviewRequests } from './sources/reviews.ts';
 import type { TriggerStore } from './triggerStore.ts';
 
 export interface TriggerWatcherDeps {
@@ -278,16 +281,17 @@ export class TriggerWatcher {
     }
     const seen = store.seen(trigger.id);
     let list = items;
-    if (trigger.source.kind === 'issues' && trigger.source.collaboratorsOnly) {
-      // Only issues that may start are looked up: gh issue list doesn't say who opened them, to the repository.
-      const candidates = (items as IssueItem[]).filter((i) => seen[eventKey(trigger.source, i)] !== 'match' && !blockingStateLabel(trigger, i));
+    if ((trigger.source.kind === 'issues' || trigger.source.kind === 'reviews') && trigger.source.collaboratorsOnly) {
+      // Only items that may start are looked up: gh's lists don't say who opened them, to the repository.
+      const listed = items as Array<IssueItem | PrItem>;
+      const candidates = listed.filter((i) => seen[eventKey(trigger.source, i)] !== 'match' && seen[eventKey(trigger.source, i)] !== 'released' && !('assignees' in i && blockingStateLabel(trigger, i)));
       if (candidates.length) {
-        const associations = await readAssociations(this.reads_gh, trigger.projectRoot, candidates);
+        const associations = await readAssociations(this.reads_gh, trigger.projectRoot, candidates, trigger.source.kind === 'reviews' ? 'pullRequest' : 'issue');
         if (!associations.ok) {
           this.failed(trigger, associations, at);
           return;
         }
-        list = (items as IssueItem[]).map((i) => ({ ...i, authorAssociation: associations.value.get(i.number) ?? null }));
+        list = listed.map((i) => ({ ...i, authorAssociation: associations.value.get(i.number) ?? null }));
       }
     }
     const found = newEvents(trigger, list, seen, branch);
@@ -312,6 +316,10 @@ export class TriggerWatcher {
       }
       const runs = await readFailedRuns(this.reads_gh, root, branch, trigger.source.workflows);
       return runs.ok ? { ok: true, value: { items: runs.value, branch } } : runs;
+    }
+    if (trigger.source.kind === 'reviews') {
+      const prs = await readReviewRequests(this.reads_gh, root, trigger.source);
+      return prs.ok ? { ok: true, value: { items: prs.value, branch: null } } : prs;
     }
     const issues = await readIssues(this.reads_gh, root, trigger.source);
     return issues.ok ? { ok: true, value: { items: issues.value, branch: null } } : issues;
@@ -453,6 +461,8 @@ export class TriggerWatcher {
         workspace: trigger.draft.workspace,
         baseRef: trigger.draft.baseRef,
         profileId: trigger.draft.profileId,
+        // A review works on the pull request's code: a worktree from its latest commit, or checked out here.
+        pullRequest: eventPullRequest(event),
         autoStart: false,
       };
       const hold = this.deps.hold(draft);
@@ -498,15 +508,21 @@ export class TriggerWatcher {
     this.announce(trigger, event, title, runId);
   }
 
-  /** Tells about a CI session that started, now or from the queue. An issue was told about when it was picked up. */
+  /** Tells about a CI or review session that started, now or from the queue. An issue was told about when it was picked up. */
   private announce(trigger: Trigger, event: TriggerEvent, title: string, sessionId: string): void {
-    if (event.kind !== 'ci') return;
-    this.deps.notify([{ kind: 'started', triggerId: trigger.id, triggerName: trigger.name, projectRoot: trigger.projectRoot, projectName: this.deps.projectName(trigger.projectRoot), eventKind: 'ci', branch: event.fields.branch ?? null, ref: eventRef(event), title, sessionId, reason: null }]);
+    if (event.kind === 'issue') return;
+    this.deps.notify([{ kind: 'started', triggerId: trigger.id, triggerName: trigger.name, projectRoot: trigger.projectRoot, projectName: this.deps.projectName(trigger.projectRoot), eventKind: event.kind, branch: event.fields.branch ?? null, ref: eventRef(event), title, sessionId, reason: null }]);
   }
 
-  /** What the session gets to read: the issue's text and comments, or the end of the failed jobs' log. */
+  /** What the session gets to read: the issue's or pull request's text and comments, or the end of the failed jobs' log. */
   private async context(trigger: Trigger, event: TriggerEvent): Promise<TriggerContext> {
     if (event.kind === 'ci') return { log: event.fields.run ? await readFailedLog(this.deps.gh, trigger.projectRoot, event.fields.run) : null };
+    if (event.kind === 'pr') {
+      // Not cached: a re-review reads the reviews and comments as they are now.
+      const pr = await readPullRequest(this.deps.gh, trigger.projectRoot, Number(event.fields.number));
+      if (pr.ok) return pr.value;
+      return { body: this.deps.store.event(event.id)?.context ?? null };
+    }
     const issue = await readIssue(this.reads_gh, trigger.projectRoot, Number(event.fields.number));
     if (issue.ok) return { body: issue.value.body, comments: issue.value.comments };
     return { body: this.deps.store.event(event.id)?.context ?? null };

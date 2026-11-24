@@ -5,10 +5,13 @@ import {
   blockingStateLabel,
   effectiveMaxAtOnce,
   eventKey,
+  eventPullRequest,
+  eventRef,
   fillTriggerPrompt,
   issueQuery,
   newEvents,
   nextStateLabel,
+  reviewQuery,
   pipelineProblem,
   runIsBusy,
   runWorkState,
@@ -23,6 +26,7 @@ import {
   TRIGGER_RUNS_REMEMBERED,
   type CiRunItem,
   type IssueItem,
+  type PrItem,
   type SlotEvent,
 } from './triggers.ts';
 
@@ -357,5 +361,77 @@ describe('triggerDue', () => {
     expect(triggerDue(t, 1_000 + 5 * 60_000)).toBe(true);
     expect(triggerDue({ ...t, paused: true }, 1e12)).toBe(false);
     expect(triggerDue({ ...t, blockedUntil: 1e12 }, 1e11)).toBe(false);
+  });
+});
+
+describe('reviews for you', () => {
+  const pr = (number: number, extra: Partial<PrItem> = {}): PrItem => ({
+    number,
+    title: `PR ${number}`,
+    url: `https://github.com/o/r/pull/${number}`,
+    labels: [],
+    author: { login: 'mara-k' },
+    authorAssociation: 'MEMBER',
+    body: 'What it does',
+    updatedAt: `2026-11-20T10:0${number % 10}:00Z`,
+    headRefName: `feat/${number}`,
+    baseRefName: 'dev',
+    headRefOid: 'abcdef1234567',
+    isCrossRepository: false,
+    headRepositoryOwner: { login: 'o' },
+    ...extra,
+  });
+  const reviews = (extra: Record<string, unknown> = {}) => trigger({ kind: 'reviews', ...extra });
+
+  it('asks for open pull requests, not drafts, that want your review, in one search', () => {
+    expect(reviewQuery(reviews())).toEqual(['pr', 'list', '--state', 'open', '--search', 'draft:false review-requested:@me', '--json', expect.stringContaining('headRefName'), '--limit', '100']);
+    expect(reviewQuery(reviews({ reviewer: null, label: 'needs review' }))[5]).toBe('draft:false label:"needs review"');
+    expect(reviewQuery(reviews({ reviewer: 'mara-k', label: 'ui' }))[5]).toBe('draft:false review-requested:mara-k label:"ui"');
+    expect(() => reviewQuery(trigger({ kind: 'ci' }))).toThrow();
+  });
+
+  it('wants a reviewer, a label, or both', () => {
+    expect(TriggerSource.safeParse({ kind: 'reviews' }).success).toBe(true);
+    expect(TriggerSource.safeParse({ kind: 'reviews', reviewer: null }).success).toBe(false);
+    const base = { prompt: 'Review it', draft: { permissionMode: 'default' } };
+    expect(triggerProblem({ ...base, source: { kind: 'reviews', label: null, reviewer: ' ', collaboratorsOnly: true } })).toBe('Pick a reviewer, a label, or both.');
+    expect(triggerProblem({ ...base, source: { kind: 'reviews', label: null, reviewer: '@me', collaboratorsOnly: true }, start: { kind: 'pipeline', pipelineId: 'p1' } })).toMatch(/not a pipeline/);
+  });
+
+  it('finds a pull request that newly asks, with its fields, and skips an outsider', () => {
+    const t = reviews();
+    const found = newEvents(t, [pr(7), pr(8, { authorAssociation: 'NONE' })], {});
+    expect(found.events.map((e) => e.key)).toEqual(['#7']);
+    expect(found.events[0]).toMatchObject({ kind: 'pr', title: 'PR 7', fields: { number: '7', author: 'mara-k', branch: 'feat/7', base: 'dev', commit: 'abcdef1', fork: '' } });
+    expect(found.skipped.map((e) => [e.key, e.reason])).toEqual([['#8', "opened by someone outside the repository's collaborators"]]);
+    expect(newEvents(reviews({ collaboratorsOnly: false }), [pr(8, { authorAssociation: 'NONE' })], {}).events).toHaveLength(1);
+  });
+
+  it('starts a re-review when the pull request asks again after a review took it out', () => {
+    const t = reviews();
+    const first = seedSeen(t, [pr(7)]);
+    expect(newEvents(t, [pr(7)], first).events).toEqual([]);
+    // Reviewed: the request is gone, so the pull request leaves the answer.
+    const reviewed = newEvents(t, [], first).seen;
+    expect(newEvents(t, [pr(7)], reviewed).events.map((e) => e.key)).toEqual(['#7']);
+  });
+
+  it('names a review and says which pull request a session works on', () => {
+    const event = newEvents(reviews(), [pr(88, { title: 'Add a dark theme' })], {}).events[0]!;
+    expect(triggerSessionTitle(event)).toBe('Review #88 Add a dark theme');
+    expect(eventRef(event)).toBe('PR #88');
+    expect(eventPullRequest(event)).toEqual({ number: 88, repo: 'o/r', branch: 'feat/88', fork: false });
+    const fork = newEvents(reviews(), [pr(9, { isCrossRepository: true, headRepositoryOwner: { login: 'stranger' } })], {}).events[0]!;
+    expect(eventPullRequest(fork)).toEqual({ number: 9, repo: 'o/r', branch: 'stranger/feat/9', fork: true });
+    expect(eventPullRequest({ kind: 'issue', url: 'https://github.com/o/r/issues/3', fields: { number: '3' } })).toBeNull();
+  });
+
+  it('gives the session the pull request, its comments and reviews as context', () => {
+    const event = newEvents(reviews(), [pr(88)], {}).events[0]!;
+    const block = triggerContextBlock(event, { body: 'What it does', comments: [{ author: 'mara-k', body: 'Ready' }], reviews: [{ author: 'estruyf', state: 'CHANGES_REQUESTED', body: 'Fix the name' }] })!;
+    expect(block).toContain('#88 PR 88');
+    expect(block).toContain('branch: feat/88 → dev');
+    expect(block).toContain('@mara-k: Ready');
+    expect(block).toContain('@estruyf (changes requested): Fix the name');
   });
 });

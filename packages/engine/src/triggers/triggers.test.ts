@@ -43,8 +43,26 @@ interface FakeRun {
   createdAt?: string;
   displayTitle?: string;
 }
+interface FakePr {
+  number: number;
+  title: string;
+  body?: string;
+  labels?: string[];
+  reviewers?: string[];
+  author?: string;
+  association?: string;
+  headRefName?: string;
+  baseRefName?: string;
+  fork?: boolean;
+  headOwner?: string;
+  draft?: boolean;
+  updatedAt?: string;
+  comments?: Array<{ author: string; body: string }>;
+  reviews?: Array<{ author: string; state: string; body?: string }>;
+}
 interface FakeState {
   repo?: string;
+  prs?: FakePr[];
   login?: string;
   defaultBranch?: string;
   fail?: string | null;
@@ -712,5 +730,57 @@ describe('triggers that start a pipeline', () => {
     await w.tick();
     expect(w.store.get(t.id)).toMatchObject({ paused: true, pausedReason: expect.stringMatching(/bypasses permissions/) });
     expect(w.runStarts).toEqual([]);
+  });
+});
+
+describe('reviews for you', () => {
+  const pr = (number: number, extra: Partial<FakePr> = {}): FakePr => ({ number, title: `PR ${number}`, body: `What ${number} does`, reviewers: ['estruyf'], association: 'MEMBER', updatedAt: new Date(START + number * 1000).toISOString(), ...extra });
+
+  it('starts a session on the pull request that asks for your review, with what it read, and again when it asks again', async () => {
+    const w = world({ prs: [pr(1)] });
+    w.save({ name: 'Reviews for you', source: { kind: 'reviews' }, prompt: 'Review {{event.title}} ({{event.url}}) against {{event.base}}.' });
+    await w.watcher.check();
+    expect(w.started).toEqual([]);
+    w.fake.write((s) => s.prs!.push(pr(88, { title: 'Add a dark theme', headRefName: 'feat/dark', baseRefName: 'dev', comments: [{ author: 'mara-k', body: 'Ready for a look.' }] }), pr(89, { draft: true }), pr(90, { reviewers: ['someone'] })));
+    await w.tick();
+    expect(w.started.map((s) => s.title)).toEqual(['Review #88 Add a dark theme']);
+    const [run] = w.started;
+    expect(run!.draft.prompt).toMatch(/^Review Add a dark theme \(https:\/\/github\.com\/o\/r\/pull\/88\) against dev\./);
+    expect(run!.draft.prompt).toContain('What 88 does');
+    expect(run!.draft.prompt).toContain('@mara-k: Ready for a look.');
+    expect(run!.draft.pullRequest).toEqual({ number: 88, repo: 'o/r', branch: 'feat/dark', fork: false });
+    expect(w.store.sessions()).toMatchObject([{ sessionId: 'session-1', ref: 'PR #88', kind: 'pr' }]);
+    expect(w.notices).toMatchObject([{ kind: 'started', eventKind: 'pr', ref: 'PR #88', title: 'Review #88 Add a dark theme' }]);
+    // Who opened it is asked of the pull request, not an issue.
+    expect(w.fake.calls().some((c) => c[1] === 'graphql' && c.some((arg) => arg.includes('i88: pullRequest(number: 88)')))).toBe(true);
+
+    // Reviewed: the request is gone. Asked again: a re-review starts, and reads the review it got.
+    w.sessions.set('session-1', null);
+    w.fake.write((s) => {
+      s.prs!.find((p) => p.number === 88)!.reviewers = [];
+    });
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+    w.fake.write((s) => {
+      const again = s.prs!.find((p) => p.number === 88)!;
+      again.reviewers = ['estruyf'];
+      again.reviews = [{ author: 'estruyf', state: 'CHANGES_REQUESTED', body: 'Rename the token.' }];
+    });
+    await w.tick();
+    expect(w.started.map((s) => s.title)).toEqual(['Review #88 Add a dark theme', 'Review #88 Add a dark theme']);
+    expect(w.started[1]!.draft.prompt).toContain('@estruyf (changes requested): Rename the token.');
+  });
+
+  it("works on a fork's branch, skips an outsider, and writes nothing to GitHub", async () => {
+    const w = world();
+    w.save({ name: 'Reviews for you', source: { kind: 'reviews' } });
+    await w.watcher.check();
+    w.fake.write((s) => {
+      s.prs = [pr(5, { fork: true, headOwner: 'stranger', headRefName: 'fix-typo', association: 'COLLABORATOR' }), pr(6, { association: 'NONE' })];
+    });
+    await w.tick();
+    expect(w.started.map((s) => s.draft.pullRequest)).toEqual([{ number: 5, repo: 'o/r', branch: 'stranger/fix-typo', fork: true }]);
+    expect(w.store.events().find((e) => e.key === '#6')).toMatchObject({ status: 'skipped', reason: "opened by someone outside the repository's collaborators" });
+    expect(w.fake.calls().filter((c) => c[0] === 'pr' && c[1] !== 'list' && c[1] !== 'view')).toEqual([]);
   });
 });

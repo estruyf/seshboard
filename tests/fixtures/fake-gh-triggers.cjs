@@ -7,7 +7,9 @@
  * The file: { repo, login, defaultBranch, fail: null | 'signed-out' | 'rate-limit' | 'not-found' | 'offline',
  *   issues: [{ number, title, body, labels: [name], assignees: [login], author, association, updatedAt, comments: [{ author, body }] }],
  *   runs: [{ databaseId, number, workflowName, headSha, headBranch, createdAt, displayTitle }], logs: { [runId]: text },
- *   labels: [name], collaborators, workflows: [name] }
+ *   labels: [name], collaborators, workflows: [name],
+ *   prs: [{ number, title, body, labels: [name], reviewers: [login], author, association, headRefName, baseRefName,
+ *     headRefOid, fork, headOwner, draft, updatedAt, comments: [{ author, body }], reviews: [{ author, state, body }] }] }
  */
 const { appendFileSync, readFileSync, writeFileSync } = require('node:fs');
 
@@ -47,6 +49,22 @@ const issueJson = (issue) => ({
   comments: (issue.comments || []).map((c) => ({ author: { login: c.author }, body: c.body })),
   state: issue.closed ? 'CLOSED' : 'OPEN',
 });
+const prJson = (pr) => ({
+  number: pr.number,
+  title: pr.title,
+  url: `https://github.com/${repo}/pull/${pr.number}`,
+  labels: (pr.labels || []).map((name) => ({ name, color: 'ededed' })),
+  author: { login: pr.author || 'mara-k' },
+  body: pr.body || '',
+  updatedAt: pr.updatedAt || new Date().toISOString(),
+  headRefName: pr.headRefName || `feat/${pr.number}`,
+  baseRefName: pr.baseRefName || 'main',
+  headRefOid: pr.headRefOid || 'abcdef1234567890',
+  isCrossRepository: !!pr.fork,
+  headRepositoryOwner: { login: pr.headOwner || repo.split('/')[0] },
+  comments: (pr.comments || []).map((c) => ({ author: { login: c.author }, body: c.body })),
+  reviews: (pr.reviews || []).map((r) => ({ author: { login: r.author }, state: r.state, body: r.body || '' })),
+});
 const pick = (item) => Object.fromEntries((flag('--json') || '').split(',').map((k) => [k, item[k]]));
 const findIssue = (n) => (state.issues || []).find((i) => i.number === Number(n)) || fail(`GraphQL: Could not resolve to an issue or pull request with the number of ${n}.`);
 
@@ -57,11 +75,24 @@ else if (a === 'api' && /collaborators/.test(b || '')) out(String(state.collabor
 else if (a === 'api' && b === 'graphql') {
   const query = argv[argv.indexOf('-f') + 1] || '';
   const repository = {};
-  for (const m of query.matchAll(/i(\d+): issue/g)) {
-    const issue = (state.issues || []).find((i) => i.number === Number(m[1]));
-    repository[`i${m[1]}`] = issue ? { authorAssociation: issue.association || 'OWNER' } : null;
+  for (const m of query.matchAll(/i(\d+): (issue|pullRequest)/g)) {
+    const item = (m[2] === 'issue' ? state.issues : state.prs || []).find((i) => i.number === Number(m[1]));
+    repository[`i${m[1]}`] = item ? { authorAssociation: item.association || 'OWNER' } : null;
   }
   out({ data: { repository } });
+} else if (a === 'pr' && b === 'list') {
+  // The search a reviews trigger makes: draft:false, review-requested:<login>, label:"<name>".
+  const search = flag('--search') || '';
+  const me = state.login || 'estruyf';
+  const reviewer = /review-requested:(\S+)/.exec(search)?.[1];
+  const label = /label:"([^"]*)"/.exec(search)?.[1];
+  const list = (state.prs || []).filter(
+    (p) => !p.closed && !(p.draft && /draft:false/.test(search)) && (!reviewer || (p.reviewers || []).includes(reviewer === '@me' ? me : reviewer)) && (!label || (p.labels || []).includes(label)),
+  );
+  out(list.slice(0, Number(flag('--limit') || 30)).map(prJson).map(pick));
+} else if (a === 'pr' && b === 'view') {
+  const pr = (state.prs || []).find((p) => p.number === Number(argv[2])) || fail(`no pull requests found for branch "${argv[2]}"`);
+  out(pick(prJson(pr)));
 } else if (a === 'issue' && b === 'list') {
   const label = flag('--label');
   const assignee = flag('--assignee');

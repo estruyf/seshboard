@@ -1900,6 +1900,21 @@ export function createEngine(options: EngineOptions): Engine {
     }));
     return focusSessions({ hosts: hostMap, live, sessions: summaries, permissions: hosts.list().permissions, countExternal: queueFocus.countExternal }).length;
   };
+  /**
+   * Where a queued or triggered draft starts: a worktree with a made-up name, or the current checkout on its branch. A
+   * draft with a pull request (a trigger's review) gets the pull request's code: a worktree from its latest commit, or
+   * `gh pr checkout` here, and keeps where it came from, as New session from a pull request does.
+   */
+  const draftWorkspace = (draft: Pick<LaterDraft, 'workspace' | 'baseRef' | 'branch' | 'pullRequest'>) => {
+    const pr = draft.pullRequest ?? null;
+    const inWorktree = draft.workspace === 'worktree';
+    return {
+      worktree: inWorktree ? { name: randomWorktreeName(), baseRef: pr ? { branch: pr.branch, pullRequest: pr.number, fork: pr.fork ?? false } : worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
+      checkoutBranch: inWorktree || pr ? null : (draft.branch ?? null),
+      ...(pr && !inWorktree ? { checkoutPullRequest: { number: pr.number, repo: pr.repo } } : {}),
+      ...(pr ? { github: { type: 'pr' as const, repo: pr.repo, number: pr.number, readOnly: false } } : {}),
+    };
+  };
   /** The usage limit a queued item's profile is at: its own profile, else its project's. */
   const queueLimit = (item: LaterItem) => limits.of(item.profileId && profiles.has(item.profileId) ? item.profileId : folderProfile(item.cwd));
   /** Starts a queued item, as Start does and as an item that starts by itself does. */
@@ -1913,10 +1928,9 @@ export function createEngine(options: EngineOptions): Engine {
         model: item.model,
         permissionMode: item.permissionMode,
         effort: item.effort,
-        worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(item.baseRef) } : null,
         profileId: item.profileId,
         // A queued prompt on Auto is routed now, when it starts, not when it was added.
-        checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
+        ...draftWorkspace(item),
       },
       // An orchestrator's start that waited: the project's instructions go with it, as with one that started at once.
       { appendSystem: orchestrator.itemInstructions(item.id) },
@@ -2109,9 +2123,8 @@ export function createEngine(options: EngineOptions): Engine {
       model: draft.model ?? null,
       permissionMode: draft.permissionMode ?? 'default',
       effort: draft.effort ?? null,
-      worktree: draft.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
       profileId: draft.profileId && profiles.has(draft.profileId) ? draft.profileId : null,
-      checkoutBranch: draft.workspace === 'worktree' ? null : (draft.branch ?? null),
+      ...draftWorkspace(draft),
     });
     pendingTitles.set(sessionId, title);
     applyTitles([sessionId]);

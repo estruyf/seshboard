@@ -31,6 +31,19 @@ export const LaterDraft = z.object({
   /** A profile picked for this session only; null uses the project's, else the default. */
   profileId: z.string().min(1).max(100).nullable().default(null),
   /**
+   * A pull request to work on (a trigger's review): a worktree from its latest commit, or `gh pr checkout` in the
+   * current checkout. `branch` is the worktree's branch (`owner/branch` for a fork's). Missing or null: none.
+   */
+  pullRequest: z
+    .object({
+      number: z.number().int().positive(),
+      repo: z.string().regex(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/),
+      branch: z.string().min(1).max(250),
+      fork: z.boolean().default(false),
+    })
+    .nullable()
+    .optional(),
+  /**
    * Start by itself: it starts once what it waits for has finished cleanly, instead of only turning ready. Only counts
    * while it waits for something; with `waitFor` set to nothing, saving turns it off.
    */

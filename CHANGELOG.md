@@ -6,6 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Triggers for pull request reviews.** A new trigger source, **Reviews for you**, starts a session when a pull request asks for your review, has a label, or both. The session works in a new worktree on the pull request's branch, also for a pull request from a fork. It reads the description, the comments and the earlier reviews, so a re-review checks what changed since. When the author asks again after your review, a new session starts. Draft pull requests and pull requests from outside the collaborators are skipped, and the trigger posts nothing on GitHub.
 - **Antigravity CLI updates, like Claude Code's.** With a Google Antigravity profile, **Settings › About** shows Antigravity CLI too: the version you have, whether a newer one is out, and **Update**. A toast says when a new version is available, and Seshboard checks by itself if you leave that on. Update runs `agy update`, or `brew upgrade --cask antigravity-cli` if you installed it with Homebrew.
 - **Messages from other Claude sessions stand out.** When another Claude Code session sends a message to yours, the conversation shows it on the left in a dashed box, with "From another session" and the sender's name over it. You see only what the other session wrote, not Claude Code's guidance around it. Your phone, search and the catch-up show it the same way, and ↑ in the message box skips it.
 

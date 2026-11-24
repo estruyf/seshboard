@@ -39,7 +39,7 @@ export type RemoteSessionProfile = z.infer<typeof RemoteSessionProfile>;
 
 /** Which trigger started a session or a run (`triggerOrigin.ts`); one this version can't read is left out, not the session. */
 export const RemoteTriggerOriginSchema = z
-  .object({ name: z.string().max(200), kind: z.enum(['ci', 'issue']), ref: z.string().max(100), url: z.string().max(2_000), at: z.number() })
+  .object({ name: z.string().max(200), kind: z.enum(['ci', 'issue', 'pr']), ref: z.string().max(100), url: z.string().max(2_000), at: z.number() })
   .optional()
   .catch(undefined);
 

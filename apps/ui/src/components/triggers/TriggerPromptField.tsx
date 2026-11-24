@@ -8,7 +8,7 @@ import { fieldQuery, insertField, promptSegments } from '../../state/triggerProm
  * the list (and only the list). The chips are drawn on a layer behind the text, which keeps its own caret and
  * selection, so the text stays plain text.
  */
-export function TriggerPromptField({ value, onChange, kind, id, describedBy, invalid }: { value: string; onChange(value: string): void; kind: 'ci' | 'issues'; id: string; describedBy?: string; invalid?: boolean }) {
+export function TriggerPromptField({ value, onChange, kind, id, describedBy, invalid }: { value: string; onChange(value: string): void; kind: 'ci' | 'issues' | 'reviews'; id: string; describedBy?: string; invalid?: boolean }) {
   const listId = useId();
   const ref = useRef<HTMLTextAreaElement>(null);
   const behind = useRef<HTMLDivElement>(null);
