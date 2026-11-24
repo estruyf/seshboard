@@ -83,11 +83,12 @@ function ThemeCard({ entry, selected, mode, onMenu }: { entry: ThemeEntry; selec
           <span className="truncate text-ui font-semibold text-text">{entry.file.name}</span>
           {only && <span className="shrink-0 rounded-full bg-border px-1.5 text-meta font-semibold text-muted">{only}</span>}
         </span>
-        <span className="truncate px-1 text-meta text-faint" data-tooltip={author !== shortAuthor ? author : undefined}>
+        <span className={`truncate px-1 text-meta text-faint ${selected ? 'pr-14' : 'pr-8'}`} data-tooltip={author !== shortAuthor ? author : undefined}>
           {[shortAuthor, entry.builtIn ? 'built in' : 'imported'].filter(Boolean).join(' · ')}
         </span>
       </button>
-      <span className="absolute right-2 bottom-[30px] flex items-center gap-1">
+      {/* Centred on the name and author lines, so the 24px button's hover stays clear of the previews. */}
+      <span className="absolute right-2 bottom-3.5 flex items-center gap-1">
         {selected && <Check size={14} className="text-accent-ink" aria-label="In use" />}
         <Button
           variant="quiet"
