@@ -5,6 +5,7 @@ import {
   eventPullRequest,
   eventRef,
   fillTriggerPrompt,
+  hasStateLabels,
   newEvents,
   nextStateLabel,
   pipelineProblem,
@@ -13,6 +14,7 @@ import {
   seedSeen,
   slots,
   stateLabelEdit,
+  stateLabelKeys,
   stateLabelNames,
   TRIGGER_FAILURES_TO_PAUSE,
   TRIGGER_RATE_LIMIT_MS,
@@ -164,12 +166,12 @@ export class TriggerWatcher {
   }
 
   /**
-   * A triggered session (or pipeline run, by its id) was archived or deleted: its issue's state label comes off, when it
-   * still says working or needs input. Unarchiving it doesn't put the label back.
+   * A triggered session (or pipeline run, by its id) was archived or deleted: its issue's or pull request's state label
+   * comes off, when it still says working or needs input. Unarchiving it doesn't put the label back.
    */
   released(sessionId: string): void {
     const stored = this.deps.store.eventOfSession(sessionId) ?? this.deps.store.eventOfRun(sessionId);
-    if (!stored || stored.event.kind !== 'issue') return;
+    if (!stored || stored.event.kind === 'ci') return;
     this.releasing.add(stored.event.id);
     void this.check();
   }
@@ -179,7 +181,7 @@ export class TriggerWatcher {
     const stored = this.deps.store.eventOfItem(itemId);
     if (!stored || stored.event.status !== 'queued') return;
     this.deps.store.setStatus(stored.event.id, 'skipped', { reason: 'removed from the queue' });
-    if (stored.event.kind === 'issue') this.releasing.add(stored.event.id);
+    if (stored.event.kind !== 'ci') this.releasing.add(stored.event.id);
     this.deps.changed();
     void this.check();
   }
@@ -284,7 +286,7 @@ export class TriggerWatcher {
     if ((trigger.source.kind === 'issues' || trigger.source.kind === 'reviews') && trigger.source.collaboratorsOnly) {
       // Only items that may start are looked up: gh's lists don't say who opened them, to the repository.
       const listed = items as Array<IssueItem | PrItem>;
-      const candidates = listed.filter((i) => seen[eventKey(trigger.source, i)] !== 'match' && seen[eventKey(trigger.source, i)] !== 'released' && !('assignees' in i && blockingStateLabel(trigger, i)));
+      const candidates = listed.filter((i) => seen[eventKey(trigger.source, i)] !== 'match' && seen[eventKey(trigger.source, i)] !== 'released' && !blockingStateLabel(trigger, i));
       if (candidates.length) {
         const associations = await readAssociations(this.reads_gh, trigger.projectRoot, candidates, trigger.source.kind === 'reviews' ? 'pullRequest' : 'issue');
         if (!associations.ok) {
@@ -406,9 +408,14 @@ export class TriggerWatcher {
 
   /**
    * An event is picked up: it starts now or waits for a slot. An issue gets `seshboard: working` and loses the trigger's
-   * label (state labels on), and is assigned to you (Assign to me when picked up), in one `gh issue edit`.
+   * label (state labels on), and is assigned to you (Assign to me when picked up), in one `gh issue edit`. A pull
+   * request to review gets `seshboard: working` and keeps the trigger's label, which says what to review again later.
    */
   private async pickUp(trigger: Trigger, event: TriggerEvent): Promise<void> {
+    if (event.kind === 'pr' && trigger.source.kind === 'reviews') {
+      await this.pickUpReview(trigger, event);
+      return;
+    }
     if (event.kind !== 'issue' || trigger.source.kind !== 'issues') return;
     const number = Number(event.fields.number);
     const labels = trigger.stateLabels.on;
@@ -421,10 +428,20 @@ export class TriggerWatcher {
     this.deps.notify([{ kind: 'pickedUp', triggerId: trigger.id, triggerName: trigger.name, projectRoot: trigger.projectRoot, projectName: this.deps.projectName(trigger.projectRoot), eventKind: 'issue', branch: null, ref: eventRef(event), title: event.title, sessionId: null, reason: null }]);
   }
 
-  /** One `gh issue edit`, after making the state labels the repository lacks. False when it failed (said on the event). */
+  /** A pull request to review gets the working label, when state labels are on; the session start tells about it. */
+  private async pickUpReview(trigger: Trigger, event: TriggerEvent): Promise<void> {
+    if (!trigger.stateLabels.on) return;
+    const names = stateLabelNames(trigger.stateLabels);
+    // A pull request reviewed before still has its last state label: that one comes off.
+    const had = (event.fields.labels ?? '').split(',').map((l) => l.trim()).find((l) => Object.values(names).some((n) => n.toLowerCase() === l.toLowerCase()));
+    const args = stateLabelEdit(Number(event.fields.number), names.working, event.label ?? had ?? null, { pr: true });
+    if (args && (await this.edit(trigger, event, args))) this.deps.store.setLabel(event.id, names.working);
+  }
+
+  /** One `gh issue edit` or `gh pr edit`, after making the state labels the repository lacks. False when it failed (said on the event). */
   private async edit(trigger: Trigger, event: TriggerEvent, args: string[]): Promise<boolean> {
     if (trigger.stateLabels.on && args.includes('--add-label') && !this.labelsReady.has(trigger.id)) {
-      const made = await ensureStateLabels(this.deps.gh, trigger.projectRoot, stateLabelNames(trigger.stateLabels));
+      const made = await ensureStateLabels(this.deps.gh, trigger.projectRoot, stateLabelNames(trigger.stateLabels), stateLabelKeys(trigger.source.kind));
       if (!made.ok) {
         this.deps.log('warn', `Triggers: couldn't make the state labels for “${trigger.name}”: ${made.message}`);
         this.deps.store.setStatus(event.id, event.status, { reason: `Couldn't make the state labels: ${made.message}`, sessionId: event.sessionId, itemId: event.itemId });
@@ -434,8 +451,9 @@ export class TriggerWatcher {
     }
     const done = await editIssue(this.deps.gh, trigger.projectRoot, args);
     if (!done.ok) {
-      this.deps.log('warn', `Triggers: couldn't change issue ${event.fields.number} for “${trigger.name}”: ${done.message}`);
-      this.deps.store.setStatus(event.id, event.status, { reason: `Couldn't change the issue on GitHub: ${done.message}`, sessionId: event.sessionId, itemId: event.itemId });
+      const what = event.kind === 'pr' ? 'pull request' : 'issue';
+      this.deps.log('warn', `Triggers: couldn't change ${what} ${event.fields.number} for “${trigger.name}”: ${done.message}`);
+      this.deps.store.setStatus(event.id, event.status, { reason: `Couldn't change the ${what} on GitHub: ${done.message}`, sessionId: event.sessionId, itemId: event.itemId });
     }
     return done.ok;
   }
@@ -539,13 +557,15 @@ export class TriggerWatcher {
       // A deleted run leaves the label as it is: deleting it by hand releases it (`released`).
       const state = this.deps.run(event.runId);
       if (!state) return null;
+      // A review works on the pull request's own branch: that pull request is not one the work opened.
+      if (event.kind === 'pr') return runWorkState({ ...state.run, pr: null });
       const work = runWorkState(state.run);
       // A step that opened a pull request itself counts too.
       if (work !== 'prOpen' && state.steps.some((step) => step.sessionId && this.deps.sessionPr(step.sessionId))) return 'prOpen';
       return work;
     }
     if (event.status !== 'started' || !event.sessionId) return null;
-    if (this.deps.sessionPr(event.sessionId)) return 'prOpen';
+    if (event.kind !== 'pr' && this.deps.sessionPr(event.sessionId)) return 'prOpen';
     const state = this.deps.sessionState(event.sessionId);
     if (state === 'waiting') return 'needsYou';
     if (state === 'working') return 'working';
@@ -553,36 +573,37 @@ export class TriggerWatcher {
     return outcome === 'error' ? 'error' : outcome === 'stopped' ? 'stopped' : 'idle';
   }
 
-  /** Keeps each issue's state label where its work is, for triggers with state labels on. */
+  /** Keeps each issue's or pull request's state label where its work is, for triggers with state labels on. */
   private async syncLabels(): Promise<void> {
     for (const trigger of this.deps.store.list()) {
-      if (!trigger.stateLabels.on || trigger.source.kind !== 'issues') continue;
+      if (!trigger.stateLabels.on || !hasStateLabels(trigger.source.kind)) continue;
       const prOpen = stateLabelNames(trigger.stateLabels).prOpen.toLowerCase();
       for (const { event } of this.deps.store.eventsOf(trigger.id)) {
-        // Once a pull request is open, the issue's work is done here; a label changed by hand stays.
-        if (event.kind !== 'issue' || !event.label || event.label.toLowerCase() === prOpen) continue;
+        // Once a pull request is open, the issue's work is done here; a label changed by hand stays. A review's label
+        // follows its session: you can go on in it.
+        if (event.kind === 'ci' || !event.label || (event.kind === 'issue' && event.label.toLowerCase() === prOpen)) continue;
         const state = this.workState(event);
         if (state) await this.moveLabel(trigger, event, state);
       }
     }
   }
 
-  /** Moves an issue's state label to `state`'s, when it is a change from the one Seshboard put there last. */
+  /** Moves an issue's or pull request's state label to `state`'s, when it is a change from the one Seshboard put there last. */
   private async moveLabel(trigger: Trigger, event: TriggerEvent, state: TriggerWorkState): Promise<void> {
-    if (!trigger.stateLabels.on || event.kind !== 'issue' || !event.label) return;
-    const key = nextStateLabel(state);
+    if (!trigger.stateLabels.on || event.kind === 'ci' || !event.label) return;
+    const key = nextStateLabel(state, trigger.source.kind);
     if (!key) return;
     const next = stateLabelNames(trigger.stateLabels)[key];
-    const args = stateLabelEdit(Number(event.fields.number), next, event.label);
+    const args = stateLabelEdit(Number(event.fields.number), next, event.label, { pr: event.kind === 'pr' });
     if (!args) return;
     if (await this.edit(trigger, event, args)) {
       this.deps.store.setLabel(event.id, next);
-      this.deps.log('info', `Triggers: issue ${event.fields.number} is now “${next}”`);
+      this.deps.log('info', `Triggers: ${event.kind === 'pr' ? 'pull request' : 'issue'} ${event.fields.number} is now “${next}”`);
     }
   }
 
   /**
-   * Takes the state label off the issues whose work ended by hand, when it still says working or needs input (a pull
+   * Takes the state label off the issues and pull requests whose work ended by hand, when it still says working or needs input (a pull
    * request open or a failure stays). With an assignee alone the issue would match again without it, so it is marked
    * `released`: it doesn't start again while it stays in the answer.
    */
@@ -592,14 +613,14 @@ export class TriggerWatcher {
     for (const id of ids) {
       const event = this.deps.store.event(id)?.event;
       const trigger = event ? this.deps.store.get(event.triggerId) : null;
-      if (!event || !trigger || !event.label || !trigger.stateLabels.on || trigger.source.kind !== 'issues') continue;
+      if (!event || !trigger || !event.label || !trigger.stateLabels.on || !hasStateLabels(trigger.source.kind)) continue;
       const names = stateLabelNames(trigger.stateLabels);
       if (![names.working, names.needsInput].some((name) => name.toLowerCase() === event.label!.toLowerCase())) continue;
-      const args = stateLabelEdit(Number(event.fields.number), null, event.label);
+      const args = stateLabelEdit(Number(event.fields.number), null, event.label, { pr: event.kind === 'pr' });
       if (!args || !(await this.edit(trigger, event, args))) continue;
       this.deps.store.setLabel(event.id, null);
-      if (!trigger.source.label) this.deps.store.setSeen(trigger.id, event.key, 'released');
-      this.deps.log('info', `Triggers: took “${event.label}” off issue ${event.fields.number}; its work ended`);
+      if (trigger.source.kind === 'reviews' || (trigger.source.kind === 'issues' && !trigger.source.label)) this.deps.store.setSeen(trigger.id, event.key, 'released');
+      this.deps.log('info', `Triggers: took “${event.label}” off ${event.kind === 'pr' ? 'pull request' : 'issue'} ${event.fields.number}; its work ended`);
     }
   }
 

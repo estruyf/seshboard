@@ -9,16 +9,24 @@ import type { Pipeline, PipelineRun } from './pipelineSchema.ts';
 import type { StateLabels, Trigger, TriggerEvent, TriggerEventKind, TriggerSource } from './triggerSchema.ts';
 
 /** The state labels' names when you don't rename them. Triggers saved before the rename keep theirs (switchboard: …). */
-export const DEFAULT_STATE_LABELS = { working: 'seshboard: working', needsInput: 'seshboard: needs input', prOpen: 'seshboard: pr open', failed: 'seshboard: failed' } as const;
+export const DEFAULT_STATE_LABELS = { working: 'seshboard: working', needsInput: 'seshboard: needs input', prOpen: 'seshboard: pr open', reviewed: 'seshboard: reviewed', failed: 'seshboard: failed' } as const;
 export type StateLabelKey = keyof typeof DEFAULT_STATE_LABELS;
+/** An issue's state labels: its work ends with a pull request. */
 export const STATE_LABEL_KEYS = ['working', 'needsInput', 'prOpen', 'failed'] as const satisfies readonly StateLabelKey[];
+/** A pull request's state labels, for a review: its work ends with the review. */
+export const REVIEW_STATE_LABEL_KEYS = ['working', 'needsInput', 'reviewed', 'failed'] as const satisfies readonly StateLabelKey[];
+/** The state labels a source's items get: an issue's, or a pull request's for a review. */
+export const stateLabelKeys = (kind: TriggerSource['kind']): readonly StateLabelKey[] => (kind === 'reviews' ? REVIEW_STATE_LABEL_KEYS : STATE_LABEL_KEYS);
+/** Whether a source's items can carry state labels: issues, and pull requests for a review. */
+export const hasStateLabels = (kind: TriggerSource['kind']) => kind === 'issues' || kind === 'reviews';
 /** Each state label's colour on GitHub (hex without `#`), the design's yellow, pink, green and red. */
-export const STATE_LABEL_COLORS: Record<StateLabelKey, string> = { working: 'e3b341', needsInput: 'db61a2', prOpen: '3fb950', failed: 'f85149' };
+export const STATE_LABEL_COLORS: Record<StateLabelKey, string> = { working: 'e3b341', needsInput: 'db61a2', prOpen: '3fb950', reviewed: '3fb950', failed: 'f85149' };
 /** What each state label says on GitHub, as the label's description. */
 export const STATE_LABEL_DESCRIPTIONS: Record<StateLabelKey, string> = {
   working: 'Seshboard: a session works on this',
   needsInput: 'Seshboard: the session working on this needs input',
   prOpen: 'Seshboard: a pull request for this is open',
+  reviewed: 'Seshboard: a session reviewed this',
   failed: 'Seshboard: the session working on this stopped',
 };
 
@@ -197,6 +205,7 @@ export function stateLabelNames(labels: Partial<StateLabels> | null | undefined)
     working: labels?.working?.trim() || DEFAULT_STATE_LABELS.working,
     needsInput: labels?.needsInput?.trim() || DEFAULT_STATE_LABELS.needsInput,
     prOpen: labels?.prOpen?.trim() || DEFAULT_STATE_LABELS.prOpen,
+    reviewed: labels?.reviewed?.trim() || DEFAULT_STATE_LABELS.reviewed,
     failed: labels?.failed?.trim() || DEFAULT_STATE_LABELS.failed,
   };
 }
@@ -204,13 +213,14 @@ export function stateLabelNames(labels: Partial<StateLabels> | null | undefined)
 const sameLabel = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /**
- * The state label that keeps an issue out, or null. Working and needs input mean someone (this computer or another)
- * is on it. With a label in the filter, an issue that ended (PR open, failed) and has the trigger's label again was
- * labelled again by hand, so it matches; with an assignee alone, any state label keeps it out until it is taken off.
+ * The state label that keeps an issue or pull request out, or null. Working and needs input mean someone (this
+ * computer or another) is on it. With a label in the filter, an issue that ended (PR open, failed) and has the
+ * trigger's label again was labelled again by hand, so it matches; with an assignee alone, any state label keeps it
+ * out until it is taken off. A pull request that asks for a review again after one ended (reviewed, failed) matches.
  */
 export function blockingStateLabel(trigger: Pick<Trigger, 'source' | 'stateLabels'>, issue: Pick<IssueItem, 'labels'>): string | null {
   const names = stateLabelNames(trigger.stateLabels);
-  const keys: StateLabelKey[] = trigger.source.kind === 'issues' && trigger.source.label ? ['working', 'needsInput'] : [...STATE_LABEL_KEYS];
+  const keys: StateLabelKey[] = trigger.source.kind === 'reviews' || (trigger.source.kind === 'issues' && trigger.source.label) ? ['working', 'needsInput'] : [...STATE_LABEL_KEYS];
   for (const key of keys) {
     const found = issue.labels.find((l) => sameLabel(l.name, names[key]));
     if (found) return names[key];
@@ -332,8 +342,15 @@ export function newEvents(trigger: Pick<Trigger, 'source' | 'stateLabels' | 'ass
       continue;
     }
     if (isPr(item) && trigger.source.kind === 'reviews') {
-      // No state labels on a pull request: it is new when it asks for the review and didn't in the last answer.
-      next[event.key] = 'match';
+      // It is new when it asks for the review and didn't in the last answer. One that a session reviews already (its
+      // working label) is skipped, and counts as seen: it keeps the trigger's label, so it doesn't start again when
+      // that session's label moves on. It starts again when it leaves the answer and asks again.
+      const held = blockingStateLabel(trigger, item);
+      next[event.key] = before === 'released' ? 'released' : 'match';
+      if (held) {
+        if (before === undefined) skipped.push({ ...event, reason: `already has the ${held} label` });
+        continue;
+      }
       if (before === 'match' || before === 'released') continue;
       if (trigger.source.collaboratorsOnly && !isCollaborator(item.authorAssociation)) {
         skipped.push({ ...event, reason: "opened by someone outside the repository's collaborators" });
@@ -423,8 +440,12 @@ export const waitingFullReason = (maxWaiting: number) => (maxWaiting === 0 ? 'no
  */
 export type TriggerWorkState = 'waiting' | 'working' | 'needsYou' | 'idle' | 'prOpen' | 'error' | 'stopped' | 'gone';
 
-/** The state label for where the work is, or null to leave the label as it is (a turn that ended). */
-export function nextStateLabel(state: TriggerWorkState): StateLabelKey | null {
+/**
+ * The state label for where the work is, or null to leave the label as it is (an issue's turn that ended). A review's
+ * work ends with its turn: a pull request is `reviewed` then.
+ */
+export function nextStateLabel(state: TriggerWorkState, kind: TriggerSource['kind'] = 'issues'): StateLabelKey | null {
+  if (kind === 'reviews' && (state === 'idle' || state === 'prOpen')) return 'reviewed';
   switch (state) {
     case 'waiting':
     case 'working':
@@ -482,13 +503,14 @@ export function pipelineProblem(pipeline: (Pick<Pipeline, 'name' | 'scope'> & { 
 /**
  * The one `gh issue edit` arguments that move an issue to `next`: add it, take off the state label Seshboard put
  * there last (`current`), the trigger's own label at pick-up (`removeTrigger`), and assign it to you (`assign`). A
- * `next` of null takes `current` off and adds nothing. Null when nothing changes.
+ * `next` of null takes `current` off and adds nothing. Null when nothing changes. With `pr`, `gh pr edit` for a pull
+ * request.
  */
-export function stateLabelEdit(number: number, next: string | null, current: string | null, extra: { removeTrigger?: string | null; assign?: boolean } = {}): string[] | null {
+export function stateLabelEdit(number: number, next: string | null, current: string | null, extra: { removeTrigger?: string | null; assign?: boolean; pr?: boolean } = {}): string[] | null {
   const add = next && (!current || !sameLabel(next, current)) ? next : null;
   const remove = [current && (add || !next) ? current : null, extra.removeTrigger ?? null].filter((l): l is string => !!l);
   if (!add && remove.length === 0 && !extra.assign) return null;
-  return ['issue', 'edit', String(number), ...(add ? ['--add-label', add] : []), ...remove.flatMap((label) => ['--remove-label', label]), ...(extra.assign ? ['--add-assignee', '@me'] : [])];
+  return [extra.pr ? 'pr' : 'issue', 'edit', String(number), ...(add ? ['--add-label', add] : []), ...remove.flatMap((label) => ['--remove-label', label]), ...(extra.assign ? ['--add-assignee', '@me'] : [])];
 }
 
 const FIELD = /\{\{\s*event\.([A-Za-z0-9_]+)\s*\}\}/g;

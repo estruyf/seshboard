@@ -771,6 +771,70 @@ describe('reviews for you', () => {
     expect(w.started[1]!.draft.prompt).toContain('@estruyf (changes requested): Rename the token.');
   });
 
+  it('keeps a state label on the pull request: working while it reviews, reviewed when its turn ends, and again on a re-review', async () => {
+    const w = world({ prs: [] });
+    w.save({ name: 'Reviews for you', source: { kind: 'reviews', label: 'seshboard' }, stateLabels: { on: true } });
+    await w.watcher.check();
+    w.fake.write((s) => s.prs!.push(pr(88, { labels: ['seshboard'] })));
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+    // `gh pr edit`, and the trigger's label stays: it says what to review again.
+    expect(w.fake.calls().filter((c) => c[1] === 'edit')).toEqual([['pr', 'edit', '88', '--add-label', 'seshboard: working']]);
+    expect(w.fake.read().labels).toEqual(['seshboard', 'seshboard: working', 'seshboard: needs input', 'seshboard: reviewed', 'seshboard: failed']);
+    const labels = () => w.fake.read().prs!.find((p) => p.number === 88)!.labels;
+    expect(labels()).toEqual(['seshboard', 'seshboard: working']);
+
+    // Its session works on the pull request's branch: that pull request is not one it opened.
+    w.prs.set('session-1', { number: 88, url: 'https://github.com/o/r/pull/88' });
+    w.sessions.set('session-1', 'waiting');
+    await w.tick(MINUTE);
+    expect(labels()).toEqual(['seshboard', 'seshboard: needs input']);
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: true });
+    await w.tick(MINUTE);
+    expect(labels()).toEqual(['seshboard', 'seshboard: reviewed']);
+    // Still asking for the review, with its label: it was seen, so nothing starts.
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+
+    // It asks again after the review: a new session, and the reviewed label makes way for working.
+    w.fake.write((s) => {
+      s.prs!.find((p) => p.number === 88)!.reviewers = [];
+    });
+    await w.tick();
+    w.fake.write((s) => {
+      s.prs!.find((p) => p.number === 88)!.reviewers = ['estruyf'];
+    });
+    await w.tick();
+    expect(w.started).toHaveLength(2);
+    expect(labels()).toEqual(['seshboard', 'seshboard: working']);
+  });
+
+  it('skips a pull request another session reviews, and takes the working label off when its session is archived', async () => {
+    const w = world();
+    w.save({ name: 'Reviews for you', source: { kind: 'reviews' }, stateLabels: { on: true } });
+    await w.watcher.check();
+    w.fake.write((s) => {
+      s.labels!.push('seshboard: working', 'seshboard: reviewed');
+      s.prs = [pr(7, { labels: ['seshboard: working'] }), pr(8)];
+    });
+    await w.tick();
+    expect(w.started.map((s) => s.draft.pullRequest?.number)).toEqual([8]);
+    expect(w.store.events().find((e) => e.key === '#7')).toMatchObject({ status: 'skipped', reason: 'already has the seshboard: working label' });
+    // Its review there ends: it was seen, so it doesn't start here.
+    w.fake.write((s) => {
+      s.prs!.find((p) => p.number === 7)!.labels = ['seshboard: reviewed'];
+    });
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+
+    w.watcher.released('session-1');
+    await w.tick(MINUTE);
+    expect(w.fake.read().prs!.find((p) => p.number === 8)!.labels).toEqual([]);
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+  });
+
   it("works on a fork's branch, skips an outsider, and writes nothing to GitHub", async () => {
     const w = world();
     w.save({ name: 'Reviews for you', source: { kind: 'reviews' } });

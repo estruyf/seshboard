@@ -1,4 +1,4 @@
-import { issueQuery, STATE_LABEL_COLORS, STATE_LABEL_DESCRIPTIONS, STATE_LABEL_KEYS, type IssueItem, type StateLabelKey, type TriggerSource } from '@seshboard/protocol';
+import { issueQuery, STATE_LABEL_COLORS, STATE_LABEL_DESCRIPTIONS, type IssueItem, type StateLabelKey, type TriggerSource } from '@seshboard/protocol';
 import { json, readFailure, type GhRun, type SourceRead } from './gh.ts';
 
 /**
@@ -82,7 +82,7 @@ export async function readCollaborators(gh: GhRun, root: string): Promise<number
   return Number.isInteger(count) ? count : null;
 }
 
-/** One `gh issue edit`: the state label, the trigger's label and the assignee in one call. */
+/** One `gh issue edit` (or `gh pr edit`): the state label, the trigger's label and the assignee in one call. */
 export async function editIssue(gh: GhRun, root: string, args: string[]): Promise<SourceRead<null>> {
   const result = await gh(args, root, 20_000);
   return result.code === 0 && !result.missing ? { ok: true, value: null } : readFailure(result);
@@ -92,12 +92,12 @@ export async function editIssue(gh: GhRun, root: string, args: string[]): Promis
  * Makes the state labels the repository doesn't have yet, in their colours. Labels that are there keep theirs. Says
  * why when it can't (no right to make labels).
  */
-export async function ensureStateLabels(gh: GhRun, root: string, names: Record<StateLabelKey, string>): Promise<SourceRead<null>> {
+export async function ensureStateLabels(gh: GhRun, root: string, names: Record<StateLabelKey, string>, keys: readonly StateLabelKey[]): Promise<SourceRead<null>> {
   const listed = await gh(['label', 'list', '--json', 'name', '--limit', '500'], root, 15_000);
   if (listed.code !== 0 || listed.missing) return readFailure(listed);
   const raw = json(listed.stdout);
   const have = new Set((Array.isArray(raw) ? raw : []).flatMap((l) => (typeof (l as { name?: unknown })?.name === 'string' ? [(l as { name: string }).name.toLowerCase()] : [])));
-  for (const key of STATE_LABEL_KEYS) {
+  for (const key of keys) {
     if (have.has(names[key].toLowerCase())) continue;
     const made = await gh(['label', 'create', names[key], '--color', STATE_LABEL_COLORS[key], '--description', STATE_LABEL_DESCRIPTIONS[key]], root, 15_000);
     // Made meanwhile (another computer): fine.

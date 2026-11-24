@@ -1,6 +1,6 @@
 import { AlertTriangle, CircleDot, CircleX, Folder, GitBranch, GitPullRequest, ListTree, MessageSquareDiff, Pencil, SquareTerminal, Zap } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { BUILT_IN_PIPELINES, notWithYet, pipelineProblem, STATE_LABEL_KEYS, TRIGGER_LIMITS, type ProviderFeature, type StateLabelKey, type TriggerRepoInfo } from '@seshboard/protocol/client';
+import { BUILT_IN_PIPELINES, notWithYet, pipelineProblem, stateLabelKeys, TRIGGER_LIMITS, type ProviderFeature, type StateLabelKey, type TriggerRepoInfo } from '@seshboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
 import { basename } from '../../lib/format.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
@@ -478,16 +478,16 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
           </div>
         </Section>
 
-        {issues && (
-          <Section section="github" number={number('github')} title="What happens on GitHub?" aside="optional" folded={folds.has('github') ? 'Nothing: no labels, no assignee' : null} onOpen={() => open('github')}>
+        {(issues || reviews) && (
+          <Section section="github" number={number('github')} title="What happens on GitHub?" aside="optional" folded={folds.has('github') ? (issues ? 'Nothing: no labels, no assignee' : 'Nothing: no labels') : null} onOpen={() => open('github')}>
             <div className="grid gap-1.5">
               <Checkbox checked={form.stateLabels.on} onChange={(on) => update({ stateLabels: { ...form.stateLabels, on } })} dataAttrs={{ 'data-trigger-state-labels': true }}>
-                <span className="text-ui text-text">Keep a state label on the issue</span>
+                <span className="text-ui text-text">{issues ? 'Keep a state label on the issue' : 'Keep a state label on the pull request'}</span>
               </Checkbox>
               {form.stateLabels.on && (
                 <div className="grid gap-1.5 pl-5.5">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {STATE_LABEL_KEYS.map((key) => (
+                    {stateLabelKeys(form.kind).map((key) => (
                       <StateLabelPill key={key} which={key} name={form.stateLabels[key]} />
                     ))}
                     <Button variant="quiet" size="sm" aria-expanded={renaming} onClick={() => setRenaming(!renaming)} data-trigger-rename-labels>
@@ -496,7 +496,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   </div>
                   {renaming && (
                     <div className="grid grid-cols-2 gap-1.5 @max-[640px]:grid-cols-1" data-trigger-label-names>
-                      {STATE_LABEL_KEYS.map((key) => (
+                      {stateLabelKeys(form.kind).map((key) => (
                         <input
                           key={key}
                           aria-label={`${STATE_WORDS[key]} label`}
@@ -508,12 +508,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                       ))}
                     </div>
                   )}
-                  <p className="text-meta text-muted">{form.which === 'assignee' ? 'Take the state label off to start an issue again.' : `The ${form.label.trim() || 'trigger'} label comes off when work starts.`} Missing labels are created.</p>
+                  <p className="text-meta text-muted">
+                    {reviews ? 'A pull request that asks for a review again gets a new session.' : form.which === 'assignee' ? 'Take the state label off to start an issue again.' : `The ${form.label.trim() || 'trigger'} label comes off when work starts.`} Missing labels are created.
+                  </p>
                 </div>
               )}
             </div>
             {/* With an assignee in the filter every issue has one already: Assign to me would skip them all. */}
-            {form.which === 'label' && (
+            {issues && form.which === 'label' && (
               <Checkbox checked={form.assignOnPickUp} onChange={(assignOnPickUp) => update({ assignOnPickUp })} dataAttrs={{ 'data-trigger-assign': true }}>
                 <span className="grid gap-0.5">
                   <span className="text-ui text-text">Assign the issue to me when work starts</span>
@@ -691,13 +693,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   );
 }
 
-const STATE_WORDS: Record<StateLabelKey, string> = { working: 'Working', needsInput: 'Needs input', prOpen: 'Pull request open', failed: 'Failed' };
+const STATE_WORDS: Record<StateLabelKey, string> = { working: 'Working', needsInput: 'Needs input', prOpen: 'Pull request open', reviewed: 'Reviewed', failed: 'Failed' };
 
-/** Each state label in the status colour it stands for: working yellow, needs input pink, pull request green, failed red. */
+/** Each state label in the status colour it stands for: working yellow, needs input pink, pull request or reviewed green, failed red. */
 const STATE_PILL: Record<StateLabelKey, string> = {
   working: 'border-accent-ink/50 bg-accent/12 text-accent-ink',
   needsInput: 'border-warn/50 bg-warn/10 text-warn',
   prOpen: 'border-ok/50 bg-ok/10 text-ok',
+  reviewed: 'border-ok/50 bg-ok/10 text-ok',
   failed: 'border-error/50 bg-error/10 text-error',
 };
 

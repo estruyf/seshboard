@@ -3,6 +3,8 @@ import {
   defaultTriggerName,
   effectiveMaxAtOnce,
   eventRef,
+  hasStateLabels,
+  stateLabelKeys,
   TRIGGER_LIMITS,
   triggerProblem,
   triggerSessionTitle,
@@ -238,9 +240,12 @@ export function formProblem(form: TriggerForm): string | null {
   if (filtered && (form.which === 'label' || form.which === 'both') && !form.label.trim()) return 'Type the label to look for.';
   if (form.kind === 'issues' && form.which !== 'label' && !form.assignee.trim()) return 'Pick who the issues are assigned to.';
   if (form.kind === 'reviews' && form.which !== 'label' && !form.assignee.trim()) return 'Pick whose review the pull requests ask for.';
-  if (form.kind === 'issues' && form.stateLabels.on && Object.values({ w: form.stateLabels.working, n: form.stateLabels.needsInput, p: form.stateLabels.prOpen, f: form.stateLabels.failed }).some((l) => !l.trim())) return 'Give every state label a name.';
+  if (stateLabelsUnnamed(form)) return 'Give every state label a name.';
   return triggerProblem({ name: form.name, prompt: form.prompt, source: formSource(form), draft: { permissionMode: form.permissionMode }, start: formStart(form) });
 }
+
+/** Whether state labels are on with one of the source's labels left without a name. */
+const stateLabelsUnnamed = (form: Pick<TriggerForm, 'kind' | 'stateLabels'>) => hasStateLabels(form.kind) && form.stateLabels.on && stateLabelKeys(form.kind).some((key) => !form.stateLabels[key].trim());
 
 /** What the trigger starts, as saved: a session, or the pipeline picked (empty until one is, which `formProblem` says). */
 export const formStart = (form: Pick<TriggerForm, 'start' | 'pipelineId' | 'unattended' | 'autoPush'>): TriggerStart =>
@@ -260,8 +265,8 @@ export function formToSave(form: TriggerForm): TriggerSave {
     maxAtOnce: form.start === 'session' && form.workspace === 'current' ? 1 : clamp(form.maxAtOnce, TRIGGER_LIMITS.atOnce),
     maxWaiting: clamp(form.maxWaiting, TRIGGER_LIMITS.waiting),
     intervalMinutes: clamp(form.intervalMinutes, TRIGGER_LIMITS.interval),
-    // State labels are for issues only; Assign to me for a label alone, since with an assignee every issue has one.
-    stateLabels: issues ? form.stateLabels : { ...form.stateLabels, on: false },
+    // State labels are for issues and reviews; Assign to me for a label alone, since with an assignee every issue has one.
+    stateLabels: hasStateLabels(form.kind) ? form.stateLabels : { ...form.stateLabels, on: false },
     assignOnPickUp: issues && form.which === 'label' && form.assignOnPickUp,
     paused: form.paused,
   };
@@ -328,9 +333,9 @@ export function triggerSummary(
   return [...when, ...then, ...limit];
 }
 
-/** The editor's sections, in order: only issues triggers do something on GitHub. */
+/** The editor's sections, in order: issues and reviews triggers can do something on GitHub, CI's can't. */
 export type TriggerSection = 'when' | 'which' | 'github' | 'start' | 'limits';
-export const triggerSections = (kind: TriggerForm['kind']): TriggerSection[] => (kind === 'issues' ? ['when', 'which', 'github', 'start', 'limits'] : ['when', 'which', 'start', 'limits']);
+export const triggerSections = (kind: TriggerForm['kind']): TriggerSection[] => (hasStateLabels(kind) ? ['when', 'which', 'github', 'start', 'limits'] : ['when', 'which', 'start', 'limits']);
 
 /** A section's number, by its place: CI's are 1 to 4. */
 export const sectionNumber = (kind: TriggerForm['kind'], section: TriggerSection) => triggerSections(kind).indexOf(section) + 1;
@@ -341,15 +346,15 @@ export function problemSection(form: TriggerForm): TriggerSection | 'name' | nul
   const issues = form.kind === 'issues';
   const filtered = issues || form.kind === 'reviews';
   if (filtered && ((form.which !== 'assignee' && !form.label.trim()) || (form.which !== 'label' && !form.assignee.trim()))) return 'which';
-  if (issues && form.stateLabels.on && [form.stateLabels.working, form.stateLabels.needsInput, form.stateLabels.prOpen, form.stateLabels.failed].some((l) => !l.trim())) return 'github';
+  if (stateLabelsUnnamed(form)) return 'github';
   // The rest are what it starts (the pipeline, the mode, the prompt), checked before the name.
   const startProblem = (form.start === 'pipeline' && !form.pipelineId) || (form.start === 'session' && form.permissionMode === 'bypassPermissions') || !form.prompt.trim();
   return startProblem || form.name.trim() ? 'start' : 'name';
 }
 
-/** Whether a section may show as one line: GitHub with nothing to do on the issue, Limits at their defaults. */
+/** Whether a section may show as one line: GitHub with nothing to do on the issue or pull request, Limits at their defaults. */
 export function foldable(form: TriggerForm, section: TriggerSection): boolean {
-  if (section === 'github') return form.kind === 'issues' && !form.stateLabels.on && !(form.which === 'label' && form.assignOnPickUp);
+  if (section === 'github') return hasStateLabels(form.kind) && !form.stateLabels.on && !(form.kind === 'issues' && form.which === 'label' && form.assignOnPickUp);
   if (section === 'limits') return formToSave(form).maxAtOnce === LIMIT_DEFAULTS.atOnce && form.maxWaiting === LIMIT_DEFAULTS.waiting;
   return false;
 }

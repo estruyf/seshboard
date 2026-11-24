@@ -302,6 +302,10 @@ describe('state labels', () => {
     expect(nextStateLabel('stopped')).toBe('failed');
     expect(nextStateLabel('gone')).toBe('failed');
     expect(nextStateLabel('idle')).toBeNull();
+    // A review is done when its turn ends; the pull request its session works on is the one it reviews.
+    expect(nextStateLabel('idle', 'reviews')).toBe('reviewed');
+    expect(nextStateLabel('prOpen', 'reviews')).toBe('reviewed');
+    expect(nextStateLabel('needsYou', 'reviews')).toBe('needsInput');
   });
 
   it('moves an issue in one edit, taking the trigger label off at pick-up', () => {
@@ -310,6 +314,7 @@ describe('state labels', () => {
     expect(stateLabelEdit(212, 'seshboard: working', 'seshboard: working')).toBeNull();
     expect(stateLabelEdit(212, null, null, { assign: true })).toEqual(['issue', 'edit', '212', '--add-assignee', '@me']);
     expect(stateLabelEdit(212, null, 'seshboard: working')).toEqual(['issue', 'edit', '212', '--remove-label', 'seshboard: working']);
+    expect(stateLabelEdit(88, 'seshboard: reviewed', 'seshboard: working', { pr: true })).toEqual(['pr', 'edit', '88', '--add-label', 'seshboard: reviewed', '--remove-label', 'seshboard: working']);
   });
 });
 

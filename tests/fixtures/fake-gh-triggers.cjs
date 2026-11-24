@@ -1,7 +1,7 @@
 /**
  * A gh for event triggers (#180), for the engine's tests and the smoke test: it never reaches GitHub. Its repository
- * lives in the JSON file FAKE_GH_TRIGGERS names, which the test writes and this changes (an issue edit adds and takes
- * off labels, a new label is made), so the next check sees what the last one did. Every call is appended to
+ * lives in the JSON file FAKE_GH_TRIGGERS names, which the test writes and this changes (an issue or pull request edit
+ * adds and takes off labels, a new label is made), so the next check sees what the last one did. Every call is appended to
  * `<file>.calls` as a JSON line, for the test to look at.
  *
  * The file: { repo, login, defaultBranch, fail: null | 'signed-out' | 'rate-limit' | 'not-found' | 'offline',
@@ -93,6 +93,17 @@ else if (a === 'api' && b === 'graphql') {
 } else if (a === 'pr' && b === 'view') {
   const pr = (state.prs || []).find((p) => p.number === Number(argv[2])) || fail(`no pull requests found for branch "${argv[2]}"`);
   out(pick(prJson(pr)));
+} else if (a === 'pr' && b === 'edit') {
+  // A review's state label: added and taken off as on an issue.
+  const pr = (state.prs || []).find((p) => p.number === Number(argv[2])) || fail(`no pull requests found for branch "${argv[2]}"`);
+  pr.labels = pr.labels || [];
+  for (const name of flags('--add-label')) {
+    if (!(state.labels || []).includes(name)) fail(`could not add label: '${name}' not found`);
+    if (!pr.labels.includes(name)) pr.labels.push(name);
+  }
+  for (const name of flags('--remove-label')) pr.labels = pr.labels.filter((l) => l !== name);
+  save();
+  out(`https://github.com/${state.repo || 'o/r'}/pull/${pr.number}`);
 } else if (a === 'issue' && b === 'list') {
   const label = flag('--label');
   const assignee = flag('--assignee');

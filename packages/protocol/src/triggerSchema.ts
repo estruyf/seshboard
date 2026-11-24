@@ -85,6 +85,8 @@ export const StateLabels = z.object({
   working: LabelName.default(DEFAULT_STATE_LABELS.working),
   needsInput: LabelName.default(DEFAULT_STATE_LABELS.needsInput),
   prOpen: LabelName.default(DEFAULT_STATE_LABELS.prOpen),
+  /** A pull request's label once its review session is done (reviews triggers). */
+  reviewed: LabelName.default(DEFAULT_STATE_LABELS.reviewed),
   failed: LabelName.default(DEFAULT_STATE_LABELS.failed),
 });
 export type StateLabels = z.infer<typeof StateLabels>;

@@ -5343,12 +5343,12 @@
     },
     {
       "id": "feature:trigger-reviews",
-      "name": "Reviews for you: a session on the pull request's branch for each pull request that asks for your review (or has a label, or both), from collaborators only, and again when it asks for a re-review; it reads the pull request, its comments and earlier reviews, and posts nothing on GitHub",
+      "name": "Reviews for you: a session on the pull request's branch for each pull request that asks for your review (or has a label, or both), from collaborators only, and again when it asks for a re-review; it reads the pull request, its comments and earlier reviews, and writes to GitHub only the state labels you turn on",
       "page": "projects/triggers"
     },
     {
       "id": "feature:trigger-state-labels",
-      "name": "State labels on the issue, and Assign the issue to me when work starts",
+      "name": "State labels on the issue or pull request (working, needs input, pr open or reviewed, failed), and Assign the issue to me when work starts",
       "page": "projects/triggers"
     },
     {

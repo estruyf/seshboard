@@ -288,10 +288,16 @@ describe('a reviews trigger in the editor', () => {
     expect(problemSection(updateForm(both, { assignee: '' }))).toBe('which');
   });
 
-  it('has no GitHub section and saves without state labels', () => {
+  it('keeps state labels, with reviewed in place of pull request open, and never assigns', () => {
     const f = updateForm(form({ stateLabels: { ...form().stateLabels, on: true }, assignOnPickUp: true }), { kind: 'reviews', which: 'label' });
-    expect(triggerSections('reviews')).toEqual(['when', 'which', 'start', 'limits']);
-    expect(formToSave(f)).toMatchObject({ source: { kind: 'reviews', label: 'seshboard', reviewer: null }, stateLabels: { on: false }, assignOnPickUp: false });
+    expect(triggerSections('reviews')).toEqual(['when', 'which', 'github', 'start', 'limits']);
+    expect(formToSave(f)).toMatchObject({ source: { kind: 'reviews', label: 'seshboard', reviewer: null }, stateLabels: { on: true, reviewed: 'seshboard: reviewed' }, assignOnPickUp: false });
+    // Only the labels a pull request gets need a name.
+    expect(formProblem(updateForm(f, { stateLabels: { ...f.stateLabels, prOpen: '' } }))).toBeNull();
+    const unnamed = updateForm(f, { stateLabels: { ...f.stateLabels, reviewed: ' ' } });
+    expect(formProblem(unnamed)).toBe('Give every state label a name.');
+    expect(problemSection(unnamed)).toBe('github');
+    expect(foldable(updateForm(f, { stateLabels: { ...f.stateLabels, on: false } }), 'github')).toBe(true);
   });
 
   it('reads a saved reviews trigger back', () => {
