@@ -22,6 +22,7 @@ import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.ts';
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
+import { Presence } from './presence.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runChangesReloadStep } from './changesReloadSmoke.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
@@ -15974,6 +15975,13 @@ app.whenReady().then(() => {
   // Scheduled sessions (#173): runs due while the computer slept are dealt with when it wakes. The engine's own timer
   // sees a clock or time zone change within a minute.
   powerMonitor.on('resume', () => engine.send({ type: 'wake' }));
+  // Paired phones: notifications they want only while you're away wait while someone uses this computer.
+  const presence = new Presence({ idleState: (seconds) => powerMonitor.getSystemIdleState(seconds), send: (present) => engine.sendStanding({ type: 'presence', present }) });
+  presence.start();
+  powerMonitor.on('lock-screen', () => presence.away());
+  powerMonitor.on('suspend', () => presence.away());
+  powerMonitor.on('unlock-screen', () => presence.check());
+  powerMonitor.on('resume', () => presence.check());
   const first = createWindow();
   // The global shortcut, and the quick start panel loaded (hidden) once the main window is up, so it opens at once.
   quickStart.setShortcut(preferences.get().quickStartShortcut);

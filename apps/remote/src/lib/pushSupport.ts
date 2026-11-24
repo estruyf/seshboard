@@ -73,16 +73,35 @@ export interface PushPrefs {
   on: boolean;
   needsYou: boolean;
   finished: boolean;
+  /** The moments that come only while nobody uses the computer that sends them (keyboard or mouse for 5 minutes, locked or asleep). */
+  onlyWhenAway: { needsYou: boolean; finished: boolean };
 }
 
-export const DEFAULT_PREFS: PushPrefs = { on: false, needsYou: true, finished: true };
+export const DEFAULT_PREFS: PushPrefs = { on: false, needsYou: true, finished: true, onlyWhenAway: { needsYou: true, finished: true } };
 
 export function parsePrefs(raw: string | null): PushPrefs {
   try {
-    const value = JSON.parse(raw ?? 'null') as Partial<PushPrefs> | null;
+    const value = JSON.parse(raw ?? 'null') as (Partial<Omit<PushPrefs, 'onlyWhenAway'>> & { onlyWhenAway?: Partial<PushPrefs['onlyWhenAway']> }) | null;
     if (!value || typeof value !== 'object') return DEFAULT_PREFS;
-    return { on: value.on === true, needsYou: value.needsYou !== false, finished: value.finished !== false };
+    // Saved before the away choice: away is the default, since a phone that pings while you sit at the computer is noise.
+    const away = value.onlyWhenAway && typeof value.onlyWhenAway === 'object' ? value.onlyWhenAway : {};
+    return { on: value.on === true, needsYou: value.needsYou !== false, finished: value.finished !== false, onlyWhenAway: { needsYou: away.needsYou !== false, finished: away.finished !== false } };
   } catch {
     return DEFAULT_PREFS;
   }
+}
+
+/** A moment's choice in Settings: always, only while you're away from the computer, or never. */
+export type MomentMode = 'always' | 'away' | 'off';
+export type Moment = 'needsYou' | 'finished';
+
+export function momentMode(prefs: PushPrefs, moment: Moment): MomentMode {
+  if (!prefs.on || !prefs[moment]) return 'off';
+  return prefs.onlyWhenAway[moment] ? 'away' : 'always';
+}
+
+/** The change a choice makes: Off turns the moment off and keeps its away choice for when it comes back on. */
+export function modeChange(prefs: PushPrefs, moment: Moment, mode: MomentMode): Partial<PushPrefs> {
+  if (mode === 'off') return { [moment]: false };
+  return { [moment]: true, onlyWhenAway: { ...prefs.onlyWhenAway, [moment]: mode === 'away' } };
 }

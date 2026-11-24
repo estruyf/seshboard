@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Bell, X } from 'lucide-react';
-import type { PushPrefs, PushSupport } from '../lib/pushSupport.ts';
-import { currentSupport, loadPrefs, markOffered, outdated, turnOff, turnOn, update, type PushComputers } from '../lib/push.ts';
+import { modeChange, momentMode, type Moment, type MomentMode, type PushPrefs, type PushSupport } from '../lib/pushSupport.ts';
+import { awayOutdated, currentSupport, loadPrefs, markOffered, outdated, turnOff, turnOn, update, type PushComputers } from '../lib/push.ts';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button } from './ui.tsx';
@@ -11,6 +11,15 @@ const MOMENTS = [
   { key: 'needsYou', label: 'Needs you', detail: 'Claude asks for a permission, has a question or a plan.', dot: 'bg-warn' },
   { key: 'finished', label: 'Finished', detail: 'Claude finished a turn.', dot: 'bg-unread' },
 ] as const;
+
+const MODES: readonly { value: MomentMode; label: string }[] = [
+  { value: 'away', label: 'Away' },
+  { value: 'always', label: 'Always' },
+  { value: 'off', label: 'Off' },
+];
+
+/** What Away means, under the choices. */
+export const AWAY_NOTE = "Away: you haven't used your computer for 5 minutes, or it's locked or asleep.";
 
 const HOME_SCREEN_STEPS = 'Tap Share, then Add to Home Screen. Open Seshboard from your Home Screen and turn notifications on there.';
 
@@ -138,18 +147,74 @@ export function SwitchLook({ checked }: { checked: boolean }) {
   );
 }
 
-/** Notifications, from the sidebar's `⋯` menu on a wide screen: Needs you and Finished, as on the computer. */
+/**
+ * The change a moment's choice makes. With notifications off, choosing turns them on with just that moment, as a
+ * switch did before.
+ */
+export function chooseMode(prefs: PushPrefs, moment: Moment, mode: MomentMode): Partial<PushPrefs> {
+  const change = modeChange(prefs, moment, mode);
+  return prefs.on || mode === 'off' ? change : { needsYou: false, finished: false, ...change };
+}
+
+/**
+ * Needs you and Finished, each Away, Always or Off: the rows in Settings and in the wide screen's sheet. `onChoose`
+ * gets the change to send.
+ */
+export function MomentChoices({ prefs, disabled, onChoose }: { prefs: PushPrefs; disabled: boolean; onChoose: (change: Partial<PushPrefs>) => void }) {
+  return (
+    <>
+      {MOMENTS.map((moment, i) => {
+        const current = momentMode(prefs, moment.key);
+        const id = `push-moment-${moment.key}`;
+        return (
+          <div key={moment.key} className={`flex min-h-14 items-center gap-3 px-3 py-2 ${i > 0 ? 'border-t border-border' : ''}`} data-remote-push-moment={moment.key}>
+            <span aria-hidden className={`size-2 shrink-0 rounded-full ${moment.dot}`} />
+            <span className="min-w-0 flex-1">
+              <span id={id} className="block text-ui font-semibold">
+                {moment.label}
+              </span>
+              <span className="block text-meta text-muted">{moment.detail}</span>
+            </span>
+            <div role="radiogroup" aria-labelledby={id} className="grid shrink-0 grid-cols-3 gap-0.5 rounded-lg border border-edge bg-sidebar p-0.5">
+              {MODES.map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode.value === current}
+                  disabled={disabled}
+                  onClick={() => mode.value !== current && onChoose(chooseMode(prefs, moment.key, mode.value))}
+                  className={`min-h-9 rounded-md px-2 text-meta disabled:opacity-60 pointer-fine:min-h-6 ${mode.value === current ? 'bg-card font-semibold text-text shadow-sm' : 'text-muted active:bg-selected'}`}
+                  data-remote-push-mode={mode.value}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Computers that ignore Away, named, or null when there are none or nothing waits for away. */
+export function awayNote(push: PushComputers, prefs: PushPrefs): string | null {
+  const waits = (['needsYou', 'finished'] as const).some((moment) => momentMode(prefs, moment) === 'away');
+  const older = waits ? awayOutdated(push) : [];
+  return older.length ? `${older.join(', ')} sends them even while you use it. Update Seshboard there to get Away.` : null;
+}
+
+/** Notifications, from the sidebar's `⋯` menu on a wide screen: Needs you and Finished, as in Settings. */
 export function NotificationsSheet({ push, onClose }: { push: PushComputers; onClose: () => void }) {
   const connected = push.targets.length > 0;
   const older = outdated(push);
   const support = currentSupport();
   const [prefs, setPrefs] = useState(loadPrefs);
   const [busy, setBusy] = useState(false);
-  const toggle = async (key: 'needsYou' | 'finished') => {
+  const choose = async (change: Partial<PushPrefs>) => {
     if (!connected || busy) return;
     setBusy(true);
-    // Off, a switch turns notifications on with just that moment; on, it changes that moment.
-    const change = prefs.on ? { [key]: !prefs[key] } : { needsYou: key === 'needsYou', finished: key === 'finished' };
     try {
       setPrefs(await update(push, change));
     } catch (error) {
@@ -159,36 +224,22 @@ export function NotificationsSheet({ push, onClose }: { push: PushComputers; onC
     }
   };
   const note = pushNote(support, connected);
+  const away = awayNote(push, prefs);
   return (
     <Sheet title="Notifications" subtitle="On this device, even when this page is closed." onClose={onClose} hook="notifications">
       {note && <p className="mb-3 rounded-lg bg-caution/10 px-3 py-2 text-ui text-text">{note}</p>}
       <div className="flex flex-col overflow-hidden rounded-xl border border-border">
-        {MOMENTS.map((moment, i) => {
-          const checked = prefs.on && prefs[moment.key];
-          return (
-            <button
-              key={moment.key}
-              type="button"
-              role="switch"
-              aria-checked={checked}
-              disabled={support !== 'ready' || !connected || busy}
-              onClick={() => void toggle(moment.key)}
-              className={`flex min-h-14 items-center gap-3 px-3 py-2.5 text-left disabled:opacity-60 ${i > 0 ? 'border-t border-border' : ''}`}
-              data-remote-push-switch={moment.key}
-            >
-              <span aria-hidden className={`size-2 shrink-0 rounded-full ${moment.dot}`} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-ui font-semibold">{moment.label}</span>
-                <span className="block text-meta text-muted">{moment.detail}</span>
-              </span>
-              <SwitchLook checked={checked} />
-            </button>
-          );
-        })}
+        <MomentChoices prefs={prefs} disabled={support !== 'ready' || !connected || busy} onChoose={(change) => void choose(change)} />
       </div>
+      <p className="pt-2 text-meta text-muted">{AWAY_NOTE}</p>
       {older.length > 0 && (
         <p className="mt-3 rounded-lg bg-caution/10 px-3 py-2 text-ui text-text" data-remote-push-outdated>
           {older.join(', ')} can't send notifications next to your other computers yet. Update Seshboard there to get them.
+        </p>
+      )}
+      {away && (
+        <p className="mt-3 rounded-lg bg-caution/10 px-3 py-2 text-ui text-text" data-remote-push-away-outdated>
+          {away}
         </p>
       )}
       <p className="pt-3 text-meta text-faint">

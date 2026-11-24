@@ -88,4 +88,18 @@ describe('pushTargets', () => {
   it('skips a device that has the app on screen', () => {
     expect(pushTargets(subs, 'needs-you', new Set(['phone']), known).map((s) => s.deviceId)).toEqual(['tablet']);
   });
+
+  it('holds back the moments a device wants only while this computer is unused', () => {
+    const away = [
+      { deviceId: 'phone', needsYou: true, finished: true, onlyWhenAway: { needsYou: false, finished: true } },
+      { deviceId: 'tablet', needsYou: true, finished: true },
+    ];
+    const both = new Set(['phone', 'tablet']);
+    expect(pushTargets(away, 'finished', new Set(), both, true).map((s) => s.deviceId)).toEqual(['tablet']);
+    expect(pushTargets(away, 'finished', new Set(), both, false).map((s) => s.deviceId)).toEqual(['phone', 'tablet']);
+    expect(pushTargets(away, 'needs-you', new Set(), both, true).map((s) => s.deviceId)).toEqual(['phone', 'tablet']);
+    // A reminder follows finished turns unless the device says otherwise.
+    expect(pushTargets(away, 'reminder', new Set(), both, true).map((s) => s.deviceId)).toEqual(['tablet']);
+    expect(pushTargets([{ ...away[0]!, onlyWhenAway: { finished: true, reminders: false } }], 'reminder', new Set(), both, true).map((s) => s.deviceId)).toEqual(['phone']);
+  });
 });

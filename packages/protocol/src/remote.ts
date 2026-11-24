@@ -723,6 +723,11 @@ export const remoteContract = {
         finished: z.boolean(),
         /** Reminders that come due (Remind me later); left out by a phone from before: it follows `finished`. */
         reminders: z.boolean().optional(),
+        /**
+         * With `REMOTE_FEATURE_PUSH_AWAY`: the moments that push only while nobody uses this computer. Left out by a
+         * phone from before, which gets every moment it asked for; a reminder left out follows `finished`.
+         */
+        onlyWhenAway: z.object({ needsYou: z.boolean().optional(), finished: z.boolean().optional(), reminders: z.boolean().optional() }).optional(),
         vapid: RemoteVapidKeys.optional(),
         label: z.string().trim().min(1).max(60).optional(),
       }),
