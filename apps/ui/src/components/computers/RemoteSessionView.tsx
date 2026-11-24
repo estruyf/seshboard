@@ -1,3 +1,4 @@
+import { RemoteOrchestratorCrumb, RemoteOrchestratorOverview } from '../orchestrator/OrchestratorOverview.tsx';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
@@ -393,6 +394,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
               {session.title}
             </h1>
             <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
+              {/* A session its orchestrator there started: the way back to it. */}
+              <RemoteOrchestratorCrumb computerId={id} sessionId={session.id} />
               <span className={`flex shrink-0 items-center gap-1.5 ${TEXT_TONE[line.tone]}`} data-session-status>
                 <span className={`inline-block size-2 shrink-0 rounded-full ${DOT_TONE[line.tone]}`} aria-hidden />
                 <span className="@max-[860px]:sr-only">{line.text}</span>
@@ -468,6 +471,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
         <div className="relative flex min-h-0 flex-1 flex-col">
         {!(catchUp && show) && <CatchUpPassBar rowId={rowId} active={pane.active} />}
         {catchUp && show && <CatchUpSlot card={catchUp} show={show} cwd={null} changes={null} active={pane.active} changesOpen={changesOpen} remote={{ actions: catchUpActions, rowId }} />}
+        {/* An orchestrator there: its sessions, by what needs you first. */}
+        <RemoteOrchestratorOverview computerId={id} sessionId={session.id} />
         {find.query !== null && <FindBar query={find.query} onQuery={find.setQuery} count={find.count} current={find.current} onStep={find.step} onClose={find.close} focusNonce={find.focusNonce} />}
         <div
           ref={scroller}

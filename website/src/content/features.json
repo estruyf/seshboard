@@ -5552,6 +5552,11 @@
       "page": "sessions/orchestrator"
     },
     {
+      "id": "feature:remote-orchestrator",
+      "name": "Remote: Run as › Orchestrator in New session on the phone and for another computer starts that computer's project orchestrator there, with any agent; the sessions it starts show under it; its overview (Waiting on you, Working, Queued, Ready for review, Idle) opens from a bar under its title on the phone and shows above its conversation for another computer, with Open on each session and the way back from one",
+      "page": "sessions/orchestrator"
+    },
+    {
       "id": "feature:start-session-from-selection",
       "name": "Start session from a selection: select text in a reply and pick Start session (or Start session from this in the message's menu) to open New session in the same project, in a new worktree, with the text as the prompt and a link to the session; the new session goes under it in the sidebar",
       "page": "sessions/orchestrator"

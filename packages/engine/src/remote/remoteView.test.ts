@@ -135,6 +135,18 @@ describe('remoteSessions with runs', () => {
     expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW }).sessions[0]).not.toHaveProperty('startedBy');
   });
 
+  it('sends the orchestrators the phone lists, without their folder', () => {
+    const pr = { number: 7, url: 'https://github.com/acme/web/pull/7', state: 'open' as const };
+    const listed = { sessionId: 'parent', projectRoot: ROOT, createdAt: 1, workers: [{ sessionId: 'plan', itemId: null, title: 'Plan it', startedAt: 2, pr }, { sessionId: null, itemId: 'later-1', title: 'Then this', startedAt: 3 }] };
+    const hidden = { sessionId: 'elsewhere', projectRoot: ROOT, createdAt: 1, workers: [] };
+    const list = remoteSessions({ summaries: [summary('parent', null), summary('plan', 'parent')], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), orchestrators: [listed, hidden], now: NOW });
+    expect(list.orchestrators).toEqual([{ sessionId: 'parent', createdAt: 1, workers: [{ sessionId: 'plan', itemId: null, title: 'Plan it', startedAt: 2, pr }, { sessionId: null, itemId: 'later-1', title: 'Then this', startedAt: 3, pr: null }] }]);
+    expect(JSON.stringify(list.orchestrators)).not.toContain(ROOT);
+    expect(RemoteSessions.parse(list).orchestrators).toHaveLength(1);
+    // An engine without orchestrators sends none.
+    expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW })).not.toHaveProperty('orchestrators');
+  });
+
   it("gives a read-only provider's session its resume command, in place of the message box", () => {
     const codex = { ...summary('019a-codex', null), provider: 'codex' } as SessionSummary;
     const copilot = { ...summary('copilot-1', null), provider: 'copilot' } as SessionSummary;

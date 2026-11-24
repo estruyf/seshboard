@@ -9,6 +9,7 @@ import { ClonePlan, CloneProgress } from './clone.ts';
 import { ApiRetry, AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, SlashCommand, StreamDelta, WorktreeBaseSchema } from './host.ts';
 import { Pipeline, PipelineRun, PipelineRunStep, PushPreview } from './pipelineSchema.ts';
 import { ProfileColor } from './profiles.ts';
+import { MAX_WORKER_TITLE } from './orchestrator.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
@@ -143,6 +144,25 @@ export const RemotePrompt = z.object({
 });
 export type RemotePrompt = z.infer<typeof RemotePrompt>;
 
+/**
+ * An orchestrator (docs/orchestrator.md) as a phone gets it: its session and the sessions it started, oldest first, with
+ * the title it gave each. A start that still waits in the queue has an `itemId` and no session yet. No folders.
+ */
+export const RemoteOrchestrator = z.object({
+  sessionId: z.string(),
+  createdAt: z.number(),
+  workers: z.array(
+    z.object({
+      sessionId: z.string().nullable(),
+      itemId: z.string().nullable(),
+      title: z.string().max(MAX_WORKER_TITLE),
+      startedAt: z.number(),
+      pr: z.object({ number: z.number().int(), url: z.string().max(2_000), state: z.enum(['open', 'merged', 'closed']) }).nullable().optional(),
+    }),
+  ),
+});
+export type RemoteOrchestrator = z.infer<typeof RemoteOrchestrator>;
+
 export const RemoteSessions = z.object({
   /** Needs you first, then working, then the most recent. */
   sessions: z.array(RemoteSession),
@@ -153,6 +173,8 @@ export const RemoteSessions = z.object({
    * newest first. With `REMOTE_FEATURE_PIPELINES`.
    */
   runs: z.array(RemoteRunState).optional(),
+  /** The orchestrators among the sessions listed, for the overview above their conversation. With `REMOTE_FEATURE_ORCHESTRATOR`. */
+  orchestrators: z.array(RemoteOrchestrator).optional(),
 });
 export type RemoteSessions = z.infer<typeof RemoteSessions>;
 
@@ -510,6 +532,11 @@ export const remoteContract = {
           /** With `REMOTE_FEATURE_ATTACHMENTS`, as `session.send` takes them. */
           images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
           files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
+          /**
+           * Start it as the project's orchestrator (docs/orchestrator.md), as Run as › Orchestrator does on the computer.
+           * With `REMOTE_FEATURE_ORCHESTRATOR`.
+           */
+          orchestrator: z.boolean().optional(),
         })
         .extend(RemoteSessionOptions.shape),
       result: z.object({ sessionId: z.string() }),

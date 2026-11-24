@@ -36,8 +36,17 @@ describe('checkRemoteSessions', () => {
     expect(checked?.dropped).toBe(6);
   });
 
+  it('keeps the orchestrators it can read, and counts the rest', () => {
+    const orchestrator = { sessionId: 's1', createdAt: 1, workers: [{ sessionId: 's2', itemId: null, title: 'Fix it', startedAt: 2, pr: null }, { sessionId: null, itemId: 'q1', title: 'Then this', startedAt: 3 }] };
+    const checked = checkRemoteSessions({ sessions: [session('s1')], prompts: [], orchestrators: [orchestrator, { sessionId: 's3', createdAt: 1, workers: [{ title: 7 }] }] });
+    expect(checked?.list.orchestrators).toEqual([orchestrator]);
+    expect(checked?.dropped).toBe(1);
+    // A computer from before orchestrators sends none, and the list says none.
+    expect(checkRemoteSessions({ sessions: [], prompts: [] })?.list).not.toHaveProperty('orchestrators');
+  });
+
   it('refuses what isn’t a session list', () => {
-    for (const value of [null, 'list', [], {}, { sessions: [] }, { sessions: {}, prompts: [] }, { sessions: [], prompts: [], runs: 'x' }]) expect(checkRemoteSessions(value)).toBeNull();
+    for (const value of [null, 'list', [], {}, { sessions: [] }, { sessions: {}, prompts: [] }, { sessions: [], prompts: [], runs: 'x' }, { sessions: [], prompts: [], orchestrators: 'x' }]) expect(checkRemoteSessions(value)).toBeNull();
   });
 });
 

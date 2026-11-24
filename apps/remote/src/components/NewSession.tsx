@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, ChevronLeft, KeyboardOff, ListTree, Search, SlidersHorizontal, X } from 'lucide-react';
-import { AUTO_MODEL, keptRunAs, pipelineMeta, remoteBaseName, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_WORKTREE_BASE, runAsLabel, runAsOrder, runAsSteps, switchLosses, switchNotice, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
+import { Check, ChevronDown, ChevronLeft, KeyboardOff, ListTree, Search, SlidersHorizontal, Waypoints, X } from 'lucide-react';
+import { AUTO_MODEL, keptRunAs, pipelineMeta, remoteBaseName, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_ORCHESTRATOR, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_WORKTREE_BASE, runAsLabel, runAsOrder, runAsSteps, switchLosses, switchNotice, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
 import { lastPipeline, rememberPipeline } from '../lib/runs.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -80,6 +80,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   /** The project's pipelines (`REMOTE_FEATURE_PIPELINES`), and the one Run as picked: Start runs it with the prompt as its task. */
   const [pipelines, setPipelines] = useState<RemotePipeline[]>([]);
   const [runAs, setRunAs] = useState<string | null>(null);
+  /** Run as › Orchestrator (docs/orchestrator.md), where the computer takes it: Start makes the session the project's orchestrator. */
+  const [orchestrate, setOrchestrate] = useState(false);
   /** A provider profile's (GitHub Copilot's) own model and mode, picked for this session. */
   const [providerModel, setProviderModel] = useState<string | null>(null);
   const [providerMode, setProviderMode] = useState<RemotePermissionMode | null>(null);
@@ -229,8 +231,16 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
     };
   }, [client, providerProfileId]);
   const ready = Boolean(client && projectId && prompt.trim() && !busy && !attachments.reading && !providerBlocked);
+  // An orchestrator runs with any agent, as on the computer.
+  const takesOrchestrator = features.includes(REMOTE_FEATURE_ORCHESTRATOR);
+  const asOrchestrator = takesOrchestrator && orchestrate;
   // A pipeline's steps are Claude Code's: none with another provider.
-  const pipeline = provider ? null : (pipelines.find((p) => p.id === runAs) ?? null);
+  const pipeline = provider || asOrchestrator ? null : (pipelines.find((p) => p.id === runAs) ?? null);
+  /** Run as: one session (null), a pipeline by its id, or the orchestrator. */
+  const pickRunAs = (picked: RunAsPick) => {
+    setOrchestrate(picked === ORCHESTRATOR);
+    setRunAs(picked === ORCHESTRATOR ? null : picked);
+  };
   /** Run as a pipeline: the prompt is its task, and the box's choices go to the steps that don't set their own. */
   const startRun = async (picked: RemotePipeline) => {
     const { worktree: _worktree, worktreeBase: _base, ...choices } = changedFrom(choice, defaults, baseProfile);
@@ -251,21 +261,22 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
         onStarted(computer, runId);
         return;
       }
-      const files = { ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}) };
+      // Attachments, and Run as › Orchestrator goes with either: an orchestrator runs with any agent.
+      const extra = { ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...(asOrchestrator ? { orchestrator: true } : {}) };
       // Another provider takes its own model and mode (and where, when it can); Claude Code the choices that differ from
       // the project's defaults.
       const { sessionId } = await client!.call(
         'session.create',
         provider
-          ? { projectId: projectId!, prompt: prompt.trim(), ...files, profileId: choice.profileId, model: providerModel, permissionMode: providerModeNow!, worktree: providerWorktree, ...(!providerWorktree && provider.supports.includes('branch') ? withBranch : {}) }
-          : { projectId: projectId!, prompt: prompt.trim(), ...files, ...changedFrom(choice, defaults, baseProfile), ...withBranch },
+          ? { projectId: projectId!, prompt: prompt.trim(), ...extra, profileId: choice.profileId, model: providerModel, permissionMode: providerModeNow!, worktree: providerWorktree, ...(!providerWorktree && provider.supports.includes('branch') ? withBranch : {}) }
+          : { projectId: projectId!, prompt: prompt.trim(), ...extra, ...changedFrom(choice, defaults, baseProfile), ...withBranch },
       );
       rememberProject(computer, projectId!);
       if (runOn) rememberRunOn(computer);
       clearDraft(DRAFT);
       onStarted(computer, sessionId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : pipeline ? "The pipeline didn't start." : "The session didn't start.");
+      setError(e instanceof Error ? e.message : pipeline ? "The pipeline didn't start." : asOrchestrator ? "The orchestrator didn't start." : "The session didn't start.");
       setBusy(false);
     }
   };
@@ -304,6 +315,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
           provider: provider.name,
           model: providerModel ? (providerModels.find((m) => m.value === providerModel)?.displayName ?? providerModel) : 'Default model',
           mode: provider.modes.find((m) => m.value === providerModeNow)?.label ?? MODE_SHORT[providerModeNow!],
+          orchestrator: asOrchestrator,
         })
       : options && picked
       ? optionsSummary({
@@ -318,13 +330,15 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
           branchPicked: branch !== null,
           base: choice.worktree && takesBase && branches ? remoteBaseName(choice.baseRef, branches) : null,
           pipeline: pipeline?.name ?? null,
+          orchestrator: asOrchestrator,
         })
       : null;
-  const changedAny = Object.keys(changes).length > 0 || branch !== null || runAs !== null;
+  const changedAny = Object.keys(changes).length > 0 || branch !== null || runAs !== null || asOrchestrator;
   const resetOptions = () => {
     setChanges({});
     setBranch(null);
     setRunAs(null);
+    setOrchestrate(false);
     setProviderModel(null);
     setProviderMode(null);
   };
@@ -364,6 +378,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   const choiceRows = (look: 'chip' | 'row') =>
     provider && options && picked ? (
       <>
+        {takesOrchestrator && <RunAsChip pipelines={[]} orchestrator value={asOrchestrator ? ORCHESTRATOR : null} onPick={pickRunAs} look={look} />}
         <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={pickProfile} look={look} />
         <ProviderModelChip provider={provider.name} models={providerModels} value={providerModel} onPick={setProviderModel} look={look} />
         <ProviderModeChip modes={provider.modes} value={providerModeNow!} onPick={setProviderMode} look={look} />
@@ -375,7 +390,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
       options &&
       picked && (
         <>
-          {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} look={look} />}
+          {(pipelines.length > 0 || takesOrchestrator) && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} orchestrator={takesOrchestrator} value={asOrchestrator ? ORCHESTRATOR : runAs} onPick={pickRunAs} look={look} />}
           <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={pickProfile} look={look} />
           <ModelChip options={options} value={choice.model} offerAuto={autoOn(options) && !pipeline} onPick={(model) => change({ model })} look={look} />
           {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} look={look} />}
@@ -387,7 +402,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
         </>
       )
     );
-  const startLabel = pipeline ? (busy ? 'Starting the run…' : 'Run pipeline') : 'Start session';
+  const startLabel = pipeline ? (busy ? 'Starting the run…' : 'Run pipeline') : asOrchestrator ? 'Start orchestrator' : 'Start session';
+  const startHook = pipeline ? 'pipeline' : asOrchestrator ? 'orchestrator' : 'session';
 
   return (
     <div className="relative flex h-full flex-col bg-bg" style={frame ? { position: 'fixed', left: 0, right: 0, top: frame.top, height: frame.height, zIndex: 20 } : undefined} data-remote-new-session>
@@ -630,7 +646,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
             </RoundButton>
           )}
           {/* The queue starts Claude Code sessions: not with another provider. */}
-          {projectBusy && !pipeline && !provider && (
+          {projectBusy && !pipeline && !provider && !asOrchestrator && (
             <button type="button" onClick={() => void queue()} onMouseDown={keepFocus} disabled={!startable.ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="pointer-events-auto inline-flex min-h-12 items-center rounded-full border border-edge bg-card px-5 text-body text-text shadow-[var(--sb-overlay-shadow)] disabled:opacity-60" data-remote-queue>
               Queue for later
             </button>
@@ -645,7 +661,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
             aria-label={startable.reason ? `${startLabel}. ${startable.reason}` : startLabel}
             title={startable.reason ?? undefined}
             className={`pointer-events-auto inline-flex min-h-12 items-center rounded-full px-7 text-body font-semibold shadow-[var(--sb-overlay-shadow)] transition-[background-color,color,opacity] ${startable.ready ? 'bg-accent text-on-accent active:brightness-90' : 'bg-accent/45 text-on-accent/60'}`}
-            data-remote-start={pipeline ? 'pipeline' : 'session'}
+            data-remote-start={startHook}
             data-remote-start-state={startable.ready ? 'ready' : 'empty'}
           >
             {startLabel}
@@ -683,13 +699,13 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
             ) : null}
           </span>
           {/* The queue starts Claude Code sessions: not with another provider. */}
-          {projectBusy && !pipeline && !provider && (
+          {projectBusy && !pipeline && !provider && !asOrchestrator && (
             <Button onClick={() => void queue()} onMouseDown={keepFocus} disabled={!ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="flex-1 sm:flex-none" data-remote-queue>
               Queue for later
             </Button>
           )}
-          <Button type="submit" form="new-session" variant="primary" onMouseDown={keepFocus} disabled={!ready} aria-busy={busy || undefined} data-remote-start={pipeline ? 'pipeline' : 'session'} className="flex-1 sm:flex-none">
-            {pipeline ? (busy ? 'Starting the run…' : 'Run pipeline') : 'Start session'}
+          <Button type="submit" form="new-session" variant="primary" onMouseDown={keepFocus} disabled={!ready} aria-busy={busy || undefined} data-remote-start={startHook} className="flex-1 sm:flex-none">
+            {startLabel}
             <Kbd shortcut="mod+enter" tone="on-accent" />
           </Button>
         </div>
@@ -750,23 +766,34 @@ function ProjectRow({ project, status, branch, onChange }: { project: RemoteProj
 
 /** The value for one session in Run as's list. */
 const ONE_SESSION = '';
+/** The value for the orchestrator in Run as's list: never a pipeline's id (a UUID or a built-in's name). */
+const ORCHESTRATOR = ' orchestrator';
+/** What Run as picks: one session (null), a pipeline's id, or `ORCHESTRATOR`. */
+type RunAsPick = string | null;
 
 /**
- * Run as (#179), as on the computer: one session, or a pipeline with the prompt as its task. The pipeline last run in
- * this project from this device comes first. Picked, Start becomes Run pipeline and the steps show under the chips.
+ * Run as (#179), as on the computer: one session, the project's orchestrator (where the computer takes it), or a
+ * pipeline with the prompt as its task. The pipeline last run in this project from this device comes first. Picked,
+ * Start becomes Run pipeline and the steps show under the chips, or Start orchestrator.
  */
-function RunAsChip({ pipelines, value, onPick, look }: { pipelines: readonly RemotePipeline[]; value: string | null; onPick: (pipelineId: string | null) => void; look?: 'chip' | 'row' }) {
+function RunAsChip({ pipelines, orchestrator = false, value, onPick, look }: { pipelines: readonly RemotePipeline[]; orchestrator?: boolean; value: RunAsPick; onPick: (picked: RunAsPick) => void; look?: 'chip' | 'row' }) {
   const picked = pipelines.find((p) => p.id === value);
+  const orchestrating = orchestrator && value === ORCHESTRATOR;
+  const Icon = orchestrating ? Waypoints : ListTree;
   return (
     <ChoiceChip
       label="Run as"
-      face={picked?.name ?? 'One session'}
-      icon={look === 'row' ? undefined : <ListTree className={`size-3.5 ${picked ? 'text-pipeline' : 'text-muted'}`} aria-hidden />}
+      face={orchestrating ? 'Orchestrator' : (picked?.name ?? 'One session')}
+      icon={look === 'row' ? undefined : <Icon className={`size-3.5 ${picked || orchestrating ? 'text-pipeline' : 'text-muted'}`} aria-hidden />}
       look={look}
-      rowIcon={<ListTree aria-hidden />}
+      rowIcon={<Icon aria-hidden />}
       selected={value ?? ONE_SESSION}
       hook="run-as"
-      options={[{ value: ONE_SESSION, label: 'One session', description: 'default', separatorAfter: true }, ...pipelines.map((p) => ({ value: p.id, label: p.name, description: pipelineMeta(p) }))]}
+      options={[
+        { value: ONE_SESSION, label: 'One session', description: 'default', separatorAfter: !orchestrator && pipelines.length > 0 },
+        ...(orchestrator ? [{ value: ORCHESTRATOR, label: 'Orchestrator', description: 'Hands your tasks to sessions it starts and tracks them', separatorAfter: pipelines.length > 0 }] : []),
+        ...pipelines.map((p) => ({ value: p.id, label: p.name, description: pipelineMeta(p) })),
+      ]}
       onPick={(id) => onPick(id === ONE_SESSION ? null : id)}
     />
   );

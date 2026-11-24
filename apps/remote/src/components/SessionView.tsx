@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { agentName, apiRetryLine, type ApiRetry, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_MOVE, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
+import { agentName, apiRetryLine, type ApiRetry, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_MOVE, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, remoteOrchestratorOf, remoteOrchestratorOfWorker, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { useReceivedRetry } from '../lib/receivedRetry.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
+import { BackToOrchestrator, OrchestratorBar, OrchestratorSheet, overviewOf } from './OrchestratorParts.tsx';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { transcriptItems } from '../lib/steps.ts';
@@ -107,6 +108,12 @@ export function SessionView({
   const openFile = features.includes(REMOTE_FEATURE_FILES) ? setFile : null;
   const [pipelineSheet, setPipelineSheet] = useState(false);
   const listed = new Set(sessions.sessions.map((s) => s.id));
+  // The orchestrator this session is, with its overview, or the one that started it (docs/orchestrator.md).
+  const orchestrator = remoteOrchestratorOf(sessions.orchestrators, sessionId);
+  const overview = useMemo(() => (orchestrator ? overviewOf(orchestrator, sessions) : null), [orchestrator, sessions]);
+  const [overviewSheet, setOverviewSheet] = useState(false);
+  const startedBy = orchestrator ? null : remoteOrchestratorOfWorker(sessions.orchestrators, sessionId);
+  const startedByTitle = startedBy && listed.has(startedBy.sessionId) ? (sessions.sessions.find((s) => s.id === startedBy.sessionId)?.title ?? 'Orchestrator') : null;
   const runParentId = runs.step && !runs.parent ? (runs.step.state.run.parentSessionId ?? runs.step.state.run.id) : null;
   const canOpenParent = runParentId !== null && (listed.has(runParentId) || runs.step?.state.run.parentSessionId === null);
   const stepName = runs.step ? runs.step.state.run.pipeline.steps[runs.step.index]?.name : undefined;
@@ -414,6 +421,8 @@ export function SessionView({
               onParent={canOpenParent && onOpenSession ? () => onOpenSession(runParentId!) : null}
             />
           )}
+          {overview && <OrchestratorBar groups={overview} onOpen={() => setOverviewSheet(true)} />}
+          {startedBy && startedByTitle && onOpenSession && <BackToOrchestrator title={startedByTitle} onOpen={() => onOpenSession(startedBy.sessionId)} />}
           <Transcript
             messages={messages}
             results={results}
@@ -506,6 +515,7 @@ export function SessionView({
           )}
         </div>
         {runSheet && runState && <RunSheet state={runState} client={client} canOpen={(id) => listed.has(id) && id !== sessionId} onOpenStep={(id) => onOpenSession?.(id)} onClose={() => setRunSheet(false)} />}
+        {overviewSheet && overview && <OrchestratorSheet groups={overview} canOpen={(id) => listed.has(id) && id !== sessionId && Boolean(onOpenSession)} onOpenSession={(id) => onOpenSession?.(id)} onClose={() => setOverviewSheet(false)} />}
         {pipelineSheet && session && <RunPipelineSheet client={client} projectId={session.projectId} sessionId={sessionId} onClose={() => setPipelineSheet(false)} />}
         {ask.open && !panelFits && <AskSheet client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
         {askPanel && <AskPanel client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}

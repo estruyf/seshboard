@@ -100,6 +100,12 @@ export const REMOTE_FEATURE_FILES = 'files.read';
 export const REMOTE_FEATURE_COMMANDS = 'session.commands';
 
 /**
+ * In `hello`'s `features`: `session.create` takes `orchestrator`, so New session there offers Run as › Orchestrator.
+ * The sessions an orchestrator starts sit under it (`RemoteSession.parentId`) on any computer.
+ */
+export const REMOTE_FEATURE_ORCHESTRATOR = 'session.orchestrator';
+
+/**
  * The most text of a file `files.read` sends (1 MB) and the largest image `files.image` sends (2.5 MB, 3.4 MB as
  * base64), so an answer stays under the channel's 4 MB line. A bigger text file comes with its size and no content.
  */

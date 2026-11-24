@@ -581,6 +581,8 @@ export function createEngine(options: EngineOptions): Engine {
     if (name === 'session.ask') remote?.askEvent(payload as AskEvent);
     // Pipeline runs are part of a phone's list, and what they say is a push.
     if (name === 'runs.changed' || name === 'runs.removed') remote?.sessionsChanged();
+    // So are the orchestrators: a start, a queued one and a pull request change the overview there.
+    if (name === 'orchestrator.changed') remote?.sessionsChanged();
     if (name === 'runs.notice') remote?.runNotice((payload as { notice: PipelineNotice }).notice);
     if (name === 'usage.changed') {
       const { profileId, usage } = payload as { profileId: string; usage: UsageSnapshot | null };
@@ -2982,6 +2984,7 @@ export function createEngine(options: EngineOptions): Engine {
       ...(options.remote.runAppUpdate ? { runAppUpdate: options.remote.runAppUpdate } : {}),
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list(), kept: keptSessions() }),
       triggerSessions: () => triggers.sessions(),
+      orchestrators: () => orchestrator.infos(),
       archiveAfterDays: () => retention.archiveAfterDays,
       scope: () => sidebarScope,
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
@@ -3039,7 +3042,7 @@ export function createEngine(options: EngineOptions): Engine {
         const models = await driver.models().catch(() => []);
         return { problem: null, models: models.map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })) };
       },
-      create: (root, prompt, choice, images) =>
+      create: (root, prompt, choice, images, orchestrator) =>
         createSession({
           cwd: root,
           prompt,
@@ -3050,6 +3053,7 @@ export function createEngine(options: EngineOptions): Engine {
           worktree: choice.worktree ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(choice.baseRef) } : null,
           profileId: choice.profileId,
           checkoutBranch: choice.checkoutBranch,
+          ...(orchestrator ? { orchestrator: true } : {}),
         }),
       // The remote branches and what `fresh` starts from go with them, for a new worktree's Branch from.
       branches: async (root) => {

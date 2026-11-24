@@ -27,7 +27,7 @@ import { runChangesReloadStep } from './changesReloadSmoke.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
 import { runFilesFromLinkStep, runFilesQuickOpenStep, runFilesSearchStep, runFilesToMessageStep, runFilesTreeStep } from './filesSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep, runPhoneOrchestratorStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -5704,6 +5704,20 @@ async function remoteRunRows(win: BrowserWindow, row: string, computerId: string
   if (!(await js(`Boolean(${fixer}?.querySelector('[data-row-triggered]'))`))) return 'the session a trigger started on the other computer has no bolt';
   await js(`${fixer}.click()`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-trigger-origin]')?.innerText.includes('CI fails on main')", 5_000))) return 'the session a trigger started on the other computer does not say which';
+  // An orchestrator there (Tidy up the release notes, scripts/remote-demo.ts): its overview, Open on a session it
+  // started, and the way back in that session's header.
+  const tidy = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Tidy up the release notes'))`;
+  if (!(await waitInPage(win, `Boolean(${tidy})`, 5_000))) return 'the other computer’s orchestrator is not in the sidebar';
+  await js(`${tidy}.click()`);
+  const card = '[data-remote-session] [data-orchestrator-overview]';
+  if (!(await waitInPage(win, `document.querySelector('${card} [data-orchestrator-group="waiting"] [data-worker-open]') && document.querySelector('${card} [data-orchestrator-group="queued"] [data-orchestrator-worker]') && document.querySelector('${card} [data-orchestrator-line]')?.innerText.includes('1 waiting on you')`, 5_000))) {
+    return `the other computer’s orchestrator has no overview with Waiting on you and Queued (${await js(`document.querySelector('${card}')?.innerText.replace(/\\s+/g, ' ').slice(0, 200) ?? 'no overview'`)})`;
+  }
+  await shot(win, 'computers-orchestrator.png');
+  await click(`${card} [data-orchestrator-group="waiting"] [data-worker-open]`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] h1')?.innerText === 'Publish the beta' && document.querySelector('[data-remote-session] [data-orchestrator-crumb]')", 5_000))) return 'Open in the other computer’s overview did not open the session with the way back to its orchestrator';
+  await click('[data-remote-session] [data-orchestrator-crumb]');
+  if (!(await waitInPage(win, `document.querySelector('[data-remote-session] h1')?.innerText === 'Tidy up the release notes'`, 5_000))) return 'the way back did not open the other computer’s orchestrator';
 
   await click('[data-new-session]');
   if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
@@ -5715,6 +5729,12 @@ async function remoteRunRows(win: BrowserWindow, row: string, computerId: string
   await click('[data-remote-new-session] [data-run-as]');
   if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-run-as-option=\"demo-execute-validate\"]')", 3_000))) return 'Run as does not list the other computer’s own pipeline';
   if (await js("Boolean(document.querySelector('[role=menu] [data-edit-pipelines]'))")) return 'Run as on the other computer offers Edit pipelines, which are that computer’s';
+  // Run as › Orchestrator, as on this computer: Start says so, and Queue for later goes.
+  if (!(await js("Boolean(document.querySelector('[role=menu] [data-run-as-option=\"orchestrator\"]'))"))) return 'Run as on the other computer does not offer Orchestrator';
+  await click('[role=menu] [data-run-as-option="orchestrator"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-start=\"orchestrator\"]')?.innerText.startsWith('Start orchestrator') && !document.querySelector('[data-remote-new-session] [data-remote-queue-later]')", 3_000))) return `picking Orchestrator did not turn Start into Start orchestrator, without Queue for later (${await js("document.querySelector('[data-remote-start]')?.innerText")})`;
+  await click('[data-remote-new-session] [data-run-as]');
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-run-as-option=\"demo-execute-validate\"]')", 3_000))) return 'Run as did not open again after Orchestrator';
   await click('[role=menu] [data-run-as-option="demo-execute-validate"]');
   const task = `Smoke remote run ${Date.now()}`;
   await js("document.querySelector('[data-remote-new-session] textarea').focus()");
@@ -15839,6 +15859,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: ⋯ › All settings opens Settings', runPhoneMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Done takes a session out of the list, the Done page lists it, Reopen puts it back', runPhoneDoneStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: what a trigger started has the bolt and says which trigger', () => runPhoneTriggerStep(shot), { timeoutMs: 75_000 });
+  await step('remote app on a phone: an orchestrator’s bar opens its overview, a session in it opens, and the way back', () => runPhoneOrchestratorStep(shot), { timeoutMs: 75_000 });
   await step("remote app on a phone: a finished session's catch-up shows the prompt's title without #", runPhoneCatchUpStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Quote under a reply, over a selection and in Read', runPhoneQuoteStep, { timeoutMs: 75_000 });
