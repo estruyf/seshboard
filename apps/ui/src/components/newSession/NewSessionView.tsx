@@ -1,5 +1,5 @@
 import { ViewHeader } from '../ViewHeader.tsx';
-import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, Clock, CornerDownRight, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, remoteOnlyBranches, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useProvider, useProviderReadiness, useProviders } from '../../state/providersStore.ts';
@@ -83,6 +83,7 @@ import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { linkNoticeText } from './linkNotice.ts';
 import { startFromGithub, useGithubStart, type GithubStartRequest } from '../../state/githubStartStore.ts';
+import { useStartUnder } from '../../state/startUnderStore.ts';
 import { currentCheckoutBlocked, forkCaution, linkBanner, NO_AUTOSTART, otherRepository, prBranch, readOnlyFork, startNote, startPrompt, takenWorktreeNames, uniqueWorktreeName, worktreeNameFor } from '../github/githubStart.ts';
 import { chipItem, reasonLine } from '../github/githubText.ts';
 import { activityByProject, latestBranches, orderProjects, tileStatus } from './projectTiles.ts';
@@ -260,6 +261,8 @@ function LocalNewSession() {
   const [queueAuto, setQueueAuto] = useState<boolean | null>(null);
   /** Opened with Start after this one…: the session it follows. Add to queue leads while Wait for still says it. */
   const [startAfterId, setStartAfterId] = useState<string | null>(null);
+  /** Start session from a selection: the session the text came from, which the new one goes under once it starts. */
+  const [parent, setParent] = useState<{ sessionId: string; label: string } | null>(null);
   const startAfterRequest = useStartAfter((s) => s.request);
   const waitMenu = useMenu();
   /** Start anyway in Start's menu sends what is in the box, without asking again. */
@@ -270,6 +273,7 @@ function LocalNewSession() {
    */
   const [fromGithub, setFromGithub] = useState<{ request: GithubStartRequest; issue: GithubIssueDetail | null; pr: GithubPrDetail | null; error: string | null; loading: boolean } | null>(null);
   const githubRequest = useGithubStart((s) => s.request);
+  const startUnderRequest = useStartUnder((s) => s.request);
   /** A link's issue or pull request, waiting for the link's folder (a `repo` is looked up first). */
   const [linkGithub, setLinkGithub] = useState<{ type: 'issue' | 'pr'; ref: string; prompt: string | null; autostart: boolean } | null>(null);
   // Clone from GitHub: the form (kept in the store, so Run on can move it to another computer) and its clone here.
@@ -402,6 +406,7 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
     setPreset(undefined);
     setDraftPrompt('');
     touchedFor.current = undefined;
@@ -505,6 +510,18 @@ function LocalNewSession() {
     setQueueAuto(true);
     setStartAfterId(request.sessionId);
   }, [startAfterRequest]);
+  // Start session from a selection: the session's project (through `startIn`, above, in a new worktree), the text as the
+  // prompt with a link to the session, and the session to go under. Nothing starts until you press Start.
+  useEffect(() => {
+    if (!startUnderRequest) return;
+    const request = useStartUnder.getState().take();
+    if (!request) return;
+    if (fromLater || fromSchedule) leaveQueued();
+    setRestored(null);
+    setPreset({ text: request.text, context: [{ kind: 'session', sessionId: request.sessionId, label: request.label }], seq: ++presets.current });
+    setDraftPrompt(request.text);
+    setParent({ sessionId: request.sessionId, label: request.label });
+  }, [startUnderRequest]);
   // New session from an issue or pull request: its project, then (once gh has read it) the worktree, chip and prompt.
   // Like a link's, it never starts on its own.
   useEffect(() => {
@@ -598,6 +615,7 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
   }, [laterRequest]);
   // Edit… on a schedule: its folder, choices and prompt, in a box of its own, until Save schedule (or leaving it).
   useEffect(() => {
@@ -626,6 +644,7 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
   }, [scheduleRequest]);
   // The command palette's prompt step, moved here with ⌘E: its folder, choices, profile and prompt.
   const handoff = usePaletteBus((s) => s.handoff);
@@ -876,6 +895,7 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
     setCwd(folder);
     setAddAsProject(true);
     // Quick question is never the folder New session opens on next time: ⌘N stays on your last project.
@@ -1031,6 +1051,7 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
   };
   /** Schedule… (or Save schedule): the prompt in the box with this folder and these choices, in the schedule dialog. */
   const openSchedule = () => {
@@ -1153,6 +1174,7 @@ function LocalNewSession() {
         github: fresh || noWorktree || noBranch ? undefined : githubStart(worktree),
         provider: runWith ? { model: runWithModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
         ...(asOrchestrator ? { orchestrator: true } : {}),
+        ...(parent ? { parentSessionId: parent.sessionId } : {}),
         // A link starts what it says, never at a higher price.
         ...(fastStart && !fromLink ? { fastMode: true } : {}),
       },
@@ -1183,6 +1205,7 @@ function LocalNewSession() {
           }
           if (!fresh && worktree && !nameTouched) setSuggestedName(randomWorktreeName());
           setFastStart(false);
+          setParent(null);
           if (fromGithub) {
             setFromGithub(null);
             setNameTouched(false);
@@ -1332,6 +1355,19 @@ function LocalNewSession() {
     ) : linkPrompt !== null ? (
       <Notice inline icon={<Link2 size={13} className="text-accent-ink" aria-hidden />} actions={clearButton('data-clear-link-prompt')} data-link-notice>
         {pendingStart !== null ? 'Starting a session with the prompt from an external link…' : linkNoticeText(linkPrompt)}
+      </Notice>
+    ) : parent ? (
+      <Notice
+        inline
+        icon={<CornerDownRight size={13} className="text-accent-ink" aria-hidden />}
+        actions={
+          <Button variant="quiet" size="sm" onClick={() => setParent(null)} className="-my-1 shrink-0" data-clear-parent>
+            Remove
+          </Button>
+        }
+        data-parent-notice
+      >
+        Goes under {parent.label} in the sidebar.
       </Notice>
     ) : fromLater ? (
       <Notice

@@ -6,6 +6,7 @@ import { skimMarks,
   inheritedPermissionMode,
   isAbsolutePath,
   listedInMainList,
+  type OrchestratorInfo,
   type PipelineRunState,
   type RemoteRunState,
   type CatchUp,
@@ -15,6 +16,7 @@ import { skimMarks,
   type ProfileDefaults,
   type ProjectDefaults,
   type RemoteArchivedSession,
+  type RemoteOrchestrator,
   type RemoteBlock,
   type RemoteMessage,
   type RemotePrompt,
@@ -58,6 +60,8 @@ export interface ListOptions {
   starters?: ReadonlyMap<string, string>;
   /** The sessions and runs triggers started (by session or run id): the bolt and "Started by …" on the phone too. */
   triggers?: readonly TriggerSession[];
+  /** Every orchestrator: those among the sessions listed go along, for their overview. */
+  orchestrators?: readonly OrchestratorInfo[];
   /** Providers whose sessions are read-only here (Codex), with the command that continues one (`{sessionId}` in it). */
   readOnlyProviders?: ReadonlyMap<string, string>;
   now?: number;
@@ -116,10 +120,19 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     const origin = origins.get(session.id);
     if (origin) session.trigger = origin;
   }
-  if (!options.runs) return { sessions, prompts };
+  const listedIds = new Set(sessions.map((s) => s.id));
+  const orchestrators = options.orchestrators ? { orchestrators: remoteOrchestrators(options.orchestrators, listedIds) } : {};
+  if (!options.runs) return { sessions, prompts, ...orchestrators };
   const now = options.now ?? Date.now();
-  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, origins, ...(sources.kept ? { kept: sources.kept } : {}) });
-  return { sessions, prompts, runs };
+  const runs = remoteRuns(options.runs, listedIds, { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, origins, ...(sources.kept ? { kept: sources.kept } : {}) });
+  return { sessions, prompts, runs, ...orchestrators };
+}
+
+/** The orchestrators whose session the phone lists, without their project's folder. */
+export function remoteOrchestrators(orchestrators: readonly OrchestratorInfo[], listed: ReadonlySet<string>): RemoteOrchestrator[] {
+  return orchestrators
+    .filter((o) => listed.has(o.sessionId))
+    .map((o) => ({ sessionId: o.sessionId, createdAt: o.createdAt, workers: o.workers.map((w) => ({ sessionId: w.sessionId, itemId: w.itemId, title: w.title, startedAt: w.startedAt, pr: w.pr ?? null })) }));
 }
 
 /** The most sessions in Done a phone gets. */

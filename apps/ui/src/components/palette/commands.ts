@@ -241,6 +241,8 @@ export interface PaletteApi {
   searchInFiles(): void;
   toggleAgents(): void;
   toggleCommands(): void;
+  /** Opens the session's side panel with nothing in it, listing the tools to open there; with a tool there already, nothing changes. */
+  showSidePanel(): void;
   /** Opens the session's web preview in front, on the newest server running in it when none is open yet. */
   openWeb(): void;
   reloadWeb(): void;
@@ -924,6 +926,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'check-transcript', title: 'Check transcript…', group: 'session', icon: Stethoscope, keywords: 'diagnose empty missing messages error debug compacted', when: (ctx) => session(ctx) !== null && ctx.connected, run: (api) => api.checkTranscript() },
   { id: 'toggle-terminal', title: 'Toggle terminal', group: 'session', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: (ctx) => session(ctx) !== null, run: (api) => api.toggleTerminal() },
   { id: 'new-terminal-tab', title: 'New terminal tab', group: 'session', icon: Plus, keywords: 'shell', when: (ctx) => withCwd(ctx) && ctx.connected, run: (api) => api.newTerminalTab() },
+  { id: 'show-side-panel', title: 'Show side panel', group: 'session', icon: PanelRight, keywords: 'rail tools panel right open empty list', when: hasSession, run: (api) => api.showSidePanel() },
   { id: 'toggle-agents', title: 'Toggle agents', group: 'session', shortcut: keysFor('agents.toggle'), icon: Bot, keywords: 'subagents background panel', when: hasSession, run: (api) => api.toggleAgents() },
   { id: 'open-web-preview', title: 'Open web preview', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'browser localhost dev server site page', when: (ctx) => hasSession(ctx) && !ctx.browser && ctx.webPreview !== false, run: (api) => api.openWeb() },
   { id: 'reload-web-preview', title: 'Reload web preview', group: 'session', icon: RotateCw, keywords: 'refresh browser localhost dev server page', when: (ctx) => hasSession(ctx) && ctx.session!.web && !ctx.browser && ctx.webPreview !== false, run: (api) => api.reloadWeb() },

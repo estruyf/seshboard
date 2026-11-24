@@ -131,7 +131,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
   /** Each watched session's listener, to send it updates as the transcript hub would. */
   const transcriptListeners = new Map<string, (update: TranscriptUpdate) => void>();
   const answered: string[] = [];
-  const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[] }> = [];
+  const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[]; orchestrator?: boolean }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
   const calls: string[] = [];
   /** How each session stands with its usage limit. */
@@ -212,7 +212,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     commands: async (sessionId) => [{ name: 'review', description: `Review ${sessionId}`, argumentHint: '[pr]' }],
     respond: (requestId) => void answered.push(requestId),
-    create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
+    create: async (root, prompt, choice, images, orchestrator) => (created.push({ root, prompt, model: choice.model, choice, images, orchestrator: orchestrator ?? false }), { sessionId: 'new' }),
     // The Copilot profile is GitHub Copilot's, with its own modes.
     providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }], supports: [] } : null),
     providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
@@ -452,7 +452,10 @@ describe('Remote hub', () => {
     expect(await remote.call('projects.list', {})).toEqual({ projects: [{ id: projectIdOf(FIRST), name: 'Api' }, { id: projectIdOf(ROOT), name: 'Web' }] });
     await expect(remote.call('session.create', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test' });
-    expect(created).toMatchObject([{ root: ROOT, prompt: 'add a test', model: 'opus', images: [] }]);
+    expect(created).toMatchObject([{ root: ROOT, prompt: 'add a test', model: 'opus', images: [], orchestrator: false }]);
+    // Run as › Orchestrator on the phone: the engine starts it as the project's orchestrator.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'ship the backlog', orchestrator: true });
+    expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'ship the backlog', orchestrator: true });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'match this', images: [image], files: [{ name: 'spec.pdf', data: 'aGVsbG8=' }] });
     expect(created.at(-1)).toMatchObject({ images: [image], prompt: expect.stringMatching(/^match this\n\n@\S+spec\.pdf$/) });
     await expect(remote.call('session.create', { projectId: projectIdOf('/elsewhere'), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

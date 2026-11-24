@@ -351,7 +351,11 @@ export const Composer = memo(function Composer(props: ComposerProps) {
     const value = loadText(props.preset!.text);
     setFill(null);
     if (props.preset!.attachments) setAttachments(props.preset!.attachments);
-    if (props.preset!.context) setLocalChips(addChips([], props.preset!.context));
+    // A box with a draft keeps its chips in the drafts store (New session's link to a session); a queued item's live here.
+    if (props.preset!.context) {
+      if (draftKey !== undefined) useDrafts.getState().addContext(draftKey, props.preset!.context);
+      else setLocalChips(addChips([], props.preset!.context));
+    }
     history.current!.reset();
     closePalette();
     requestAnimationFrame(() => {

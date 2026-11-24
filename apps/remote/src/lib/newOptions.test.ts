@@ -45,6 +45,11 @@ describe('the Options summary', () => {
   it('says the pipeline instead of where it works', () => {
     expect(texts(optionsSummary(input({ pipeline: 'Plan, execute, validate' })).second)).toBe('*Runs as Plan, execute, validate*');
   });
+
+  it('says an orchestrator in place of one session, keeping where it works', () => {
+    expect(texts(optionsSummary(input({ orchestrator: true })).second)).toBe('This folder on dev · *orchestrator*');
+    expect(texts(providerSummary({ provider: 'GitHub Copilot', model: 'GPT-5 mini', mode: 'Ask', orchestrator: true }).second)).toBe('This folder · *orchestrator*');
+  });
 });
 
 describe('Start', () => {

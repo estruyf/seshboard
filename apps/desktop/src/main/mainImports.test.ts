@@ -117,6 +117,7 @@ const PROTOCOL_FILES_MAIN_REACHES = [
   'queueStates.ts',
   'remoteConstants.ts',
   'remoteOnlyBranches.ts',
+  'remoteOrchestrator.ts',
   'remoteWorktreeBase.ts',
   'retention.ts',
   'rpc.ts',

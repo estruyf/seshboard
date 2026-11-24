@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isSessionUpdate, ORCHESTRATOR_MAX_WORKING, ORCHESTRATOR_PROMPT, WORKER_JUDGMENT, type CatchUp, type LaterDraft, type ProfileDefaults, type ProjectDefaults, type WorkerStatus } from '@seshboard/protocol';
+import { isSessionUpdate, ORCHESTRATOR_MAX_WORKING, ORCHESTRATOR_PROMPT, WORKER_JUDGMENT, type CatchUp, type LaterDraft, type ProfileDefaults, type ProjectDefaults, type SessionStartAsk, type WorkerStatus } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { Orchestrator, type OrchestratorDeps } from './orchestrator.ts';
 import { OrchestratorBridge } from './orchestratorBridge.ts';
@@ -35,6 +35,8 @@ function setup(overrides: Partial<OrchestratorDeps> = {}) {
   const queued: LaterDraft[] = [];
   const sent: Array<{ sessionId: string; text: string }> = [];
   const parents = new Map<string, string>();
+  const asks: Array<{ sessionId: string; ask: SessionStartAsk }> = [];
+  let answer = true;
   const status = new Map<string, WorkerStatus>();
   let defaults = {} as ProjectDefaults;
   const profileDefaults = new Map<string, ProfileDefaults>();
@@ -51,6 +53,7 @@ function setup(overrides: Partial<OrchestratorDeps> = {}) {
     queue: (draft) => (queued.push(draft), `item-${queued.length}`),
     start: async (draft, title, instructions) => (started.push({ draft, title, instructions }), `worker-${started.length}`),
     setParent: (sessionId, parent) => void parents.set(sessionId, parent),
+    askStart: async (sessionId, ask) => (asks.push({ sessionId, ask }), answer),
     status: (id) => status.get(id) ?? 'working',
     info: async () => ({ gone: false, branch: 'fix-login', pr: null }),
     pr: () => null,
@@ -62,7 +65,7 @@ function setup(overrides: Partial<OrchestratorDeps> = {}) {
     ...overrides,
   });
   orchestrator.mark('orc', ROOT);
-  return { orchestrator, store, started, queued, sent, parents, status, changes: () => changes, setDefaults: (d: Partial<ProjectDefaults>) => (defaults = d as ProjectDefaults), setProfileDefaults: (id: string, d: Partial<ProfileDefaults>) => void profileDefaults.set(id, d as ProfileDefaults) };
+  return { orchestrator, store, started, queued, sent, parents, asks, answer: (value: boolean) => (answer = value), status, changes: () => changes, setDefaults: (d: Partial<ProjectDefaults>) => (defaults = d as ProjectDefaults), setProfileDefaults: (id: string, d: Partial<ProfileDefaults>) => void profileDefaults.set(id, d as ProfileDefaults) };
 }
 
 describe('Orchestrator: start_session', () => {
@@ -227,13 +230,55 @@ describe('OrchestratorStore', () => {
   });
 });
 
+describe('Orchestrator: a session that asks to start another', () => {
+  it('asks on a card, then starts the session under the one that asked, without instructions or updates', async () => {
+    const { orchestrator, started, parents, asks, store, sent } = setup({ session: (id) => ({ projectRoot: ROOT, profileId: id === 'plain' ? 'copilot-1' : 'default' }) });
+    const result = await orchestrator.startChild('plain', { title: 'Fix lint', prompt: 'Fix the lint errors.' });
+    expect(asks).toEqual([{ sessionId: 'plain', ask: { title: 'Fix lint', prompt: 'Fix the lint errors.', agent: 'Copilot', workspace: 'worktree' } }]);
+    expect(result).toEqual({ text: expect.stringContaining('The user allowed it. Started "Fix lint" as session worker-1, in its own worktree, with Copilot') });
+    expect(started[0]).toMatchObject({ title: 'Fix lint', instructions: null, draft: { cwd: ROOT, workspace: 'worktree', profileId: 'copilot-1', permissionMode: 'acceptEdits' } });
+    expect(parents.get('worker-1')).toBe('plain');
+    // Not an orchestrator's worker: its turns tell no one.
+    expect(store.workersOf('plain')).toEqual([]);
+    orchestrator.turnEnded('worker-1', 'clean', null);
+    expect(sent).toEqual([]);
+    expect(orchestrator.systemTextFor('worker-1')).toBeNull();
+  });
+
+  it('starts nothing when you deny it, or when the arguments are wrong', async () => {
+    const { orchestrator, started, asks, answer } = setup();
+    answer(false);
+    expect(await orchestrator.startChild('plain', { title: 'Fix lint', prompt: 'Fix it.' })).toEqual({ text: expect.stringContaining('The user did not start "Fix lint"') });
+    expect(await orchestrator.startChild('plain', { title: 'No prompt' })).toMatchObject({ error: true });
+    expect(await orchestrator.startChild('plain', { title: 'A', prompt: 'a', agent: 'Gemini' })).toMatchObject({ error: true, text: expect.stringContaining('No agent called "Gemini"') });
+    expect(asks).toHaveLength(1);
+    expect(started).toEqual([]);
+  });
+
+  it('waits in the queue at a limit, and goes under the session once it starts', async () => {
+    const { orchestrator, queued, parents } = setup({ hold: () => ({ reason: 'focus', detail: 'The focus limit is reached.' }) });
+    expect(await orchestrator.startChild('plain', { title: 'Fix lint', prompt: 'Fix it.' })).toEqual({ text: expect.stringContaining('waits in the queue: The focus limit is reached.') });
+    expect(queued).toHaveLength(1);
+    expect(orchestrator.itemStarted('item-1', 'later-1')).toBe('Fix lint');
+    expect(parents.get('later-1')).toBe('plain');
+    expect(orchestrator.itemStarted('item-1', 'later-2')).toBeNull();
+  });
+
+  it('runs in the project’s folder where a worktree is not possible, and names no agent when there is one', async () => {
+    const { orchestrator, asks, started } = setup({ inRepo: () => false, agents: () => AGENTS.slice(0, 1) });
+    await orchestrator.startChild('plain', { title: 'Notes', prompt: 'Write notes.' });
+    expect(asks[0]!.ask).toMatchObject({ agent: null, workspace: 'current' });
+    expect(started[0]!.draft.workspace).toBe('current');
+  });
+});
+
 describe('OrchestratorBridge', () => {
   const BASE = { command: '/app/Seshboard', args: ['orchestrator-mcp.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
   const token = (server: { env: Record<string, string> }) => server.env.SESHBOARD_ORCHESTRATOR_TOKEN!;
 
   it('runs a tool for the orchestrator its token belongs to, and for no other session', async () => {
     const runs: unknown[] = [];
-    const bridge = new OrchestratorBridge({ run: async (sessionId, tool, args) => (runs.push({ sessionId, tool, args }), { text: 'ok' }), isOrchestrator: (id) => id === 'orc', log: () => {} });
+    const bridge = new OrchestratorBridge({ run: async (sessionId, tool, args) => (runs.push({ sessionId, tool, args }), { text: 'ok' }), startChild: async () => ({ text: 'child' }), isOrchestrator: (id) => id === 'orc', log: () => {} });
     cleanups.push(() => bridge.close());
     const server = await bridge.serverFor(BASE, () => 'orc');
     expect(server.env).toMatchObject({ ELECTRON_RUN_AS_NODE: '1', SESHBOARD_ORCHESTRATOR_SOCKET: expect.any(String) });
@@ -244,5 +289,17 @@ describe('OrchestratorBridge', () => {
     await expect(bridge.handle({ id: 3, token: 'made-up', tool: 'list_sessions', args: {} })).resolves.toMatchObject({ error: true });
     await expect(bridge.handle({ id: 4, token: token(server), tool: 'delete_everything', args: {} })).resolves.toMatchObject({ error: true });
     expect(runs).toHaveLength(1);
+  });
+
+  it('gives any other session only start_session, which goes to startChild', async () => {
+    const children: unknown[] = [];
+    const bridge = new OrchestratorBridge({ run: async () => ({ text: 'orchestrator' }), startChild: async (sessionId, args) => (children.push({ sessionId, args }), { text: 'asked' }), isOrchestrator: () => false, log: () => {} });
+    cleanups.push(() => bridge.close());
+    const server = await bridge.serverFor(BASE, () => 'plain', 'session');
+    expect(server.env.SESHBOARD_ORCHESTRATOR_ROLE).toBe('session');
+    await expect(bridge.handle({ id: 1, token: token(server), tool: 'start_session', args: { title: 'A', prompt: 'a' } })).resolves.toEqual({ text: 'asked' });
+    expect(children).toEqual([{ sessionId: 'plain', args: { title: 'A', prompt: 'a' } }]);
+    await expect(bridge.handle({ id: 2, token: token(server), tool: 'message_session', args: {} })).resolves.toMatchObject({ error: true });
+    expect((await bridge.serverFor(BASE, () => 'orc')).env.SESHBOARD_ORCHESTRATOR_ROLE).toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { remoteContract, RemotePrompt, RemoteRunState, RemoteSession, type ComputerMethod } from '@seshboard/protocol';
+import { remoteContract, RemoteOrchestrator, RemotePrompt, RemoteRunState, RemoteSession, type ComputerMethod } from '@seshboard/protocol';
 
 /**
  * What another computer sends, checked against the remote contract before a window sees it. That computer may run
@@ -9,7 +9,7 @@ import { remoteContract, RemotePrompt, RemoteRunState, RemoteSession, type Compu
  */
 export type CheckedData = { ok: true; value: unknown; dropped: number } | { ok: false; issue: string };
 
-const ListShape = z.object({ sessions: z.array(z.unknown()), prompts: z.array(z.unknown()), runs: z.array(z.unknown()).optional() });
+const ListShape = z.object({ sessions: z.array(z.unknown()), prompts: z.array(z.unknown()), runs: z.array(z.unknown()).optional(), orchestrators: z.array(z.unknown()).optional() });
 
 function keep<T>(schema: z.ZodType<T>, items: readonly unknown[]): T[] {
   return items.flatMap((item) => {
@@ -22,9 +22,9 @@ function keep<T>(schema: z.ZodType<T>, items: readonly unknown[]): T[] {
 export function checkSessions(value: unknown): CheckedData {
   const shape = ListShape.safeParse(value);
   if (!shape.success) return { ok: false, issue: issueOf(shape.error) };
-  const { sessions, prompts, runs } = shape.data;
-  const list = { sessions: keep(RemoteSession, sessions), prompts: keep(RemotePrompt, prompts), ...(runs ? { runs: keep(RemoteRunState, runs) } : {}) };
-  const dropped = sessions.length - list.sessions.length + prompts.length - list.prompts.length + (runs ? runs.length - list.runs!.length : 0);
+  const { sessions, prompts, runs, orchestrators } = shape.data;
+  const list = { sessions: keep(RemoteSession, sessions), prompts: keep(RemotePrompt, prompts), ...(runs ? { runs: keep(RemoteRunState, runs) } : {}), ...(orchestrators ? { orchestrators: keep(RemoteOrchestrator, orchestrators) } : {}) };
+  const dropped = sessions.length - list.sessions.length + prompts.length - list.prompts.length + (runs ? runs.length - list.runs!.length : 0) + (orchestrators ? orchestrators.length - list.orchestrators!.length : 0);
   return { ok: true, value: list, dropped };
 }
 

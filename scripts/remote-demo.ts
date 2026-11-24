@@ -803,6 +803,19 @@ const hub: RemoteHub = new RemoteHub({
     { sessionId: 'a0000000-0000-4000-8000-000000000002', triggerId: 'demo-ci', eventId: 'demo-ci-4512', triggerName: 'CI fails on main', kind: 'ci', ref: 'CI #4512', url: 'https://github.com/acme/harbor-api/actions/runs/4512', at: ago(7) },
     { sessionId: ROW_RUN, triggerId: 'demo-issues', eventId: 'demo-issue-212', triggerName: 'New bug issues', kind: 'issue', ref: '#212', url: 'https://github.com/acme/harbor-api/issues/212', at: ago(16) },
   ],
+  // An orchestrator (docs/orchestrator.md): Tidy up the release notes started Publish the beta, which waits on you, and
+  // one start waits in the queue. Its workers are sessions the list has already, so no list gains a row.
+  orchestrators: () => [
+    {
+      sessionId: 'a0000000-0000-4000-8000-000000000006',
+      projectRoot: '/demo/tideline',
+      createdAt: ago(100),
+      workers: [
+        { sessionId: 'a0000000-0000-4000-8000-000000000001', itemId: null, title: 'Publish the beta', startedAt: ago(90), pr: { number: 318, url: 'https://github.com/acme/tideline/pull/318', state: 'open' } },
+        { sessionId: null, itemId: 'demo-queued-changelog', title: 'Update the changelog', startedAt: ago(80) },
+      ],
+    },
+  ],
   runAppUpdate: runDemoUpdate,
   onStatus: () => {},
   log: (level, message) => console.log(`[${level}] ${message}`),

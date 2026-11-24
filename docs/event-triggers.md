@@ -240,3 +240,18 @@ A trigger can start a [pipeline](pipelines.md) (#185). Where it is:
 - **The editor** has a **Starts** row (A session, A pipeline, with the project's pipelines, and the two checkboxes above); for a pipeline the prompt is the **Task**, and Runs with keeps only the profile. **Start ▾ › Start when…** in New session with a pipeline picked in Run as opens it on that pipeline.
 - **Backup.** The Triggers section keeps `start`; an imported trigger whose pipeline isn't here (yours, a built-in, or one in the same file) is skipped.
 
+
+## Built: Reviews for you
+
+The first pull request source starts a review, not a fix: **Reviews for you** (`source.kind: 'reviews'`) picks up open pull requests that ask for a review. It is built like Issues for you. Where it is and how it differs:
+
+- **The filter** is a reviewer (`@me` by default, or a login), a label, or both, in one `gh pr list --search "draft:false review-requested:<reviewer> label:\"<label>\""` (`reviewQuery`). A request to one of your teams counts, as GitHub's `review-requested:` has it. Drafts are left out.
+- **Re-reviews** need nothing of their own. Your review takes the request off, so the pull request leaves the answer and is forgotten (`seen`). When the author asks again, it is new: a second session starts, and the event row is taken over as for an issue that matches again.
+- **Collaborators only** reads `authorAssociation` with the same GraphQL call as issues, on `pullRequest(number:)` (`readAssociations(…, 'pullRequest')`).
+- **The session works on the pull request's code.** The event's fields keep its branch, base, head commit and fork (`eventPullRequest`), and the draft gets `LaterDraft.pullRequest`. `draftWorkspace` in `engine.ts` turns that into a worktree from `pull/<n>/head` (`WorktreeBranchBase.pullRequest`), or `gh pr checkout` in the project's folder, plus the GitHub origin, for a start now and from the queue alike.
+- **What it reads**: the pull request's text, comments and reviews with their verdicts (`gh pr view --json body,comments,reviews`, read fresh at the start), as a GitHub context block.
+- **State labels on the pull request**, off by default, as for issues but with `reviewed` in place of `pr open` (`REVIEW_STATE_LABEL_KEYS`, `stateLabelKeys`). They go on with `gh pr edit` (`stateLabelEdit(…, { pr: true })`). Picked up: `working`. Needs you: `needs input`. The session's turn ends: `reviewed` (`nextStateLabel(state, 'reviews')`), and back to `working` if you go on in it. An error or a stop: `failed`. The session works on the pull request's own branch, so `sessionPr` and a run's `pr` don't count as a pull request it opened.
+- **The trigger's label stays on.** It is a filter, not a queue as for issues: it says the pull request wants these reviews, again later too. So a pull request whose own session put `working` on it stays `match` in `seen`, not `held`, and doesn't start again when that label moves to `reviewed`. One that has `working` or `needs input` the first time it shows up (another computer reviews it) is skipped and counts as seen. Either way it starts again when it leaves the answer and asks again. Archived or deleted while `working` or `needs input`: the label comes off and the pull request is `released`.
+- **No Assign to me**: `formToSave` turns it off. The default prompt asks Claude to write the review in the session, not to post it.
+- **A session, not a pipeline.** A pipeline's run starts from the default branch, so `triggerProblem` refuses a pipeline for a reviews trigger and the editor turns A pipeline off.
+- **Events** have `kind: 'pr'`; the ref is `PR #88` and the session's title `Review #88 <title>`. The notification says *Review requested on PR #88. Started “Review #88 …”*.

@@ -1,6 +1,6 @@
-import { AlertTriangle, CircleDot, CircleX, Folder, GitBranch, ListTree, MessageSquareDiff, Pencil, SquareTerminal, Zap } from 'lucide-react';
+import { AlertTriangle, CircleDot, CircleX, Folder, GitBranch, GitPullRequest, ListTree, MessageSquareDiff, Pencil, SquareTerminal, Zap } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { BUILT_IN_PIPELINES, notWithYet, pipelineProblem, STATE_LABEL_KEYS, TRIGGER_LIMITS, type ProviderFeature, type StateLabelKey, type TriggerRepoInfo } from '@seshboard/protocol/client';
+import { BUILT_IN_PIPELINES, notWithYet, pipelineProblem, stateLabelKeys, TRIGGER_LIMITS, type ProviderFeature, type StateLabelKey, type TriggerRepoInfo } from '@seshboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
 import { basename } from '../../lib/format.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
@@ -28,6 +28,7 @@ import {
   triggerSummary,
   updateForm,
   WHICH_ISSUES,
+  WHICH_REVIEWS,
   type TriggerForm,
   type TriggerSection,
 } from '../../state/triggers.ts';
@@ -127,9 +128,20 @@ function Section({ section, number, title, aside, folded, onOpen, children }: { 
 }
 
 /** A source's icon on its tile, in its colour: CI in `error`, issues in `ok`, the rest muted. */
-export function SourceIcon({ kind, size = 30 }: { kind: 'ci' | 'issues' | 'changes' | 'command'; size?: number }) {
-  const tone = kind === 'ci' ? 'bg-error/12 text-error' : kind === 'issues' ? 'bg-ok/12 text-ok' : kind === 'changes' ? 'bg-caution/12 text-caution' : 'bg-link/12 text-link';
-  const icon = kind === 'ci' ? <CircleX size={size * 0.5} aria-hidden /> : kind === 'issues' ? <CircleDot size={size * 0.5} aria-hidden /> : kind === 'changes' ? <MessageSquareDiff size={size * 0.5} aria-hidden /> : <SquareTerminal size={size * 0.5} aria-hidden />;
+export function SourceIcon({ kind, size = 30 }: { kind: 'ci' | 'issues' | 'reviews' | 'changes' | 'command'; size?: number }) {
+  const tone = kind === 'ci' ? 'bg-error/12 text-error' : kind === 'issues' ? 'bg-ok/12 text-ok' : kind === 'reviews' ? 'bg-trigger/12 text-trigger' : kind === 'changes' ? 'bg-caution/12 text-caution' : 'bg-link/12 text-link';
+  const icon =
+    kind === 'ci' ? (
+      <CircleX size={size * 0.5} aria-hidden />
+    ) : kind === 'issues' ? (
+      <CircleDot size={size * 0.5} aria-hidden />
+    ) : kind === 'reviews' ? (
+      <GitPullRequest size={size * 0.5} aria-hidden />
+    ) : kind === 'changes' ? (
+      <MessageSquareDiff size={size * 0.5} aria-hidden />
+    ) : (
+      <SquareTerminal size={size * 0.5} aria-hidden />
+    );
   return (
     <span className={`flex shrink-0 items-center justify-center rounded-lg ${tone}`} style={{ width: size, height: size }} aria-hidden>
       {icon}
@@ -173,7 +185,8 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   const readiness = useProviderReadiness(runWith ? (form.profileId ?? project?.profileId ?? defaultProfile) : null);
   const lacks = (feature: ProviderFeature) => runWith !== null && !(runWithInfo?.supports.includes(feature) ?? false);
   /** The form as it can run: another provider's in the project's folder, as one session, until it has worktrees and pipelines. */
-  const runnable = (f: TriggerForm): TriggerForm => ({ ...f, ...(lacks('worktree') ? { workspace: 'current' as const } : {}), ...(lacks('pipeline') ? { start: 'session' as const } : {}) });
+  // A review starts a session on the pull request's code; a pipeline's run would start from the default branch.
+  const runnable = (f: TriggerForm): TriggerForm => ({ ...f, ...(lacks('worktree') ? { workspace: 'current' as const } : {}), ...(lacks('pipeline') || f.kind === 'reviews' ? { start: 'session' as const } : {}) });
   const shown = runnable(form);
   const [info, setInfo] = useState<TriggerRepoInfo | null>(() => useTriggers.getState().repoInfo.get(request.root) ?? null);
   const [renaming, setRenaming] = useState(false);
@@ -217,6 +230,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   const atOnce = folder ? 1 : form.maxAtOnce;
   const unit = (n: number) => (startsPipeline ? (n === 1 ? 'run' : 'runs') : n === 1 ? 'session' : 'sessions');
   const issues = form.kind === 'issues';
+  const reviews = form.kind === 'reviews';
   const login = info?.login ?? null;
   const summary = triggerSummary(form, { defaultBranch: info?.defaultBranch ?? null, login, pipelineName: pipeline?.name ?? null });
 
@@ -325,7 +339,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   // A disabled card stays in the group for screen readers, but the arrow keys skip it.
                   disabled={source.soon}
                   onClick={() => {
-                    if (!source.soon && (source.kind === 'ci' || source.kind === 'issues')) update({ kind: source.kind });
+                    if (!source.soon && (source.kind === 'ci' || source.kind === 'issues' || source.kind === 'reviews')) update({ kind: source.kind });
                   }}
                   className={`flex min-w-0 items-center gap-3 rounded-lg border p-3 text-left ${checked ? 'border-accent-ink ring-1 ring-accent-ink/40' : 'border-edge hover:bg-border/45'} disabled:cursor-default disabled:hover:bg-transparent`}
                   data-trigger-source={source.kind}
@@ -352,7 +366,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
           )}
         </Section>
 
-        <Section section="which" number={number('which')} title={issues ? 'Which issues?' : 'Which runs?'}>
+        <Section section="which" number={number('which')} title={issues ? 'Which issues?' : reviews ? 'Which pull requests?' : 'Which runs?'}>
           {form.kind === 'ci' ? (
             <div className="flex flex-wrap gap-x-4 gap-y-3">
               <Field label="Branch" htmlFor={`${id}-branch`}>
@@ -391,7 +405,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
             </div>
           ) : (
             <>
-              <SegmentedControl mode="radio" label="Which issues" value={form.which} onChange={(which) => update({ which })} segments={WHICH_ISSUES.map((w) => ({ value: w.value, label: w.label, data: { 'data-trigger-which': w.value } }))} className="w-fit" />
+              <SegmentedControl
+                mode="radio"
+                label={reviews ? 'Which pull requests' : 'Which issues'}
+                value={form.which}
+                onChange={(which) => update({ which })}
+                segments={(reviews ? WHICH_REVIEWS : WHICH_ISSUES).map((w) => ({ value: w.value, label: w.label, data: { 'data-trigger-which': w.value } }))}
+                className="w-fit"
+              />
               <div className="flex flex-wrap gap-x-4 gap-y-3">
                 {form.which !== 'assignee' && (
                   <Field label="Label" htmlFor={`${id}-label`}>
@@ -406,10 +427,10 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   </Field>
                 )}
                 {form.which !== 'label' && (
-                  <Field label="Assigned to" labelId={`${id}-assigned`}>
+                  <Field label={reviews ? 'Review asked of' : 'Assigned to'} labelId={`${id}-assigned`}>
                     <div role="group" aria-labelledby={`${id}-assigned`} className="flex h-8 flex-wrap items-center gap-2" data-trigger-assigned-field>
                       <Select
-                        label="Assigned to"
+                        label={reviews ? 'Review asked of' : 'Assigned to'}
                         className={CHIP}
                         value={form.assignee === '@me' && !otherAssignee ? '@me' : 'other'}
                         onChange={(value) => {
@@ -438,7 +459,11 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
               <Checkbox checked={form.collaboratorsOnly} onChange={(collaboratorsOnly) => update({ collaboratorsOnly })} dataAttrs={{ 'data-trigger-collaborators': true }}>
                 <span className="grid gap-0.5">
                   <span className="text-ui text-text">Only from collaborators</span>
-                  <span className="text-meta text-muted">Owners, members and collaborators. A bot or template can add a label for anyone, so on a public repository anyone could start a session here.</span>
+                  <span className="text-meta text-muted">
+                    {reviews
+                      ? 'Owners, members and collaborators. On a public repository anyone can open a pull request and ask you for a review.'
+                      : 'Owners, members and collaborators. A bot or template can add a label for anyone, so on a public repository anyone could start a session here.'}
+                  </span>
                 </span>
               </Checkbox>
             </>
@@ -453,16 +478,16 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
           </div>
         </Section>
 
-        {issues && (
-          <Section section="github" number={number('github')} title="What happens on GitHub?" aside="optional" folded={folds.has('github') ? 'Nothing: no labels, no assignee' : null} onOpen={() => open('github')}>
+        {(issues || reviews) && (
+          <Section section="github" number={number('github')} title="What happens on GitHub?" aside="optional" folded={folds.has('github') ? (issues ? 'Nothing: no labels, no assignee' : 'Nothing: no labels') : null} onOpen={() => open('github')}>
             <div className="grid gap-1.5">
               <Checkbox checked={form.stateLabels.on} onChange={(on) => update({ stateLabels: { ...form.stateLabels, on } })} dataAttrs={{ 'data-trigger-state-labels': true }}>
-                <span className="text-ui text-text">Keep a state label on the issue</span>
+                <span className="text-ui text-text">{issues ? 'Keep a state label on the issue' : 'Keep a state label on the pull request'}</span>
               </Checkbox>
               {form.stateLabels.on && (
                 <div className="grid gap-1.5 pl-5.5">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {STATE_LABEL_KEYS.map((key) => (
+                    {stateLabelKeys(form.kind).map((key) => (
                       <StateLabelPill key={key} which={key} name={form.stateLabels[key]} />
                     ))}
                     <Button variant="quiet" size="sm" aria-expanded={renaming} onClick={() => setRenaming(!renaming)} data-trigger-rename-labels>
@@ -471,7 +496,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   </div>
                   {renaming && (
                     <div className="grid grid-cols-2 gap-1.5 @max-[640px]:grid-cols-1" data-trigger-label-names>
-                      {STATE_LABEL_KEYS.map((key) => (
+                      {stateLabelKeys(form.kind).map((key) => (
                         <input
                           key={key}
                           aria-label={`${STATE_WORDS[key]} label`}
@@ -483,12 +508,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                       ))}
                     </div>
                   )}
-                  <p className="text-meta text-muted">{form.which === 'assignee' ? 'Take the state label off to start an issue again.' : `The ${form.label.trim() || 'trigger'} label comes off when work starts.`} Missing labels are created.</p>
+                  <p className="text-meta text-muted">
+                    {reviews ? 'A pull request that asks for a review again gets a new session.' : form.which === 'assignee' ? 'Take the state label off to start an issue again.' : `The ${form.label.trim() || 'trigger'} label comes off when work starts.`} Missing labels are created.
+                  </p>
                 </div>
               )}
             </div>
             {/* With an assignee in the filter every issue has one already: Assign to me would skip them all. */}
-            {form.which === 'label' && (
+            {issues && form.which === 'label' && (
               <Checkbox checked={form.assignOnPickUp} onChange={(assignOnPickUp) => update({ assignOnPickUp })} dataAttrs={{ 'data-trigger-assign': true }}>
                 <span className="grid gap-0.5">
                   <span className="text-ui text-text">Assign the issue to me when work starts</span>
@@ -510,7 +537,13 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                 onChange={(start) => update({ start, pipelineId: start === 'pipeline' && !pipelines.some((p) => p.id === form.pipelineId) ? (pipelines[0]?.id ?? null) : form.pipelineId })}
                 segments={[
                   { value: 'session', label: 'A session', data: { 'data-trigger-starts': 'session' } },
-                  { value: 'pipeline', label: 'A pipeline', disabled: lacks('pipeline'), ...(lacks('pipeline') && runWith ? { tooltip: notWithYet(runWith) } : {}), data: { 'data-trigger-starts': 'pipeline' } },
+                  {
+                    value: 'pipeline',
+                    label: 'A pipeline',
+                    disabled: lacks('pipeline') || reviews,
+                    ...(reviews ? { tooltip: 'A review starts a session on the pull request.' } : lacks('pipeline') && runWith ? { tooltip: notWithYet(runWith) } : {}),
+                    data: { 'data-trigger-starts': 'pipeline' },
+                  },
                 ]}
                 className="w-fit"
               />
@@ -552,7 +585,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
           <Field label={startsPipeline ? 'Task' : 'Prompt'} htmlFor={`${id}-prompt`}>
             <TriggerPromptField id={`${id}-prompt`} value={form.prompt} onChange={(prompt) => update({ prompt })} kind={form.kind} describedBy={`${id}-prompt-hint`} invalid={tried && !form.prompt.trim()} />
             <p id={`${id}-prompt-hint`} className="mt-0.5 text-meta text-muted">
-              {`Type {{ for event fields.${startsPipeline ? ' It fills {{task}} in the steps.' : ''} ${issues ? "The issue's text" : "The failed jobs' log"} goes ${startsPipeline ? 'to the first step' : 'in'} as context to read, not instructions.`}
+              {`Type {{ for event fields.${startsPipeline ? ' It fills {{task}} in the steps.' : ''} ${issues ? "The issue's text" : reviews ? "The pull request's text, comments and reviews" : "The failed jobs' log"} ${reviews ? 'go' : 'goes'} ${startsPipeline ? 'to the first step' : 'in'} as context to read, not instructions.${reviews ? " The session works on the pull request's branch." : ''}`}
             </p>
           </Field>
           <Field label="Runs with" labelId={`${id}-runs`}>
@@ -660,13 +693,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   );
 }
 
-const STATE_WORDS: Record<StateLabelKey, string> = { working: 'Working', needsInput: 'Needs input', prOpen: 'Pull request open', failed: 'Failed' };
+const STATE_WORDS: Record<StateLabelKey, string> = { working: 'Working', needsInput: 'Needs input', prOpen: 'Pull request open', reviewed: 'Reviewed', failed: 'Failed' };
 
-/** Each state label in the status colour it stands for: working yellow, needs input pink, pull request green, failed red. */
+/** Each state label in the status colour it stands for: working yellow, needs input pink, pull request or reviewed green, failed red. */
 const STATE_PILL: Record<StateLabelKey, string> = {
   working: 'border-accent-ink/50 bg-accent/12 text-accent-ink',
   needsInput: 'border-warn/50 bg-warn/10 text-warn',
   prOpen: 'border-ok/50 bg-ok/10 text-ok',
+  reviewed: 'border-ok/50 bg-ok/10 text-ok',
   failed: 'border-error/50 bg-error/10 text-error',
 };
 

@@ -22,6 +22,12 @@ describe('trigger notifications', () => {
     expect(triggerAlerts([notice({})])).toEqual([{ kind: 'trigger-started', sessionId: 's1', title: 'CI failed on main. Started “Fix test on main”', body: 'switchboard · CI #4512' }]);
   });
 
+  it('says a review request started a session', () => {
+    expect(triggerAlerts([notice({ triggerName: 'Reviews for you', eventKind: 'pr', branch: 'feat/dark', ref: 'PR #88', title: 'Review #88 Add a dark theme' })])).toEqual([
+      { kind: 'trigger-started', sessionId: 's1', title: 'Review requested on PR #88. Started “Review #88 Add a dark theme”', body: 'switchboard · PR #88' },
+    ]);
+  });
+
   it('says an issue was picked up', () => {
     expect(triggerAlerts([notice({ kind: 'pickedUp', triggerName: 'Issues for you', eventKind: 'issue', branch: null, ref: '#212', sessionId: null })])).toEqual([
       { kind: 'trigger-started', sessionId: '', triggerRoot: '/dev/switchboard', title: 'Issue #212 picked up', body: 'switchboard · Issues for you' },

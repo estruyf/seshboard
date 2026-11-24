@@ -55,14 +55,18 @@ describe('detecting a provider without a profile', () => {
 describe('update checks of providers', () => {
   const deps = { store: appStateFake(), ready: Promise.resolve(), onChange: () => {}, log: () => {} };
 
-  it("checks Copilot CLI and Codex CLI, each with its own CLI's answer", async () => {
+  it("checks Copilot CLI, Codex CLI and Antigravity CLI, each with its own CLI's answer", async () => {
     const userHome = home();
     const copilot = createProviderUpdater('copilot', { env: {}, home: userHome, shellEnv, copilot: demoCopilot() }, deps);
     const codex = createProviderUpdater('codex', { env: {}, home: userHome, shellEnv, codex: { binary: async () => ({ path: join(userHome, '.local', 'bin', 'codex'), version: '0.167.0' }), latestVersion: async () => '0.168.0' } }, deps);
     expect(copilot?.state).toMatchObject({ provider: 'copilot' });
     await codex!.check();
     expect(codex!.state).toMatchObject({ provider: 'codex', name: 'Codex CLI', status: 'available', installedVersion: '0.167.0', latestVersion: '0.168.0', command: 'codex update' });
+    const agy = createProviderUpdater('antigravity', { env: {}, home: userHome, shellEnv, antigravity: { binary: async () => ({ path: join(userHome, '.local', 'bin', 'agy'), version: '1.5.12' }), latestVersion: async () => '1.5.16' } }, deps);
+    await agy!.check();
+    expect(agy!.state).toMatchObject({ provider: 'antigravity', name: 'Antigravity CLI', status: 'available', installedVersion: '1.5.12', latestVersion: '1.5.16', command: 'agy update' });
     copilot?.close();
     codex!.close();
+    agy!.close();
   });
 });

@@ -28,7 +28,7 @@ import { runChangesReloadStep } from './changesReloadSmoke.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
 import { runFilesFromLinkStep, runFilesQuickOpenStep, runFilesSearchStep, runFilesToMessageStep, runFilesTreeStep } from './filesSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep, runPhoneOrchestratorStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -37,9 +37,9 @@ import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
 import { installBrowserAgent } from './browserAgent.ts';
 import { runBrowserAgentStep, runBrowserScriptsStep, runBrowserServerStep } from './browserAgentSmoke.ts';
-import { runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
+import { runPanelLauncherStep, runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
-import { runBrowserDownloadStep, runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserSuggestionsStep, runBrowserTextPageStep, runBrowserViewStep, runBrowserWindowStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
+import { runBrowserDownloadStep, runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserStopStep, runBrowserSuggestionsStep, runBrowserTextPageStep, runBrowserViewStep, runBrowserWindowStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -5705,6 +5705,20 @@ async function remoteRunRows(win: BrowserWindow, row: string, computerId: string
   if (!(await js(`Boolean(${fixer}?.querySelector('[data-row-triggered]'))`))) return 'the session a trigger started on the other computer has no bolt';
   await js(`${fixer}.click()`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-trigger-origin]')?.innerText.includes('CI fails on main')", 5_000))) return 'the session a trigger started on the other computer does not say which';
+  // An orchestrator there (Tidy up the release notes, scripts/remote-demo.ts): its overview, Open on a session it
+  // started, and the way back in that session's header.
+  const tidy = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Tidy up the release notes'))`;
+  if (!(await waitInPage(win, `Boolean(${tidy})`, 5_000))) return 'the other computer’s orchestrator is not in the sidebar';
+  await js(`${tidy}.click()`);
+  const card = '[data-remote-session] [data-orchestrator-overview]';
+  if (!(await waitInPage(win, `document.querySelector('${card} [data-orchestrator-group="waiting"] [data-worker-open]') && document.querySelector('${card} [data-orchestrator-group="queued"] [data-orchestrator-worker]') && document.querySelector('${card} [data-orchestrator-line]')?.innerText.includes('1 waiting on you')`, 5_000))) {
+    return `the other computer’s orchestrator has no overview with Waiting on you and Queued (${await js(`document.querySelector('${card}')?.innerText.replace(/\\s+/g, ' ').slice(0, 200) ?? 'no overview'`)})`;
+  }
+  await shot(win, 'computers-orchestrator.png');
+  await click(`${card} [data-orchestrator-group="waiting"] [data-worker-open]`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] h1')?.innerText === 'Publish the beta' && document.querySelector('[data-remote-session] [data-orchestrator-crumb]')", 5_000))) return 'Open in the other computer’s overview did not open the session with the way back to its orchestrator';
+  await click('[data-remote-session] [data-orchestrator-crumb]');
+  if (!(await waitInPage(win, `document.querySelector('[data-remote-session] h1')?.innerText === 'Tidy up the release notes'`, 5_000))) return 'the way back did not open the other computer’s orchestrator';
 
   await click('[data-new-session]');
   if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
@@ -5716,6 +5730,12 @@ async function remoteRunRows(win: BrowserWindow, row: string, computerId: string
   await click('[data-remote-new-session] [data-run-as]');
   if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-run-as-option=\"demo-execute-validate\"]')", 3_000))) return 'Run as does not list the other computer’s own pipeline';
   if (await js("Boolean(document.querySelector('[role=menu] [data-edit-pipelines]'))")) return 'Run as on the other computer offers Edit pipelines, which are that computer’s';
+  // Run as › Orchestrator, as on this computer: Start says so, and Queue for later goes.
+  if (!(await js("Boolean(document.querySelector('[role=menu] [data-run-as-option=\"orchestrator\"]'))"))) return 'Run as on the other computer does not offer Orchestrator';
+  await click('[role=menu] [data-run-as-option="orchestrator"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-start=\"orchestrator\"]')?.innerText.startsWith('Start orchestrator') && !document.querySelector('[data-remote-new-session] [data-remote-queue-later]')", 3_000))) return `picking Orchestrator did not turn Start into Start orchestrator, without Queue for later (${await js("document.querySelector('[data-remote-start]')?.innerText")})`;
+  await click('[data-remote-new-session] [data-run-as]');
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-run-as-option=\"demo-execute-validate\"]')", 3_000))) return 'Run as did not open again after Orchestrator';
   await click('[role=menu] [data-run-as-option="demo-execute-validate"]');
   const task = `Smoke remote run ${Date.now()}`;
   await js("document.querySelector('[data-remote-new-session] textarea').focus()");
@@ -8085,6 +8105,77 @@ async function runRememberStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Start session from a selection: select one of Claude's replies and use Start session over it. New session opens on
+ * the session's project with the text as the prompt, a link to the session in the context tray and "Goes under …".
+ * Started with a stand-in (nothing reaches an agent), `session.create` gets the session as the parent. The stand-in is
+ * closed and its prompt forgotten after.
+ */
+async function runStartFromSelectionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!smokeSessionId) return 'ok: no session open to select from';
+  const parentId = smokeSessionId;
+  await transcriptAtRest(win);
+  const reply = `[data-current-session="${parentId}"] [data-transcript] [data-remember-from="claude"] p`;
+  if (!(await js(`!!document.querySelector(${JSON.stringify(reply)})`))) return 'ok: no reply of Claude on screen to select';
+  const selected = (await js(`(() => {
+    const p = document.querySelector(${JSON.stringify(reply)});
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    return selection.toString().trim();
+  })()`)) as string;
+  if (!selected) return 'ok: the first reply has no text to select';
+  const view = '[data-new-session-view]';
+  const createdLog = join(app.getPath('userData'), 'smoke-created.jsonl');
+  const created = (): Array<{ sessionId: string; prompt: string; parentSessionId: string | null }> => {
+    try {
+      return readFileSync(createdLog, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line));
+    } catch {
+      return [];
+    }
+  };
+  const before = created().length;
+  let started = '';
+  let cwd = '';
+  try {
+    const button = "document.querySelector('[data-remember-selection] [data-start-session-selection]')";
+    if (!(await waitInPage(win, `!!${button}`, 3_000))) return 'no Start session button over the selection';
+    await js(`${button}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-parent-notice]')`, 5_000))) return 'New session did not open with "Goes under" the session';
+    cwd = (await js(`document.querySelector('${view} [data-folder-select]')?.dataset.value ?? ''`)) as string;
+    const prompt = (await js(`document.querySelector('${view} [data-composer]')?.value ?? ''`)) as string;
+    if (prompt.trim() !== selected) return `the prompt is not the selection ("${prompt.slice(0, 40)}")`;
+    if (!(await js(`document.querySelector('${view}').innerText.includes('Goes under')`))) return 'the notice does not say where it goes';
+    await shot(win, 'start-from-selection.png');
+    engine.send({ type: 'smokeStubCreate', on: true });
+    await js(`document.querySelector('${view} [data-composer]').focus()`);
+    pressKey(win, 'Return', ['meta']);
+    if (!(await until(() => created().length > before, 8_000))) return 'Start did not create a session';
+    const made = created().at(-1)!;
+    started = made.sessionId;
+    if (made.parentSessionId !== parentId) return `the new session did not go under the session (${String(made.parentSessionId)})`;
+    if (!made.prompt.includes(selected.slice(0, 40))) return 'the new session did not get the selected text';
+    if (!made.prompt.includes(parentId)) return 'the new session did not get a link to the session';
+    return `ok: ${selected.length} characters became the prompt with a link to the session, "Goes under" showed, and the session started under it`;
+  } finally {
+    engine.send({ type: 'smokeStubCreate', on: false });
+    await js('window.getSelection().removeAllRanges()');
+    if (started) {
+      engine.send({ type: 'smokeQueueHost', sessionId: started, cwd, state: 'closed' });
+      await waitInPage(win, `!document.querySelector('[data-session-list] [data-session-id="${started}"]')`, 5_000);
+      win.webContents.send(IpcChannel.draftsRelayed, { [started]: null, ...(cwd ? { [`new:${cwd}`]: null } : {}) });
+    } else if (cwd) {
+      win.webContents.send(IpcChannel.draftsRelayed, { [`new:${cwd}`]: null });
+    }
+    await js(`document.querySelector('[data-session-id="${parentId}"]')?.click()`);
+    await waitInPage(win, `!!document.querySelector('[data-current-session="${parentId}"]')`, 5_000);
+  }
+}
+
+/**
  * The toolbar over a selection, read-only: select one of Claude's replies and check the toolbar shows solid, without
  * covering the selection; Tab reaches it and → moves to Copy, which says Copied (the clipboard is stubbed for the
  * step, so yours is left alone); Esc closes it and keeps the selection; Quote puts the selection in the message box
@@ -8135,7 +8226,7 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'selection-toolbar.png');
   if (look.covers) return done('the toolbar covers the selection');
   if (!look.solid) return done('the toolbar is see-through');
-  if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
+  if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Start session,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
 
   // Keyboard: Tab from the transcript into the toolbar, → to Copy, then Copy.
   // Copy in the conversation writes the clean HTML and the text together (`copySelection`), elsewhere the text alone.
@@ -12266,6 +12357,14 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!!document.querySelector('${editor} [data-trigger-prompt]') && document.querySelector('${editor} [data-trigger-prompt]').value === ${JSON.stringify(prompt)}`, 3_000))) return 'Start when… did not open the editor with the prompt';
     if (!(await js(`document.querySelector('${editor} [role=radiogroup] [data-trigger-source="issues"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-source="command"]')?.getAttribute('aria-disabled') === 'true'`))) return 'the source cards are not a radio group with Issues for you picked and A command disabled';
     if (!(await js(`[...document.querySelectorAll('${editor} [data-trigger-field="title"], ${editor} [data-trigger-field="url"]')].length === 2`))) return 'the prompt shows no event field chips';
+    // A prompt longer than the box scrolls inside it: the chips' layer keeps the text box's size and scroll.
+    const setPrompt = (text: string) => js(`(() => { const el = document.querySelector('${editor} [data-trigger-prompt]'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    const long = `${prompt}\n${Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of a long prompt.`).join('\n')}`;
+    await setPrompt(long);
+    const layers = `(() => { const box = document.querySelector('${editor} [data-trigger-prompt]'); const chips = document.querySelector('${editor} [data-trigger-prompt-chips]'); if (!box || !chips || box.value !== ${JSON.stringify(long)}) return false; box.scrollTop = box.scrollHeight; box.dispatchEvent(new Event('scroll')); const a = box.getBoundingClientRect(), b = chips.getBoundingClientRect(); return box.scrollHeight > box.clientHeight && Math.abs(a.top - b.top) < 1 && Math.abs(a.height - b.height) < 1 && Math.abs(a.width - b.width) < 1 && box.scrollTop > 0 && Math.abs(chips.scrollTop - box.scrollTop) < 1; })()`;
+    if (!(await waitInPage(win, layers, 3_000))) return 'a long prompt spills out of the prompt box, or its chips do not scroll with the text';
+    await setPrompt(prompt);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-prompt]')?.value === ${JSON.stringify(prompt)}`, 2_000))) return 'the prompt did not go back to the short one';
     // The summary says what Issues for you does, with the login the fake gh gives; the temp folder isn't a git
     // repository, so New session hands over the project folder, one at a time.
     const summary = `document.querySelector('${editor} [data-trigger-summary]')?.innerText`;
@@ -15587,6 +15686,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   );
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
+  await step('start from selection: Start session over a reply opens New session with the text, a link and the session to go under', () => runStartFromSelectionStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
   await step('unsent drafts', () => runDraftStep(win));
   await step('unsent messages', () => runUnsentStep(win));
@@ -15665,6 +15765,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('tool rail badges: the Changes badge counts the changed files', () => runToolRailBadgesStep(win, smokeSessionId));
   await step('tool rail apps: an app checked in the menu is pinned to the rail with its icon', () => runToolRailAppsStep(win, shotBoth, smokeSessionId));
   await step('tool rail order: ⌥↑ and ⌥↓ move a tool inside its group', () => runToolRailOrderStep(win, smokeSessionId));
+  await step('side panel launcher: Show panel opens the side empty with the tools to open, ↓ and Enter open one in front, Esc and Hide panel close', () => runPanelLauncherStep(win, shotBoth, smokeSessionId));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
   await step("session note: N, shown under the title, found by search, in the header and its panel, cleared", () => runSessionNoteStep(win));
@@ -15726,6 +15827,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     runBrowserScriptsStep(win, { run: (request) => browserAgent.run(request), setPrefs: updatePreferences, prefs: () => preferences.get(), shot: bothSchemes }),
   );
   // Needs "browser view" first: its tab and its pages in the history.
+  await step('browser stop: the ✕ stops a new tab\'s first load', () => runBrowserStopStep(win, browserDeps));
   await step('browser text page: JSON and XML get a dark canvas in the dark', () => runBrowserTextPageStep(win, browserDeps));
   await step('browser suggestions: the address bar offers open tabs and pages from the history', () => runBrowserSuggestionsStep(win, browserDeps));
   await step('browser pin: a favourite tile keeps its page, its name and icon after the window reloads', () => runBrowserPinStep(win, browserDeps), { timeoutMs: 45_000 });
@@ -15767,6 +15869,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: ⋯ › All settings opens Settings', runPhoneMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Done takes a session out of the list, the Done page lists it, Reopen puts it back', runPhoneDoneStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: what a trigger started has the bolt and says which trigger', () => runPhoneTriggerStep(shot), { timeoutMs: 75_000 });
+  await step('remote app on a phone: an orchestrator’s bar opens its overview, a session in it opens, and the way back', () => runPhoneOrchestratorStep(shot), { timeoutMs: 75_000 });
   await step("remote app on a phone: a finished session's catch-up shows the prompt's title without #", runPhoneCatchUpStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Quote under a reply, over a selection and in Read', runPhoneQuoteStep, { timeoutMs: 75_000 });

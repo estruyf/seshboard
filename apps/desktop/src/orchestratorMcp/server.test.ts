@@ -10,6 +10,16 @@ describe('the orchestrator MCP server', () => {
     expect(list.result.tools.map((t) => t.name)).toEqual(['start_session', 'list_sessions', 'read_session', 'message_session']);
   });
 
+  it('lists only start_session for a session that is not an orchestrator, and refuses the rest', async () => {
+    const init = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, async () => ({ text: '' }), 'session')) as { result: { instructions: string; serverInfo: { name: string } } };
+    expect(init.result.instructions).toContain('asks the user');
+    expect(init.result.serverInfo.name).toBe('seshboard-sessions');
+    const list = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, async () => ({ text: '' }), 'session')) as { result: { tools: Array<{ name: string }> } };
+    expect(list.result.tools.map((t) => t.name)).toEqual(['start_session']);
+    const refused = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'list_sessions' } }, async () => ({ text: '' }), 'session')) as { error: { code: number } };
+    expect(refused.error.code).toBe(-32602);
+  });
+
   it('hands a call to the engine and answers it as MCP does', async () => {
     const calls: unknown[] = [];
     const answer = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'start_session', arguments: { title: 'Fix login', prompt: 'Fix it' } } }, async (tool, args) => {

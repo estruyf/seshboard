@@ -45,6 +45,8 @@ export interface NewSessionStart {
   fastMode?: boolean;
   /** Run as › Orchestrator: the session starts as the project's orchestrator (docs/orchestrator.md), whatever its agent. */
   orchestrator?: boolean;
+  /** Start session from a selection: the session it goes under in the sidebar. */
+  parentSessionId?: string;
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -83,7 +85,7 @@ export function firstPromptOf(start: NewSessionStart): FirstPromptStart {
 }
 
 /** What `session.create` gets: Claude Code's options, or only the folder, the message and the model for another provider. */
-export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; profileId: string; orchestrator?: boolean };
+export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; profileId: string; orchestrator?: boolean; parentSessionId?: string };
 
 export interface ClaudeSessionCreateParams {
   cwd: string;
@@ -97,6 +99,7 @@ export interface ClaudeSessionCreateParams {
   checkoutBranch: string | null;
   profileId: string;
   orchestrator?: boolean;
+  parentSessionId?: string;
   checkoutPullRequest?: { number: number; repo: string };
   github?: GithubOrigin;
 }
@@ -142,6 +145,7 @@ export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreate
     checkoutBranch: fromPr ? null : checkoutBranchFor(choices, start.worktree, start.currentBranch),
     profileId: start.profileId,
     ...(start.orchestrator ? { orchestrator: true } : {}),
+    ...(start.parentSessionId ? { parentSessionId: start.parentSessionId } : {}),
   };
 }
 

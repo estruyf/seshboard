@@ -28,6 +28,7 @@ import { currentPlatform } from '../../lib/platform.ts';
 import { openInProviderCli, runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
+import { startFromSelection } from '../../state/startUnderStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { keepAwakeUntilDoneDetail } from '../general/keepAwake.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
@@ -143,11 +144,14 @@ import { ProviderSessionControls } from '../providers/ProviderSessionControls.ts
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab, panelWidthFor } from '../ask/askWidth.ts';
-import { ToolRail, useRailItems, type RailItem } from './ToolRail.tsx';
+import { ToolRail, useRailItems, type RailButton, type RailItem } from './ToolRail.tsx';
+import { PanelLauncher } from './PanelLauncher.tsx';
+import { launcherEntries, launcherPick, launcherShown } from './panelLauncher.ts';
+import { closePanelLauncher, openPanelLauncher, usePanelLauncher } from '../../state/panelLauncherStore.ts';
 import { AppIcon } from '../AppIcon.tsx';
 import { GitHubIcon } from '../GitHubIcon.tsx';
 import { useGithubPage, useOpenIn } from '../OpenInButton.tsx';
-import { RAIL_GITHUB, railEntries, railLabel, railToolState, type RailAppId, type RailToolId } from './toolRail.ts';
+import { RAIL_GITHUB, railEntries, railLabel, railToolState, type RailAppId, type RailAvailable, type RailToolId } from './toolRail.ts';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
@@ -645,9 +649,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   const panesOpen = modPanes.length > 0;
+  // The side panel with nothing in it (the rail's Show panel): it lists the tools to open there, and gives way to one.
+  const launcherRequested = usePanelLauncher((s) => s.open.has(sessionId));
+  const showLauncher = launcherShown(launcherRequested, right.open.length, whyRequest !== null) && !terminalMaximized;
+  // Once a tool opens on the side, the empty panel is done: closing that tool closes the side, as before.
+  useEffect(() => {
+    if (launcherRequested && (right.open.length > 0 || whyRequest !== null)) closePanelLauncher(sessionId);
+  }, [launcherRequested, right.open.length, whyRequest, sessionId]);
   // A session view can be narrower than a panel and a usable conversation together: then the panel opens over the
   // conversation as a sheet, and the rail (or the panel's ×) brings the conversation back.
-  const narrowPanel = (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_PANEL;
+  const narrowPanel = (right.open.length > 0 || whyRequest !== null || showLauncher) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_PANEL;
   const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
   const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
   const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
@@ -1374,6 +1385,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     onRemember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
     onQuote: (text) => useDrafts.getState().requestQuote(sessionId, text),
     onSavePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
+    // A task the reply mentions: New session in this project with the text, linked to and under this session. A pop-out
+    // window has no New session of its own.
+    onStartSession: projectRoot && popoutSession !== sessionId ? (text) => startFromSelection({ root: projectRoot, sessionId, label: summary?.title ?? registryLive?.name ?? 'This session', text }) : undefined,
   });
 
   // The command palette's Fork…, Rewind…, Copy last reply: your prompts and Claude's last reply, from the active pane.
@@ -1618,8 +1632,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const railCounts = { changes: changedCount, terminal: terminalCount, web: browserPreview ? webTabs : 0, agents: agentsRunning, commands: commandsRunning };
   const railState = (id: RailToolId) => (id === 'terminal' && !terminalOnRight ? (panelOpen ? 'front' : 'closed') : railToolState(id, right.open, right.tab));
   const modTitles = new Map(modPanes.map((p) => [modPaneTab(p.id), p.title]));
-  const railTool = (id: RailToolId): RailItem => {
-    const name = id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : modTitles.get(id as `mod:${string}`);
+  /** The tool's name where it isn't its own: Web while the browser is off, a mod's pane by its title. */
+  const railName = (id: RailToolId) => (id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : modTitles.get(id as `mod:${string}`));
+  const railTool = (id: RailToolId): RailButton => {
+    const name = railName(id);
     const shortcut = id === 'files' ? 'files.toggle' : id === 'changes' ? 'changes.toggle' : id === 'terminal' ? 'terminal.toggle' : id === 'web' ? 'web.toggle' : id === 'agents' ? 'agents.toggle' : id === 'commands' ? 'commands.toggle' : null;
     const state = railState(id);
     const ready = id === 'ask' && ask.ready && !ask.open;
@@ -1681,29 +1697,27 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       },
     };
   };
-  const railItemsNow: RailItem[] = railEntries(
-    {
-      // Files reads the session's folder on this computer.
-      files: Boolean(cwd),
-      changes: Boolean(cwd && isRepo),
-      terminal: true,
-      // Only while a dev server runs in the session, or the tab is open; with the browser on, always: it opens any page.
-      web: showWeb || browserAway || ((serverOffers.length > 0 || browserPreview) && webAllowed),
-      // Ask forks the session in its own tool: another provider's only when it can.
-      ask: canAsk || ask.open,
-      agents: agents.length > 0 || agentsState.open,
-      commands: backgroundCommands.length > 0 || commandsState.open,
-      note: note !== null || showNote,
-      mods: modPanes.map((p) => p.id),
-      apps: cwd ? railApps.filter((id) => (id === RAIL_GITHUB ? githubPage !== null : editors.some((e) => e.id === id))) : [],
-    },
-    railHidden,
-    railOrder,
-  ).map((entry) => (entry.kind === 'divider' ? 'divider' : entry.kind === 'app' ? railApp(entry.id) : railTool(entry.id)));
+  const railAvailable: RailAvailable = {
+    // Files reads the session's folder on this computer.
+    files: Boolean(cwd),
+    changes: Boolean(cwd && isRepo),
+    terminal: true,
+    // Only while a dev server runs in the session, or the tab is open; with the browser on, always: it opens any page.
+    web: showWeb || browserAway || ((serverOffers.length > 0 || browserPreview) && webAllowed),
+    // Ask forks the session in its own tool: another provider's only when it can.
+    ask: canAsk || ask.open,
+    agents: agents.length > 0 || agentsState.open,
+    commands: backgroundCommands.length > 0 || commandsState.open,
+    note: note !== null || showNote,
+    mods: modPanes.map((p) => p.id),
+    apps: cwd ? railApps.filter((id) => (id === RAIL_GITHUB ? githubPage !== null : editors.some((e) => e.id === id))) : [],
+  };
+  const railItemsNow: RailItem[] = railEntries(railAvailable, railHidden, railOrder).map((entry) => (entry.kind === 'divider' ? 'divider' : entry.kind === 'app' ? railApp(entry.id) : railTool(entry.id)));
   // The same array while the rail draws the same: the rail is memoised.
   const railItems = useRailItems(railItemsNow);
   /** Hide panel: closes whatever the right side shows. */
   const hidePanels = useStableCallback(() => {
+    closePanelLauncher(sessionId);
     if (whyRequest) useWhy.getState().close();
     if (showChanges) closeChanges(sessionId);
     if (ask.open) closeAskHere();
@@ -1715,6 +1729,22 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (terminalOnRight) useTerminals.getState().togglePanel(sessionId, false);
     for (const pane of modPanes) closeModPane(pane.id);
   });
+  // The rail's panel button: Hide panel while the side shows something (the empty panel too), Show panel opens it empty.
+  const sideShows = right.open.length > 0 || whyRequest !== null || showLauncher;
+  const onPanelButton = useStableCallback(() => (sideShows ? hidePanels() : openPanelLauncher(sessionId)));
+  /** What the empty side panel lists: the tools that apply, hidden ones too, with the rail's icons and shortcuts. */
+  const launcherRows = showLauncher
+    ? launcherEntries(railAvailable, railOrder).map((entry) => {
+        if (entry.kind === 'divider') return 'divider' as const;
+        const item = railTool(entry.id);
+        return { id: entry.id, icon: item.icon, name: railLabel(entry.id, {}, { name: railName(entry.id) }), kbd: item.kbd };
+      })
+    : [];
+  /** A pick in the empty panel: the tool opens in its place (the terminal where it docks); one already open stays. */
+  const pickFromLauncher = (id: RailToolId) => {
+    closePanelLauncher(sessionId);
+    if (launcherPick(railState(id))) railTool(id).onClick();
+  };
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
@@ -2469,6 +2499,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         {/* Behind another tab on the right, the terminal steps out; its shells keep running and it comes back as it was. */}
         {terminalShown && terminalDock === 'right' && (!terminalOnRight || right.tab === 'terminal') && terminalPanel}
         {whyRequest && !terminalMaximized && <WhyPanel request={whyRequest} cwd={cwd} />}
+        {showLauncher && <PanelLauncher rows={launcherRows} width={panelWidth} onPick={pickFromLauncher} onClose={() => closePanelLauncher(sessionId)} />}
         {!whyRequest && right.tab === 'changes' && cwd && !terminalMaximized && (
           <ChangesPanel
             sessionId={sessionId}
@@ -2555,7 +2586,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         )}
       </div>
     </div>
-    <ToolRail items={railItems} onHide={right.open.length > 0 || whyRequest ? hidePanels : null} />
+    <ToolRail items={railItems} sideShows={sideShows} onPanel={onPanelButton} />
     </div>
   );
 }

@@ -3,6 +3,8 @@ import {
   defaultTriggerName,
   effectiveMaxAtOnce,
   eventRef,
+  hasStateLabels,
+  stateLabelKeys,
   TRIGGER_LIMITS,
   triggerProblem,
   triggerSessionTitle,
@@ -30,10 +32,18 @@ export const WHICH_ISSUES: ReadonlyArray<{ value: WhichIssues; label: string }> 
   { value: 'both', label: 'Both' },
 ];
 
+/** Which pull requests a reviews trigger picks up: those that ask you (or someone) for a review, with a label, or both. */
+export const WHICH_REVIEWS: ReadonlyArray<{ value: WhichIssues; label: string }> = [
+  { value: 'assignee', label: 'Asked of me' },
+  { value: 'label', label: 'With a label' },
+  { value: 'both', label: 'Both' },
+];
+
 /** The sources the editor shows; phase 2's are there, but can't be picked yet. */
 export const TRIGGER_SOURCES = [
   { kind: 'ci', title: 'CI fails on a branch', detail: 'A failed workflow run', soon: false },
   { kind: 'issues', title: 'Issues for you', detail: 'Matches a label, you, or both', soon: false },
+  { kind: 'reviews', title: 'Reviews for you', detail: 'A pull request asks for your review', soon: false },
   { kind: 'changes', title: 'Changes requested', detail: 'On a pull request a session opened', soon: true },
   { kind: 'command', title: 'A command', detail: 'Each new JSON line it prints', soon: true },
 ] as const;
@@ -48,13 +58,14 @@ export interface TriggerForm {
   name: string;
   /** The name follows the source until you type one. */
   nameTouched: boolean;
-  kind: 'ci' | 'issues';
+  kind: TriggerKind;
   branch: string;
   /** Empty: every workflow. */
   workflows: string[];
+  /** Which issues (or pull requests) it picks up. */
   which: WhichIssues;
   label: string;
-  /** `@me`, or a login. */
+  /** `@me`, or a login: who the issues are assigned to, or whose review a pull request asks for. */
   assignee: string;
   collaboratorsOnly: boolean;
   stateLabels: StateLabels;
@@ -80,20 +91,26 @@ export interface TriggerForm {
   paused: boolean;
 }
 
+/** The sources a trigger can be saved with. */
+export type TriggerKind = TriggerSource['kind'];
+
 /** The prompts a new trigger starts with, per source. */
 export const DEFAULT_PROMPTS = {
   ci: 'CI failed on {{event.branch}} in {{event.workflow}} ({{event.url}}). Find the cause and fix it. Run the failing test locally if you can. Don’t push.',
   issues: 'Work on {{event.title}} ({{event.url}}). Read the issue first, ask me if something is unclear, then open a pull request that closes it.',
-} as const;
+  reviews:
+    'Review the pull request {{event.title}} ({{event.url}}). Read its description and its changes against {{event.base}}, and run the tests if you can. Write the review here: what must change, with the file and line, and what can stay. On a re-review, check that the earlier comments were addressed. Don’t push, and don’t post on GitHub.',
+} as const satisfies Record<TriggerKind, string>;
 
 /** The tasks a pipeline gets, per source: its steps say how (plan, build, check), and its Push step opens the pull request. */
 export const DEFAULT_TASKS = {
   ci: 'CI failed on {{event.branch}} in {{event.workflow}} ({{event.url}}). Find the cause and fix it.',
   issues: 'Work on {{event.title}} ({{event.url}}).',
-} as const;
+  reviews: 'Review the pull request {{event.title}} ({{event.url}}).',
+} as const satisfies Record<TriggerKind, string>;
 
 /** The prompt a new trigger starts with for a source and what it starts. */
-export const defaultPrompt = (kind: 'ci' | 'issues', start: 'session' | 'pipeline') => (start === 'pipeline' ? DEFAULT_TASKS[kind] : DEFAULT_PROMPTS[kind]);
+export const defaultPrompt = (kind: TriggerKind, start: 'session' | 'pipeline') => (start === 'pipeline' ? DEFAULT_TASKS[kind] : DEFAULT_PROMPTS[kind]);
 
 /** Which pipeline a trigger starts, of the project's: the one picked, while the project can still run it. */
 export const formPipeline = <P extends { id: string }>(form: Pick<TriggerForm, 'start' | 'pipelineId'>, pipelines: readonly P[]): P | null => (form.start === 'pipeline' ? (pipelines.find((p) => p.id === form.pipelineId) ?? null) : null);
@@ -145,6 +162,10 @@ export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | 
 export function triggerForm(trigger: Trigger): TriggerForm {
   const source = trigger.source;
   const issues = source.kind === 'issues' ? source : null;
+  const reviews = source.kind === 'reviews' ? source : null;
+  // A reviews trigger keeps its reviewer where an issues trigger keeps its assignee.
+  const who = issues?.assignee ?? reviews?.reviewer ?? null;
+  const label = issues?.label ?? reviews?.label ?? null;
   return {
     id: trigger.id,
     projectRoot: trigger.projectRoot,
@@ -153,10 +174,10 @@ export function triggerForm(trigger: Trigger): TriggerForm {
     kind: source.kind,
     branch: source.kind === 'ci' ? (source.branch ?? '') : '',
     workflows: source.kind === 'ci' ? source.workflows : [],
-    which: issues?.label && issues.assignee ? 'both' : issues?.assignee ? 'assignee' : 'label',
-    label: issues?.label ?? 'seshboard',
-    assignee: issues?.assignee ?? '@me',
-    collaboratorsOnly: issues?.collaboratorsOnly ?? true,
+    which: label && who ? 'both' : who ? 'assignee' : 'label',
+    label: label ?? 'seshboard',
+    assignee: who ?? '@me',
+    collaboratorsOnly: issues?.collaboratorsOnly ?? reviews?.collaboratorsOnly ?? true,
     stateLabels: trigger.stateLabels,
     assignOnPickUp: trigger.assignOnPickUp,
     prompt: trigger.prompt,
@@ -180,6 +201,13 @@ export function triggerForm(trigger: Trigger): TriggerForm {
 /** The source a form describes. */
 export function formSource(form: TriggerForm): TriggerSource {
   if (form.kind === 'ci') return { kind: 'ci', branch: form.branch.trim() || null, workflows: form.workflows };
+  if (form.kind === 'reviews')
+    return {
+      kind: 'reviews',
+      label: form.which === 'assignee' ? null : form.label.trim() || null,
+      reviewer: form.which === 'label' ? null : form.assignee.trim() || null,
+      collaboratorsOnly: form.collaboratorsOnly,
+    };
   return {
     kind: 'issues',
     label: form.which === 'assignee' ? null : form.label.trim() || null,
@@ -194,6 +222,8 @@ export function formSource(form: TriggerForm): TriggerSource {
  */
 export function updateForm(form: TriggerForm, patch: Partial<TriggerForm>, defaultBranch: string | null = null): TriggerForm {
   const next = { ...form, ...patch };
+  // A new trigger's filter (the seshboard label and you) fits issues; a review is asked of you, so it starts there.
+  if (next.kind === 'reviews' && form.kind !== 'reviews' && !form.id && form.which === 'both' && form.label === 'seshboard' && patch.which === undefined) next.which = 'assignee';
   // The prompt follows the source and what it starts while it is still the one a new trigger starts with.
   if ((next.kind !== form.kind || next.start !== form.start) && form.prompt === defaultPrompt(form.kind, form.start)) next.prompt = defaultPrompt(next.kind, next.start);
   if (!next.nameTouched) next.name = defaultTriggerName(formSource(next), defaultBranch);
@@ -206,11 +236,16 @@ export function updateForm(form: TriggerForm, patch: Partial<TriggerForm>, defau
 
 /** Why the form can't be saved, in words for the editor; null when it is fine. */
 export function formProblem(form: TriggerForm): string | null {
-  if (form.kind === 'issues' && (form.which === 'label' || form.which === 'both') && !form.label.trim()) return 'Type the label to look for.';
+  const filtered = form.kind === 'issues' || form.kind === 'reviews';
+  if (filtered && (form.which === 'label' || form.which === 'both') && !form.label.trim()) return 'Type the label to look for.';
   if (form.kind === 'issues' && form.which !== 'label' && !form.assignee.trim()) return 'Pick who the issues are assigned to.';
-  if (form.kind === 'issues' && form.stateLabels.on && Object.values({ w: form.stateLabels.working, n: form.stateLabels.needsInput, p: form.stateLabels.prOpen, f: form.stateLabels.failed }).some((l) => !l.trim())) return 'Give every state label a name.';
+  if (form.kind === 'reviews' && form.which !== 'label' && !form.assignee.trim()) return 'Pick whose review the pull requests ask for.';
+  if (stateLabelsUnnamed(form)) return 'Give every state label a name.';
   return triggerProblem({ name: form.name, prompt: form.prompt, source: formSource(form), draft: { permissionMode: form.permissionMode }, start: formStart(form) });
 }
+
+/** Whether state labels are on with one of the source's labels left without a name. */
+const stateLabelsUnnamed = (form: Pick<TriggerForm, 'kind' | 'stateLabels'>) => hasStateLabels(form.kind) && form.stateLabels.on && stateLabelKeys(form.kind).some((key) => !form.stateLabels[key].trim());
 
 /** What the trigger starts, as saved: a session, or the pipeline picked (empty until one is, which `formProblem` says). */
 export const formStart = (form: Pick<TriggerForm, 'start' | 'pipelineId' | 'unattended' | 'autoPush'>): TriggerStart =>
@@ -218,7 +253,7 @@ export const formStart = (form: Pick<TriggerForm, 'start' | 'pipelineId' | 'unat
 
 /** What `triggers.save` gets from a form. */
 export function formToSave(form: TriggerForm): TriggerSave {
-  const ci = form.kind === 'ci';
+  const issues = form.kind === 'issues';
   return {
     ...(form.id ? { id: form.id } : {}),
     projectRoot: form.projectRoot,
@@ -230,9 +265,9 @@ export function formToSave(form: TriggerForm): TriggerSave {
     maxAtOnce: form.start === 'session' && form.workspace === 'current' ? 1 : clamp(form.maxAtOnce, TRIGGER_LIMITS.atOnce),
     maxWaiting: clamp(form.maxWaiting, TRIGGER_LIMITS.waiting),
     intervalMinutes: clamp(form.intervalMinutes, TRIGGER_LIMITS.interval),
-    // State labels are for issues only; Assign to me for a label alone, since with an assignee every issue has one.
-    stateLabels: ci ? { ...form.stateLabels, on: false } : form.stateLabels,
-    assignOnPickUp: !ci && form.which === 'label' && form.assignOnPickUp,
+    // State labels are for issues and reviews; Assign to me for a label alone, since with an assignee every issue has one.
+    stateLabels: hasStateLabels(form.kind) ? form.stateLabels : { ...form.stateLabels, on: false },
+    assignOnPickUp: issues && form.which === 'label' && form.assignOnPickUp,
     paused: form.paused,
   };
 }
@@ -272,6 +307,17 @@ export function triggerSummary(
     const last = form.workflows.length - 1;
     const workflows = form.workflows.length ? form.workflows.flatMap((w, i) => [...(i === 0 ? [] : [plain(i === last ? ' or ' : ', ')]), bold(w)]) : [plain('a workflow')];
     when = [plain('When '), ...workflows, plain(' fails on '), branch ? bold(branch) : plain('the default branch')];
+  } else if (form.kind === 'reviews') {
+    const label = form.which === 'assignee' ? null : form.label.trim();
+    const who = form.which === 'label' ? null : form.assignee.trim();
+    if (label === '' || who === '') return [plain('Add a label, or pick Asked of me.')];
+    const reviewer = who === '@me' ? (ctx.login ? `@${ctx.login}` : 'you') : `@${who}`;
+    when =
+      label && who
+        ? [plain('When a pull request with the '), bold(label), plain(' label asks '), bold(reviewer), plain(' for a review')]
+        : label
+          ? [plain('When a pull request gets the '), bold(label), plain(' label')]
+          : [plain('When a pull request asks '), bold(reviewer), plain(' for a review')];
   } else {
     const label = form.which === 'assignee' ? null : form.label.trim();
     const who = form.which === 'label' ? null : form.assignee.trim();
@@ -287,9 +333,9 @@ export function triggerSummary(
   return [...when, ...then, ...limit];
 }
 
-/** The editor's sections, in order: CI triggers have nothing to do on GitHub. */
+/** The editor's sections, in order: issues and reviews triggers can do something on GitHub, CI's can't. */
 export type TriggerSection = 'when' | 'which' | 'github' | 'start' | 'limits';
-export const triggerSections = (kind: TriggerForm['kind']): TriggerSection[] => (kind === 'issues' ? ['when', 'which', 'github', 'start', 'limits'] : ['when', 'which', 'start', 'limits']);
+export const triggerSections = (kind: TriggerForm['kind']): TriggerSection[] => (hasStateLabels(kind) ? ['when', 'which', 'github', 'start', 'limits'] : ['when', 'which', 'start', 'limits']);
 
 /** A section's number, by its place: CI's are 1 to 4. */
 export const sectionNumber = (kind: TriggerForm['kind'], section: TriggerSection) => triggerSections(kind).indexOf(section) + 1;
@@ -298,16 +344,17 @@ export const sectionNumber = (kind: TriggerForm['kind'], section: TriggerSection
 export function problemSection(form: TriggerForm): TriggerSection | 'name' | null {
   if (!formProblem(form)) return null;
   const issues = form.kind === 'issues';
-  if (issues && ((form.which !== 'assignee' && !form.label.trim()) || (form.which !== 'label' && !form.assignee.trim()))) return 'which';
-  if (issues && form.stateLabels.on && [form.stateLabels.working, form.stateLabels.needsInput, form.stateLabels.prOpen, form.stateLabels.failed].some((l) => !l.trim())) return 'github';
+  const filtered = issues || form.kind === 'reviews';
+  if (filtered && ((form.which !== 'assignee' && !form.label.trim()) || (form.which !== 'label' && !form.assignee.trim()))) return 'which';
+  if (stateLabelsUnnamed(form)) return 'github';
   // The rest are what it starts (the pipeline, the mode, the prompt), checked before the name.
   const startProblem = (form.start === 'pipeline' && !form.pipelineId) || (form.start === 'session' && form.permissionMode === 'bypassPermissions') || !form.prompt.trim();
   return startProblem || form.name.trim() ? 'start' : 'name';
 }
 
-/** Whether a section may show as one line: GitHub with nothing to do on the issue, Limits at their defaults. */
+/** Whether a section may show as one line: GitHub with nothing to do on the issue or pull request, Limits at their defaults. */
 export function foldable(form: TriggerForm, section: TriggerSection): boolean {
-  if (section === 'github') return form.kind === 'issues' && !form.stateLabels.on && !(form.which === 'label' && form.assignOnPickUp);
+  if (section === 'github') return hasStateLabels(form.kind) && !form.stateLabels.on && !(form.kind === 'issues' && form.which === 'label' && form.assignOnPickUp);
   if (section === 'limits') return formToSave(form).maxAtOnce === LIMIT_DEFAULTS.atOnce && form.maxWaiting === LIMIT_DEFAULTS.waiting;
   return false;
 }
@@ -334,7 +381,12 @@ export function limitsLine(form: Pick<TriggerForm, 'start' | 'workspace' | 'maxA
 }
 
 /** The footer's line: what the first check does. */
-export const firstCheckLine = (kind: 'ci' | 'issues') => (kind === 'ci' ? 'Failures from before now are marked as seen.' : 'Issues that match now are marked as seen. Only new ones start a session.');
+export const firstCheckLine = (kind: TriggerKind) =>
+  kind === 'ci'
+    ? 'Failures from before now are marked as seen.'
+    : kind === 'reviews'
+      ? 'Reviews asked for now are marked as seen. Only new requests start a session.'
+      : 'Issues that match now are marked as seen. Only new ones start a session.';
 
 /** "checked 2m ago", "checked now", "not checked yet". */
 export function checkedLine(at: number | null, now: number): string {
@@ -358,7 +410,7 @@ export function checkedNowLine(trigger: Pick<Trigger, 'name' | 'source' | 'pause
   if (trigger.failures > 0) return { text: `Couldn't check ${trigger.name}: ${trigger.lastError ?? 'unknown reason'}.`, ok: false };
   if (found === null) return { text: `Checked ${trigger.name}.`, ok: true };
   if (found === 0) return { text: `Checked ${trigger.name}. Nothing new.`, ok: true };
-  const what = trigger.source.kind === 'ci' ? (found === 1 ? 'failed run' : 'failed runs') : found === 1 ? 'issue' : 'issues';
+  const what = trigger.source.kind === 'ci' ? (found === 1 ? 'failed run' : 'failed runs') : trigger.source.kind === 'reviews' ? (found === 1 ? 'review' : 'reviews') : found === 1 ? 'issue' : 'issues';
   return { text: `Checked ${trigger.name}. ${found} new ${what}.`, ok: true };
 }
 
@@ -410,7 +462,7 @@ export function pausedLine(trigger: Pick<Trigger, 'paused' | 'pausedReason' | 'f
 /** The second line of an event row: what it is, and where it stands. */
 export function eventDetail(event: TriggerEvent, now: number, extra: { position?: number; of?: number } = {}): string {
   const at = clock(event.startedAt ?? event.createdAt, now);
-  const what = event.kind === 'ci' ? [eventRef(event), event.fields.commit ? `commit ${event.fields.commit}` : null, at] : ['issue'];
+  const what = event.kind === 'ci' ? [eventRef(event), event.fields.commit ? `commit ${event.fields.commit}` : null, at] : [event.kind === 'pr' ? 'review' : 'issue'];
   switch (event.status) {
     case 'waiting':
       return [...what.slice(0, event.kind === 'ci' ? 2 : 1), `waiting for a slot${extra.position ? ` · ${extra.position} of ${extra.of}` : ''}`].filter(Boolean).join(' · ');
@@ -421,7 +473,7 @@ export function eventDetail(event: TriggerEvent, now: number, extra: { position?
     case 'replaced':
       return `replaced: ${event.reason ?? 'a newer failure took its place'}`;
     case 'started':
-      return event.kind === 'ci' ? what.filter(Boolean).join(' · ') : `issue · picked up ${at}`;
+      return event.kind === 'ci' ? what.filter(Boolean).join(' · ') : event.kind === 'pr' ? `review · started ${at}` : `issue · picked up ${at}`;
   }
 }
 
@@ -430,7 +482,12 @@ export const eventTitle = (event: TriggerEvent): string => triggerSessionTitle(e
 
 /** For screen readers: "Issue 214, Archive keeps the scroll position, waiting for a slot, 1 of 10". */
 export function speakEvent(event: TriggerEvent, state: EventSessionState | null, extra: { position?: number; of?: number } = {}): string {
-  const what = event.kind === 'issue' ? `Issue ${event.fields.number ?? ''}, ${event.title}` : `${event.fields.workflow || 'CI'} failed on ${event.fields.branch || 'the branch'}, run ${event.fields.number || event.fields.run || ''}`;
+  const what =
+    event.kind === 'issue'
+      ? `Issue ${event.fields.number ?? ''}, ${event.title}`
+      : event.kind === 'pr'
+        ? `Review of pull request ${event.fields.number ?? ''}, ${event.title}`
+        : `${event.fields.workflow || 'CI'} failed on ${event.fields.branch || 'the branch'}, run ${event.fields.number || event.fields.run || ''}`;
   const where =
     event.status === 'waiting'
       ? `waiting for a slot${extra.position ? `, ${extra.position} of ${extra.of}` : ''}`

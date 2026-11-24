@@ -857,6 +857,11 @@
       "page": "sessions/agents"
     },
     {
+      "id": "palette:show-side-panel",
+      "name": "Show side panel",
+      "page": "sessions/tool-rail"
+    },
+    {
       "id": "palette:toggle-commands",
       "name": "Toggle commands",
       "page": "sessions/commands"
@@ -948,7 +953,7 @@
     },
     {
       "id": "feature:browser-profiles",
-      "name": "Browser profiles: separate logins, site data and cache per profile (for a project or everywhere), a coloured mark on their tabs, the profile switcher after the address bar, New tab in a profile, Open in other profile, Reset profile… with what to forget, and agents' open with a profile",
+      "name": "Browser profiles: separate logins, site data and cache per profile (for a project or everywhere), a coloured mark on their tabs, the profile switcher after the address bar, New tab in a profile, Open in other profile, Reset profile… with what to forget, agents' open with a profile, and a Browser profiles button under the Browser's tabs that opens them in Settings",
       "page": "browser/profiles"
     },
     {
@@ -2878,7 +2883,7 @@
     },
     {
       "id": "feature:provider-cli-updates",
-      "name": "GitHub Copilot CLI updates in Settings › About, while a Copilot profile exists: Check for Updates, Update (copilot update, or the Homebrew, npm or WinGet command), the toast for a new version, and checking automatically",
+      "name": "GitHub Copilot CLI, Codex CLI and Antigravity CLI updates in Settings › About, while a profile of that tool exists: Check for Updates, Update (copilot update, codex update, agy update, or the Homebrew, npm or WinGet command), the toast for a new version, and checking automatically",
       "page": "settings/updates"
     },
     {
@@ -4392,6 +4397,11 @@
       "page": "browser/agents"
     },
     {
+      "id": "feature:browser-scripts-any-site",
+      "name": "Any site in Scripts in pages: the agent runs scripts and reads requests on every site without asking",
+      "page": "browser/agents"
+    },
+    {
       "id": "feature:sidebar-view",
       "name": "The sidebar's View button: group by State or Project, sort Recent or Quickest to unblock, show Done and Compact rows",
       "page": "sessions/sidebar"
@@ -4409,6 +4419,11 @@
     {
       "id": "feature:tool-rail-apps",
       "name": "Apps on the rail: right-click it and check VS Code, Finder, a terminal or GitHub under Open in, and a click on its icon opens the session's folder there (GitHub: its page)",
+      "page": "sessions/tool-rail"
+    },
+    {
+      "id": "feature:side-panel-launcher",
+      "name": "Show panel at the bottom of the rail opens the side panel empty, with a list of the tools to open there and their shortcuts (hidden ones too)",
       "page": "sessions/tool-rail"
     },
     {
@@ -5342,8 +5357,13 @@
       "page": "projects/triggers"
     },
     {
+      "id": "feature:trigger-reviews",
+      "name": "Reviews for you: a session on the pull request's branch for each pull request that asks for your review (or has a label, or both), from collaborators only, and again when it asks for a re-review; it reads the pull request, its comments and earlier reviews, and writes to GitHub only the state labels you turn on",
+      "page": "projects/triggers"
+    },
+    {
       "id": "feature:trigger-state-labels",
-      "name": "State labels on the issue, and Assign the issue to me when work starts",
+      "name": "State labels on the issue or pull request (working, needs input, pr open or reviewed, failed), and Assign the issue to me when work starts",
       "page": "projects/triggers"
     },
     {
@@ -5539,6 +5559,21 @@
     {
       "id": "feature:orchestrator",
       "name": "Orchestrator: Run as › Orchestrator in New session starts a session that hands your tasks to sessions it starts, each in its own worktree, with Claude Code, Copilot or Codex; its sessions show under it in the sidebar and in an overview above its conversation (Waiting on you, Working, Queued, Ready for review, Idle); it hears when a session finishes, fails or waits for you; starts wait in the queue at the focus limit or a usage limit",
+      "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:start-session-from-session",
+      "name": "Ask a session to start a session: any session (Claude Code, Copilot, Codex or Antigravity) can ask to start another for a separate task, when you ask it to or for a fix it noticed; you allow or deny it on a card, and the new session works in its own worktree, under the session that asked in the sidebar",
+      "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:remote-orchestrator",
+      "name": "Remote: Run as › Orchestrator in New session on the phone and for another computer starts that computer's project orchestrator there, with any agent; the sessions it starts show under it; its overview (Waiting on you, Working, Queued, Ready for review, Idle) opens from a bar under its title on the phone and shows above its conversation for another computer, with Open on each session and the way back from one",
+      "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:start-session-from-selection",
+      "name": "Start session from a selection: select text in a reply and pick Start session (or Start session from this in the message's menu) to open New session in the same project, in a new worktree, with the text as the prompt and a link to the session; the new session goes under it in the sidebar",
       "page": "sessions/orchestrator"
     },
     {

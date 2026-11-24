@@ -272,7 +272,17 @@ class PreviewPage {
     else if (url) this.load(url);
   }
 
-  stop = () => this.call((e) => e.stop());
+  /**
+   * Stops the load. Not behind `ready`: a page's first load is the one that most needs stopping, and it hasn't reached
+   * `dom-ready` yet. The `<webview>` takes the call as soon as it is attached; before that there is nothing to stop.
+   */
+  stop = () => {
+    try {
+      this.element.stop();
+    } catch {
+      // Not attached yet.
+    }
+  };
   /** The page's developer tools, in a window of their own; again closes them. */
   devTools = () => this.call((e) => (e.isDevToolsOpened() ? e.closeDevTools() : e.openDevTools()));
   /** Zooms the page a step in (1) or out (-1) through Chrome's levels, or back to 100% (0), and keeps it with the tab. */

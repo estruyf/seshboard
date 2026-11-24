@@ -1,6 +1,6 @@
 import { randomUUID, type UUID } from 'node:crypto';
 import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { BROWSER_SERVER, BROWSER_TOOL_NAMES, cacheTtlOf, ORCHESTRATOR_SERVER, ORCHESTRATOR_TOOL_NAMES, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
+import { BROWSER_SERVER, BROWSER_TOOL_NAMES, cacheTtlOf, ORCHESTRATOR_SERVER, ORCHESTRATOR_TOOL_NAMES, SESSION_TOOL_NAMES, SESSIONS_SERVER, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -120,6 +120,8 @@ export interface HostConfig {
   skimMarks?: boolean;
   /** The orchestrator's tools (docs/orchestrator.md): Seshboard's `orchestrator` MCP server, tied to this session. */
   orchestrator?: McpStdioServer | null;
+  /** Any other session's start_session (docs/orchestrator.md): Seshboard's `seshboard` MCP server, tied to this session. */
+  sessions?: McpStdioServer | null;
   /** More text for after Claude Code's prompt: an orchestrator's role, a project's instructions for its sessions. */
   appendSystem?: string | null;
   /** The project's own workflow text for plan mode (the SDK's `planModeInstructions`); Claude Code keeps its read-only rules. Absent or empty: its default. */
@@ -246,6 +248,11 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   if (config.orchestrator && !config.readOnly) {
     options.mcpServers = { ...options.mcpServers, [ORCHESTRATOR_SERVER]: { type: 'stdio', ...config.orchestrator } };
     options.allowedTools = [...(options.allowedTools ?? []), ...ORCHESTRATOR_TOOL_NAMES];
+  }
+  // Allowed up front too: the engine asks you on its own card before a session starts, in every mode.
+  if (config.sessions && !config.orchestrator && !config.readOnly) {
+    options.mcpServers = { ...options.mcpServers, [SESSIONS_SERVER]: { type: 'stdio', ...config.sessions } };
+    options.allowedTools = [...(options.allowedTools ?? []), ...SESSION_TOOL_NAMES];
   }
   return options;
 }

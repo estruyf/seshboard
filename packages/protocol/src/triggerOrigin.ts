@@ -6,10 +6,10 @@
 export interface RemoteTriggerOrigin {
   /** The trigger's name when it started ("CI fails on main"). */
   name: string;
-  kind: 'ci' | 'issue';
-  /** "CI #4512" or "#212". */
+  kind: 'ci' | 'issue' | 'pr';
+  /** "CI #4512", "#212" or "PR #88". */
   ref: string;
-  /** The CI run or the issue on GitHub. */
+  /** The CI run, the issue or the pull request on GitHub. */
   url: string;
   at: number;
 }
@@ -24,6 +24,6 @@ export function triggerOriginOf(value: unknown): RemoteTriggerOrigin | null {
   if (!isObject(value)) return null;
   const { name, kind, ref, url, at } = value;
   if (typeof name !== 'string' || typeof ref !== 'string' || typeof url !== 'string' || typeof at !== 'number') return null;
-  if (kind !== 'ci' && kind !== 'issue') return null;
+  if (kind !== 'ci' && kind !== 'issue' && kind !== 'pr') return null;
   return { name: name.trim() || 'a trigger', kind, ref, url: /^https:\/\//i.test(url) ? url : '', at };
 }

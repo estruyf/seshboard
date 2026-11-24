@@ -1,9 +1,9 @@
-import type { RemotePrompt, RemoteRunState, RemoteSession, RemoteSessions } from './remote.ts';
+import type { RemoteOrchestrator, RemotePrompt, RemoteRunState, RemoteSession, RemoteSessions } from './remote.ts';
 
 /**
  * Checks a paired computer's session list where zod can't (the remote app, which leaves zod out). Another computer
  * may run an older or newer Seshboard, or not be Seshboard at all, and a list the views can't read would blank
- * them. Each session, prompt and run is checked on its own, for the fields the views read: one that doesn't pass is
+ * them. Each session, prompt, run and orchestrator is checked on its own, for the fields the views read: one that doesn't pass is
  * left out and counted, so the rest still shows. Unknown fields and values of an enum (a status a newer version
  * added) pass, as the views fall back on them. The engine checks the same lists with the contract's schemas.
  */
@@ -86,6 +86,12 @@ export function isRemoteRunState(value: unknown): value is RemoteRunState {
   });
 }
 
+const worker = (value: unknown) => fields(value, { sessionId: nullable(isString), itemId: nullable(isString), title: isString, startedAt: isNumber, pr: optional((pr) => fields(pr, { number: isNumber, url: isString, state: isString })) });
+
+export function isRemoteOrchestrator(value: unknown): value is RemoteOrchestrator {
+  return fields(value, { sessionId: isString, createdAt: isNumber, workers: arrayOf(worker) });
+}
+
 /** A checked list, and how many of its entries were left out. */
 export interface CheckedSessions {
   list: RemoteSessions;
@@ -96,11 +102,14 @@ export interface CheckedSessions {
 export function checkRemoteSessions(value: unknown): CheckedSessions | null {
   if (!isObject(value) || !Array.isArray(value.sessions) || !Array.isArray(value.prompts)) return null;
   if (value.runs !== undefined && !Array.isArray(value.runs)) return null;
+  if (value.orchestrators !== undefined && !Array.isArray(value.orchestrators)) return null;
   const sessions = value.sessions.filter(isRemoteSession);
   const prompts = value.prompts.filter(isRemotePrompt);
   const runs = Array.isArray(value.runs) ? value.runs.filter(isRemoteRunState) : undefined;
-  const dropped = value.sessions.length - sessions.length + (value.prompts.length - prompts.length) + (runs ? (value.runs as unknown[]).length - runs.length : 0);
-  return { list: runs ? { sessions, prompts, runs } : { sessions, prompts }, dropped };
+  const orchestrators = Array.isArray(value.orchestrators) ? value.orchestrators.filter(isRemoteOrchestrator) : undefined;
+  const dropped =
+    value.sessions.length - sessions.length + (value.prompts.length - prompts.length) + (runs ? (value.runs as unknown[]).length - runs.length : 0) + (orchestrators ? (value.orchestrators as unknown[]).length - orchestrators.length : 0);
+  return { list: { sessions, prompts, ...(runs ? { runs } : {}), ...(orchestrators ? { orchestrators } : {}) }, dropped };
 }
 
 /**

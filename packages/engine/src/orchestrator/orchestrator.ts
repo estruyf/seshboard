@@ -16,7 +16,9 @@ import {
   type OrchestratorWorker,
   type ProfileDefaults,
   type ProjectDefaults,
+  type SessionStartAsk,
   type SessionSummary,
+  type StartSessionArgs,
   type WorkerEnd,
   type WorkerLine,
   type WorkerStatus,
@@ -55,6 +57,8 @@ export interface OrchestratorDeps {
   start(draft: LaterDraft, title: string, instructions: string | null): Promise<string>;
   /** Puts a started session under its orchestrator in the sidebar. */
   setParent(sessionId: string, orchestratorId: string): void;
+  /** Asks you on a card in the session whether it may start another: true when you allowed it. */
+  askStart(sessionId: string, ask: SessionStartAsk): Promise<boolean>;
   status(sessionId: string): WorkerStatus | null;
   /** The session's branch and pull request, read from git and gh (it may take a moment). */
   info(sessionId: string): Promise<{ gone: boolean; branch: string | null; pr: WorktreePullRequest | null }>;
@@ -77,6 +81,12 @@ const prWord = (pr: Pick<WorktreePullRequest, 'number' | 'state' | 'url'>) => `#
  * A start goes through the same holds as a scheduled run: at the focus limit or a usage limit it waits in the queue.
  */
 export class Orchestrator {
+  /**
+   * Starts other sessions asked for that wait in the queue: which session asked, and the title. In memory: after a
+   * restart such a session still starts, but not under the one that asked.
+   */
+  private readonly childItems = new Map<string, { parentId: string; title: string }>();
+
   constructor(private readonly deps: OrchestratorDeps) {}
 
   isOrchestrator(sessionId: string): boolean {
@@ -163,19 +173,18 @@ export class Orchestrator {
     return this.deps.store.workersOf(orchestratorId).find((w) => w.sessionId === session.trim()) ?? null;
   }
 
-  private async startSession(orchestratorId: string, projectRoot: string, raw: Record<string, unknown>): Promise<OrchestratorToolResult> {
-    const args = readStartArgs(raw);
-    if ('error' in args) return fail(args.error);
-    const working = this.deps.store.workersOf(orchestratorId).filter((w) => w.sessionId && this.deps.status(w.sessionId) === 'working').length;
-    if (working >= ORCHESTRATOR_MAX_WORKING) return fail(`${working} sessions of this orchestrator work already, which is the most at once. Start "${args.title}" when one finishes.`);
+  /**
+   * What a start runs with, as New session would: the agent asked for, else `ownProfile`'s; the project's model,
+   * effort and mode, else the profile's, else the global ones; its own worktree in a git repository.
+   */
+  private plan(ownProfile: string | null, projectRoot: string, args: StartSessionArgs): { draft: LaterDraft; agent: OrchestratorAgent | null; workspace: 'worktree' | 'current' } | { error: string } {
     const agents = this.deps.agents(projectRoot);
-    // Without an agent asked for, the session runs with the orchestrator's own profile, not the project's.
-    const own = this.deps.session(orchestratorId)?.profileId ?? null;
-    let agent = agents.find((a) => a.profileId === own) ?? agents[0] ?? null;
+    // Without an agent asked for, the session runs with the asking session's own profile, not the project's.
+    let agent = agents.find((a) => a.profileId === ownProfile) ?? agents[0] ?? null;
     if (args.agent) {
       const wanted = args.agent.toLowerCase();
       agent = agents.find((a) => a.name.toLowerCase() === wanted) ?? agents.find((a) => a.agent.toLowerCase() === wanted) ?? null;
-      if (!agent) return fail(`No agent called "${args.agent}". Pick one of: ${agents.map((a) => a.name).join(', ')}, or leave it out.`);
+      if (!agent) return { error: `No agent called "${args.agent}". Pick one of: ${agents.map((a) => a.name).join(', ')}, or leave it out.` };
     }
     const defaults = this.deps.defaults(projectRoot);
     // As in New session: the project's, else the started session's profile's (unless the project skips it), else the global model and effort.
@@ -195,6 +204,24 @@ export class Orchestrator {
       baseRef: defaults.baseRef ?? profile?.baseRef ?? 'fresh',
       profileId: agent?.profileId ?? null,
     };
+    return { draft, agent, workspace };
+  }
+
+  /** How a started session is described back to the agent: where it runs and with what. */
+  private startedText(title: string, sessionId: string, args: StartSessionArgs, workspace: 'worktree' | 'current', agent: OrchestratorAgent | null): string {
+    const where = workspace === 'worktree' ? 'in its own worktree' : 'in the project’s folder';
+    const noWorktree = args.workspace === 'worktree' && workspace === 'current' ? ' (a worktree is not possible here)' : '';
+    return `Started "${title}" as session ${sessionId}, ${where}${noWorktree}${agent ? `, with ${agent.name}` : ''}.`;
+  }
+
+  private async startSession(orchestratorId: string, projectRoot: string, raw: Record<string, unknown>): Promise<OrchestratorToolResult> {
+    const args = readStartArgs(raw);
+    if ('error' in args) return fail(args.error);
+    const working = this.deps.store.workersOf(orchestratorId).filter((w) => w.sessionId && this.deps.status(w.sessionId) === 'working').length;
+    if (working >= ORCHESTRATOR_MAX_WORKING) return fail(`${working} sessions of this orchestrator work already, which is the most at once. Start "${args.title}" when one finishes.`);
+    const plan = this.plan(this.deps.session(orchestratorId)?.profileId ?? null, projectRoot, args);
+    if ('error' in plan) return fail(plan.error);
+    const { draft, agent, workspace } = plan;
     const hold = this.deps.hold(draft);
     if (hold) {
       const itemId = this.deps.queue(draft);
@@ -209,9 +236,40 @@ export class Orchestrator {
       return fail(`Could not start "${args.title}": ${(error as Error).message}`);
     }
     this.adopt(orchestratorId, sessionId, args.title);
-    const where = workspace === 'worktree' ? 'in its own worktree' : 'in the project’s folder';
-    const noWorktree = args.workspace === 'worktree' && workspace === 'current' ? ' (a worktree is not possible here)' : '';
-    return { text: `Started "${args.title}" as session ${sessionId}, ${where}${noWorktree}${agent ? `, with ${agent.name}` : ''}. Seshboard tells you when it finishes, fails or waits for the user.` };
+    return { text: `${this.startedText(args.title, sessionId, args, workspace, agent)} Seshboard tells you when it finishes, fails or waits for the user.` };
+  }
+
+  /**
+   * A session that is not an orchestrator asks to start another (its `seshboard` server's start_session). You decide
+   * on a card in that session; the call waits for your answer. Allowed, it starts as an orchestrator's would (or waits
+   * in the queue) and goes under the session in the sidebar. It reports back to no one: the asking session has no tools
+   * to follow it, and an update would cost it a turn.
+   */
+  async startChild(parentId: string, raw: Record<string, unknown>): Promise<OrchestratorToolResult> {
+    const args = readStartArgs(raw);
+    if ('error' in args) return fail(args.error);
+    const parent = this.deps.session(parentId);
+    if (!parent?.projectRoot) return fail('Seshboard does not know this session’s project yet. Try again in a moment.');
+    const plan = this.plan(parent.profileId ?? null, parent.projectRoot, args);
+    if ('error' in plan) return fail(plan.error);
+    const { draft, agent, workspace } = plan;
+    const several = this.deps.agents(parent.projectRoot).length > 1;
+    const allowed = await this.deps.askStart(parentId, { title: args.title, prompt: args.prompt, agent: several && agent ? agent.name : null, workspace });
+    if (!allowed) return { text: `The user did not start "${args.title}". Do not ask again for it; go on with your own task.` };
+    const hold = this.deps.hold(draft);
+    if (hold) {
+      const itemId = this.deps.queue(draft);
+      this.childItems.set(itemId, { parentId, title: args.title });
+      return { text: `The user allowed it. "${args.title}" waits in the queue: ${hold.detail} Seshboard starts it by itself, under this session.` };
+    }
+    let sessionId: string;
+    try {
+      sessionId = await this.deps.start(draft, args.title, null);
+    } catch (error) {
+      return fail(`The user allowed it, but "${args.title}" could not start: ${(error as Error).message}`);
+    }
+    this.deps.setParent(sessionId, parentId);
+    return { text: `The user allowed it. ${this.startedText(args.title, sessionId, args, workspace, agent)} It runs on its own, under this session in the sidebar.` };
   }
 
   /** A session joins the orchestrator's: stored, and under it in the sidebar. */
@@ -223,6 +281,12 @@ export class Orchestrator {
 
   /** A queued item started: when it was an orchestrator's, the session goes under it. Its title, or null. */
   itemStarted(itemId: string, sessionId: string): string | null {
+    const child = this.childItems.get(itemId);
+    if (child) {
+      this.childItems.delete(itemId);
+      this.deps.setParent(sessionId, child.parentId);
+      return child.title;
+    }
     const started = this.deps.store.itemStarted(itemId, sessionId);
     if (!started) return null;
     this.deps.setParent(sessionId, started.orchestratorId);
@@ -232,6 +296,7 @@ export class Orchestrator {
 
   /** A queued item left the queue without starting. */
   itemRemoved(itemId: string): void {
+    this.childItems.delete(itemId);
     if (this.deps.store.itemRemoved(itemId)) this.deps.changed();
   }
 

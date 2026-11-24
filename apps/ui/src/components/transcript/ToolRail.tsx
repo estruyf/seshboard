@@ -11,6 +11,7 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { Badged } from '../ui/Badged.tsx';
 import { sameRailItems } from './railItems.ts';
+import { panelButton } from './panelLauncher.ts';
 import { moveRailButton, RAIL_GITHUB, RAIL_MENU, railGroup, sameRailGroup, stepRailButton, toggleRailApp, toggleRailTool, type RailAppId, type RailToolId, type RailToolState } from './toolRail.ts';
 
 /** One of the rail's buttons, as the session view resolves it. */
@@ -64,11 +65,13 @@ export function useRailItems(items: readonly RailItem[]): readonly RailItem[] {
  * The session's tools as a vertical toolbar at the right edge of its view (Changes, Terminal, Browser, Preview, Ask,
  * Agents, Commands and mods' panes). The tool in front has the selected fill and an accent mark on its left edge; an
  * open one behind it has an accent dot under its icon. Apps pinned from its menu (VS Code, Finder) come last, by their own
- * icons, and open the session's folder. Hide panel at the bottom closes whatever the side shows. A right-click picks
- * which tools and apps show. ↑ ↓ move between the buttons. Drag a button (or ⌥↑ ⌥↓ on it) to move it inside its group.
- * Memoised: it renders again only when its items (`useRailItems` keeps them the same while unchanged) or `onHide` change.
+ * icons, and open the session's folder. The panel button at the bottom always shows: Hide panel closes whatever the side
+ * shows, Show panel opens it empty, with the tools to open there (`panelButton`). A right-click picks which tools and
+ * apps show. ↑ ↓ move between the buttons. Drag a button (or ⌥↑ ⌥↓ on it) to move it inside its group.
+ * Memoised: it renders again only when its items (`useRailItems` keeps them the same while unchanged), `sideShows` or
+ * `onPanel` change.
  */
-export const ToolRail = memo(function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide: (() => void) | null }) {
+export const ToolRail = memo(function ToolRail({ items, sideShows, onPanel }: { items: readonly RailItem[]; sideShows: boolean; onPanel: () => void }) {
   const hidden = usePreferences((s) => s.prefs.railHidden);
   const apps = usePreferences((s) => s.prefs.railApps);
   const editors = useHosts((s) => s.editors);
@@ -76,6 +79,7 @@ export const ToolRail = memo(function ToolRail({ items, onHide }: { items: reado
   const update = usePreferences((s) => s.update);
   const order = usePreferences((s) => s.prefs.railOrder);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const panel = panelButton(sideShows);
   const [focus, setFocus] = useState(0);
   const buttons = items.filter((item): item is RailButton => item !== 'divider');
   const tabStop = Math.min(focus, buttons.length);
@@ -205,12 +209,14 @@ export const ToolRail = memo(function ToolRail({ items, onHide }: { items: reado
           movable: railGroup(item.id) !== null,
         });
       })}
-      {onHide && (
-        <>
-          <span className="flex-1" aria-hidden />
-          {button('hide', ++index, { label: 'Hide panel', ariaLabel: 'Hide panel', icon: <PanelRight size={17} aria-hidden />, data: { 'data-rail-hide': true }, onClick: onHide })}
-        </>
-      )}
+      <span className="flex-1" aria-hidden />
+      {button('hide', ++index, {
+        label: panel.label,
+        ariaLabel: panel.label,
+        icon: <PanelRight size={17} aria-hidden />,
+        data: { 'data-rail-hide': true, 'data-rail-panel': panel.action },
+        onClick: onPanel,
+      })}
       {menu && <Menu x={menu.x} y={menu.y} width={230} label="Tools" entries={entries} onClose={() => setMenu(null)} />}
     </div>
   );

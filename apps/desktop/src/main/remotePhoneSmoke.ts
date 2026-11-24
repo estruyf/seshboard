@@ -200,6 +200,34 @@ export function runPhoneTriggerStep(shot?: (win: BrowserWindow, name: string) =>
   });
 }
 
+/**
+ * An orchestrator on the computer (Tidy up the release notes, scripts/remote-demo.ts): a bar under its header says
+ * "1 waiting on you" and opens the overview, which groups Publish the beta under Waiting on you and a queued start under
+ * Queued. A tap on a session opens it, with a bar back to the orchestrator.
+ */
+export function runPhoneOrchestratorStep(shot?: (win: BrowserWindow, name: string) => Promise<void>): Promise<string> {
+  return onPhone(async (js, win) => {
+    const row = `[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((r) => r.innerText.includes('Tidy up the release notes'))`;
+    if (!(await waitInPage(win, `Boolean(${row})`, 5_000))) return 'the orchestrator is not in the list';
+    await js(`${row}.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-orchestrator-bar] [data-remote-orchestrator-line]')?.innerText.includes('1 waiting on you')", 5_000))) {
+      return `the orchestrator has no bar saying what waits on you (${await js("document.querySelector('[data-remote-orchestrator-bar]')?.innerText ?? 'no bar'")})`;
+    }
+    await js("document.querySelector('[data-remote-orchestrator-open]').click()");
+    const sheet = '[data-remote-sheet="orchestrator"]';
+    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-orchestrator-group="waiting"] [data-remote-worker-open]') && document.querySelector('${sheet} [data-remote-orchestrator-group="queued"] [data-remote-orchestrator-worker]')`, 3_000))) {
+      return `the overview has no Waiting on you with a way in, or no Queued (${await js(`document.querySelector('${sheet}')?.innerText.replace(/\\s+/g, ' ').slice(0, 200) ?? 'no sheet'`)})`;
+    }
+    if (!(await js(`document.querySelector('${sheet} [data-remote-worker-pr]')?.href === 'https://github.com/acme/tideline/pull/318'`))) return 'the overview has no link to the pull request';
+    await shot?.(win, 'phone-orchestrator-overview.png');
+    await js(`document.querySelector('${sheet} [data-remote-worker-open]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${sheet}') && document.querySelector('[data-remote-session-view] h1')?.innerText === 'Publish the beta' && document.querySelector('[data-remote-orchestrator-back]')`, 5_000))) return 'a tap in the overview did not open the session with a way back';
+    await js("document.querySelector('[data-remote-orchestrator-back] button').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-session-view] h1')?.innerText === 'Tidy up the release notes' && document.querySelector('[data-remote-orchestrator-bar]')", 5_000))) return 'the way back did not open the orchestrator';
+    return 'ok: the bar said 1 waiting on you, the overview had Waiting on you, Queued and the pull request, a tap opened the session, and the way back the orchestrator';
+  });
+}
+
 /** Closes the phone's window, at the end of the run. */
 export async function closeRemotePhone(): Promise<void> {
   const win = await phone;
@@ -479,7 +507,8 @@ export function runPhoneProviderStep(): Promise<string> {
     const picked = await pick('profile', 'Copilot');
     if (picked) return picked;
     const rows = (await js(`[...document.querySelectorAll('${sheet} [data-remote-choice]')].map((el) => el.dataset.remoteChoice).join(',')`)) as string;
-    if (rows !== 'profile,model,mode') return `with the Copilot profile, Options has ${rows}`;
+    // Run as stays with another agent, for Orchestrator (pipelines are Claude Code's).
+    if (rows !== 'run-as,profile,model,mode') return `with the Copilot profile, Options has ${rows}`;
     const mode = await pick('mode', 'Auto mode');
     if (mode) return mode;
     await js("document.querySelector('[data-remote-sheet-done]').click()");
@@ -497,7 +526,7 @@ export function runPhoneProviderStep(): Promise<string> {
     if (codex) return codex;
     const codexRows = (await js(`[...document.querySelectorAll('${sheet} [data-remote-choice]')].map((el) => el.dataset.remoteChoice).join(',')`)) as string;
     // Codex runs in a worktree or on a branch too (its `supports`), so those rows stay.
-    if (codexRows !== 'profile,model,mode,worktree,branch') return `with the Codex profile, Options has ${codexRows}`;
+    if (codexRows !== 'run-as,profile,model,mode,worktree,branch') return `with the Codex profile, Options has ${codexRows}`;
     const codexModel = await pick('model', 'GPT-5.3 Codex Mini');
     if (codexModel) return codexModel;
     const codexMode = await pick('mode', 'Plan mode');
