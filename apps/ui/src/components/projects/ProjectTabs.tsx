@@ -536,6 +536,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         >
           <BrowserSitesEditor
             sites={project.defaults.browserScriptSites ?? []}
+            anySite
             inputLabel="Site to allow scripts on"
             onSave={async (browserScriptSites) => {
               if (!client) return;

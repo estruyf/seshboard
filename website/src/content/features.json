@@ -4387,6 +4387,11 @@
       "page": "browser/agents"
     },
     {
+      "id": "feature:browser-scripts-any-site",
+      "name": "Any site in Scripts in pages: the agent runs scripts and reads requests on every site without asking",
+      "page": "browser/agents"
+    },
+    {
       "id": "feature:sidebar-view",
       "name": "The sidebar's View button: group by State or Project, sort Recent or Quickest to unblock, show Done and Compact rows",
       "page": "sessions/sidebar"
