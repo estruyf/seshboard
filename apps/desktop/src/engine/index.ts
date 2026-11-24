@@ -203,6 +203,11 @@ process.parentPort.on('message', (event) => {
     engine.setForeground((data as { foreground?: unknown }).foreground !== false);
     return;
   }
+  // Whether someone uses this computer (keyboard or mouse in the last 5 minutes, not locked): pushes wait for away.
+  if (data?.type === 'presence') {
+    engine.setPresent((data as { present?: unknown }).present === true);
+    return;
+  }
   // Settings › Mods › Show mods.
   if (data?.type === 'mods') {
     engine.setShowMods((data as { show?: unknown }).show !== false);

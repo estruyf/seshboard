@@ -51,6 +51,12 @@ export const REMOTE_FEATURE_CLONE = 'projects.clone';
 export const REMOTE_FEATURE_PUSH_KEY = 'push.vapid';
 
 /**
+ * In `hello`'s `features`: `push.subscribe` takes `onlyWhenAway`, so the moments it names wait while someone uses this
+ * computer (no keyboard or mouse for 5 minutes, locked or asleep counts as away).
+ */
+export const REMOTE_FEATURE_PUSH_AWAY = 'push.away';
+
+/**
  * In `hello`'s `features`: `usage.sessionCost` and `usage.windowCosts` answer, and `usage.tokens` rows carry their
  * `cost`, so a session there and the plan windows show their estimated API cost here.
  */

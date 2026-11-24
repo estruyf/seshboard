@@ -1,4 +1,4 @@
-import type { RemoteContract, RpcClient } from '@seshboard/protocol/remote-client';
+import { REMOTE_FEATURE_PUSH_AWAY, type RemoteContract, type RpcClient } from '@seshboard/protocol/remote-client';
 import { STANDALONE } from './platform.ts';
 import { base64url, DEFAULT_PREFS, isIosAgent, keyBytes, parsePrefs, pushKeyFor, pushLabel, pushSupport, sameBytes, type PushPrefs, type PushSupport } from './pushSupport.ts';
 import { loadPushKey, savePushKey, type PushKey } from './storage.ts';
@@ -106,6 +106,9 @@ async function subscription(key: Uint8Array<ArrayBuffer>): Promise<{ subscriptio
   return { subscription: await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }), changed: true };
 }
 
+/** Connected computers that send even while you use them: Seshboard there is older than the away choice. */
+export const awayOutdated = (computers: PushComputers): string[] => computers.targets.filter((t) => !t.features.includes(REMOTE_FEATURE_PUSH_AWAY)).map((t) => t.name);
+
 /** A computer that can't push next to others: Seshboard there is older than one subscription for all. */
 export const outdated = (computers: PushComputers): string[] => computers.targets.filter((t) => pushKeyFor(t.features, computers.paired) === 'none').map((t) => t.name);
 
@@ -122,6 +125,8 @@ async function send(target: PushTarget, prefs: PushPrefs, paired: number): Promi
     subscription: { endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } },
     needsYou: prefs.needsYou,
     finished: prefs.finished,
+    // A computer from before ignores it and sends every moment asked for (`awayOutdated` says which).
+    onlyWhenAway: prefs.onlyWhenAway,
     ...(own ? { vapid: own, ...(label ? { label } : {}) } : {}),
   });
   return made.changed ? 'changed' : 'sent';

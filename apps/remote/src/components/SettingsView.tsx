@@ -7,7 +7,7 @@ import type { PushPrefs } from '../lib/pushSupport.ts';
 import { TEXT_SIZES } from '../lib/textSize.ts';
 import { chooseTextSize, subscribeTextSize, textSizeChoice } from '../lib/themeApply.ts';
 import { TONE_DOT } from './ConnectionStatus.tsx';
-import { pushNote, switchPush, SwitchLook } from './Notifications.tsx';
+import { AWAY_NOTE, awayNote, MomentChoices, pushNote, switchPush, SwitchLook } from './Notifications.tsx';
 import { ColourChoices, ModeChoices } from './ThemeSheet.tsx';
 import { toast } from './Toasts.tsx';
 import { RoundButton } from './ui.tsx';
@@ -60,7 +60,7 @@ export function SettingsView({
   const note = pushNote(support, connected);
   const older = outdated(push);
   const pushOn = prefs.on && (prefs.needsYou || prefs.finished);
-  const onlyNeeds = pushOn && prefs.needsYou && !prefs.finished;
+  const away = awayNote(push, prefs);
   const canChange = support === 'ready' && connected && !busy;
   const change = async (run: () => Promise<PushPrefs>) => {
     if (!canChange) return;
@@ -120,14 +120,17 @@ export function SettingsView({
 
           <Group id="settings-notifications" title="Notifications" note={note}>
             <SwitchRow icon={<Bell />} label="Push notifications" detail="When Claude needs you or finishes" checked={pushOn} disabled={!canChange} onToggle={() => void change(() => switchPush(push, !pushOn))} hook="push" />
-            <SwitchRow
-              label="Only when it needs me"
-              checked={onlyNeeds}
-              disabled={!canChange || !pushOn}
-              onToggle={() => void change(() => update(push, onlyNeeds ? { finished: true } : { needsYou: true, finished: false }))}
-              border
-              hook="needs-you-only"
-            />
+            {pushOn && (
+              <div className="border-t border-border">
+                <MomentChoices prefs={prefs} disabled={!canChange} onChoose={(moments) => void change(() => update(push, moments))} />
+                <p className="border-t border-border px-3 py-2 text-meta text-muted">{AWAY_NOTE}</p>
+              </div>
+            )}
+            {away && (
+              <p className="border-t border-border px-3 py-2 text-ui text-text" data-remote-push-away-outdated>
+                {away}
+              </p>
+            )}
             {older.length > 0 && (
               <p className="border-t border-border px-3 py-2 text-ui text-text" data-remote-push-outdated>
                 {older.join(', ')} can't send notifications next to your other computers yet. Update Seshboard there to get them.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { REMOTE_FEATURE_PUSH_KEY } from '@seshboard/protocol/remote-client';
-import { base64url, isIosAgent, keyBytes, parsePrefs, pushKeyFor, pushLabel, pushSupport, sameBytes, type BrowserFacts } from './pushSupport.ts';
+import { base64url, isIosAgent, keyBytes, modeChange, momentMode, parsePrefs, pushKeyFor, pushLabel, pushSupport, sameBytes, type BrowserFacts } from './pushSupport.ts';
 
 const facts = (change: Partial<BrowserFacts> = {}): BrowserFacts => ({ serviceWorker: true, pushManager: true, notification: true, ios: false, standalone: false, permission: 'default', ...change });
 
@@ -36,10 +36,21 @@ describe('push helpers', () => {
     expect(sameBytes(null, bytes)).toBe(false);
   });
 
-  it('keeps the switches, both on by default', () => {
-    expect(parsePrefs(null)).toEqual({ on: false, needsYou: true, finished: true });
-    expect(parsePrefs('{"on":true,"finished":false}')).toEqual({ on: true, needsYou: true, finished: false });
-    expect(parsePrefs('not json')).toEqual({ on: false, needsYou: true, finished: true });
+  it('keeps the switches, both on and only while away by default', () => {
+    const away = { needsYou: true, finished: true };
+    expect(parsePrefs(null)).toEqual({ on: false, needsYou: true, finished: true, onlyWhenAway: away });
+    expect(parsePrefs('{"on":true,"finished":false}')).toEqual({ on: true, needsYou: true, finished: false, onlyWhenAway: away });
+    expect(parsePrefs('{"on":true,"onlyWhenAway":{"needsYou":false}}')).toEqual({ on: true, needsYou: true, finished: true, onlyWhenAway: { needsYou: false, finished: true } });
+    expect(parsePrefs('not json')).toEqual({ on: false, needsYou: true, finished: true, onlyWhenAway: away });
+  });
+
+  it('reads and changes a moment as Always, Away or Off', () => {
+    const prefs = parsePrefs('{"on":true,"finished":false,"onlyWhenAway":{"needsYou":false}}');
+    expect(momentMode(prefs, 'needsYou')).toBe('always');
+    expect(momentMode(prefs, 'finished')).toBe('off');
+    expect(momentMode({ ...prefs, on: false }, 'needsYou')).toBe('off');
+    expect(modeChange(prefs, 'finished', 'away')).toEqual({ finished: true, onlyWhenAway: { needsYou: false, finished: true } });
+    expect(modeChange(prefs, 'needsYou', 'off')).toEqual({ needsYou: false });
   });
 });
 

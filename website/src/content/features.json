@@ -2142,6 +2142,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-push-away",
+      "name": "Remote app: Settings › Notifications, Needs you and Finished each Away, Always or Off (Away: no keyboard or mouse on the computer for 5 minutes, or it is locked or asleep)",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-quote",
       "name": "Remote app: Quote under a reply, and the Quote pill over selected text (also in Read)",
       "page": "remote-access"

@@ -482,6 +482,8 @@ export interface Engine {
   setAppUpdate(update: RemoteAppUpdate): void;
   /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
   setForeground(foreground: boolean): void;
+  /** Whether someone uses this computer now, from main: paired phones get the moments they want only while you're away when not. */
+  setPresent(present: boolean): void;
   /**
    * The smoke run's mods step (`SESHBOARD_SMOKE_MODS`): adds a throwaway profile whose sessions load the test mod,
    * starts a session there with the mod's own `/smoke-ping` (answered without the model), and writes its id and
@@ -529,6 +531,8 @@ export function createEngine(options: EngineOptions): Engine {
   let looseEnds: LooseEndsWatcher | null = null;
   /** Remote, when this engine offers it. */
   let remote: RemoteHub | null = null;
+  /** Whether someone uses this computer, as main last said (`setPresent`); false until it does. */
+  let presentNow = false;
   /** Other computers this app paired with, when this engine can keep a key for them. */
   let computers: ComputerHub | null = null;
   /** The sidebar's scope in the window that reported focus last, so a phone lists what the sidebar lists. */
@@ -3115,6 +3119,7 @@ export function createEngine(options: EngineOptions): Engine {
       onFromDevice: (event) => broadcast('remote.fromDevice', event),
       log,
     });
+    remote.setPresent(presentNow);
     void remote.start();
   }
 
@@ -5206,6 +5211,10 @@ export function createEngine(options: EngineOptions): Engine {
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setAppUpdate: (update) => remote?.setAppUpdate(update),
+    setPresent: (present) => {
+      presentNow = present;
+      remote?.setPresent(present);
+    },
     setForeground: (foreground) => {
       gitStatus.setForeground(foreground);
       checksWatcher.setForeground(foreground);

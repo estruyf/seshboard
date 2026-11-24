@@ -1130,6 +1130,28 @@ describe('Remote hub', () => {
     expect(appState.get('remote.push')).toEqual([]);
   });
 
+  it('holds back what a phone wants only while you are away, while someone uses this computer', async () => {
+    const { hub, port, on, pushes, permissions } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    await remote.call('push.subscribe', { subscription: PUSH, needsYou: true, finished: true, onlyWhenAway: { finished: true } });
+    hub.setPresent(true);
+    hub.hostChanged({ sessionId: SESSION, state: 'running' } as SessionHostInfo);
+    hub.hostChanged({ sessionId: SESSION, state: 'idle' } as SessionHostInfo);
+    // Needs you isn't held back: it still comes.
+    hub.permissionAsked(permissions[0]!);
+    await until(() => pushes.length === 1);
+    expect(pushes[0]!.urgency).toBe('high');
+    await new Promise((r) => setTimeout(r, 60));
+    expect(pushes).toHaveLength(1);
+
+    hub.setPresent(false);
+    hub.hostChanged({ sessionId: SESSION, state: 'running' } as SessionHostInfo);
+    hub.hostChanged({ sessionId: SESSION, state: 'idle' } as SessionHostInfo);
+    await until(() => pushes.length === 2);
+    expect(pushes[1]!.urgency).toBe('normal');
+  });
+
   it('signs with the device\'s own VAPID key when it gives one, and says which device and computer a push is for', async () => {
     const { hub, port, on, pushes, pushBodies, permissions } = await setup();
     await on();

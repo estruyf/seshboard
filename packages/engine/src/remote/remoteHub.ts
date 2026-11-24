@@ -84,7 +84,7 @@ import { RemoteServer } from './remoteServer.ts';
 import { nextFreePort } from './freePort.ts';
 import { RemoteLog } from './remoteLog.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
-import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
+import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type OnlyWhenAway, type PushPayload } from './pushEvents.ts';
 import { IdleUpdate } from './idleUpdate.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
 import { SessionOrigins } from './sessionOrigins.ts';
@@ -106,6 +106,8 @@ type PushEntry = {
   finished: boolean;
   /** Reminders that come due; left out by a phone from before, which follows `finished`. */
   reminders?: boolean;
+  /** The moments it wants only while nobody uses this computer; left out by a phone from before. */
+  onlyWhenAway?: OnlyWhenAway;
   /** The device's own VAPID key (`REMOTE_FEATURE_PUSH_KEY`), which its subscription was made with; else the engine's. */
   vapid?: VapidKeys;
   /** What its pushes start with: this computer's name, for a device paired with more than one. */
@@ -374,6 +376,11 @@ export class RemoteHub {
   private theme: RemoteTheme | null;
   /** Seshboard's updater as main last said (`setAppUpdate`); null until it did. */
   private appUpdate: RemoteAppUpdate | null = null;
+  /**
+   * Someone uses this computer now (`setPresent`, from main): the moments a device wants only while you're away wait.
+   * False until main says, so an engine without main's process pushes as before.
+   */
+  private present = false;
   /** Update when it's idle, from another computer: it starts once no session here works. */
   private readonly idleUpdate = new IdleUpdate({
     working: () => this.list().sessions.filter((s) => s.status === 'working' || s.status === 'needs-you' || s.status === 'background').length,
@@ -584,6 +591,11 @@ export class RemoteHub {
     if (JSON.stringify(update) === JSON.stringify(this.appUpdate)) return;
     this.appUpdate = update;
     this.emitAppUpdate();
+  }
+
+  /** Whether someone uses this computer now, from main: keyboard or mouse in the last 5 minutes, and not locked or asleep. */
+  setPresent(present: boolean): void {
+    this.present = present;
   }
 
   /** The updater as the computers see it: main's, and whether an update waits for idle here. */
@@ -827,15 +839,16 @@ export class RemoteHub {
   }
 
   /**
-   * Sends a push to every device that wants this kind and doesn't have the app on screen. A subscription the push
-   * service says is gone is forgotten.
+   * Sends a push to every device that wants this kind and doesn't have the app on screen, and holds back the moments a
+   * device wants only while you're away when someone uses this computer. A subscription the push service says is gone
+   * is forgotten.
    */
   private push(payload: PushPayload): void {
     if (!this.settings.enabled) return;
     const entries = this.pushEntries();
     if (!entries.length) return;
     const known = new Set(this.devices.list().map((d) => d.id));
-    const targets = pushTargets(entries, payload.kind, new Set(this.visible.values()), known);
+    const targets = pushTargets(entries, payload.kind, new Set(this.visible.values()), known, this.present);
     if (!targets.length) return;
     // At most 32 characters: a newer push about the same session replaces one the phone hasn't had yet.
     const topic = createHash('sha256').update(`${payload.kind}:${payload.sessionId}`).digest('base64url').slice(0, 32);
@@ -1347,11 +1360,11 @@ export class RemoteHub {
         return readPreviewImage(await this.sharedFile(sessionId, path), REMOTE_FILE_IMAGE_BYTES);
       },
       'push.key': () => ({ publicKey: this.vapid().publicKey }),
-      'push.subscribe': ({ subscription, needsYou, finished, reminders, vapid, label }) => {
+      'push.subscribe': ({ subscription, needsYou, finished, reminders, onlyWhenAway, vapid, label }) => {
         // Only the browsers' push services: a phone can't make the engine send requests anywhere else.
         if (!isPushEndpoint(subscription.endpoint)) throw new RpcError('INVALID_PARAMS', 'Not a push service this app knows');
         if (vapid && !validVapidKeys(vapid)) throw new RpcError('INVALID_PARAMS', 'Not a VAPID key pair');
-        this.setPush(device.id, { subscription, needsYou, finished, ...(reminders !== undefined ? { reminders } : {}), ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
+        this.setPush(device.id, { subscription, needsYou, finished, ...(reminders !== undefined ? { reminders } : {}), ...(onlyWhenAway ? { onlyWhenAway } : {}), ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
         return {};
       },
       'push.unsubscribe': () => {
