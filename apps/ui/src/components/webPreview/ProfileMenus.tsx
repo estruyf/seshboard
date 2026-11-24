@@ -9,6 +9,7 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { BROWSER_OWNER, type BrowserTab } from './browserTabs.ts';
+import { openBrowserProfiles } from './openBrowserProfiles.ts';
 
 /*
  * Browser profiles on the tabs (docs/browser.md, Browser profiles): a tab in a profile other than Default shows the
@@ -43,7 +44,7 @@ export function newTabMenu(owner: string, profiles: readonly BrowserProfile[]): 
       (profile): MenuEntry => ({ label: profile.name, icon: <ProfileDot color={profile.color} />, onSelect: () => newTabInProfile(owner, profile.id), data: { 'data-browser-new-tab-profile': profile.id } }),
     ),
     'separator',
-    { label: 'Browser profiles…', icon: <Settings2 size={13} aria-hidden />, onSelect: () => useSessions.getState().openSettings('browser'), data: { 'data-browser-manage-profiles': true } },
+    { label: 'Browser profiles…', icon: <Settings2 size={13} aria-hidden />, onSelect: openBrowserProfiles, data: { 'data-browser-manage-profiles': true } },
   ];
 }
 
@@ -88,8 +89,8 @@ export function profileSwitchMenu(tab: Pick<BrowserTab, 'id' | 'owner' | 'profil
     'separator',
     { label: 'Reset profile…', icon: <RotateCcw size={13} aria-hidden />, onSelect: () => askResetProfile(tab.profileId), data: { 'data-browser-profile-switch-reset': true } },
     usable.length
-      ? { label: 'Browser profiles…', icon: <Settings2 size={13} aria-hidden />, onSelect: () => useSessions.getState().openSettings('browser'), data: { 'data-browser-manage-profiles': true } }
-      : { label: 'New browser profile…', icon: <Plus size={13} aria-hidden />, onSelect: () => useSessions.getState().openSettings('browser'), data: { 'data-browser-manage-profiles': true } },
+      ? { label: 'Browser profiles…', icon: <Settings2 size={13} aria-hidden />, onSelect: openBrowserProfiles, data: { 'data-browser-manage-profiles': true } }
+      : { label: 'New browser profile…', icon: <Plus size={13} aria-hidden />, onSelect: openBrowserProfiles, data: { 'data-browser-manage-profiles': true } },
   ];
 }
 

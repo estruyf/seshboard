@@ -1,5 +1,5 @@
 import { currentPlatform } from '../../lib/platform.ts';
-import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, UserRound, Zap } from 'lucide-react';
 import type { SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, runOfParent as protocolRunOfParent, type CatchUp, type RunView } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -20,6 +20,7 @@ import { useSidebarList } from '../../state/browserViewStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useTabCount } from '../../state/webPreviewStore.ts';
 import { rowIndicators } from '../webPreview/browserTabs.ts';
+import { openBrowserProfiles } from '../webPreview/openBrowserProfiles.ts';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { useSidebarFolds } from '../../state/sidebarFoldsStore.ts';
 import { buildProjectRows, projectState } from '../../state/sidebarProjectRows.ts';
@@ -1577,7 +1578,7 @@ export function Sidebar() {
       {showTabs && <BrowserTabList />}
 
       {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines.
-          Under the Browser's tabs only Settings: the rest is about sessions (hidden, not gone, so it is as it was on the way back). */}
+          Under the Browser's tabs only Projects, Browser profiles and Settings: the rest is about sessions (hidden, not gone, so it is as it was on the way back). */}
       <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={(!showTabs && !listEdge.atBottom) || undefined} data-sidebar-bottom>
       <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-session-footer>
       {/* Closed, Archived is docked under the list, so a short list never scrolls and a long one keeps it in sight. */}
@@ -1631,10 +1632,13 @@ export function Sidebar() {
             {unsentCount} unsent
           </Pill>
         )}
+        </div>
+        {/* Projects and Settings stay under the Browser's tabs too, with Browser profiles between them. */}
         <Button
           variant="quiet"
           iconOnly
           icon={<FolderCog size={15} aria-hidden />}
+          className={showTabs ? 'ml-auto' : undefined}
           aria-label="Projects"
           selected={view === 'projects' || view === 'project'}
           aria-current={view === 'projects' || view === 'project' ? 'page' : undefined}
@@ -1642,12 +1646,13 @@ export function Sidebar() {
           // The list and the open project are one view: a second click leaves it.
           onClick={() => setView(view === 'projects' || view === 'project' ? 'session' : 'projects')}
         />
-        </div>
+        {showTabs && (
+          <Button variant="quiet" iconOnly icon={<UserRound size={15} aria-hidden />} aria-label="Browser profiles" data-open-browser-profiles onClick={openBrowserProfiles} />
+        )}
         <Button
           variant="quiet"
           iconOnly
           icon={<Settings size={15} aria-hidden />}
-          className={showTabs ? 'ml-auto' : undefined}
           aria-label="Settings"
           shortcut="settings"
           selected={view === 'settings'}

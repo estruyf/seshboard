@@ -106,7 +106,8 @@ const q = (selector: string) => `document.querySelector(${JSON.stringify(selecto
 /**
  * "browser view": Browser in the sidebar's views shows the Browser view with its tabs listed, without the search row and
  * without an address bar until a tab is open; Open tab gives one; the local page loads there, and its title and favicon
- * show in the list. Dragging a tab moves it, and so does ⌥↓. A middle click closes the tab and ⌘⇧T brings it back.
+ * show in the list. Dragging a tab moves it, and so does ⌥↓. A middle click closes the tab and ⌘⇧T brings it back. Under
+ * the tabs, Projects, Browser profiles and Settings; Browser profiles opens Settings › Browser at the profiles.
  */
 export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -120,9 +121,9 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   if (!(await js(`!!${q('[data-browser-view] [data-browser-empty]')} || !!${q('[data-browser-view] [data-web-preview-slot]')}`))) return 'the Browser view shows neither a page nor its empty state';
   if (await js(`!!${q('[data-browser-view] [data-browser-empty]')} && !!${q('[data-browser-view] [data-browser-address]')}`)) return 'the empty Browser view shows an address bar';
   if (await js(`!!${q('[data-new-session]')}?.checkVisibility()`)) return 'the Browser tab list still shows New session and the search';
-  // Under the tabs only Settings: no Done, no session count, no Projects.
-  if (!(await js(`!!${q('[data-open-settings]')}?.checkVisibility()`))) return 'the Browser tab list has no Settings button';
-  for (const hook of ['data-footer-sessions', 'data-archived-dock', 'data-open-projects']) if (await js(`!!${q(`[${hook}]`)}?.checkVisibility()`)) return `the Browser tab list still shows ${hook}`;
+  // Under the tabs only Projects, Browser profiles and Settings: no Done, no session count.
+  for (const hook of ['data-open-projects', 'data-open-browser-profiles', 'data-open-settings']) if (!(await js(`!!${q(`[${hook}]`)}?.checkVisibility()`))) return `the Browser tab list has no ${hook} button`;
+  for (const hook of ['data-footer-sessions', 'data-archived-dock']) if (await js(`!!${q(`[${hook}]`)}?.checkVisibility()`)) return `the Browser tab list still shows ${hook}`;
   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view] [data-browser-address]')} && !${q('[data-browser-view] [data-browser-address]')}.disabled`, 3_000))) return 'Open tab gave no address bar';
   await setFieldValue(win, '[data-browser-view] [data-browser-address]', url.replace('http://', ''));
@@ -184,7 +185,12 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   if (!(await waitInPage(win, `${listed} && ${q('[data-browser-view] [data-browser-address]')}`, 3_000))) return '⌘⇧T did not reopen the closed tab';
   if (await js(`!!${q('[data-activity]')}`)) return '⌘⇧T opened Activity in the Browser view';
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the reopened tab did not load its page';
-  return `ok: ${url} opened in a Browser tab with Copy address in its bar, its title and favicon in the list, moved by a drag and ⌥↓, closed with a middle click and reopened with ⌘⇧T`;
+  // Browser profiles under the tabs opens Settings › Browser at its profiles; Settings again goes back to the tabs.
+  await js(`${q('[data-open-browser-profiles]')}.click()`);
+  if (!(await waitInPage(win, `document.activeElement?.matches('[data-settings-page="browser"] [data-new-browser-profile]')`, 3_000))) return 'Browser profiles did not open Settings › Browser at its profiles';
+  await js(`${q('[data-open-settings]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'closing Settings did not go back to the Browser view and its tabs';
+  return `ok: ${url} opened in a Browser tab with Copy address in its bar, its title and favicon in the list, moved by a drag and ⌥↓, closed with a middle click and reopened with ⌘⇧T, and Browser profiles opened Settings at the profiles`;
 }
 
 /**

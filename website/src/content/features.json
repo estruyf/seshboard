@@ -953,7 +953,7 @@
     },
     {
       "id": "feature:browser-profiles",
-      "name": "Browser profiles: separate logins, site data and cache per profile (for a project or everywhere), a coloured mark on their tabs, the profile switcher after the address bar, New tab in a profile, Open in other profile, Reset profile… with what to forget, and agents' open with a profile",
+      "name": "Browser profiles: separate logins, site data and cache per profile (for a project or everywhere), a coloured mark on their tabs, the profile switcher after the address bar, New tab in a profile, Open in other profile, Reset profile… with what to forget, agents' open with a profile, and a Browser profiles button under the Browser's tabs that opens them in Settings",
       "page": "browser/profiles"
     },
     {
