@@ -17,6 +17,8 @@ const DOWNLOAD_NAME = `smoke-download-with-a-name-long-enough-to-be-cut-${'long-
 const DOWNLOAD_TEXT = 'Saved by the smoke run.';
 /** The download's response, held open until the step has checked its Downloading toast. */
 let heldDownload: ServerResponse | null = null;
+/** The responses of `/slow`, which never answers until "browser stop" ends them: a page that is still loading. */
+const heldSlow: ServerResponse[] = [];
 
 const PAGES: Record<string, string> = {
   // Broken icons around the real one: the tab still gets it, whichever the page reports first.
@@ -73,6 +75,10 @@ async function site(): Promise<string> {
       response.writeHead(200, { 'content-type': 'application/octet-stream', 'x-content-type-options': 'nosniff', 'content-disposition': `attachment; filename="${DOWNLOAD_NAME}"`, 'content-length': String(DOWNLOAD_TEXT.length) });
       response.write(DOWNLOAD_TEXT.slice(0, 8));
       heldDownload = response;
+      return;
+    }
+    if (request.url === '/slow') {
+      heldSlow.push(response);
       return;
     }
     const raw = RAW[request.url ?? ''];
@@ -995,6 +1001,36 @@ export async function runBrowserDownloadStep(win: BrowserWindow, deps: BrowserSm
   if (!existsSync(file) || readFileSync(file, 'utf8') !== DOWNLOAD_TEXT) return `the file is not in the Downloads folder as it was sent (${file})`;
   await js(`${done}.querySelector('[data-toast-close]')?.click()`);
   return 'ok: the file saved in the Downloads folder, its long name cut and shown in full, Show in Finder offered';
+}
+
+/**
+ * "browser stop": the ✕ next to the address stops a new tab's first load, a page that hasn't answered yet (so has no
+ * `dom-ready`), and gives Reload back. The tab is closed after.
+ */
+export async function runBrowserStopStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const url = await site();
+  const address = '[data-browser-view] [data-browser-address]';
+  deps.setBrowser(true);
+  if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
+  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
+  if (!(await waitInPage(win, q('[data-browser-tab-list] [data-browser-open-tab]'), 3_000))) return 'no Browser view';
+  await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
+  if (!(await waitInPage(win, `${q(address)} && !${q(address)}.disabled`, 3_000))) return 'Open tab gave no address bar';
+  await setFieldValue(win, address, `${url.replace('http://', '')}slow`);
+  await js(`${q(address)}.form.requestSubmit()`);
+  const stop = q('[data-browser-view] [data-web-preview-stop]');
+  try {
+    if (!(await waitInPage(win, stop, 5_000))) return 'no Stop loading button while the page loads';
+    if (!(await until(() => heldSlow.length > 0, 5_000))) return 'the page did not reach the server';
+    await js(`${stop}.click()`);
+    if (!(await waitInPage(win, `!${stop} && ${q('[data-browser-view] [data-web-preview-reload]')}`, 3_000))) return 'Stop loading did not stop the first load: the page is still loading';
+  } finally {
+    for (const response of heldSlow.splice(0)) response.destroy();
+    // The tab in front is the one this step opened.
+    await js(`${q('[data-browser-tab-list] [data-browser-tab][aria-current="page"]')}?.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
+  }
+  return 'ok: Stop loading stopped a first load that had not answered, and Reload came back';
 }
 
 /**
