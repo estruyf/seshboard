@@ -145,6 +145,7 @@ const PLANS: Record<string, Plan> = {
   'check-transcript': 'here',
   'toggle-terminal': 'here',
   'new-terminal-tab': 'here',
+  'show-side-panel': 'here',
   'toggle-agents': 'here',
   'toggle-commands': 'here',
   'open-web-preview': 'here',

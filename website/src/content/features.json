@@ -857,6 +857,11 @@
       "page": "sessions/agents"
     },
     {
+      "id": "palette:show-side-panel",
+      "name": "Show side panel",
+      "page": "sessions/tool-rail"
+    },
+    {
       "id": "palette:toggle-commands",
       "name": "Toggle commands",
       "page": "sessions/commands"
@@ -4409,6 +4414,11 @@
     {
       "id": "feature:tool-rail-apps",
       "name": "Apps on the rail: right-click it and check VS Code, Finder, a terminal or GitHub under Open in, and a click on its icon opens the session's folder there (GitHub: its page)",
+      "page": "sessions/tool-rail"
+    },
+    {
+      "id": "feature:side-panel-launcher",
+      "name": "Show panel at the bottom of the rail opens the side panel empty, with a list of the tools to open there and their shortcuts (hidden ones too)",
       "page": "sessions/tool-rail"
     },
     {

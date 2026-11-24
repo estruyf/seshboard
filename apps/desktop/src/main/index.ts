@@ -36,7 +36,7 @@ import { installWebPreviewGuards } from './webPreview.ts';
 import { runWebPreviewStep } from './webPreviewSmoke.ts';
 import { installBrowserAgent } from './browserAgent.ts';
 import { runBrowserAgentStep, runBrowserScriptsStep, runBrowserServerStep } from './browserAgentSmoke.ts';
-import { runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
+import { runPanelLauncherStep, runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
 import { runBrowserDownloadStep, runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserStopStep, runBrowserSuggestionsStep, runBrowserTextPageStep, runBrowserViewStep, runBrowserWindowStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
@@ -15764,6 +15764,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('tool rail badges: the Changes badge counts the changed files', () => runToolRailBadgesStep(win, smokeSessionId));
   await step('tool rail apps: an app checked in the menu is pinned to the rail with its icon', () => runToolRailAppsStep(win, shotBoth, smokeSessionId));
   await step('tool rail order: ⌥↑ and ⌥↓ move a tool inside its group', () => runToolRailOrderStep(win, smokeSessionId));
+  await step('side panel launcher: Show panel opens the side empty with the tools to open, ↓ and Enter open one in front, Esc and Hide panel close', () => runPanelLauncherStep(win, shotBoth, smokeSessionId));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
   await step("session note: N, shown under the title, found by search, in the header and its panel, cleared", () => runSessionNoteStep(win));

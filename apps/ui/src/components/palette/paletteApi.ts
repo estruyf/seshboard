@@ -15,6 +15,7 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
+import { openPanelLauncher } from '../../state/panelLauncherStore.ts';
 import { showWebPanel, useWebPreview } from '../../state/webPreviewStore.ts';
 import { currentPageTab, newBrowserTab, openBrowserView } from '../../state/browserViewStore.ts';
 import { toggleFavorite } from '../../state/browserFavoritesStore.ts';
@@ -248,6 +249,11 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     toggleCommands: () => {
       const id = useSessions.getState().selectedId;
       if (id) toggleCommandsPanel(id, isChangesOpen(id) || isAskOpen(id) || isAgentsOpen(id));
+    },
+    // The session view clears it again when a tool is already on the side.
+    showSidePanel: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) openPanelLauncher(id);
     },
     openWeb: () => {
       const id = useSessions.getState().selectedId;
