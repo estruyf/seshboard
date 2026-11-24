@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Effort, PermissionMode, SessionHostInfo } from '@seshboard/protocol';
+import type { Effort, PermissionMode, PermissionRequest, SessionHostInfo } from '@seshboard/protocol';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import type { StoredUpNext } from '../host/upNextStore.ts';
 import type { DriverEvents, DriverSession, ProviderAdapter, ProviderDriver } from './provider.ts';
@@ -106,6 +106,36 @@ describe('ProviderHosts orchestrator', () => {
       { servers: { orchestrator: server }, instructions: 'You are the orchestrator.' },
       { servers: undefined, instructions: undefined },
     ]);
+  });
+});
+
+describe('ProviderHosts: a session asks to start another', () => {
+  it('starts other sessions with the seshboard server, and an orchestrator without it', async () => {
+    const started: unknown[] = [];
+    const sessions = { command: '/Apps/Seshboard', args: ['/Apps/orchestrator-mcp.js'], env: { SESHBOARD_ORCHESTRATOR_ROLE: 'session' } };
+    const orchestrator = { command: '/Apps/Seshboard', args: ['/Apps/orchestrator-mcp.js'], env: {} };
+    const { hosts, driver } = setup([], { sessionsServer: async () => sessions, orchestratorServer: async () => orchestrator });
+    const start = driver.start.bind(driver);
+    driver.start = (config, events) => (started.push(config.mcpServers), start(config, events));
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'Fix it', attachments: [], model: null });
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'Split this', attachments: [], model: null, orchestrator: true });
+    expect(started).toEqual([{ seshboard: sessions }, { orchestrator }]);
+  });
+
+  it('asks on a card of its own, Allow or Deny, and hears your answer', async () => {
+    const asked: PermissionRequest[] = [];
+    const { hosts } = setup([], { onPermission: (request) => void asked.push(request) });
+    await send(hosts, 'hello');
+    const ask = { title: 'Fix lint', prompt: 'Fix the lint errors.', agent: null, workspace: 'worktree' as const };
+    const allowed = hosts.askStart(ID, ask);
+    expect(asked[0]).toMatchObject({ toolName: 'mcp__seshboard__start_session', title: expect.stringContaining('wants to start a session: Fix lint'), alwaysLabel: null, input: ask });
+    expect(asked[0]!.sessionAllow).toBeUndefined();
+    expect(hosts.respond(asked[0]!.requestId, { behavior: 'allow' })).toBe(true);
+    await expect(allowed).resolves.toBe(true);
+    const denied = hosts.askStart(ID, ask);
+    hosts.respond(asked[1]!.requestId, { behavior: 'deny' });
+    await expect(denied).resolves.toBe(false);
+    await expect(hosts.askStart('not-running', ask)).resolves.toBe(false);
   });
 });
 

@@ -8084,6 +8084,77 @@ async function runRememberStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Start session from a selection: select one of Claude's replies and use Start session over it. New session opens on
+ * the session's project with the text as the prompt, a link to the session in the context tray and "Goes under …".
+ * Started with a stand-in (nothing reaches an agent), `session.create` gets the session as the parent. The stand-in is
+ * closed and its prompt forgotten after.
+ */
+async function runStartFromSelectionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!smokeSessionId) return 'ok: no session open to select from';
+  const parentId = smokeSessionId;
+  await transcriptAtRest(win);
+  const reply = `[data-current-session="${parentId}"] [data-transcript] [data-remember-from="claude"] p`;
+  if (!(await js(`!!document.querySelector(${JSON.stringify(reply)})`))) return 'ok: no reply of Claude on screen to select';
+  const selected = (await js(`(() => {
+    const p = document.querySelector(${JSON.stringify(reply)});
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    return selection.toString().trim();
+  })()`)) as string;
+  if (!selected) return 'ok: the first reply has no text to select';
+  const view = '[data-new-session-view]';
+  const createdLog = join(app.getPath('userData'), 'smoke-created.jsonl');
+  const created = (): Array<{ sessionId: string; prompt: string; parentSessionId: string | null }> => {
+    try {
+      return readFileSync(createdLog, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line));
+    } catch {
+      return [];
+    }
+  };
+  const before = created().length;
+  let started = '';
+  let cwd = '';
+  try {
+    const button = "document.querySelector('[data-remember-selection] [data-start-session-selection]')";
+    if (!(await waitInPage(win, `!!${button}`, 3_000))) return 'no Start session button over the selection';
+    await js(`${button}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-parent-notice]')`, 5_000))) return 'New session did not open with "Goes under" the session';
+    cwd = (await js(`document.querySelector('${view} [data-folder-select]')?.dataset.value ?? ''`)) as string;
+    const prompt = (await js(`document.querySelector('${view} [data-composer]')?.value ?? ''`)) as string;
+    if (prompt.trim() !== selected) return `the prompt is not the selection ("${prompt.slice(0, 40)}")`;
+    if (!(await js(`document.querySelector('${view}').innerText.includes('Goes under')`))) return 'the notice does not say where it goes';
+    await shot(win, 'start-from-selection.png');
+    engine.send({ type: 'smokeStubCreate', on: true });
+    await js(`document.querySelector('${view} [data-composer]').focus()`);
+    pressKey(win, 'Return', ['meta']);
+    if (!(await until(() => created().length > before, 8_000))) return 'Start did not create a session';
+    const made = created().at(-1)!;
+    started = made.sessionId;
+    if (made.parentSessionId !== parentId) return `the new session did not go under the session (${String(made.parentSessionId)})`;
+    if (!made.prompt.includes(selected.slice(0, 40))) return 'the new session did not get the selected text';
+    if (!made.prompt.includes(parentId)) return 'the new session did not get a link to the session';
+    return `ok: ${selected.length} characters became the prompt with a link to the session, "Goes under" showed, and the session started under it`;
+  } finally {
+    engine.send({ type: 'smokeStubCreate', on: false });
+    await js('window.getSelection().removeAllRanges()');
+    if (started) {
+      engine.send({ type: 'smokeQueueHost', sessionId: started, cwd, state: 'closed' });
+      await waitInPage(win, `!document.querySelector('[data-session-list] [data-session-id="${started}"]')`, 5_000);
+      win.webContents.send(IpcChannel.draftsRelayed, { [started]: null, ...(cwd ? { [`new:${cwd}`]: null } : {}) });
+    } else if (cwd) {
+      win.webContents.send(IpcChannel.draftsRelayed, { [`new:${cwd}`]: null });
+    }
+    await js(`document.querySelector('[data-session-id="${parentId}"]')?.click()`);
+    await waitInPage(win, `!!document.querySelector('[data-current-session="${parentId}"]')`, 5_000);
+  }
+}
+
+/**
  * The toolbar over a selection, read-only: select one of Claude's replies and check the toolbar shows solid, without
  * covering the selection; Tab reaches it and → moves to Copy, which says Copied (the clipboard is stubbed for the
  * step, so yours is left alone); Esc closes it and keeps the selection; Quote puts the selection in the message box
@@ -8134,7 +8205,7 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'selection-toolbar.png');
   if (look.covers) return done('the toolbar covers the selection');
   if (!look.solid) return done('the toolbar is see-through');
-  if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
+  if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Start session,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
 
   // Keyboard: Tab from the transcript into the toolbar, → to Copy, then Copy.
   // Copy in the conversation writes the clean HTML and the text together (`copySelection`), elsewhere the text alone.
@@ -15586,6 +15657,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   );
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
+  await step('start from selection: Start session over a reply opens New session with the text, a link and the session to go under', () => runStartFromSelectionStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
   await step('unsent drafts', () => runDraftStep(win));
   await step('unsent messages', () => runUnsentStep(win));

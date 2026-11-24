@@ -1,5 +1,5 @@
 import { connect } from 'node:net';
-import { ORCHESTRATOR_SOCKET_ENV, ORCHESTRATOR_TOKEN_ENV, type OrchestratorBridgeReply, type OrchestratorBridgeRequest, type OrchestratorToolResult } from '@seshboard/protocol/bridge';
+import { ORCHESTRATOR_ROLE_ENV, ORCHESTRATOR_SOCKET_ENV, ORCHESTRATOR_TOKEN_ENV, type OrchestratorBridgeReply, type OrchestratorBridgeRequest, type OrchestratorToolResult } from '@seshboard/protocol/bridge';
 import { lineReader } from '../browserMcp/server.ts';
 import { orchestratorMcpServer } from './server.ts';
 
@@ -8,6 +8,8 @@ import { orchestratorMcpServer } from './server.ts';
 // agent closes its input.
 const socketPath = process.env[ORCHESTRATOR_SOCKET_ENV] ?? '';
 const token = process.env[ORCHESTRATOR_TOKEN_ENV] ?? '';
+// A session that is not an orchestrator lists only start_session, which asks you first.
+const role = process.env[ORCHESTRATOR_ROLE_ENV] === 'session' ? 'session' : 'orchestrator';
 
 let nextId = 1;
 const pending = new Map<number, (result: OrchestratorToolResult) => void>();
@@ -43,6 +45,7 @@ const take = orchestratorMcpServer(
       const request: OrchestratorBridgeRequest = { id, token, tool, args };
       socket.write(`${JSON.stringify(request)}\n`);
     }),
+  role,
 );
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk: string) => take(chunk));

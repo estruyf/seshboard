@@ -28,6 +28,7 @@ import { currentPlatform } from '../../lib/platform.ts';
 import { openInProviderCli, runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
+import { startFromSelection } from '../../state/startUnderStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { keepAwakeUntilDoneDetail } from '../general/keepAwake.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
@@ -1374,6 +1375,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     onRemember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
     onQuote: (text) => useDrafts.getState().requestQuote(sessionId, text),
     onSavePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
+    // A task the reply mentions: New session in this project with the text, linked to and under this session. A pop-out
+    // window has no New session of its own.
+    onStartSession: projectRoot && popoutSession !== sessionId ? (text) => startFromSelection({ root: projectRoot, sessionId, label: summary?.title ?? registryLive?.name ?? 'This session', text }) : undefined,
   });
 
   // The command palette's Fork…, Rewind…, Copy last reply: your prompts and Claude's last reply, from the active pane.

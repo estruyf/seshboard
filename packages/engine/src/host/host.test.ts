@@ -280,6 +280,7 @@ function setup(
     assertTrusted?: HostManagerDeps['assertTrusted'];
     browserServer?: HostManagerDeps['browserServer'];
     orchestratorServer?: HostManagerDeps['orchestratorServer'];
+    sessionsServer?: HostManagerDeps['sessionsServer'];
     isOrchestrator?: HostManagerDeps['isOrchestrator'];
     appendSystemFor?: HostManagerDeps['appendSystemFor'];
     fallbackModel?: HostManagerDeps['fallbackModel'];
@@ -362,6 +363,7 @@ function setup(
     assertTrusted: opts.assertTrusted,
     browserServer: opts.browserServer,
     orchestratorServer: opts.orchestratorServer,
+    sessionsServer: opts.sessionsServer,
     isOrchestrator: opts.isOrchestrator,
     appendSystemFor: opts.appendSystemFor,
     fallbackModel: opts.fallbackModel,
@@ -649,6 +651,38 @@ describe('HostManager', () => {
     await until(() => t.permissions.length === 3);
     t.manager.respond(t.permissions[2]!.requestId, { behavior: 'deny' });
     await expect(declined).resolves.toBe('deny');
+    t.manager.closeAll();
+  });
+
+  it('asks to start a session on a card with Allow and Deny only, and waits on you while it is open', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const ask = { title: 'Fix lint', prompt: 'Fix the lint errors.', agent: null, workspace: 'worktree' as const };
+    const allowed = t.manager.askStart(id, ask);
+    await until(() => t.permissions.length === 1);
+    expect(t.permissions[0]).toMatchObject({ sessionId: id, toolName: 'mcp__seshboard__start_session', title: 'Claude Code wants to start a session: Fix lint', alwaysLabel: null, input: ask });
+    expect(t.permissions[0]!.sessionAllow).toBeUndefined();
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', always: true });
+    await expect(allowed).resolves.toBe(true);
+    const denied = t.manager.askStart(id, ask);
+    await until(() => t.permissions.length === 2);
+    t.manager.respond(t.permissions[1]!.requestId, { behavior: 'deny' });
+    await expect(denied).resolves.toBe(false);
+    t.manager.closeAll();
+  });
+
+  it('gives every other session the seshboard server, with start_session allowed, and none to an orchestrator', async () => {
+    const owners: Array<() => string | null> = [];
+    const server = { command: '/app/Seshboard', args: ['orchestrator-mcp.js'], env: { SESHBOARD_ORCHESTRATOR_ROLE: 'session' } };
+    const t = setup({ sessionsServer: async (sessionId) => (owners.push(sessionId), server), orchestratorServer: async () => ({ command: '/app/Seshboard', args: ['orchestrator-mcp.js'], env: {} }) });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.mcpServers?.seshboard).toEqual({ type: 'stdio', ...server });
+    expect(t.queries[0]!.options.allowedTools).toEqual(expect.arrayContaining(['mcp__seshboard__start_session']));
+    expect(owners.at(-1)!()).toBe(id);
+    await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', orchestrator: true, appendSystem: 'You are the orchestrator.' });
+    expect(t.queries[1]!.options.mcpServers?.seshboard).toBeUndefined();
+    expect(t.queries[1]!.options.mcpServers?.orchestrator).toBeDefined();
     t.manager.closeAll();
   });
 

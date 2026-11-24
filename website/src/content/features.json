@@ -5547,6 +5547,16 @@
       "page": "sessions/orchestrator"
     },
     {
+      "id": "feature:start-session-from-session",
+      "name": "Ask a session to start a session: any session (Claude Code, Copilot, Codex or Antigravity) can ask to start another for a separate task, when you ask it to or for a fix it noticed; you allow or deny it on a card, and the new session works in its own worktree, under the session that asked in the sidebar",
+      "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:start-session-from-selection",
+      "name": "Start session from a selection: select text in a reply and pick Start session (or Start session from this in the message's menu) to open New session in the same project, in a new worktree, with the text as the prompt and a link to the session; the new session goes under it in the sidebar",
+      "page": "sessions/orchestrator"
+    },
+    {
       "id": "feature:orchestrator-instructions",
       "name": "Orchestrator instructions: a project's Settings tab keeps what its orchestrator and every session it starts read first",
       "page": "sessions/orchestrator"

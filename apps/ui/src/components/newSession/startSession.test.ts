@@ -31,6 +31,10 @@ describe('sessionCreateParams', () => {
     expect(sessionCreateParams(START)).not.toHaveProperty('orchestrator');
     expect(sessionCreateParams({ ...START, orchestrator: true })).toMatchObject({ orchestrator: true });
     expect(createParamsFor({ ...START, orchestrator: true, provider: { model: 'gpt' } })).toMatchObject({ orchestrator: true, model: 'gpt' });
+    // Start session from a selection: the session it goes under, for Claude Code and another provider alike.
+    expect(sessionCreateParams({ ...START, parentSessionId: 'parent-1' })).toMatchObject({ parentSessionId: 'parent-1' });
+    expect(createParamsFor({ ...START, parentSessionId: 'parent-1', provider: { model: 'gpt' } })).toMatchObject({ parentSessionId: 'parent-1' });
+    expect(sessionCreateParams(START)).not.toHaveProperty('parentSessionId');
   });
 
   it('passes the choices, with empty ones as Claude Code’s defaults', () => {

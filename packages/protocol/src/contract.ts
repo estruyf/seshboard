@@ -541,6 +541,11 @@ export const contract = {
          * sessions, and the sessions it starts show under it.
          */
         orchestrator: z.boolean().optional(),
+        /**
+         * The session it goes under in the sidebar (Start session from a selection in that session's conversation).
+         * Left out when that session no longer exists.
+         */
+        parentSessionId: SessionId.optional(),
       }),
       result: z.object({ sessionId: z.string() }),
     },

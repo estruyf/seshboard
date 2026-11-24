@@ -97,6 +97,78 @@ export const ORCHESTRATOR_TOOL_SPECS: ReadonlyArray<{ name: OrchestratorTool; ti
   },
 ];
 
+/*
+ * Every other session (not read-only, not an orchestrator) gets one of these tools, on its own server: start_session,
+ * which asks you on a card before anything starts. The same MCP server script serves both; `ORCHESTRATOR_ROLE_ENV`
+ * says which tools it lists. The session goes under the one that asked, and reports back to no one.
+ */
+
+/** Which tools the server lists: an orchestrator's four, or the one every other session gets. */
+export type OrchestratorRole = 'orchestrator' | 'session';
+/** The env variable that makes the server list a session's tools instead of an orchestrator's. */
+export const ORCHESTRATOR_ROLE_ENV = 'SESHBOARD_ORCHESTRATOR_ROLE';
+/** The server's name for every session that is not an orchestrator: its tool is `mcp__seshboard__start_session`. */
+export const SESSIONS_SERVER = 'seshboard';
+export const SESSION_TOOLS = ['start_session'] as const satisfies readonly OrchestratorTool[];
+export type SessionTool = (typeof SESSION_TOOLS)[number];
+export const SESSION_TOOL_PREFIX = `mcp__${SESSIONS_SERVER}__`;
+/** Claude Code's names for them, allowed up front: the engine asks you on its own card before a session starts. */
+export const SESSION_TOOL_NAMES: readonly string[] = SESSION_TOOLS.map((tool) => `${SESSION_TOOL_PREFIX}${tool}`);
+
+/** What an agent reads about the tool once, as the server's instructions. */
+export const SESSION_INSTRUCTIONS = [
+  'start_session asks the user to start a new session in Seshboard for a separate task. It goes under this session in the sidebar.',
+  'Use it when the user asks for a new or sub-session, or for a task outside your own, such as a fix you noticed on the way.',
+  'The new session knows nothing of this conversation: give it everything it needs in the prompt.',
+].join(' ');
+
+export const SESSION_TOOL_SPECS: ReadonlyArray<(typeof ORCHESTRATOR_TOOL_SPECS)[number]> = [
+  {
+    name: 'start_session',
+    title: 'Start a session',
+    description:
+      'Asks the user to start a new agent session in this project for one separate task, under this session in the sidebar. The user allows or denies it on a card, and the call waits for that answer. In a git repository the session works in its own worktree. It runs on its own and does not report back to you.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: text('A short name for the task, shown on the card and in the sidebar, such as "Fix login redirect"', MAX_WORKER_TITLE),
+        prompt: text('Everything the session needs to do the task: what, where, how to check it, and what to report'),
+        agent: text('Which agent runs it, by its profile’s name. Leave out for this session’s own.'),
+        model: text('A model for this task. Leave out for the project’s default.'),
+        workspace: { type: 'string', enum: ['worktree', 'current'], description: 'Its own worktree (the default in a git repository), or the project’s folder as it is' },
+      },
+      required: ['title', 'prompt'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'Start a session' },
+  },
+];
+
+/** The tools, their specs and the instructions the server lists for a role. */
+export function toolsForRole(role: OrchestratorRole): { tools: readonly OrchestratorTool[]; specs: typeof ORCHESTRATOR_TOOL_SPECS; instructions: string } {
+  return role === 'session' ? { tools: SESSION_TOOLS, specs: SESSION_TOOL_SPECS, instructions: SESSION_INSTRUCTIONS } : { tools: ORCHESTRATOR_TOOLS, specs: ORCHESTRATOR_TOOL_SPECS, instructions: ORCHESTRATOR_INSTRUCTIONS };
+}
+
+/** A session asks to start another: what its card shows. */
+export interface SessionStartAsk {
+  title: string;
+  prompt: string;
+  /** The profile that runs it, by name; null when there is only the session's own. */
+  agent: string | null;
+  workspace: 'worktree' | 'current';
+}
+
+/** The card's title and description; `agent` names who asks ("Claude Code", "GitHub Copilot"). */
+export function sessionStartPromptText(agent: string, ask: SessionStartAsk): { title: string; description: string; alwaysLabel: null } {
+  const where = ask.workspace === 'worktree' ? 'in its own worktree' : 'in the project’s folder';
+  const who = ask.agent ? ` with ${ask.agent}` : '';
+  return {
+    title: `${agent} wants to start a session: ${ask.title}`,
+    description: `It runs${who} ${where}, under this session in the sidebar. Its prompt is in the details.`,
+    alwaysLabel: null,
+  };
+}
+
 /** One line from the `orchestrator` MCP server to the engine's bridge, and the line that answers it (newline-delimited JSON). */
 export interface OrchestratorBridgeRequest {
   id: number;

@@ -85,6 +85,9 @@ export function noMcpConfig(servers: readonly string[], skip: ReadonlySet<string
   return { features: { apps: false, hooks: false, plugins: false }, ...(Object.keys(mcp).length ? { mcp_servers: mcp } : {}) };
 }
 
+/** How long a call to one of Seshboard's own MCP servers may take in Codex: it can wait on a card until you answer. */
+export const OWN_TOOL_TIMEOUT_SEC = 3600;
+
 /** Codex's answer to resuming a thread it is still unloading (codex-cli 0.167). */
 const CLOSING = /\bthread \S+ is closing; retry thread\/resume after the thread is closed\b/;
 
@@ -468,8 +471,9 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         const common = { cwd: config.cwd, approvalPolicy, sandbox, ...(model ? { model } : {}), ...(config.instructions ? { developerInstructions: config.instructions } : {}) };
         const request = (extra: { config?: Record<string, unknown> }) =>
           resume ? resumeWhenClosed(() => server.request('thread/resume', { threadId: resume, ...common, ...extra, excludeTurns: true })) : server.request('thread/start', { ...common, ...extra });
-        // Seshboard's own servers (Visuals in replies) join the ones in Codex's config, for this thread.
-        const own = config.mcpServers && Object.keys(config.mcpServers).length ? { config: { mcp_servers: config.mcpServers } } : {};
+        // Seshboard's own servers (Visuals in replies) join the ones in Codex's config, for this thread. Their calls can
+        // wait on a card of Seshboard's (a browser site, a session to start) longer than Codex's 60 seconds per call.
+        const own = config.mcpServers && Object.keys(config.mcpServers).length ? { config: { mcp_servers: Object.fromEntries(Object.entries(config.mcpServers).map(([name, server]) => [name, { ...server, tool_timeout_sec: OWN_TOOL_TIMEOUT_SEC }])) } } : {};
         const response = config.readOnly ? await withoutMcp(config.cwd, (noMcp) => request({ config: noMcp })) : await request(own);
         threadModel = response.model ?? threadModel;
         loaded = true;

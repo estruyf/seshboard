@@ -1394,7 +1394,8 @@ export function createEngine(options: EngineOptions): Engine {
   const smokeOrchestratorLog = join(options.dataDir, 'smoke-orchestrator.jsonl');
   const orchestrator = new Orchestrator({
     store: orchestratorStore,
-    session: (id) => sessions.get(id) ?? null,
+    // A session started a moment ago may not be listed yet: its folder's project, from the host that runs it.
+    session: (id) => sessions.get(id) ?? hostSession(id),
     defaults: (root) => projects.defaultsOf(root),
     profileDefaults: (profileId) => profiles.defaultsOf(profileId),
     globals: () => currentGlobalModel(),
@@ -1432,6 +1433,7 @@ export function createEngine(options: EngineOptions): Engine {
       runStore.setParent(sessionId, orchestratorId, null);
       sessions.republish(sessionId);
     },
+    askStart: (sessionId, ask) => hosts.askStart(sessionId, ask),
     status: (id) => {
       const state = (hosts.list().hosts.find((h) => h.sessionId === id) ?? smokeHosts.get(id))?.state ?? liveList().find((l) => l.sessionId === id)?.status;
       return state === 'running' || state === 'starting' ? 'working' : state === 'needs-you' ? 'needsYou' : state === 'error' ? 'failed' : state ? 'idle' : null;
@@ -1459,8 +1461,16 @@ export function createEngine(options: EngineOptions): Engine {
     log,
   });
   let orchestratorBase: McpStdioServer | null = null;
-  const orchestratorBridge = new OrchestratorBridge({ run: (sessionId, tool, args) => orchestrator.run(sessionId, tool, args), isOrchestrator: (id) => orchestrator.isOrchestrator(id), log });
+  const orchestratorBridge = new OrchestratorBridge({ run: (sessionId, tool, args) => orchestrator.run(sessionId, tool, args), startChild: (sessionId, args) => orchestrator.startChild(sessionId, args), isOrchestrator: (id) => orchestrator.isOrchestrator(id), log });
   const orchestratorServer = (sessionId: () => string | null) => (orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId) : Promise.resolve(null));
+  /** Every other session's `seshboard` server: the same script, with only start_session, which asks you first. */
+  const sessionsServer = (sessionId: () => string | null) => (orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId, 'session') : Promise.resolve(null));
+  const hostSession = (id: string) => {
+    const cwd = hosts.list().hosts.find((h) => h.sessionId === id)?.cwd;
+    if (!cwd) return null;
+    const projectRoot = resolver.resolve(cwd).root;
+    return { projectRoot, profileId: providerProfileOf(id) ?? profiles.forProject(projectRoot) };
+  };
   /** The smoke test calls a tool as the session's own server would: with a token the bridge gave out for that session. */
   const smokeOrchestratorToken = async (sessionId: string) => (await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId)).env[ORCHESTRATOR_TOKEN_ENV] ?? '';
   const hosts = new RoutedHostManager({
@@ -1520,6 +1530,7 @@ export function createEngine(options: EngineOptions): Engine {
     autoAnswer: (request) => runner?.autoAnswer(request) ?? null,
     browserServer,
     orchestratorServer,
+    sessionsServer,
     isOrchestrator: (id) => orchestrator.isOrchestrator(id),
     appendSystemFor: (id) => orchestrator.systemTextFor(id),
     planModeInstructionsFor: (cwd) => projects.defaultsOf(addedProjectOfCwd(cwd) ?? resolver.resolve(cwd).root).planModeInstructions?.trim() || null,
@@ -1560,6 +1571,7 @@ export function createEngine(options: EngineOptions): Engine {
     providers: () => providerProfiles.adapters(),
     browserServer,
     orchestratorServer,
+    sessionsServer,
     isOrchestrator: (id) => orchestrator.isOrchestrator(id),
     appendSystemFor: (id) => orchestrator.systemTextFor(id),
     appendSystem: () => (skimMarksOn ? SKIM_MARKS_PROMPT : null),
@@ -2789,6 +2801,12 @@ export function createEngine(options: EngineOptions): Engine {
     return activity;
   };
 
+  /** Started from a selection in another session: it goes under that one in the sidebar, as a session it asked for would. */
+  const underParent = (sessionId: string, parentId: string | undefined) => {
+    if (!parentId || parentId === sessionId || !sessions.get(parentId)) return;
+    runStore.setParent(sessionId, parentId, null);
+    sessions.republish(sessionId);
+  };
   /** Starts a new session: New session's `session.create`, and a queued item starting (`later.start`). */
   type CreateSessionParams = Parameters<Handlers<Contract>['session.create']>[0];
   /** `smokeStubCreate`: the starts the smoke test asked for, while it is on. */
@@ -2799,9 +2817,10 @@ export function createEngine(options: EngineOptions): Engine {
     const orchestratorRoot = params.orchestrator ? resolver.resolve(params.cwd).root : null;
     if (stubCreate && options.stubQueueStarts) {
       const sessionId = `smoke-new-${randomUUID()}`;
-      appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null, fastMode: params.fastMode ?? false })}\n`);
+      appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null, fastMode: params.fastMode ?? false, parentSessionId: params.parentSessionId ?? null })}\n`);
       standInHost({ sessionId, cwd: params.cwd, state: 'running', ...(params.fastMode ? { fast: { blocked: null, on: true } } : {}) });
       if (orchestratorRoot) orchestrator.mark(sessionId, orchestratorRoot);
+      underParent(sessionId, params.parentSessionId);
       return { sessionId };
     }
     // A profile of another provider (the project's, or the one picked) starts that provider: its own model and mode.
@@ -2826,7 +2845,7 @@ export function createEngine(options: EngineOptions): Engine {
     }
     // Before a branch is switched or a worktree made, so starting again after the question doesn't do it twice.
     assertTrusted(params.cwd);
-    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, orchestrator: _orchestrator, ...create } = params;
+    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, orchestrator: _orchestrator, parentSessionId: _parent, ...create } = params;
     // Claude Code's profile, checked before any git step, so a missing one never leaves a branch switched.
     const profileId = provider === 'claude' ? requireProfile(chosenProfile ?? folderProfile(params.cwd)) : chosen!;
     if (checkoutBranch) {
@@ -2913,6 +2932,7 @@ export function createEngine(options: EngineOptions): Engine {
       const branch = setupBranch ?? (checkoutPullRequest ? (await listBranches(cwd).catch(() => ({ current: null }))).current : null);
       githubOrigins.save(sessionId, origin, { cwd: top, branch });
     }
+    underParent(sessionId, params.parentSessionId);
     return { sessionId };
   };
 

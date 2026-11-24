@@ -19,6 +19,10 @@ import {
   type StreamDelta,
   ORCHESTRATOR_SERVER,
   PROVIDER_BROWSER_SERVER,
+  SESSION_TOOL_PREFIX,
+  SESSIONS_SERVER,
+  sessionStartPromptText,
+  type SessionStartAsk,
   PROVIDER_NAMES,
   browserAnswerOf,
   browserPromptText,
@@ -42,6 +46,8 @@ export interface ProviderHostsDeps {
    * session, whether a session being resumed is one, and what a resumed session reads after the provider's prompt.
    */
   orchestratorServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
+  /** Every other session's `seshboard` MCP server (start_session, which asks you first), as Claude Code's get. */
+  sessionsServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
   isOrchestrator?(sessionId: string): boolean;
   appendSystemFor?(sessionId: string): string | null;
   /** The provider profile a session belongs to (to resume it with that profile's login). */
@@ -116,7 +122,7 @@ export class ProviderHosts {
   private readonly hosts = new Map<string, Host>();
   /** Permission request id → session. */
   private readonly requests = new Map<string, string>();
-  /** Prompts Seshboard raised itself (a browser site, or scripts on it, to allow), not the provider: where their answer goes. */
+  /** Prompts Seshboard raised itself (a browser site, a session to start), not the provider: where their answer goes. */
   private readonly ownPrompts = new Map<string, { resolve(answer: BrowserAnswer): void }>();
 
   constructor(private readonly deps: ProviderHostsDeps) {}
@@ -334,7 +340,9 @@ export class ProviderHosts {
     if (host.readOnly) return {};
     const browser = (await this.deps.browserServer?.(() => host.info.sessionId || null)) ?? null;
     const orchestrator = host.orchestrator ? ((await this.deps.orchestratorServer?.(() => host.info.sessionId || null)) ?? null) : null;
-    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { [PROVIDER_BROWSER_SERVER]: browser } : {}), ...(orchestrator ? { [ORCHESTRATOR_SERVER]: orchestrator } : {}) };
+    // Any other session gets start_session, which asks you before anything starts.
+    const sessions = host.orchestrator ? null : ((await this.deps.sessionsServer?.(() => host.info.sessionId || null)) ?? null);
+    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { [PROVIDER_BROWSER_SERVER]: browser } : {}), ...(orchestrator ? { [ORCHESTRATOR_SERVER]: orchestrator } : {}), ...(sessions ? { [SESSIONS_SERVER]: sessions } : {}) };
     return Object.keys(servers).length ? { mcpServers: servers } : {};
   }
 
@@ -345,17 +353,32 @@ export class ProviderHosts {
   askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
     const host = this.hosts.get(sessionId);
     if (!host) return Promise.resolve('deny');
+    const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
+    return this.askOwn(host, sessionId, `mcp__browser__${ask.tool}`, JSON.parse(JSON.stringify(ask.input)) as PermissionRequest['input'], { ...browserPromptText(agent, ask), sessionAllow: true });
+  }
+
+  /** The session asks to start another (start_session): asks in its permission card, with Allow and Deny only. */
+  async askStart(sessionId: string, ask: SessionStartAsk): Promise<boolean> {
+    const host = this.hosts.get(sessionId);
+    if (!host) return false;
+    const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
+    return (await this.askOwn(host, sessionId, `${SESSION_TOOL_PREFIX}start_session`, { ...ask }, { ...sessionStartPromptText(agent, ask), sessionAllow: false })) !== 'deny';
+  }
+
+  /** A card Seshboard raises itself, not the provider: the session needs you while it is open. */
+  private askOwn(host: Host, sessionId: string, toolName: string, input: PermissionRequest['input'], text: { title: string; description: string; alwaysLabel: string | null; sessionAllow: boolean }): Promise<BrowserAnswer> {
     return new Promise((resolve) => {
       const requestId = randomUUID();
-      const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
       const request: PermissionRequest = {
         requestId,
         sessionId,
-        toolName: `mcp__browser__${ask.tool}`,
+        toolName,
         toolUseId: null,
-        input: JSON.parse(JSON.stringify(ask.input)) as PermissionRequest['input'],
-        ...browserPromptText(agent, ask),
-        sessionAllow: true,
+        input,
+        title: text.title,
+        description: text.description,
+        alwaysLabel: text.alwaysLabel,
+        ...(text.sessionAllow ? { sessionAllow: true } : {}),
         decisionReason: null,
         blockedPath: null,
         agentId: null,
