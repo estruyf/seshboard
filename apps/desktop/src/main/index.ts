@@ -12356,6 +12356,14 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!!document.querySelector('${editor} [data-trigger-prompt]') && document.querySelector('${editor} [data-trigger-prompt]').value === ${JSON.stringify(prompt)}`, 3_000))) return 'Start when… did not open the editor with the prompt';
     if (!(await js(`document.querySelector('${editor} [role=radiogroup] [data-trigger-source="issues"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-source="command"]')?.getAttribute('aria-disabled') === 'true'`))) return 'the source cards are not a radio group with Issues for you picked and A command disabled';
     if (!(await js(`[...document.querySelectorAll('${editor} [data-trigger-field="title"], ${editor} [data-trigger-field="url"]')].length === 2`))) return 'the prompt shows no event field chips';
+    // A prompt longer than the box scrolls inside it: the chips' layer keeps the text box's size and scroll.
+    const setPrompt = (text: string) => js(`(() => { const el = document.querySelector('${editor} [data-trigger-prompt]'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    const long = `${prompt}\n${Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of a long prompt.`).join('\n')}`;
+    await setPrompt(long);
+    const layers = `(() => { const box = document.querySelector('${editor} [data-trigger-prompt]'); const chips = document.querySelector('${editor} [data-trigger-prompt-chips]'); if (!box || !chips || box.value !== ${JSON.stringify(long)}) return false; box.scrollTop = box.scrollHeight; box.dispatchEvent(new Event('scroll')); const a = box.getBoundingClientRect(), b = chips.getBoundingClientRect(); return box.scrollHeight > box.clientHeight && Math.abs(a.top - b.top) < 1 && Math.abs(a.height - b.height) < 1 && Math.abs(a.width - b.width) < 1 && box.scrollTop > 0 && Math.abs(chips.scrollTop - box.scrollTop) < 1; })()`;
+    if (!(await waitInPage(win, layers, 3_000))) return 'a long prompt spills out of the prompt box, or its chips do not scroll with the text';
+    await setPrompt(prompt);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-prompt]')?.value === ${JSON.stringify(prompt)}`, 2_000))) return 'the prompt did not go back to the short one';
     // The summary says what Issues for you does, with the login the fake gh gives; the temp folder isn't a git
     // repository, so New session hands over the project folder, one at a time.
     const summary = `document.querySelector('${editor} [data-trigger-summary]')?.innerText`;

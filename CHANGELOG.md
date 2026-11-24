@@ -35,6 +35,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Antigravity sessions in a worktree show under their project.** A session you start with Antigravity in a worktree now shows its project's icon, branch and name, instead of `/`. Antigravity reports these sessions under `/`, so Seshboard now uses the folder it started them in. This works for new sessions only.
 - **Antigravity uses the browser without asking each time.** Antigravity asked for every call to Seshboard's browser tools, even in Auto mode. These calls now go on in every mode, as they do for Claude Code and Copilot. A site that isn't on your computer still asks first.
 - **Stop loading works on a page's first load.** In the browser, the ✕ next to the address now stops a new tab's page that is still loading, instead of doing nothing until the page had started to show.
+- **A long trigger prompt stays in its box.** In a trigger's editor, a prompt longer than the box no longer spills out below it. The box scrolls, and the event fields scroll with the text.
 
 ## [1.4.0] - 2026-11-20
 
