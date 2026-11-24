@@ -2873,7 +2873,7 @@
     },
     {
       "id": "feature:provider-cli-updates",
-      "name": "GitHub Copilot CLI updates in Settings › About, while a Copilot profile exists: Check for Updates, Update (copilot update, or the Homebrew, npm or WinGet command), the toast for a new version, and checking automatically",
+      "name": "GitHub Copilot CLI, Codex CLI and Antigravity CLI updates in Settings › About, while a profile of that tool exists: Check for Updates, Update (copilot update, codex update, agy update, or the Homebrew, npm or WinGet command), the toast for a new version, and checking automatically",
       "page": "settings/updates"
     },
     {

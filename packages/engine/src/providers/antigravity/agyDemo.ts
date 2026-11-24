@@ -2,6 +2,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { AcpConnection, AcpConnectionOptions } from '../acp/acpConnection.ts';
 import type { AgyBinary } from './agyBinary.ts';
+import type { AgyLatestVersion } from './agyUpdate.ts';
 import { agyLogFile } from './agyFiles.ts';
 
 /**
@@ -171,9 +172,11 @@ const DEMO_VERSION = '1.5.12';
  * The made-up Antigravity CLI, as `ProviderOptions['antigravity']`. Its connection reads the profile's folder from the
  * `--gemini-dir` it is started with, and the demo home's `~/.gemini` without one.
  */
-export function demoAntigravity(home: string): { binary: () => Promise<AgyBinary>; createConnection: (options: AcpConnectionOptions) => AcpConnection } {
+export function demoAntigravity(home: string): { binary: () => Promise<AgyBinary>; createConnection: (options: AcpConnectionOptions) => AcpConnection; latestVersion: AgyLatestVersion } {
   return {
     binary: async () => ({ path: '/demo/bin/agy', version: DEMO_VERSION }),
+    // Up to date, so the demo never asks the network.
+    latestVersion: async () => DEMO_VERSION,
     createConnection: (options) => {
       // The folder comes with the command, which is only known once asked: read it lazily, per request.
       let folder: string | null = null;

@@ -6,6 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Antigravity CLI updates, like Claude Code's.** With a Google Antigravity profile, **Settings › About** shows Antigravity CLI too: the version you have, whether a newer one is out, and **Update**. A toast says when a new version is available, and Seshboard checks by itself if you leave that on. Update runs `agy update`, or `brew upgrade --cask antigravity-cli` if you installed it with Homebrew.
 - **Messages from other Claude sessions stand out.** When another Claude Code session sends a message to yours, the conversation shows it on the left in a dashed box, with "From another session" and the sender's name over it. You see only what the other session wrote, not Claude Code's guidance around it. Your phone, search and the catch-up show it the same way, and ↑ in the message box skips it.
 
 ### Changed

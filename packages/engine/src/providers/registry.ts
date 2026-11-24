@@ -15,7 +15,8 @@ import { codexUpdater, type CodexLatestVersion } from './codex/codexUpdate.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
 import { AGY_MODES } from './antigravity/agyModes.ts';
 import { AGY_RESUME, agyHome, agyInstall, agyProvider } from './antigravity/agyProvider.ts';
-import type { AgyBinary } from './antigravity/agyBinary.ts';
+import { findAgy, type AgyBinary } from './antigravity/agyBinary.ts';
+import { agyUpdater, type AgyLatestVersion } from './antigravity/agyUpdate.ts';
 import type { AcpConnection, AcpConnectionOptions } from './acp/acpConnection.ts';
 import type { ForkRecord } from './providerForks.ts';
 
@@ -29,8 +30,8 @@ export interface ProviderOptions {
   copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>; version?: CopilotVersionCommand };
   /** A fake `codex` and `codex app-server` (tests and the demo), and the newest version its update check finds (the demo). */
   codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer; latestVersion?: CodexLatestVersion };
-  /** A fake `agy` and `agy acp` (tests and the demo). */
-  antigravity?: { binary?: () => Promise<AgyBinary | null>; createConnection?: (options: AcpConnectionOptions) => AcpConnection };
+  /** A fake `agy` and `agy acp` (tests and the demo), and the newest version its update check finds (the demo). */
+  antigravity?: { binary?: () => Promise<AgyBinary | null>; createConnection?: (options: AcpConnectionOptions) => AcpConnection; latestVersion?: AgyLatestVersion };
   /** Moves a provider's own throwaway files to the Trash (Antigravity's Ask session), checked by main with its folder. */
   discard?: (provider: OptionalProvider, home: string, paths: string[]) => Promise<void>;
   /** Where a provider says what went wrong while it reads (a Codex that won't start). */
@@ -42,7 +43,7 @@ export interface ProviderOptions {
 }
 
 /** The update check of a provider's CLI (Settings › About), for a provider with a profile. Null for one without it yet. */
-export function createProviderUpdater(provider: OptionalProvider, { env, home, shellEnv, copilot = {}, codex = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
+export function createProviderUpdater(provider: OptionalProvider, { env, home, shellEnv, copilot = {}, codex = {}, antigravity = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
   const stringEnv = async () => Object.fromEntries(Object.entries(await shellEnv()).filter((e): e is [string, string] => typeof e[1] === 'string'));
   switch (provider) {
     case 'copilot':
@@ -63,8 +64,12 @@ export function createProviderUpdater(provider: OptionalProvider, { env, home, s
         ...(codex.latestVersion ? { latest: codex.latestVersion } : {}),
       });
     case 'antigravity':
-      // `agy` updates itself.
-      return null;
+      return agyUpdater({
+        ...deps,
+        binary: antigravity.binary ?? (async () => findAgy(await shellEnv(), home)),
+        env: stringEnv,
+        ...(antigravity.latestVersion ? { latest: antigravity.latestVersion } : {}),
+      });
   }
 }
 
