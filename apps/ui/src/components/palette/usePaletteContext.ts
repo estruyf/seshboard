@@ -250,6 +250,8 @@ export function usePaletteContext(): PaletteContext {
     actions: actions.map((a) => ({ id: a.id, name: a.name, shortcut: a.shortcut ?? null, icon: a.icon })),
     canEditActions: !!projectRoot && isAbsolutePath(projectRoot),
     colorScheme: prefs.colorScheme,
+    minimalMode: prefs.minimalMode,
+    codeHighlighting: prefs.codeHighlighting,
     themes: themes.map((t) => ({ id: t.id, name: t.file.name })),
     themeId: activeTheme,
     sidebarStyle: prefs.sidebarStyle,

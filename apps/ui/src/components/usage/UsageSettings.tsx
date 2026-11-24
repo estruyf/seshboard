@@ -54,7 +54,7 @@ export function UsageSettings() {
           options={CURRENCY_OPTIONS}
           disabled={!prefs.showCost}
           menuWidth={220}
-          className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+          className="field h-7 shrink-0 px-2.5 text-ui outline-none"
           dataAttrs={{ 'data-cost-currency': true }}
         />
       </div>
@@ -91,7 +91,7 @@ export function LargeContextSettings() {
             onChange={(percent) => update({ percent: Number(percent) })}
             options={PERCENT_OPTIONS}
             disabled={off}
-            className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+            className="field h-7 shrink-0 px-2.5 text-ui outline-none"
             dataAttrs={{ 'data-large-context-percent': true }}
           />
         </div>

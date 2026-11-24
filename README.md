@@ -219,6 +219,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 |  | Open usage (No key by default: use the command palette, or click a usage bar) |
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
+| ⌘⇧. | Turn Minimal mode on or off (Shows less at once: one-line sessions, no chips, no counts) |
 | ⌘↩ | Start new work in the background (in the menu bar's panel) |
 | ⌘0 | Open Seshboard (in the menu bar's panel) |
 | ⌃⌥Space | Quick start: start a session from any app (in any app; Change it in Settings › General › Quick start) |

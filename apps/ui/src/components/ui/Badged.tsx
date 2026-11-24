@@ -12,6 +12,7 @@ export function Badged({
   tone = 'default',
   ring = 'sidebar',
   data,
+  minimal = false,
 }: {
   icon: ReactNode;
   count?: number;
@@ -20,8 +21,19 @@ export function Badged({
   tone?: 'default' | 'ok';
   ring?: 'sidebar' | 'bg';
   data?: Record<`data-${string}`, boolean>;
+  /** Minimal mode: no numbers on icons. A count or a dot becomes a 6px dot in the text colour; the label keeps the number. */
+  minimal?: boolean;
 }) {
   const ringClass = ring === 'bg' ? 'ring-bg' : 'ring-sidebar';
+  if (minimal) {
+    const shown = (count !== undefined && count > 0) || !!dot;
+    return (
+      <span className="relative flex">
+        {icon}
+        {shown && <span aria-hidden className={`pointer-events-none absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-text ring-2 ${ringClass}`} data-badge-dot {...data} />}
+      </span>
+    );
+  }
   const dotTone = dot === 'link' ? 'link' : dot ? 'warn' : null;
   return (
     <span className="relative flex">

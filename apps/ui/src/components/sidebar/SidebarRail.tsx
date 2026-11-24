@@ -205,8 +205,10 @@ const RailRow = memo(function RailRow({
   const progress = run && (runRow || runIsActive(run)) ? (runRow ? runRowLine(run, null) : parentRunLine(run, null)) : null;
   // With more than one Claude profile the rail is the profile's colour on every row, as in the open sidebar.
   const profile = useRowProfile(data);
-  const profileRail = profile ? PROFILE_DOT[profile.color] : null;
-  const railTone = profileRail ?? (status && RAIL_TONE[status]);
+  // Minimal mode has no rail, as in the open sidebar: the corner dot says the state.
+  const minimal = usePreferences((s) => s.prefs.minimalMode);
+  const profileRail = profile && !minimal ? PROFILE_DOT[profile.color] : null;
+  const railTone = minimal ? null : (profileRail ?? (status && RAIL_TONE[status]));
   const dot = status && CORNER_DOT[status];
   const line = remote?.offline
     ? { text: offlineLine(remote.computerName, remote.lastSeen, now), tone: 'faint' as const }

@@ -14,6 +14,8 @@ export interface TrayState {
   folded: boolean;
   tools?: (() => void) | null;
   usage?: TrayUsage | null;
+  /** Minimal mode: the chip row says what it shows in one line, for the box (`composerSummary`). */
+  onSummary?(summary: string): void;
 }
 
 /** Read by `ComposerChipRow`: inside a folded tray, model, effort and mode become one chip. */
@@ -35,6 +37,11 @@ export interface ComposerTrayProps {
   usage?: TrayUsage | null;
   /** The context ring, last on the right. It stays when the tray folds. */
   meter?: ReactNode;
+  /**
+   * Minimal mode: the tray is a popover over the box, opened from the box's one-line summary, and hidden (but kept, so
+   * the chips can say their summary) while closed.
+   */
+  minimal?: { open: boolean; onSummary(summary: string): void; onClose(): void };
 }
 
 /**
@@ -42,7 +49,7 @@ export interface ComposerTrayProps {
  * and the context ring on the right. When the chips at their smallest level and the right side don't fit, it folds:
  * model, effort and mode become one chip (`TrayContext`), Tools and usage move into its menu, and the ring stays.
  */
-export function ComposerTray({ controls, tools, info, usage, meter }: ComposerTrayProps) {
+export function ComposerTray({ controls, tools, info, usage, meter, minimal }: ComposerTrayProps) {
   const trayRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<HTMLDivElement>(null);
   const foldableRef = useRef<HTMLSpanElement>(null);
@@ -82,13 +89,29 @@ export function ComposerTray({ controls, tools, info, usage, meter }: ComposerTr
 
   const hasFoldable = !!tools || !!info;
   return (
-    <TrayContext.Provider value={{ folded, tools, usage }}>
+    <TrayContext.Provider value={{ folded, tools, usage, onSummary: minimal?.onSummary }}>
       <div
         ref={trayRef}
         role="group"
         aria-label="Options for the next message"
         // Tinted, not outlined, so it hangs under the box: a grey from the text colour shows on white (light) as on dark.
-        className="relative mx-4 flex min-h-9 items-center gap-1 rounded-b-xl bg-text/6 px-1.5 py-1 text-ui text-muted forced-colors:border forced-colors:border-t-0"
+        // In Minimal mode it floats over the box, as a popover, while its summary is open.
+        className={
+          minimal
+            ? `${minimal.open ? 'flex' : 'hidden'} overlay absolute right-4 bottom-full left-4 z-30 mb-2 min-h-9 items-center gap-1 rounded-xl border px-1.5 py-1 text-ui text-muted`
+            : 'relative mx-4 flex min-h-9 items-center gap-1 rounded-b-xl bg-text/6 px-1.5 py-1 text-ui text-muted forced-colors:border forced-colors:border-t-0'
+        }
+        onKeyDown={
+          minimal
+            ? (event) => {
+                if (event.key !== 'Escape' || event.defaultPrevented) return;
+                event.preventDefault();
+                event.stopPropagation();
+                minimal.onClose();
+              }
+            : undefined
+        }
+        data-composer-tray-popover={minimal ? (minimal.open ? 'open' : 'closed') : undefined}
         data-composer-tray
         data-composer-tray-folded={folded || undefined}
       >

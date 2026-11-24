@@ -488,6 +488,19 @@ export interface Preferences {
   turnDetails: TurnDetails;
   /** Settings › Conversation: "Fade inactive panes". Off, the panes other than the active one look the same as it; the active one keeps its line. */
   fadeInactivePanes: boolean;
+  /**
+   * Settings › Theme: "Minimal mode" (⌘⇧.). On, the window shows less at once: sessions as one line with their state
+   * as a shape, the message box without its chips, no counts on icons, and no borders round cards. What it hides is
+   * still in tooltips and menus. Colours stay the theme's (Black and white is the theme without them). Off by default.
+   */
+  minimalMode: boolean;
+  /**
+   * Settings › Theme: "Code highlighting". On, code and diffs are coloured by syntax. Off, code is in one colour
+   * (comments faint), and diffs strike removed lines through and put added lines in bold, in every theme. On by default.
+   */
+  codeHighlighting: boolean;
+  /** Settings › Theme: "Project colours". Off, project tiles and letters show in grey. On by default. */
+  projectColors: boolean;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
   /** Settings › Remote: "Show in the sidebar when nobody is connected", the quiet "Remote on · nobody connected" line. */
@@ -553,6 +566,11 @@ export interface Preferences {
   focusCountRemote: boolean;
   /** The colour theme: a built-in's id (`demo-time`, `github`…) or an imported theme's file name. */
   themeId: string;
+  /**
+   * The last colour theme picked (any but Black and white): Settings › Theme › Seshboard goes back to it. Kept by the
+   * window whenever `themeId` changes to such a theme.
+   */
+  colorThemeId: string;
   /**
    * Settings › Theme › App icon: the colourway of the icon in the Dock and the app switcher (macOS), or on the windows
    * and the taskbar. Main applies it at launch, before the first window. The bundle's own icon stays Graphite.
@@ -705,6 +723,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   promptOutline: true,
   turnDetails: "duration",
   fadeInactivePanes: true,
+  minimalMode: false,
+  codeHighlighting: true,
+  projectColors: true,
   confirmQuit: true,
   remoteIdleLine: true,
   sessionScope: "switchboard",
@@ -726,6 +747,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   focusCountExternal: false,
   focusCountRemote: true,
   themeId: DEFAULT_THEME_ID,
+  colorThemeId: DEFAULT_THEME_ID,
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
   dockActivity: "light",
@@ -894,6 +916,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
     out.turnDetails = raw.turnDetails;
   if (typeof raw.fadeInactivePanes === "boolean") out.fadeInactivePanes = raw.fadeInactivePanes;
+  if (typeof raw.minimalMode === "boolean") out.minimalMode = raw.minimalMode;
+  if (typeof raw.codeHighlighting === "boolean") out.codeHighlighting = raw.codeHighlighting;
+  if (typeof raw.projectColors === "boolean") out.projectColors = raw.projectColors;
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
   if (typeof raw.remoteIdleLine === "boolean") out.remoteIdleLine = raw.remoteIdleLine;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))
@@ -938,6 +963,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.focusCountRemote === "boolean")
     out.focusCountRemote = raw.focusCountRemote;
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
+  if (isThemeId(raw.colorThemeId)) out.colorThemeId = raw.colorThemeId;
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   if (oneOf(DOCK_ACTIVITY_MODES, raw.dockActivity)) out.dockActivity = raw.dockActivity;

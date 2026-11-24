@@ -1,4 +1,5 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
+import { minimalAlert } from '../composer/minimalComposer.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, FileDiff, Folder, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, NotebookPen, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, memo, Suspense, useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
@@ -20,7 +21,7 @@ import { passFocusGate } from '../../state/focusGate.ts';
 import { trustRepository } from '../../state/repoTrust.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../state/paletteBus.ts';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { realBranch, useSessions } from '../../state/sessionsStore.ts';
 import { popOut, popoutSession, showInMain, useBrowserPopouts } from '../../state/popoutsStore.ts';
@@ -1868,6 +1869,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     () => (usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: openUsageHere } : null),
     [usageLines, openUsageHere],
   );
+  // Minimal mode: the header keeps the title, project and branch, and one action; usage and context show above the box
+  // only once one passes 80%.
+  const minimal = useMinimal();
+  const boxAlert = useMemo(() => minimalAlert(contextLive?.percent, usageLines), [contextLive, usageLines]);
   const boxMeter = useMemo(
     () =>
       foldFooter ? (
@@ -1899,7 +1904,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         {/* A pop-out's traffic lights sit over its header's left end (macOS); elsewhere the window has its own title bar. */}
         {inPopout && currentPlatform() === 'darwin' && <span className="w-11 shrink-0" aria-hidden />}
         {/* In a pane under 400px wide the header has no room for the icon: the title and the buttons come first. */}
-        {projectRoot && (
+        {projectRoot && !minimal && (
           <span className="flex shrink-0 @max-[400px]:hidden">
             <ProjectIcon project={project} root={projectRoot} size={22} />
           </span>
@@ -1915,21 +1920,28 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             <StepCrumb sessionId={sessionId} />
             {/* A session an orchestrator started: the way back to it. */}
             <OrchestratorCrumb sessionId={sessionId} />
-            {/* Whose session it is first, as on its sidebar row. */}
-            <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider ?? 'claude'}>
-              <ProviderMark session={{ provider: otherProvider ?? 'claude' }} size={12} />
-              <span className="@max-[860px]:sr-only">{PROVIDER_NAMES[otherProvider ?? 'claude']}</span>
-            </span>
-            <Sep />
-            <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
-              {live ? <StatusDot live={live} agent={agentName} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
-              <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
-                {statusLabel}
+            {/* Whose session it is first, as on its sidebar row. Minimal mode shows only the project and branch here; a
+                failure still says so. */}
+            {!minimal && (
+              <>
+                <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider ?? 'claude'}>
+                  <ProviderMark session={{ provider: otherProvider ?? 'claude' }} size={12} />
+                  <span className="@max-[860px]:sr-only">{PROVIDER_NAMES[otherProvider ?? 'claude']}</span>
+                </span>
+                <Sep />
+              </>
+            )}
+            {(!minimal || failed) && (
+              <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
+                {live ? <StatusDot live={live} agent={agentName} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
+                <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
+                  {statusLabel}
+                </span>
               </span>
-            </span>
+            )}
             {projectName && (
               <>
-                <Sep />
+                {(!minimal || failed) && <Sep />}
                 <span className="min-w-0 shrink truncate @max-[860px]:hidden" data-session-project={question ? 'question' : undefined}>
                   {projectName}
                 </span>
@@ -2000,6 +2012,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         <ModsChip sessionId={sessionId} profileId={profileId} />
         <MoreMenu
           sessionId={sessionId}
+          extra={minimal && !inPopout ? [{ label: 'Open in new window', icon: <AppWindow size={13} aria-hidden />, hint: formatKeys(keysFor('session.new-window')), data: { 'data-open-in-new-window': true }, onSelect: () => popOut(sessionId) }] : undefined}
           actions={actionsMenu}
           cwd={cwd}
           agents={{ total: agents.length, running: agentsRunning }}
@@ -2023,7 +2036,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               : null
           }
         />
-        {!inPopout ? (
+        {minimal && !inPopout ? null : !inPopout ? (
           <Button
             variant="quiet"
             iconOnly
@@ -2489,6 +2502,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   info={boxInfo}
                   usage={boxUsage}
                   meter={boxMeter}
+                  alert={boxAlert}
                 />
               </div>
               )}

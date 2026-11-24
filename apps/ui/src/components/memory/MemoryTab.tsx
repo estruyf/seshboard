@@ -421,7 +421,7 @@ export function MemoryTab({ root }: { root: string }) {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter memory"
-                className="h-7 w-full rounded-md border border-edge bg-bg pr-2.5 pl-7 text-ui text-text outline-none focus:border-accent-ink"
+                className="field h-7 w-full pr-2.5 pl-7 text-ui outline-none"
                 data-memory-filter
               />
             </label>

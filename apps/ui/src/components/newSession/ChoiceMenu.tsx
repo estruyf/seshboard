@@ -201,7 +201,7 @@ export function ChoiceMenu<T extends string>({
               placeholder={search}
               spellCheck={false}
               aria-label={search}
-              className={`mx-2 mb-1 w-[calc(100%-1rem)] rounded-md border border-border bg-bg px-2 py-1 text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink ${mono ? 'font-mono' : ''}`}
+              className={`field mx-2 mb-1 w-[calc(100%-1rem)] px-2 py-1 text-ui outline-none placeholder:text-faint ${mono ? 'font-mono' : ''}`}
             />
           )}
           {listed.map((choice, index) => (

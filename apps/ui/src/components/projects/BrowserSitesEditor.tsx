@@ -75,7 +75,7 @@ export function BrowserSitesEditor({ sites, onSave, inputLabel = 'Site to allow'
             placeholder="app.example.com or *.example.com"
             aria-label={inputLabel}
             spellCheck={false}
-            className="h-8 w-72 max-w-full min-w-0 rounded-md border border-border bg-bg px-2.5 font-mono text-ui text-text outline-none focus:border-accent-ink/60"
+            className="field h-8 w-72 max-w-full min-w-0 px-2.5 font-mono text-ui outline-none"
             data-browser-site-input
           />
           <Button type="submit" size="sm" disabled={busy || !value.trim()} aria-busy={busy || undefined} data-browser-site-add>

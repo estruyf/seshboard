@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, webContents as electronWebContents, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
+import { APP_ICONS, DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -26,6 +26,7 @@ import { Presence } from './presence.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runChangesReloadStep } from './changesReloadSmoke.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
+import { runFieldsEdgeStep, runMinimalCodeHighlightingStep, runMinimalFieldsStep, runMinimalLayoutStep, runMinimalPreferenceStep, runMinimalSettingsStep, runMinimalThemeStep, type MinimalSmoke } from './minimalSmoke.ts';
 import { runFilesFromLinkStep, runFilesQuickOpenStep, runFilesSearchStep, runFilesToMessageStep, runFilesTreeStep } from './filesSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
 import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep, runPhoneOrchestratorStep } from './remotePhoneSmoke.ts';
@@ -3179,6 +3180,19 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   await section('theme');
   await click('[data-color-scheme="dark"]');
   if (!(await waitInPage(win, `${background} === 'rgb(21, 24, 31)'`, 2_000))) return 'Dark did not apply';
+  // Minimal takes the borders off cards (a theme card on this page) and is saved; off brings them back.
+  const cardBorderGone = "(getComputedStyle(document.querySelector('[data-theme-card]:not([data-theme-selected])')).borderTopColor === 'rgba(0, 0, 0, 0)')";
+  await click('[data-minimal-mode]');
+  if (!(await waitInPage(win, `document.documentElement.hasAttribute('data-minimal') && ${cardBorderGone}`, 2_000)) || !(await until(() => preferences.get().minimalMode, 2_000))) return 'Minimal did not apply';
+  await shot(win, 'settings-minimal.png');
+  await click('[data-minimal-mode]');
+  if (!(await waitInPage(win, `!document.documentElement.hasAttribute('data-minimal') && !${cardBorderGone}`, 2_000)) || !(await until(() => !preferences.get().minimalMode, 2_000))) return 'turning Minimal off did not bring the borders back';
+  // Black and white is a card of its own: picked, it greys the pictures too (data-monochrome); Seshboard takes it off again.
+  await click('[data-appearance-card="bw-dark"]');
+  const mono = (await waitInPage(win, "document.documentElement.hasAttribute('data-monochrome')", 2_000)) && (await until(() => preferences.get().themeId === 'black-and-white', 2_000));
+  if (mono) await shot(win, 'settings-black-and-white.png');
+  await click('[data-appearance-card="seshboard"]');
+  if (!mono || !(await waitInPage(win, `!document.documentElement.hasAttribute('data-monochrome') && ${background} === 'rgb(21, 24, 31)'`, 2_000))) return 'the Black and white theme did not apply, or Seshboard did not bring Demo Time back';
   await section('sidebar');
   await click('[data-sidebar-style="compact"]');
   if (!(await withSettingsClosed(`${rowHeight} === 32`))) return 'Compact did not apply';
@@ -6390,10 +6404,22 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
   /** A token's value as the page computes it (the generated style element in use). */
   const token = (name: string) => `(() => { const d = document.createElement('div'); d.style.background = 'var(--sb-${name})'; document.body.appendChild(d); const c = getComputedStyle(d).backgroundColor; d.remove(); return c; })()`;
   const scheme = async (mode: 'light' | 'dark') => {
-    await click(`[data-color-scheme="${mode}"]`);
+    // With Black and white picked there is no Light or dark control: its two cards are the modes.
+    if (await js("Boolean(document.querySelector('[data-color-scheme]'))")) await click(`[data-color-scheme="${mode}"]`);
+    else await click(`[data-appearance-card="bw-${mode}"]`);
     return waitInPage(win, `matchMedia('(prefers-color-scheme: ${mode})').matches`, 2_000);
   };
+  // Black and white is a card at the top (it sets dark too); the other themes are in Seshboard's grid, which shows once
+  // the Seshboard card is picked.
   const pick = async (id: string) => {
+    if (id === 'black-and-white') {
+      await click('[data-appearance-card="bw-dark"]');
+      return (await waitInPage(win, `!!document.querySelector('[data-appearance-card="bw-dark"][data-appearance-selected]')`, 2_000)) && preferences.get().themeId === id;
+    }
+    if (!(await js("Boolean(document.querySelector('[data-theme-picker]'))"))) {
+      await click('[data-appearance-card="seshboard"]');
+      if (!(await waitInPage(win, "!!document.querySelector('[data-theme-picker]')", 2_000))) return false;
+    }
     await click(`[data-theme-card="${id}"] [role="radio"]`);
     return (await waitInPage(win, `document.querySelector('[data-theme-card="${id}"][data-theme-selected]')`, 2_000)) && preferences.get().themeId === id;
   };
@@ -6417,7 +6443,8 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"theme\"]')", 3_000))) return 'Settings has no Theme section';
   if (!(await section('theme'))) return 'the Theme section did not open';
   const cards = (await js("[...document.querySelectorAll('[data-theme-picker] [data-theme-card]')].map((c) => c.dataset.themeCard)")) as string[];
-  const builtIns = BUILT_IN_THEMES.map((t) => t.id);
+  // Black and white has its own cards above the grid, so the grid lists the other built-ins.
+  const builtIns = BUILT_IN_THEMES.map((t) => t.id).filter((id) => id !== 'black-and-white');
   if (cards.slice(0, builtIns.length).join(',') !== builtIns.join(',')) return `the picker shows ${cards.join(', ')}`;
 
   // Export Demo Time: every token, with $schema.
@@ -6583,7 +6610,7 @@ async function runAppIconStep(win: BrowserWindow): Promise<string> {
 
   if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
   await click('[data-settings-section="theme"]');
-  if (!(await waitInPage(win, "document.querySelectorAll('[data-app-icon-picker] [data-app-icon]').length === 9", 3_000))) return 'failed: the picker has no nine tiles';
+  if (!(await waitInPage(win, `document.querySelectorAll('[data-app-icon-picker] [data-app-icon]').length === ${APP_ICONS.length}`, 3_000))) return `failed: the picker has no ${APP_ICONS.length} tiles`;
   if (!(await js("document.querySelector('[data-app-icon-picker]').closest('[role=radiogroup]')?.getAttribute('aria-label') === 'App icon'"))) return 'failed: the tiles are not a radio group named App icon';
   if (!(await checked('graphite')) || (await js("Boolean(document.querySelector('[data-app-icon-reset]'))"))) return 'failed: Graphite is not the one checked, or Reset shows for it';
   const broken = (await js("[...document.querySelectorAll('[data-app-icon] img')].filter((img) => !img.complete || img.naturalWidth === 0).length")) as number;
@@ -15785,6 +15812,25 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('auto model: step-up note, more effort then the next model, Usage counts the change', () => runAutoStepUpStep(win), { timeoutMs: 45_000 });
   await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
+  // Minimal mode, the Black and white theme, Code highlighting and Project colours (minimalSmoke.ts).
+  const minimal: MinimalSmoke = {
+    shot: (name) => shot(win, name),
+    setScheme: (scheme) => setColorScheme(win, scheme),
+    prefs: () => preferences.get(),
+    update: (patch) => updatePreferences(patch),
+    host: (sessionId, cwd, state) => engine.send({ type: 'smokeQueueHost', sessionId, cwd, state }),
+    tempFolder: () => {
+      const path = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-minimal-')));
+      return { path, remove: () => rmSync(path, { recursive: true, force: true }) };
+    },
+  };
+  await step('minimal: preference', () => runMinimalPreferenceStep(win, minimal));
+  await step('minimal: layout', () => runMinimalLayoutStep(win, minimal));
+  await step('minimal: theme', () => runMinimalThemeStep(win, minimal));
+  await step('minimal: code highlighting', () => runMinimalCodeHighlightingStep(win, minimal));
+  await step('minimal: settings', () => runMinimalSettingsStep(win, minimal));
+  await step('fields: edge', () => runFieldsEdgeStep(win, minimal));
+  await step('minimal: fields', () => runMinimalFieldsStep(win, minimal));
   await step('settings: theme, sidebar style, session scope, tool activity, open at login, keep awake, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
   await step('settings groups: four headers and the bottom block, ↓ skips headers, Pipelines opens, search keeps the groups in order, a short window scrolls', () => runSettingsGroupsStep(win));

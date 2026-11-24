@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
+import { BLACK_AND_WHITE } from '../components/theme/appearance.ts';
 import { create } from 'zustand';
 import { DEFAULT_THEME_ID, themeSlug, type ThemeEntry, type ThemeFileCheck, type ThemeState } from '@seshboard/protocol/theme-format';
-import { setSyntaxThemes } from '../lib/highlight.ts';
+import { plainSyntax, setSyntaxThemes } from '../lib/highlight.ts';
 import { applyTheme } from '../lib/themeApply.ts';
 import { DEMO_TIME, exportThemeFile, resolveTheme, type ResolvedTheme } from '../lib/themeResolve.ts';
 import { basename } from '../lib/format.ts';
@@ -40,7 +41,11 @@ function resolveActive(themes: readonly ThemeEntry[], id: string) {
   const entry = themeById(themes, id);
   const resolved = resolveTheme(entry.file);
   applyTheme(resolved);
-  const syntaxKey = setSyntaxThemes({ light: resolved.light.syntax, dark: resolved.dark.syntax });
+  // A monochrome theme (Black and white) greys the pictures the tokens can't reach: project, editor and site icons (styles.css).
+  document.documentElement.toggleAttribute('data-monochrome', entry.file.monochrome === true);
+  // Code highlighting off: every code block in one colour, from this theme's text and faint.
+  const plain = !usePreferences.getState().prefs.codeHighlighting;
+  const syntaxKey = setSyntaxThemes(plain ? { light: plainSyntax(resolved.light.tokens, 'light'), dark: plainSyntax(resolved.dark.tokens, 'dark') } : { light: resolved.light.syntax, dark: resolved.dark.syntax });
   return { active: { entry, resolved }, syntaxKey };
 }
 
@@ -85,7 +90,10 @@ export const useThemes = create<ThemesState>()((set, get) => ({
 
 // A new theme id (from Settings, the palette, the menu bar or another window) applies at once.
 usePreferences.subscribe((state, previous) => {
-  if (state.prefs.themeId !== previous.prefs.themeId) useThemes.setState(resolveActive(useThemes.getState().themes, state.prefs.themeId));
+  if (state.prefs.themeId !== previous.prefs.themeId || state.prefs.codeHighlighting !== previous.prefs.codeHighlighting) useThemes.setState(resolveActive(useThemes.getState().themes, state.prefs.themeId));
+  // Remember the colour theme, so Settings › Theme › Seshboard can go back to it after Black and white.
+  const { themeId, colorThemeId } = state.prefs;
+  if (themeId !== previous.prefs.themeId && themeId !== BLACK_AND_WHITE && themeId !== colorThemeId) usePreferences.getState().update({ colorThemeId: themeId });
 });
 
 /** Follows themes added, removed or edited (in any window, or in the themes folder). */

@@ -1,5 +1,5 @@
 import { AtSign, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
-import { Fragment, memo, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
@@ -41,7 +41,7 @@ import { pastedGithubLink, rowsOf, SEARCH_DEBOUNCE_MS, withoutLink } from '../gi
 import { chipItem, reasonLine } from '../github/githubText.ts';
 import { cachedSearch, forgetGithub, githubStatus, rememberSearch } from '../github/githubCache.ts';
 import { GithubStateIcon } from '../github/GithubParts.tsx';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
 import { startFromGithub } from '../../state/githubStartStore.ts';
 
 /**
@@ -114,6 +114,8 @@ export interface ComposerProps {
   status?: ReactNode;
   /** Last on the tray: the context ring (with plan usage in its tooltip while the terminal is open below). */
   meter?: ReactNode;
+  /** Minimal mode's line above the box: usage and context past 80% (`minimalAlert`), or null. */
+  alert?: string | null;
   /** A shortcut shown on the submit button, like `⌘↵`. */
   submitHint?: string;
   /** A taller prompt that is the main thing on screen. */
@@ -220,6 +222,25 @@ function isTypingElsewhere(prompt: HTMLElement): boolean {
  */
 export const Composer = memo(function Composer(props: ComposerProps) {
   if (RENDER_COUNTS) countRender('Composer');
+  // Minimal mode: the tray's chips are one line in the box (`chipSummary`), opened as a popover over it.
+  const minimal = useMinimal();
+  const [chipSummary, setChipSummary] = useState('');
+  const [chipsOpen, setChipsOpen] = useState(false);
+  const closeChips = useCallback(() => setChipsOpen(false), []);
+  useEffect(() => {
+    if (!chipsOpen) return;
+    // A press outside the popover and its summary closes it; the menus its chips open are outside it too, so they count.
+    const onDown = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[data-composer-tray], [data-composer-summary], [role="menu"], [role="listbox"], [role="dialog"]')) return;
+      setChipsOpen(false);
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, [chipsOpen]);
+  useEffect(() => {
+    if (!minimal) setChipsOpen(false);
+  }, [minimal]);
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [saved] = useState(() => (props.draftKey === undefined ? undefined : useDrafts.getState().drafts[props.draftKey]));
@@ -1067,6 +1088,12 @@ export const Composer = memo(function Composer(props: ComposerProps) {
       }}
     >
       <DropOverlay drop={drop} />
+      {/* Minimal mode: usage and context only once they pass 80%, as one line above the box. */}
+      {minimal && props.alert && (
+        <p className="mx-4 mb-1 truncate text-meta text-caution" role="status" data-composer-alert>
+          {props.alert}
+        </p>
+      )}
       {palette?.kind === 'issue' &&
         palette.github &&
         (palette.github.hint ? (
@@ -1326,6 +1353,20 @@ export const Composer = memo(function Composer(props: ComposerProps) {
               {left.length ? blanksLeftText(left.length) : ''}
             </span>
             {props.status}
+            {/* Minimal mode: the chips as one quiet line; a click opens them as they are, in a popover over the box. */}
+            {minimal && (props.controls || props.info || props.meter || props.tools) && (
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={chipsOpen}
+                aria-label={`Options for the next message: ${chipSummary || 'model, mode and profile'}`}
+                onClick={() => setChipsOpen((open) => !open)}
+                className={`min-w-0 max-w-64 truncate rounded-md px-1.5 py-0.5 text-meta hover:bg-border/50 hover:text-text ${chipsOpen ? 'bg-border/50 text-text' : 'text-muted'}`}
+                data-composer-summary
+              >
+                {chipSummary || 'Options'}
+              </button>
+            )}
             {props.dropHint && !text && attachments.length === 0 && !disabled && <span className="text-meta text-muted @max-[860px]:hidden">Paste or drop images and files</span>}
             {side && (
               <span className="relative flex">
@@ -1375,7 +1416,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
                       data-composer-submit
                       onClick={() => void submit()}
                       disabled={disabled || sending || !hasMessage || left.length > 0}
-                      className="disabled:pointer-events-none"
+                      className={`disabled:pointer-events-none ${minimal ? 'rounded-full!' : ''}`}
                     >
                       {sending ? 'Sending…' : (props.submitLabel ?? (props.running ? 'Queue' : 'Send'))}
                     </Button>
@@ -1386,7 +1427,9 @@ export const Composer = memo(function Composer(props: ComposerProps) {
           </div>
         </div>
       </div>
-      {(props.controls || props.info || props.meter || props.tools) && <ComposerTray controls={props.controls} tools={props.tools} info={props.info} usage={props.usage} meter={props.meter} />}
+      {(props.controls || props.info || props.meter || props.tools) && (
+        <ComposerTray controls={props.controls} tools={props.tools} info={props.info} usage={props.usage} meter={props.meter} minimal={minimal ? { open: chipsOpen, onSummary: setChipSummary, onClose: closeChips } : undefined} />
+      )}
     </div>
   );
 });

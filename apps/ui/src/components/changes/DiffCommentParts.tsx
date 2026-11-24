@@ -42,7 +42,7 @@ export function CommentEditor({ target, initial = '', onSave, onCancel }: { targ
             onChange={(e) => setBody(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="What should change here?"
-            className="w-full resize-y rounded-md border border-edge bg-bg px-2 py-1.5 text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink"
+            className="field w-full resize-y px-2 py-1.5 text-ui outline-none placeholder:text-faint"
             data-diff-comment-input
           />
         </label>

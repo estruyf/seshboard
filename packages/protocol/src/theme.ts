@@ -26,7 +26,8 @@ const TOKEN_HELP: Partial<Record<(typeof THEME_TOKENS)[number], string>> = {
   'code-bg': 'Code blocks and diffs.',
   'code-pane': 'A file or diff inside a side panel (the Files viewer, Changes): set apart from sidebar. Usually bg.',
   border: 'Lines between areas.',
-  'overlay-border': 'Borders on menus and dialogs, and on fields and chips inside them.',
+  'overlay-border': 'Borders on menus and dialogs, and on chips inside them.',
+  'field-border': 'The edge of fields, dropdowns and text areas: at least 3:1 against the canvas, sidebar, cards and popovers. Left out, it is solved from the text and the canvas.',
   'overlay-shadow': 'The shadow colour under menus and dialogs (the app builds the layers).',
   paper: 'Reading mode: the page behind the text. Dark themes usually keep bg; light ones a slightly warm lift of it.',
   'paper-text': 'Reading mode: the text on the paper. Readable on paper.',
@@ -121,6 +122,10 @@ export const ThemeFileSchema = z
     name: z.string().trim().min(1, { error: 'is empty.' }).max(THEME_NAME_MAX, { error: `is longer than ${THEME_NAME_MAX} characters.` }),
     author: z.string().trim().max(120).optional(),
     version: z.literal(THEME_FORMAT).meta({ description: 'The theme format: 1.' }),
+    monochrome: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Shows pictures the app does not colour itself (project icons and emoji, editor icons, site icons) in greys, and draws no project colours. Links are underlined. For a black and white theme.' }),
     light: Mode.optional(),
     dark: Mode.extend({ terminal: Terminal.optional() }).optional(),
   })
@@ -200,7 +205,7 @@ function issueMessage(issue: z.core.$ZodIssue, value: unknown): string {
 
 /** Known keys at each level, to list the ones a file has that Seshboard ignores. */
 const KNOWN: Record<string, readonly string[]> = {
-  root: ['$schema', 'name', 'author', 'version', 'light', 'dark'],
+  root: ['$schema', 'name', 'author', 'version', 'monochrome', 'light', 'dark'],
   light: ['canvas', 'accent', 'colors', 'syntax'],
   dark: ['canvas', 'accent', 'colors', 'syntax', 'terminal'],
   colors: THEME_TOKENS,

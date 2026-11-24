@@ -384,7 +384,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                   { value: 'editor', label: 'Open in editor' },
                 ]}
                 menuWidth={200}
-                className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                className="field h-7 shrink-0 px-2.5 text-ui outline-none"
                 dataAttrs={{ 'data-file-link-click': true }}
               />
             </div>
@@ -527,7 +527,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 onChange={(newSessionMode) => update({ newSessionMode })}
                 options={NEW_SESSION_MODE_OPTIONS}
                 menuWidth={200}
-                className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                className="field h-7 shrink-0 px-2.5 text-ui outline-none"
                 dataAttrs={{ 'data-new-session-mode': true }}
               />
             </div>

@@ -34,6 +34,10 @@
       "const": 1,
       "description": "The theme format: 1."
     },
+    "monochrome": {
+      "description": "Shows pictures the app does not colour itself (project icons and emoji, editor icons, site icons) in greys, and draws no project colours. Links are underlined. For a black and white theme.",
+      "type": "boolean"
+    },
     "light": {
       "type": "object",
       "properties": {
@@ -126,7 +130,13 @@
               "type": "string",
               "maxLength": 80,
               "pattern": "^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgba?|RGBA?)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\)|(?:hsla?|HSLA?)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?:deg|DEG)?(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))%?(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))%?(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\)|(?:oklch|OKLCH)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)\\s+([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)\\s+([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?:deg|DEG)?(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\))$",
-              "description": "Borders on menus and dialogs, and on fields and chips inside them."
+              "description": "Borders on menus and dialogs, and on chips inside them."
+            },
+            "field-border": {
+              "type": "string",
+              "maxLength": 80,
+              "pattern": "^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgba?|RGBA?)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\)|(?:hsla?|HSLA?)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?:deg|DEG)?(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))%?(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))%?(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\)|(?:oklch|OKLCH)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)\\s+([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)\\s+([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?:deg|DEG)?(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\))$",
+              "description": "The edge of fields, dropdowns and text areas: at least 3:1 against the canvas, sidebar, cards and popovers. Left out, it is solved from the text and the canvas."
             },
             "overlay-shadow": {
               "type": "string",
@@ -682,7 +692,13 @@
               "type": "string",
               "maxLength": 80,
               "pattern": "^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgba?|RGBA?)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\)|(?:hsla?|HSLA?)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?:deg|DEG)?(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))%?(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))%?(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\)|(?:oklch|OKLCH)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)\\s+([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)\\s+([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?:deg|DEG)?(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\))$",
-              "description": "Borders on menus and dialogs, and on fields and chips inside them."
+              "description": "Borders on menus and dialogs, and on chips inside them."
+            },
+            "field-border": {
+              "type": "string",
+              "maxLength": 80,
+              "pattern": "^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgba?|RGBA?)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\)|(?:hsla?|HSLA?)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?:deg|DEG)?(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))%?(?:\\s*,\\s*|\\s+)([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))%?(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\)|(?:oklch|OKLCH)\\(\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)\\s+([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?)\\s+([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?:deg|DEG)?(?:\\s*[,/]\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)%?))?\\s*\\))$",
+              "description": "The edge of fields, dropdowns and text areas: at least 3:1 against the canvas, sidebar, cards and popovers. Left out, it is solved from the text and the canvas."
             },
             "overlay-shadow": {
               "type": "string",

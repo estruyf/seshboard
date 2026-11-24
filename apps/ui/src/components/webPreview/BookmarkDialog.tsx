@@ -77,7 +77,7 @@ export function BookmarkDialog({ tab, bookmark, bookmarks, onClose }: { tab: Bro
             maxLength={500}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={bookmark.url}
-            className="h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink"
+            className="field h-7 w-full px-2.5 text-ui outline-none"
             data-bookmark-name
           />
         </label>
@@ -107,7 +107,7 @@ export function BookmarkDialog({ tab, bookmark, bookmarks, onClose }: { tab: Bro
             list={`${id}-folders`}
             onChange={(e) => setFolder(e.target.value)}
             placeholder="None"
-            className="h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink"
+            className="field h-7 w-full px-2.5 text-ui outline-none"
             data-bookmark-folder
           />
           <datalist id={`${id}-folders`}>

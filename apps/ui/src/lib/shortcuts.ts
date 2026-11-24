@@ -390,6 +390,13 @@ export const SHORTCUTS = [
     action: "Keyboard shortcuts",
     section: "general",
   },
+  {
+    id: "view.minimal",
+    keys: ["mod+shift+."],
+    action: "Turn Minimal mode on or off",
+    section: "general",
+    note: "Shows less at once: one-line sessions, no chips, no counts",
+  },
   // The menu bar's panel (its own window): never in the main window, so they don't count there.
   {
     id: "menubar.start",
@@ -1683,6 +1690,13 @@ const withoutShiftForSymbols = (press: string) => {
     ? parts.filter((p) => p !== "shift").join("+")
     : press;
 };
+
+/**
+ * ⌘⇧. as pressed: Shift turns `.` into another character on most layouts (`>` on US English), so the physical key
+ * decides. `matches` covers a layout that keeps `.`.
+ */
+export const isMinimalKey = (event: { metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; key: string; code?: string }) =>
+  matches(event, "view.minimal") || (modKey(event) && event.shiftKey && !event.altKey && event.code === "Period");
 
 /** Whether a key press is `id`'s shortcut (any of its alternatives). */
 export function matches(

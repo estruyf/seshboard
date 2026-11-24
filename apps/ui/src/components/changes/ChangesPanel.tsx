@@ -1,4 +1,7 @@
 import { trashName } from '../../lib/platform.ts';
+import { useThemes } from '../../state/themeStore.ts';
+import { languageFromPath } from '../../lib/highlight.ts';
+import { useHighlightedLines } from '../transcript/useHighlightedLines.ts';
 import { ChevronRight, ExternalLink, Maximize2, MessageSquareText, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
 import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
@@ -97,6 +100,19 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
     // `version` changes whenever git is checked again, so an open diff follows new edits.
   }, [client, cwd, base, path, version]);
   const rows = useMemo(() => (state && 'diff' in state ? parseUnifiedDiff(state.diff) : []), [state]);
+  // The code lines in the theme's code colours: each row's index among them, and their HTML once highlighted.
+  const codeRows = useMemo(() => {
+    const index = new Map<number, number>();
+    const texts: string[] = [];
+    rows.forEach((row, i) => {
+      if (row.kind === 'hunk' || row.kind === 'note') return;
+      index.set(i, texts.length);
+      texts.push(row.text);
+    });
+    return { index, texts };
+  }, [rows]);
+  const syntaxKey = useThemes((s) => s.syntaxKey);
+  const lineHtml = useHighlightedLines(codeRows.texts, languageFromPath(path), syntaxKey);
   // git has no lines for an image: it shows as the image before and after instead.
   const image = rows.length === 1 && rows[0]!.kind === 'note' && rows[0]!.text === 'Binary file' && sessionFileKind(path) === 'image';
   const [images, setImages] = useState<{ before: DiffImage | null; after: DiffImage | null } | 'failed' | null>(null);
@@ -262,6 +278,7 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
             <div
               key={i}
               data-diff-row={i}
+              data-diff-kind={row.kind}
               data-diff-picked={(picked && i >= picked.first && i <= picked.last) || undefined}
               className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed text-text/80' : 'text-muted'}`}
               onMouseEnter={drag ? () => dragRef.current && dragTo({ ...dragRef.current, to: i }) : undefined}
@@ -282,7 +299,12 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
                   </span>
                 </span>
               </span>
-              <span className={`pr-3 ${wrap ? 'min-w-0 break-all whitespace-pre-wrap' : 'whitespace-pre'}`}>{row.text || ' '}</span>
+              {lineHtml && codeRows.index.has(i) && row.text ? (
+                // Shiki escapes the code; the HTML is spans with colour variables only.
+                <span className={`shiki pr-3 ${wrap ? 'min-w-0 break-all whitespace-pre-wrap' : 'whitespace-pre'}`} dangerouslySetInnerHTML={{ __html: lineHtml[codeRows.index.get(i)!]! }} />
+              ) : (
+                <span className={`pr-3 ${wrap ? 'min-w-0 break-all whitespace-pre-wrap' : 'whitespace-pre'}`}>{row.text || ' '}</span>
+              )}
             </div>
           )}
           {under(i)}

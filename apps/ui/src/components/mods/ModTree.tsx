@@ -186,7 +186,7 @@ function ModInput({ node }: { node: Extract<ModNode, { kind: 'input' }> }) {
     placeholder: node.placeholder ?? undefined,
     'aria-label': node.label ?? node.placeholder ?? 'Text field',
     maxLength: MOD_LIMITS.inputChars,
-    className: 'min-w-0 flex-1 rounded-md border border-edge bg-bg px-2 py-1 text-ui text-text outline-none placeholder:text-faint focus-visible:border-accent-ink focus-visible:ring-2 focus-visible:ring-focus-ring/40',
+    className: 'field min-w-0 flex-1 px-2 py-1 text-ui outline-none placeholder:text-faint',
     'data-mod-input': node.key,
   };
   return (

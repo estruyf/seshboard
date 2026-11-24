@@ -1,9 +1,10 @@
 import { PanelRight } from 'lucide-react';
+import { useThemes } from '../../state/themeStore.ts';
 import { memo, useInsertionEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { matches } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { RAIL_ORDER } from '@seshboard/protocol/bridge';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
 import { AppIcon } from '../AppIcon.tsx';
 import { GitHubIcon } from '../GitHubIcon.tsx';
 import { useRightPanel } from '../../state/rightPanelStore.ts';
@@ -73,6 +74,9 @@ export function useRailItems(items: readonly RailItem[]): readonly RailItem[] {
  */
 export const ToolRail = memo(function ToolRail({ items, sideShows, onPanel }: { items: readonly RailItem[]; sideShows: boolean; onPanel: () => void }) {
   const hidden = usePreferences((s) => s.prefs.railHidden);
+  // Minimal mode: grey icons, dots for counts, and no accent mark on the one in front.
+  const minimal = useMinimal();
+  const monochrome = useThemes((s) => s.active.entry.file.monochrome === true);
   const apps = usePreferences((s) => s.prefs.railApps);
   const editors = useHosts((s) => s.editors);
   const sizing = useRightPanel((s) => s.sizing);
@@ -176,9 +180,10 @@ export const ToolRail = memo(function ToolRail({ items, sideShows, onPanel }: { 
       {...props.data}
     >
       {drag.markFor(key) && <span aria-hidden className={`pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-accent-ink ${drag.markFor(key) === 'before' ? '-top-[3px]' : '-bottom-[3px]'}`} data-rail-drop={drag.markFor(key)} />}
-      {props.state === 'front' && <span aria-hidden className="absolute inset-y-[9px] -left-1.5 w-0.5 rounded-full bg-accent-ink" />}
+      {/* Minimal mode and a monochrome theme (where the accent is the text colour) show the tool in front by its fill. */}
+      {props.state === 'front' && !minimal && !monochrome && <span aria-hidden className="absolute inset-y-[9px] -left-1.5 w-0.5 rounded-full bg-accent-ink" />}
       {props.icon}
-      {props.state === 'behind' && <span aria-hidden className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-accent-ink" data-rail-behind />}
+      {props.state === 'behind' && <span aria-hidden className={`absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full ${minimal ? 'bg-muted' : 'bg-accent-ink'}`} data-rail-behind />}
     </button>
   );
 
@@ -203,7 +208,7 @@ export const ToolRail = memo(function ToolRail({ items, sideShows, onPanel }: { 
           // An app opens elsewhere: a plain button, not a toggle.
           pressed: item.id.startsWith('app:') ? undefined : item.state === 'front',
           state: item.state,
-          icon: <Badged icon={item.icon} count={item.count} dot={item.dot ? 'link' : false} ring="bg" data={{ 'data-rail-badge': true }} />,
+          icon: <Badged icon={item.icon} count={item.count} dot={item.dot ? 'link' : false} ring="bg" minimal={minimal} data={{ 'data-rail-badge': true }} />,
           data: { ...item.data, 'data-rail-tool': item.id },
           onClick: item.onClick,
           movable: railGroup(item.id) !== null,

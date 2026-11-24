@@ -424,7 +424,7 @@ function ProjectPicker({ onPick }: { onPick(root: string): void }) {
         aria-expanded
         aria-controls="menubar-projects"
         aria-activedescendant={found[active] ? `menubar-project-${active}` : undefined}
-        className="mb-1 w-full rounded-md border border-edge bg-bg px-2 py-1 text-ui outline-none"
+        className="field mb-1 w-full px-2 py-1 text-ui outline-none"
       />
       <ul id="menubar-projects" role="listbox" aria-label="Projects" className="grid">
         {found.map((p, i) => (

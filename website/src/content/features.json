@@ -827,6 +827,21 @@
       "page": "terminal-changes-git/git"
     },
     {
+      "id": "palette:code-highlighting",
+      "name": "Turn code highlighting on or off",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "shortcut:view.minimal",
+      "name": "Turn Minimal mode on or off",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "palette:minimal-mode",
+      "name": "Turn Minimal mode on or off",
+      "page": "themes/built-in"
+    },
+    {
       "id": "palette:theme-dark",
       "name": "theme-dark",
       "page": "themes/built-in"
@@ -2649,6 +2664,26 @@
     {
       "id": "feature:appearance-mode",
       "name": "Appearance: Match System, Light, Dark",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:minimal-mode",
+      "name": "Minimal mode: one-line sessions, state as a shape, the message box without its chips, no counts on icons, fields keep their edge",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:black-and-white-theme",
+      "name": "Black and white theme, light and dark",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:code-highlighting",
+      "name": "Code highlighting on or off: code in one colour, removed lines struck through and added lines in bold",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:project-colors",
+      "name": "Project colours on or off: projects in grey",
       "page": "themes/built-in"
     },
     {

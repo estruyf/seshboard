@@ -4,11 +4,14 @@ import { memo, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react
 import { basename, shortAge } from '../../lib/format.ts';
 import { savedAgo } from '../../state/focus.ts';
 import { startQueued, useLater } from '../../state/laterStore.ts';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
+import { useThemes } from '../../state/themeStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { queueRowLabel, type QueueEntry } from '../../state/queue.ts';
 import { QueueMark } from '../queue/QueueMark.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
+import { queueRowTooltip, rowLeading } from './rowLabel.ts';
+import { EmptyRowSlot } from './RowSlot.tsx';
 import { Button } from '../ui/Button.tsx';
 
 /** What a queued item's second line says: why it is ready, what it waits for, or where and when it was queued. */
@@ -31,6 +34,8 @@ interface QueueRowProps {
   style: SidebarStyle;
   /** The list's one Tab stop lands here. */
   tabbable: boolean;
+  /** The first item that is ready: in a monochrome theme only its Start is filled. */
+  firstReady?: boolean;
   /** A drop would put the dragged item before or after this one. */
   mark: 'before' | 'after' | null;
   drag: {
@@ -50,8 +55,9 @@ interface QueueRowProps {
  * session to check first (⌥-click too); Start starts it now. Ready items carry a green tint and an always-visible
  * Start; the others show Start on hover or focus. Drag the row by its grip to reorder.
  */
-export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, mark, drag, onMenu, onKeyDown }: QueueRowProps) {
+export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, firstReady = false, mark, drag, onMenu, onKeyDown }: QueueRowProps) {
   const { item, state } = entry;
+  const leading = rowLeading('queue', { minimal: useMinimal() });
   const project = useProjects((s) => s.projects.get(item.cwd));
   const filtered = useProjects((s) => s.filter !== null);
   const projectName = project?.name ?? basename(item.cwd);
@@ -66,9 +72,11 @@ export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, ma
     event.preventDefault();
     useLater.getState().use(item);
   };
+  // A monochrome theme (Black and white): no tint or edge on ready rows, and Start is filled only on the first one ready.
+  const monochrome = useThemes((s) => s.active.entry.file.monochrome === true);
   const start = (
     <Button
-      variant={ready ? 'primary' : 'secondary'}
+      variant={ready && (!monochrome || firstReady) ? 'primary' : monochrome ? 'quiet' : 'secondary'}
       size="sm"
       icon={<Play size={10} fill="currentColor" aria-hidden />}
       tabIndex={-1}
@@ -83,7 +91,7 @@ export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, ma
 
   return (
     <div
-      className={`group/queue relative flex w-full items-center gap-2 rounded-lg pr-2 ${compact ? 'h-8 pl-2.5' : `pl-3 ${style === 'large' ? 'h-12' : 'h-11'}`} ${QUEUE_SURFACE[state]}`}
+      className={`group/queue relative flex w-full items-center gap-2 rounded-lg pr-2 ${compact ? 'h-8 pl-2.5' : `pl-3 ${style === 'large' ? 'h-12' : 'h-11'}`} ${monochrome ? 'hover:bg-border/45' : QUEUE_SURFACE[state]}`}
       data-queue-state={state}
       data-queue-autostart={entry.autoStart || undefined}
       {...drag}
@@ -96,19 +104,21 @@ export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, ma
         tabIndex={tabbable ? 0 : -1}
         data-queue-item={item.id}
         aria-label={entry.autoStart ? `Queued in ${projectName}: ${queueRowLabel(entry)}` : `Queued in ${projectName}: ${item.prompt.slice(0, 200)}. ${meta}`}
-        data-tooltip={[item.prompt.length > 300 ? `${item.prompt.slice(0, 299)}…` : item.prompt, `${projectName} · queued ${savedAgo(item.createdAt, now)}`].join('\n')}
+        data-tooltip={queueRowTooltip(item.prompt, projectName, savedAgo(item.createdAt, now))}
         onClick={open}
         onContextMenu={(e) => {
           e.preventDefault();
           onMenu(e.clientX === 0 && e.clientY === 0 ? menuAt(e.currentTarget) : { x: e.clientX, y: e.clientY }, entry);
         }}
         onKeyDown={(e) => void onKeyDown(e, entry)}
-        className="flex min-w-0 flex-1 items-center gap-2.5 self-stretch rounded-md text-left"
+        className={`flex min-w-0 flex-1 items-center self-stretch rounded-md text-left ${leading === 'empty' ? 'gap-2' : 'gap-2.5'}`}
+        data-row-leading={leading}
       >
-        <ProjectIcon project={project} root={item.cwd} size={compact ? 16 : style === 'large' ? 24 : 18} />
+        {/* Minimal mode: an empty slot where session rows have their state mark; the project is in the tooltip. */}
+        {leading === 'empty' ? <EmptyRowSlot /> : <ProjectIcon project={project} root={item.cwd} size={compact ? 16 : style === 'large' ? 24 : 18} />}
         {compact ? (
           <>
-            <span className="min-w-0 flex-1 truncate text-body text-text/85">{item.prompt}</span>
+            <span className="min-w-0 flex-1 truncate text-body text-text/85" data-row-title>{item.prompt}</span>
             {entry.autoStart && <QueueMark entry={entry} />}
             {!ready && <span className="shrink-0 text-meta text-faint tabular-nums group-hover/queue:hidden">{shortAge(item.createdAt, now)}</span>}
           </>

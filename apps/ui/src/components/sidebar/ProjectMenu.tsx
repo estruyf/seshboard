@@ -103,7 +103,7 @@ function EmojiPicker({ x, y, root, onClose }: { x: number; y: number; root: stri
             onChange={(e) => setValue(e.target.value)}
             placeholder={`Or type any emoji (${currentPlatform() === 'win32' ? 'Win+.' : '⌃⌘Space'})`}
             aria-label="Emoji"
-            className="h-7 min-w-0 flex-1 rounded-md border border-edge bg-bg px-2 text-ui outline-none focus:border-accent-ink/60"
+            className="field h-7 min-w-0 flex-1 px-2 text-ui outline-none"
           />
           <Button variant="quiet" iconOnly icon={<X size={13} aria-hidden />} onClick={onClose} aria-label="Cancel" />
         </form>

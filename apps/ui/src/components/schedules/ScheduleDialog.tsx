@@ -20,7 +20,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 const REPEATS: RepeatKind[] = ['once', 'daily', 'weekdays', 'weekly', 'monthly'];
 /** The day toggles' letters, Monday first. */
 const DAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
-const FIELD = 'h-7 rounded-md border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
+const FIELD = 'field h-7 px-2.5 text-ui outline-none';
 
 /** One row of the dialog: the label on the left, the control on the right. */
 function Row({ label, htmlFor, children, labelId }: { label: string; htmlFor?: string; labelId?: string; children: React.ReactNode }) {
@@ -115,7 +115,7 @@ export function ScheduleDialog({ draft, schedule, onClose, onSaved }: { draft: L
             value={form.name}
             onChange={(e) => update({ name: e.target.value })}
             maxLength={200}
-            className={`w-full ${FIELD} ${tried && !form.name.trim() ? 'border-error' : 'border-edge'}`}
+            className={`w-full ${FIELD} ${tried && !form.name.trim() ? 'border-error' : ''}`}
             data-schedule-name
           />
         </Row>
@@ -142,7 +142,7 @@ export function ScheduleDialog({ draft, schedule, onClose, onSaved }: { draft: L
                   value={form.date}
                   onChange={(e) => update({ date: e.target.value })}
                   required
-                  className={`w-40 ${FIELD} ${tried && problem?.startsWith('Pick a') ? 'border-error' : 'border-edge'}`}
+                  className={`w-40 ${FIELD} ${tried && problem?.startsWith('Pick a') ? 'border-error' : ''}`}
                   data-schedule-date
                 />
               </div>
@@ -179,7 +179,7 @@ export function ScheduleDialog({ draft, schedule, onClose, onSaved }: { draft: L
                   max={31}
                   value={form.monthDay}
                   onChange={(e) => update({ monthDay: e.target.value })}
-                  className={`w-16 ${FIELD} ${tried && problem?.startsWith('Pick a day') ? 'border-error' : 'border-edge'}`}
+                  className={`w-16 ${FIELD} ${tried && problem?.startsWith('Pick a day') ? 'border-error' : ''}`}
                   data-schedule-month-day
                 />
                 <span className="text-meta text-muted">Shorter months use their last day.</span>
@@ -191,7 +191,7 @@ export function ScheduleDialog({ draft, schedule, onClose, onSaved }: { draft: L
         <Row label="At" htmlFor={`${id}-time`}>
           <div className="flex items-center gap-3">
             {/* A time field shows the time the way this computer does (24-hour or AM/PM); its value is HH:MM. */}
-            <input id={`${id}-time`} type="time" value={form.time} onChange={(e) => update({ time: e.target.value })} required className={`w-32 ${FIELD} border-edge`} data-schedule-time />
+            <input id={`${id}-time`} type="time" value={form.time} onChange={(e) => update({ time: e.target.value })} required className={`w-32 ${FIELD}`} data-schedule-time />
             {!ruleProblem(rule) && (
               <span className="min-w-0 truncate text-meta text-muted" data-schedule-describe>
                 {describe(rule)}

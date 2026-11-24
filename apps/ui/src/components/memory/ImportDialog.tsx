@@ -127,7 +127,7 @@ export function ImportDialog({ source, onClose }: { source: { kind: 'export'; pa
             onChange={(e) => setPasted(e.target.value)}
             rows={10}
             autoFocus
-            className="w-full resize-y rounded-md border border-edge bg-bg p-2.5 font-mono text-ui text-text outline-none focus:border-accent-ink"
+            className="field w-full resize-y p-2.5 font-mono text-ui outline-none"
             data-memory-paste-text
           />
         </div>
@@ -150,7 +150,7 @@ export function ImportDialog({ source, onClose }: { source: { kind: 'export'; pa
                     onChange={(target) => setRow(i, { target, checked: target === 'skip' ? false : row.checked || row.target === 'skip' })}
                     options={targets}
                     menuWidth={220}
-                    className="flex h-6 items-center gap-1 rounded-md border border-edge bg-bg px-2 text-meta text-text"
+                    className="field flex h-6 items-center gap-1 px-2 text-meta"
                     dataAttrs={{ 'data-memory-import-target': row.entry.id }}
                   />
                   <span>· {row.entry.type}</span>

@@ -180,7 +180,7 @@ export function FeedbackField({ value, onChange, onSubmit, busy, agent = 'Claude
       }}
       placeholder={`Or tell ${midSentence(agent)} what to do instead…`}
       aria-label={`Or tell ${midSentence(agent)} what to do instead`}
-      className="h-8 w-full min-w-0 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
+      className="field h-8 w-full min-w-0 px-2.5 text-ui outline-none placeholder:text-faint"
     />
   );
 }
@@ -497,7 +497,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
               }}
               placeholder={q.multiSelect ? 'Something else (optional)' : 'Or type your own answer'}
               aria-label={`Your own answer to: ${q.question}`}
-              className="h-8 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
+              className="field h-8 px-2.5 text-ui outline-none placeholder:text-faint"
             />
             {isCurrent && q.multiSelect && nextUnanswered(qi) !== undefined && (
               <div>

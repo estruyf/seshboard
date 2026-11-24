@@ -20,7 +20,7 @@ import { completeLink, linkQuery, linkSuggestions } from './linkCompletion.ts';
 import { TYPE_CHOICES, typeTone } from './memoryUi.ts';
 import { useMemoryFile } from './useMemoryList.ts';
 
-const field = 'h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
+const field = 'field h-7 w-full px-2.5 text-ui outline-none';
 
 interface Draft {
   description: string;
@@ -280,7 +280,7 @@ export function MemoryEditor({
                 }
               }}
               spellCheck={false}
-              className="min-h-64 w-full resize-y rounded-lg border border-edge bg-code p-4 font-mono text-ui text-text outline-none focus:border-accent-ink"
+              className="field min-h-64 w-full resize-y rounded-lg bg-code p-4 font-mono text-ui outline-none"
               data-memory-body
             />
             {suggestions.length > 0 && (

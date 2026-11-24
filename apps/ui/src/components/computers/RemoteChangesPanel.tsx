@@ -197,7 +197,7 @@ export function RemoteChangesPanel({
           disabled={!connected || files.length === 0}
           placeholder={files.length ? 'Commit message' : 'Nothing to commit'}
           aria-label="Commit message"
-          className="field-sizing-content max-h-40 min-h-12 w-full resize-none rounded-lg border border-edge bg-card px-2.5 py-1.5 text-ui text-text outline-none placeholder:text-faint focus:border-link disabled:opacity-60"
+          className="field field-sizing-content max-h-40 min-h-12 w-full resize-none rounded-lg bg-card px-2.5 py-1.5 text-ui outline-none placeholder:text-faint"
           data-remote-commit-message
         />
         {failed && (

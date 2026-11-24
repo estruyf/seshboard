@@ -73,7 +73,7 @@ import { useNavHistorySync } from './state/navHistoryStore.ts';
 import { useSessions, type MainView } from './state/sessionsStore.ts';
 import { useReadMode } from './state/readModeStore.ts';
 import { useOverlay } from './state/overlayStore.ts';
-import { usePreferencesSync } from './state/preferencesStore.ts';
+import { usePreferences, usePreferencesSync } from './state/preferencesStore.ts';
 import { useThemesSync } from './state/themeStore.ts';
 import { ThemeImportDialogs } from './components/theme/ThemeImport.tsx';
 import { useProfilesSync } from './state/profilesStore.ts';
@@ -98,7 +98,7 @@ import { runMainRequest } from './state/mainRequests.ts';
 import { usePopoutsSync } from './state/usePopoutsSync.ts';
 import { useBrowserPopoutsSync } from './state/browserWindow.ts';
 import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
-import { matches, type ShortcutId } from './lib/shortcuts.ts';
+import { isMinimalKey, matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 import { UpcomingView } from './components/upcoming/UpcomingView.tsx';
 import { ActivityView } from './components/activity/ActivityView.tsx';
@@ -155,6 +155,10 @@ function useShortcuts() {
       } else if (matches(event, 'home')) {
         event.preventDefault();
         useSessions.getState().goHome();
+      } else if (isMinimalKey(event)) {
+        event.preventDefault();
+        const { prefs, update } = usePreferences.getState();
+        update({ minimalMode: !prefs.minimalMode });
       } else if (matches(event, 'upcoming')) {
         event.preventDefault();
         openUpcoming();

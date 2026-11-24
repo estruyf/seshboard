@@ -184,6 +184,21 @@ const plainColors = (theme: ThemeRegistration): ThemeRegistration => ({
   tokenColors: theme.tokenColors?.map((rule) => ({ ...rule, settings: { ...rule.settings, fontStyle: undefined } })),
 });
 
+/**
+ * Code highlighting off (Settings › Theme): code in one colour, the theme's text, with comments in its faint colour and
+ * italic. Built from the active theme's tokens for each mode, so it follows any theme.
+ */
+export function plainSyntax(tokens: { text: string; faint: string }, mode: ThemeMode): InlineSyntaxTheme {
+  return {
+    name: `Plain ${mode}`,
+    type: mode,
+    tokenColors: [
+      { settings: { foreground: tokens.text } },
+      { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: tokens.faint, fontStyle: 'italic' } },
+    ],
+  };
+}
+
 let choice: SyntaxChoice = { light: null, dark: null };
 let current = { light: 'demotime-light', dark: 'demotime-dark' };
 
@@ -293,4 +308,13 @@ export function languageFromPath(path: string): string | undefined {
   const ext = /\.([a-z0-9+]+)$/i.exec(path)?.[1]?.toLowerCase();
   if (/(^|\/)Dockerfile$/.test(path)) return 'docker';
   return ext;
+}
+
+/**
+ * The inner HTML of each line of Shiki's output, for a diff that draws its own rows: the lines are joined with `\n`
+ * inside `<code>`, each a `<span class="line">` of token spans (Shiki escapes the code, so no line holds a newline).
+ */
+export function highlightedLines(html: string): string[] {
+  const code = /<code[^>]*>([\s\S]*)<\/code>/.exec(html)?.[1] ?? '';
+  return code.split('\n').map((line) => line.replace(/^<span class="line">/, '').replace(/<\/span>$/, ''));
 }

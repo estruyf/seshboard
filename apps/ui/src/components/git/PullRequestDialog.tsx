@@ -32,7 +32,7 @@ import { openWebLink } from '../../state/browserActions.ts';
 
 /** Where the GitHub CLI's install instructions are. */
 const GH_INSTALL_URL = 'https://cli.github.com';
-const FIELD = 'block w-full rounded-md border border-edge bg-bg px-2.5 py-2 text-text outline-none placeholder:text-faint focus:border-accent-ink disabled:opacity-60';
+const FIELD = 'field block w-full px-2.5 py-2 outline-none placeholder:text-faint';
 const spinner = (onAccent: boolean) => (
   <span className={`size-3 shrink-0 animate-spin rounded-full border-[1.5px] ${onAccent ? 'border-on-accent/25 border-t-on-accent' : 'border-accent-ink/25 border-t-accent-ink'}`} aria-hidden />
 );
@@ -480,7 +480,7 @@ export function PullRequestDialog({
               placeholder="Filter branches"
               spellCheck={false}
               aria-label="Filter branches"
-              className="mx-2 mt-1 mb-1 w-[calc(100%-1rem)] rounded-md border border-edge bg-bg px-2 py-1 font-mono text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink"
+              className="field mx-2 mt-1 mb-1 w-[calc(100%-1rem)] px-2 py-1 font-mono text-ui outline-none placeholder:text-faint"
             />
             {filterBranches(draft.branches, base, query).map((branch) => {
               const mark = branch === projectBase ? 'project default' : !projectBase && branch === draft.remoteDefault ? 'default branch' : null;

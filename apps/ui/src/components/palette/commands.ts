@@ -127,6 +127,8 @@ import {
   ZoomIn,
   ZoomOut,
   Search,
+  Leaf,
+  Code2,
 } from 'lucide-react';
 import type { BrowserAction } from '../../state/browserActions.ts';
 import type { ColorScheme, ConversationView, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
@@ -499,6 +501,25 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'sidebar view one line dense',
     when: always,
     run: (api, ctx) => api.setPreferences({ sidebarStyle: ctx.sidebarStyle === 'compact' ? 'standard' : 'compact' }),
+  },
+  {
+    id: 'minimal-mode',
+    title: (ctx) => (ctx.minimalMode ? 'Turn Minimal mode off' : 'Turn Minimal mode on'),
+    group: 'general',
+    icon: Leaf,
+    keywords: 'quiet calm minimalist less clutter one line chips badges counts borders',
+    shortcut: keysFor('view.minimal'),
+    when: always,
+    run: (api, ctx) => api.setPreferences({ minimalMode: !ctx.minimalMode }),
+  },
+  {
+    id: 'code-highlighting',
+    title: (ctx) => (ctx.codeHighlighting ? 'Turn code highlighting off' : 'Turn code highlighting on'),
+    group: 'general',
+    icon: Code2,
+    keywords: 'syntax colours colors code blocks diffs one colour monochrome',
+    when: always,
+    run: (api, ctx) => api.setPreferences({ codeHighlighting: !ctx.codeHighlighting }),
   },
   ...CONVERSATION_VIEWS.map(
     ({ value, label }): PaletteCommand => ({

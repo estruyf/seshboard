@@ -87,7 +87,7 @@ export function LoadOrderCard({ root, home, onSelect, extra }: { root: string; h
             value={profileId}
             onChange={setProfileId}
             options={profiles.map((p) => ({ value: p.id, label: p.name }))}
-            className="flex h-6 items-center gap-1 rounded-md border border-edge bg-bg px-2 text-meta text-text"
+            className="field flex h-6 items-center gap-1 px-2 text-meta"
             dataAttrs={{ 'data-memory-load-profile': true }}
           />
         )}

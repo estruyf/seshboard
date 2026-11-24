@@ -77,13 +77,13 @@ export function BlankForm({ anchor, spec, onChange, onRemove, onClose }: { ancho
           value={spec.name}
           onChange={(e) => set({ name: cleanBlankName(e.target.value) })}
           spellCheck={false}
-          className="rounded-md border border-edge bg-bg px-2 py-1 font-mono text-ui text-text outline-none focus:border-accent-ink/60"
+          className="field px-2 py-1 font-mono text-ui outline-none"
           data-blank-form-name
         />
       </label>
       <div className="flex flex-col gap-1 text-meta text-muted">
         <span>Type</span>
-        <Select<BlankType> value={spec.type} options={BLANK_TYPES.map((type) => ({ value: type, label: BLANK_TYPE_LABELS[type] }))} onChange={(type) => set({ type, options: type === 'choice' ? optionsFrom(options) : [] })} label="Type" menuWidth={200} />
+        <Select<BlankType> value={spec.type} options={BLANK_TYPES.map((type) => ({ value: type, label: BLANK_TYPE_LABELS[type] }))} onChange={(type) => set({ type, options: type === 'choice' ? optionsFrom(options) : [] })} label="Type" menuWidth={200} className="field px-2 py-1 text-ui" />
       </div>
       {spec.type === 'choice' && (
         <label className="flex flex-col gap-1 text-meta text-muted">
@@ -95,7 +95,7 @@ export function BlankForm({ anchor, spec, onChange, onRemove, onClose }: { ancho
               setOptions(e.target.value);
               set({ options: optionsFrom(e.target.value) });
             }}
-            className="rounded-md border border-edge bg-bg px-2 py-1 text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink/60"
+            className="field px-2 py-1 text-ui outline-none placeholder:text-faint"
             data-blank-form-options
           />
           {spec.options.length === 0 && <span className="text-error">A choice needs options.</span>}

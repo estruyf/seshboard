@@ -89,7 +89,7 @@ function NoteForm({ sessionId, title, note }: { sessionId: string; title: string
           placeholder="push after review, waiting on Jan…"
           aria-invalid={error !== null}
           aria-describedby={error ? `${id}-error` : undefined}
-          className={`h-7 w-full rounded-md border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink ${error ? 'border-error' : 'border-edge'}`}
+          className={`field h-7 w-full px-2.5 text-ui outline-none ${error ? 'border-error' : ''}`}
           data-session-note-input
         />
         <p className="text-meta text-muted">

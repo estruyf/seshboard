@@ -174,7 +174,7 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
                 placeholder="Filter branches"
                 spellCheck={false}
                 aria-label="Filter branches"
-                className="mx-2 mb-1 w-[calc(100%-1rem)] rounded-md border border-border bg-bg px-2 py-1 font-mono text-[11.5px] text-text outline-none placeholder:text-faint focus:border-accent-ink"
+                className="field mx-2 mb-1 w-[calc(100%-1rem)] px-2 py-1 font-mono text-[11.5px] outline-none placeholder:text-faint"
               />
             )}
             {listed.map((branch) => {

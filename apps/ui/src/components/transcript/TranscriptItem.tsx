@@ -1,4 +1,6 @@
 import { Bot, ChevronRight, ClipboardList, MessagesSquare } from 'lucide-react';
+import { useThemes } from '../../state/themeStore.ts';
+import { languageFromPath } from '../../lib/highlight.ts';
 import type { HookableComponent } from '@seshboard/protocol/client';
 import { useMods } from '../../state/modsStore.ts';
 import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
@@ -109,6 +111,8 @@ const resultState = (item: ToolItem) => (item.result === null ? 'pending' : item
 function ToolCard({ item, cwd, sessionId }: { item: ToolItem; cwd: string | null; sessionId: string }) {
   const [open, setOpen] = useState(false);
   const target = fileTarget(item);
+  // The diff's lines in the theme's code colours, highlighted again when they change.
+  const syntaxKey = useThemes((s) => s.syntaxKey);
   const hunks = editHunks(item);
   const isAgent = item.name === 'Task' || item.name === 'Agent';
   const { label, detail } = toolSummary(item.name, item.input, cwd);
@@ -133,7 +137,7 @@ function ToolCard({ item, cwd, sessionId }: { item: ToolItem; cwd: string | null
       {/* File changes show their diff without expanding, like the CLI. */}
       {hunks && !failed && (
         <div className="ml-6">
-          <DiffView hunks={hunks} truncated={item.inputTruncated} />
+          <DiffView hunks={hunks} truncated={item.inputTruncated} language={target ? languageFromPath(target.path) : undefined} syntaxKey={syntaxKey} />
         </div>
       )}
 

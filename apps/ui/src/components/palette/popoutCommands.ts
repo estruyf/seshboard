@@ -241,6 +241,9 @@ const PLANS: Record<string, Plan> = {
   // The orchestrator opens in the main window, where its sessions are listed under it.
   'go-to-orchestrator': 'hide',
   'catch-up': 'hide',
+  // Only a preference, which every window follows.
+  'minimal-mode': 'here',
+  'code-highlighting': 'here',
 };
 
 /** The commands made from a list (`sidebar-compact`, `settings-memory`, `theme:solarized`, …) go by their prefix. */

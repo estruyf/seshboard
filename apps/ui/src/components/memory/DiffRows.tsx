@@ -16,7 +16,7 @@ export function DiffRows({ diff }: { diff: string }) {
             {row.text}
           </div>
         ) : (
-          <div key={i} className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed text-text/80' : 'text-muted'}`} data-share-line={row.kind}>
+          <div key={i} className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed text-text/80' : 'text-muted'}`} data-share-line={row.kind} data-diff-kind={row.kind}>
             <span className={`w-6 shrink-0 text-center select-none ${row.kind === 'add' ? 'text-ok' : row.kind === 'del' ? 'text-error' : 'text-faint'}`}>{row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' '}</span>
             <span className="min-w-0 pr-3 break-words whitespace-pre-wrap">{row.text || ' '}</span>
           </div>

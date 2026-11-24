@@ -46,8 +46,8 @@ import { Select } from '../ui/Select.tsx';
 import { Stepper } from '../ui/Stepper.tsx';
 import { TriggerPromptField } from './TriggerPromptField.tsx';
 
-const FIELD = 'h-8 rounded-md border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
-const CHIP = 'h-7 rounded-md border border-edge bg-transparent px-2 text-ui text-text hover:bg-border/45';
+const FIELD = 'field h-8 px-2.5 text-ui outline-none';
+const CHIP = 'field h-7 px-2 text-ui';
 
 /** The editor, wherever it was asked for: the Triggers tab, the palette, New session's Start ▾ › Start when…. */
 export function TriggerEditorHost() {
@@ -376,7 +376,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                     value={form.branch}
                     placeholder={info?.defaultBranch ?? 'the default branch'}
                     onChange={(e) => update({ branch: e.target.value })}
-                    className={`w-full ${FIELD} border-edge pr-16 font-mono`}
+                    className={`w-full ${FIELD} pr-16 font-mono`}
                     data-trigger-branch
                   />
                   {!form.branch.trim() && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-meta text-faint">default</span>}
@@ -421,7 +421,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                       value={form.label}
                       onChange={(e) => update({ label: e.target.value })}
                       maxLength={50}
-                      className={`w-56 ${FIELD} ${tried && !form.label.trim() ? 'border-error' : 'border-edge'}`}
+                      className={`w-56 ${FIELD} ${tried && !form.label.trim() ? 'border-error' : ''}`}
                       data-trigger-label
                     />
                   </Field>
@@ -446,7 +446,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                           placeholder="login"
                           value={form.assignee === '@me' ? '' : form.assignee}
                           onChange={(e) => update({ assignee: e.target.value.replace(/^@/, '') })}
-                          className={`w-40 ${FIELD} font-mono ${tried && !form.assignee.trim() ? 'border-error' : 'border-edge'}`}
+                          className={`w-40 ${FIELD} font-mono ${tried && !form.assignee.trim() ? 'border-error' : ''}`}
                           data-trigger-assignee-login
                         />
                       ) : (
@@ -503,7 +503,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                           value={form.stateLabels[key]}
                           maxLength={50}
                           onChange={(e) => update({ stateLabels: { ...form.stateLabels, [key]: e.target.value } })}
-                          className={`${FIELD} ${tried && !form.stateLabels[key].trim() ? 'border-error' : 'border-edge'}`}
+                          className={`${FIELD} ${tried && !form.stateLabels[key].trim() ? 'border-error' : ''}`}
                         />
                       ))}
                     </div>

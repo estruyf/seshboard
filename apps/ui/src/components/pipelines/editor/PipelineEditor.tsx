@@ -167,7 +167,7 @@ export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, o
         {form.scope.kind === 'project' && (
           <Select
             label="Project"
-            className="h-8 max-w-48 rounded-md border border-edge bg-transparent px-2 text-ui text-text hover:bg-border/45"
+            className="field h-8 max-w-48 px-2 text-ui"
             value={form.scope.root}
             placeholder="Pick a project"
             disabled={readOnly}

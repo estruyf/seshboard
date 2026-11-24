@@ -13,7 +13,7 @@ import { useProvider, useProviderReadiness } from '../../state/providersStore.ts
 import { jumpToSetting } from '../settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from '../settingsSearch/settingsIndex.ts';
 
-const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60 disabled:opacity-50';
+const field = 'field h-7 min-w-0 px-2 text-ui outline-none';
 /** The value an unset field shows; unset fields use the profile's defaults, else the global ones in Settings › General. */
 const UNSET = '';
 /** A project's model, effort or permission mode that skips its profile's and follows the global one (`globalModel`, `globalEffort`, `globalPermissionMode`). */

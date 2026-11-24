@@ -260,7 +260,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             aria-controls={showList ? listId : undefined}
             aria-activedescendant={showList && highlighted >= 0 ? `${listId}-${highlighted}` : undefined}
             aria-keyshortcuts={browser ? formatKeys(keysFor('browser.address')) : undefined}
-            className={`h-7 w-full rounded-md border bg-card px-2 font-mono text-ui text-text outline-none placeholder:text-faint focus:border-link ${browser && tab?.url ? 'pl-7' : ''} ${refused ? 'border-error' : 'border-edge'}`}
+            className={`field h-7 w-full bg-card px-2 font-mono text-ui outline-none placeholder:text-faint ${browser && tab?.url ? 'pl-7' : ''} ${refused ? 'border-error' : ''}`}
             data-web-preview-address=""
             data-browser-address=""
             data-tab-id={tab?.id}
@@ -681,7 +681,7 @@ function FindBar({ tabId, focus, matches, active }: { tabId: string; focus: numb
         spellCheck={false}
         aria-label="Find in page"
         aria-invalid={none ? true : undefined}
-        className={`h-7 min-w-0 flex-1 rounded-md border bg-card px-2 text-ui text-text outline-none placeholder:text-faint focus:border-link ${none ? 'border-error' : 'border-edge'}`}
+        className={`field h-7 min-w-0 flex-1 bg-card px-2 text-ui outline-none placeholder:text-faint ${none ? 'border-error' : ''}`}
         data-browser-find-input=""
       />
       <span className="min-w-14 text-right text-meta text-muted tabular-nums" aria-live="polite" data-browser-find-count="">
@@ -711,7 +711,7 @@ export function TabIcon({ tab, size = 12 }: { tab: Pick<BrowserTab, 'favicon'>; 
   // Which icon failed to draw: a new one gets its chance.
   const [broken, setBroken] = useState<string | null>(null);
   if (!tab.favicon || broken === tab.favicon) return <Globe size={size} aria-hidden className="shrink-0 text-faint" />;
-  return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" onError={() => setBroken(tab.favicon)} />;
+  return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" data-favicon onError={() => setBroken(tab.favicon)} />;
 }
 
 /** An empty tab: the servers running in the session, or where to type, then favourites, bookmarks and closed tabs (the browser on). */

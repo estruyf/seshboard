@@ -413,7 +413,7 @@ function NameField({ project }: { project: ProjectInfo }) {
         placeholder={folder}
         aria-label="Name"
         aria-busy={saving || undefined}
-        className="h-8 w-72 max-w-full min-w-0 rounded-md border border-border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+        className="field h-8 w-72 max-w-full min-w-0 px-2.5 text-ui outline-none"
         data-project-name-input
       />
       {error && (
@@ -496,7 +496,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         <SettingRow label="Claude profile">
           <Select
             label="Claude profile"
-            className="h-8 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60"
+            className="field h-8 min-w-0 px-2 text-ui outline-none"
             value={project.profileId ?? ''}
             onChange={(value) => void projectActions.setProfile(project.root, value || null)}
             options={[{ value: '', label: `Default${fallback ? ` (${fallback.name})` : ''}` }, ...startable.map((p) => ({ value: p.id, label: startLabel(p, catalog), hint: p.account?.email ?? undefined }))]}

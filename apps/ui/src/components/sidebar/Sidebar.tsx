@@ -14,7 +14,7 @@ import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
-import { SidebarNav } from './SidebarNav.tsx';
+import { MinimalNav, SidebarNav } from './SidebarNav.tsx';
 import { BrowserTabList } from './BrowserTabList.tsx';
 import { useSidebarList } from '../../state/browserViewStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
@@ -42,7 +42,7 @@ import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
 import { VirtualRows, type VirtualRowsHandle } from './VirtualRows.tsx';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
@@ -67,7 +67,7 @@ import { ProjectGroupRow, ProjectSummaryLine, StateDot } from './ProjectGroupRow
 import { SidebarViewButton } from './SidebarViewButton.tsx';
 import { groupedByProject } from './sidebarView.ts';
 import { thisComputerName } from '../../lib/platform.ts';
-import { agentNameOf, sessionRowLabel } from './rowLabel.ts';
+import { agentNameOf, minimalRowTooltip, rowLeading, sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
 import { BrowserIntro } from './BrowserIntro.tsx';
 import { ComputersStrip } from '../computers/ComputersStrip.tsx';
@@ -153,12 +153,14 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
   const summary = headerSummary(row);
   const queue = row.kind === 'queue-header';
   const label = queue ? 'Queue' : GROUP_LABEL[row.group];
+  // Minimal mode: no colours and no count badges in the headers; the count is plain text after the name.
+  const minimal = useMinimal();
   return (
     // The row is taller than the label: it sits at the bottom, just above its sessions.
     <div className={`flex h-full items-end px-2.5 ${row.first ? 'pb-1' : 'pb-1.5'}`} {...(queue ? { 'data-queue-header': true } : {})}>
       <SectionHeader
-        tone={status ?? 'neutral'}
-        count={row.count}
+        tone={minimal ? 'neutral' : (status ?? 'neutral')}
+        count={minimal ? null : row.count}
         toggle={
           section
             ? {
@@ -174,7 +176,7 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
           (summary || selectAll) && (
             <>
               {summary && (
-                <span className={`ml-auto text-meta font-medium tracking-normal normal-case ${summary.tone === 'ok' ? 'text-ok' : 'text-unread'}`} data-section-summary={section ?? undefined}>
+                <span className={`ml-auto text-meta font-medium tracking-normal normal-case ${minimal ? 'text-faint' : summary.tone === 'ok' ? 'text-ok' : 'text-unread'}`} data-section-summary={section ?? undefined}>
                   {summary.text}
                 </span>
               )}
@@ -187,6 +189,7 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
       >
         {queue && <ListEnd size={12} className="shrink-0" aria-hidden />}
         {label}
+        {minimal && row.count > 0 && <span className="font-normal tracking-normal text-faint tabular-nums">{row.count}</span>}
       </SectionHeader>
     </div>
   );
@@ -195,9 +198,10 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
 /** The Done header, docked under the list while closed and in the list while open: the same toggle in both places. */
 function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: number; open: boolean; onToggle(): void; onMenu(at: { x: number; y: number }): void; action?: ReactNode }) {
   const days = usePreferences((s) => s.prefs.archiveAfterDays);
+  const minimal = useMinimal();
   return (
     <SectionHeader
-      count={count}
+      count={minimal ? null : count}
       toggle={{
         expanded: open,
         onToggle,
@@ -227,6 +231,7 @@ function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: numb
       className="h-[22px] flex-1"
     >
       Done
+      {minimal && count > 0 && <span className="font-normal tracking-normal text-faint tabular-nums">{count}</span>}
     </SectionHeader>
   );
 }
@@ -419,8 +424,10 @@ export const SessionRow = memo(function SessionRow({
   const profile = useRowProfile(data);
   // Under a project the state dot says it; the rail stays for a profile's colour.
   const statusRail = inProject ? null : (status && RAIL_TONE[status]) || (reminderText ? RAIL_TONE.unread : null);
-  const profileRail = profile ? PROFILE_DOT[profile.color] : null;
-  const railTone = profileRail ?? statusRail;
+  // Minimal mode has no rail: the mark before the title says the state by its shape.
+  const minimal = useMinimal();
+  const profileRail = profile && !minimal ? PROFILE_DOT[profile.color] : null;
+  const railTone = minimal ? null : (profileRail ?? statusRail);
   const rail = railTone && (
     <span
       className={`${railShape(!picked && (selected || beside))} ${railTone} ${archived && !selected ? 'opacity-50' : ''}`}
@@ -568,6 +575,40 @@ export const SessionRow = memo(function SessionRow({
     ) : (
       row
     );
+
+  if (minimal) {
+    // Minimal mode: one line, the state as a shape, the title (bold only when it needs you) and the age. The project,
+    // branch, computer and what is open move to the tooltip.
+    const tooltip = minimalRowTooltip({
+      title: data.title,
+      waitingFor,
+      project: inProject ? null : projectName,
+      branch,
+      computer: remote ? (away ?? remote.computerName) : null,
+      terminal: terminalOpen,
+      tabs: tabCount,
+      note,
+      reminder: reminderText,
+      done: doneText,
+      limit: limitText,
+      profile: profile?.name ?? null,
+      cwd: data.summary?.cwd ?? null,
+    });
+    const tone = status === 'needs-you' ? 'font-semibold text-text' : selected ? 'text-text' : archived ? 'text-muted' : 'text-text/85';
+    return withActions(
+      <button {...common} data-tooltip={tooltip} data-row-minimal style={roomStyle} className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-meta ${surface} ${dim} ${room}`}>
+        {picking ? icon(14) : rowLeading(runRow ? 'run' : 'session', { minimal }) === 'state' ? <StatusIcon status={status} agent={agent} variant="minimal" /> : icon(14)}
+        <span className={`min-w-0 flex-1 truncate text-body ${tone}`} data-row-title>
+          {data.title}
+        </span>
+        {pin}
+        {pen}
+        {warning}
+        <span className={`shrink-0 text-meta text-faint tabular-nums ${hideForActions}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>
+        {chevron}
+      </button>,
+    );
+  }
 
   if (style === 'compact') {
     return withActions(
@@ -756,7 +797,8 @@ export function Sidebar() {
   const noProjects = useProjects((s) => s.loaded && addedProjects(s.projects).length === 0);
   const [picks, setPicks] = useState<Picks>(NO_PICKS);
   const now = useNow();
-  const sidebarStyle = usePreferences((s) => s.prefs.sidebarStyle);
+  // Minimal mode lists every row on one line, so the list measures them as Compact.
+  const sidebarStyle = usePreferences((s) => (s.prefs.minimalMode ? 'compact' : s.prefs.sidebarStyle));
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const updatePrefs = usePreferences((s) => s.update);
@@ -1041,6 +1083,7 @@ export function Sidebar() {
 
   // The queue has its own Tab stop: its first item.
   const firstQueued = queueEntries[0]?.item.id ?? null;
+  const firstReady = queueEntries.find((entry) => entry.state === 'ready')?.item.id ?? null;
 
   // The rail asked to show a section: scroll its header into view and focus it.
   const reveal = useSidebarSections((s) => s.reveal);
@@ -1323,6 +1366,7 @@ export function Sidebar() {
   const localWaiting = all.filter((row) => rowStatus(row) === 'needs-you').length;
   const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
   const showTabs = useSidebarList((s) => browserPreview && s.list === 'browser');
+  const minimal = useMinimal();
 
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
@@ -1330,13 +1374,23 @@ export function Sidebar() {
       {/* Traffic lights on the left (macOS); the bar doubles as a window drag handle. */}
       <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24' : 'pl-4.5'}`}>
         <span className="text-body font-semibold text-text/90">Seshboard</span>
+        {/* Minimal mode: the View menu (grouping, sort and the project filter) sits up here, as the filter row goes. */}
+        {minimal && !showTabs && (
+          <span className="no-drag ml-auto pr-3">
+            <SidebarViewButton projects={projectKeys} withProjects />
+          </span>
+        )}
       </div>
 
-      <SidebarNav now={now} needsYou={localWaiting} />
+      {minimal ? (
+        <MinimalNav now={now} newSessionLabel={newDraft ? newSessionDraftTooltip(newDraft.name) : remoteNewDraft ? remoteNewSessionDraftTooltip(remoteNewDraft.name) : 'New session'} onNewSession={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))} />
+      ) : (
+        <SidebarNav now={now} needsYou={localWaiting} />
+      )}
 
       {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. The
-          Browser's tab list has no search or New session. */}
-      <div className={`items-center gap-1.5 px-3 pb-1.5 ${showTabs ? 'hidden' : 'flex'}`}>
+          Browser's tab list has no search or New session. Minimal mode has both in its nav. */}
+      <div className={`items-center gap-1.5 px-3 pb-1.5 ${showTabs || minimal ? 'hidden' : 'flex'}`}>
         {/* A real field on the darkest surface, so it reads as the place to type. */}
         <label className="no-drag flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-bg px-2.5 text-faint focus-within:ring-1 focus-within:ring-accent-ink/50">
           <Search size={14} className="shrink-0" aria-hidden />
@@ -1377,12 +1431,14 @@ export function Sidebar() {
       {/* With the browser on, Browser swaps the sessions for its tabs; the sessions stay mounted (their notices too). */}
       <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-sessions>
       {/* The project and, beside it, the order: by time and state, or what takes least to unblock first. */}
-      <ProjectFilter
-        counts={counts}
-        sources={sourceSummaries}
-        remoteProjects={remoteProjects}
-        trail={<SidebarViewButton projects={projectKeys} />}
-      />
+      {!minimal && (
+        <ProjectFilter
+          counts={counts}
+          sources={sourceSummaries}
+          remoteProjects={remoteProjects}
+          trail={<SidebarViewButton projects={projectKeys} />}
+        />
+      )}
       {noProjects && (
         <div className="mx-3 mb-2 grid justify-items-start gap-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-ui" data-sidebar-onboarding>
           <p className="font-medium text-text">Add a project</p>
@@ -1470,6 +1526,7 @@ export function Sidebar() {
                       now={now}
                       style={sidebarStyle}
                       tabbable={row.entry.item.id === firstQueued}
+                      firstReady={row.entry.item.id === firstReady}
                       mark={drag.markFor(row.entry.item.id)}
                       drag={drag.props(row.entry.item.id)}
                       onMenu={queueMenus.openMenu}
@@ -1605,10 +1662,11 @@ export function Sidebar() {
           {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} running`}
           {running && <span data-footer-pipelines>{` · ${running}`}</span>}
           {queue.entries.length > 0 && <span data-footer-queued>{` · ${queue.entries.length} queued`}</span>}
-          {waiting > 0 && <span className="text-warn">{` · ${waiting} waiting`}</span>}
+          {waiting > 0 && <span className={minimal ? 'text-text' : 'text-warn'}>{` · ${waiting} waiting`}</span>}
           {!complete && loaded && ' · scanning…'}
         </button>
-        {openCount > 0 && (
+        {/* Minimal mode: no count pill here; catch-up stays in the palette. */}
+        {openCount > 0 && !minimal && (
           <Pill
             icon={<Inbox size={11} className="shrink-0" aria-hidden />}
             onClick={() => startPass()}

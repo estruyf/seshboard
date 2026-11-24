@@ -13,8 +13,8 @@ import { Select } from '../../ui/Select.tsx';
 import { canMove, earlierSessions, renameStep, updateStep, verdictOn, type PipelineForm } from './editorModel.ts';
 import { MentionPromptField } from './MentionPromptField.tsx';
 
-export const FIELD = 'h-8 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink disabled:opacity-70';
-const CHIP = 'h-7 rounded-md border border-edge bg-transparent px-2 text-ui text-text hover:bg-border/45';
+export const FIELD = 'field h-8 px-2.5 text-ui outline-none';
+const CHIP = 'field h-7 px-2 text-ui';
 
 /** One row of a step's form: the label on the left, the controls on the right. */
 function Row({ label, htmlFor, labelId, children, hook }: { label: string; htmlFor?: string; labelId?: string; children: ReactNode; hook?: `data-${string}` }) {

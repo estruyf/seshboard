@@ -87,13 +87,34 @@ function solvedHex(color: Oklch, against: readonly Rgba[], target: number, direc
 /** `value` with an alpha, as `#rrggbbaa`. */
 export const withAlpha = (value: string, alpha: number) => toHex({ ...read(value), a: alpha });
 
+/** A field's edge starts as this much of the text colour over the canvas, then moves until it reaches `FIELD_CONTRAST`. */
+const FIELD_MIX = 0.45;
+/** WCAG 1.4.11: the edge that identifies a control, against every surface a field sits on. */
+export const FIELD_CONTRAST = 3;
+
+/**
+ * A field's edge (`field-border`): 45% of the text over the canvas, solved away from the canvas until it reaches 3:1
+ * against the canvas, the sidebar, cards and popovers, so fields read as fields wherever they are.
+ */
+export function fieldBorder(tokens: Pick<ThemeTokens, 'text' | 'bg' | 'sidebar' | 'card' | 'popover'>): string {
+  const text = read(tokens.text);
+  const bg = read(tokens.bg);
+  const mixed = { r: bg.r + (text.r - bg.r) * FIELD_MIX, g: bg.g + (text.g - bg.g) * FIELD_MIX, b: bg.b + (text.b - bg.b) * FIELD_MIX, a: 1 };
+  const away = contrast(bg, BLACK) >= contrast(bg, WHITE) ? 'darker' : 'lighter';
+  return solvedHex(toOklch(mixed), [tokens.bg, tokens.sidebar, tokens.card, tokens.popover].map(read), FIELD_CONTRAST, away);
+}
+
 /** The tokens derived from others after a theme's own colours are applied (unless the theme sets them). */
-export function deriveTokens(mode: ThemeMode, tokens: Pick<ThemeTokens, 'text' | 'accent-ink' | 'ok' | 'error'>): Pick<ThemeTokens, 'selected' | 'focus-ring' | 'diff-added' | 'diff-removed'> {
+export function deriveTokens(
+  mode: ThemeMode,
+  tokens: Pick<ThemeTokens, 'text' | 'accent-ink' | 'ok' | 'error' | 'bg' | 'sidebar' | 'card' | 'popover'>,
+): Pick<ThemeTokens, 'selected' | 'focus-ring' | 'diff-added' | 'diff-removed' | 'field-border'> {
   return {
     selected: withAlpha(tokens.text, SELECTED_ALPHA[mode]),
     'focus-ring': withAlpha(tokens['accent-ink'], FOCUS_ALPHA),
     'diff-added': withAlpha(tokens.ok, DIFF_ALPHA),
     'diff-removed': withAlpha(tokens.error, DIFF_ALPHA),
+    'field-border': fieldBorder(tokens),
   };
 }
 
@@ -167,6 +188,8 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     'code-pane': toHex(read(canvas)),
     border: hex(surface(steps.border, 1.5)),
     'overlay-border': hex(surface(steps.overlayBorder, 2)),
+    // Derived below with the rest (`deriveTokens`), from the final surfaces and text.
+    'field-border': '',
     'overlay-shadow': SHADES[mode]['overlay-shadow'],
     text,
     paper: paperHex,
@@ -220,7 +243,7 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     'working-plug-c': cable('working-plug-c'),
     'working-plug-d': cable('working-plug-d'),
   };
-  return { ...tokens, ...deriveTokens(mode, { text, 'accent-ink': accentInk, ok, error }) };
+  return { ...tokens, ...deriveTokens(mode, tokens) };
 }
 
 /** How much of the accent tints the warm white of a lit jack in dark mode. */
@@ -242,4 +265,4 @@ export function workingLight(mode: ThemeMode, canvas: string, accent: string): P
 }
 
 /** Tokens that are worked out from others after a theme's colours are applied. */
-export const DERIVED_TOKENS: readonly ThemeToken[] = ['selected', 'focus-ring', 'diff-added', 'diff-removed'];
+export const DERIVED_TOKENS: readonly ThemeToken[] = ['selected', 'focus-ring', 'diff-added', 'diff-removed', 'field-border'];

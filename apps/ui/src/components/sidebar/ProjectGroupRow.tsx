@@ -1,6 +1,7 @@
 import { ChevronRight, Ellipsis, Plus } from 'lucide-react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import type { ProjectState, SidebarListRow } from '../../state/sidebarRows.ts';
+import { useMinimal } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { ComputerChip } from '../computers/ComputerChip.tsx';
@@ -32,6 +33,7 @@ export function ProjectGroupRow({
   onMenu: ((key: string, at: { x: number; y: number }) => void) | null;
 }) {
   const project = useProjects((s) => (row.remote ? undefined : s.projects.get(row.key)));
+  const minimal = useMinimal();
   const local = !row.remote;
   const below = (el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
@@ -74,7 +76,8 @@ export function ProjectGroupRow({
         data-sidebar-project-folded={row.open ? undefined : true}
       >
         <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${row.open ? 'rotate-90' : ''}`} aria-hidden />
-        <ProjectIcon project={project} root={row.key} size={18} name={row.remote ? row.name : undefined} remote={row.remote?.computerId ?? false} />
+        {/* The project's own icon (its letter without one), grey with Project colours off. Minimal mode keeps the name only. */}
+        {!minimal && <ProjectIcon project={project} root={row.key} size={18} name={row.remote ? row.name : undefined} remote={row.remote?.computerId ?? false} />}
         <span className="min-w-0 flex-1 truncate text-body font-semibold text-text">{row.name}</span>
         {row.remote && <ComputerChip name={row.remote.computerName} computerId={row.remote.computerId} offline={row.remote.offline} />}
         {/* The count, or the project's two buttons while the pointer is on the row or focus is inside it. */}

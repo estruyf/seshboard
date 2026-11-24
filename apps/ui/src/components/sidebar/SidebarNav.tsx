@@ -7,7 +7,10 @@ import { openUpcoming } from '../../state/upcomingStore.ts';
 import { useSessionsToday } from '../../state/useSessionsToday.ts';
 import { useUpcomingSummary } from '../../state/useUpcomingSummary.ts';
 import { useTabCount } from '../../state/webPreviewStore.ts';
+import type { ShortcutId } from '../../lib/shortcuts.ts';
+import { useOverlay } from '../../state/overlayStore.ts';
 import { Badged } from '../ui/Badged.tsx';
+import { Kbd } from '../ui/Kbd.tsx';
 import { Button } from '../ui/Button.tsx';
 import { BROWSER_OWNER } from '../webPreview/browserTabs.ts';
 
@@ -84,6 +87,39 @@ export function SidebarNav({ now, needsYou }: { now: number; needsYou: number })
           className={look}
         />
       )}
+    </nav>
+  );
+}
+
+/**
+ * Minimal mode's top of the sidebar: plain words instead of the icon tray and its badges. New session (with its
+ * shortcut on the right), then Search, Upcoming, Activity and Browser, muted, the current one in the text colour. Home
+ * stays on its shortcut and in the palette. Counts are in each one's tooltip.
+ */
+export function MinimalNav({ now, onNewSession, newSessionLabel }: { now: number; onNewSession(): void; newSessionLabel: string }) {
+  const view = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
+  const browser = usePreferences((s) => s.prefs.browserEnabled);
+  const summary = useUpcomingSummary(now);
+  const today = useSessionsToday(now);
+  const tabs = useTabCount(BROWSER_OWNER);
+  const sessions = () => useSidebarList.getState().setList('sessions');
+  const item = 'no-drag flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-ui hover:bg-border/45 hover:text-text';
+  const entry = (key: string, label: string, tip: string, current: boolean, onClick: () => void, shortcut?: ShortcutId) => (
+    <button key={key} type="button" className={`${item} ${current ? 'bg-selected text-text' : 'text-muted'}`} aria-current={current ? 'page' : undefined} data-tooltip={tip !== label ? tip : undefined} data-nav={key} onClick={onClick}>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {shortcut && <Kbd shortcut={shortcut} tone="plain" />}
+    </button>
+  );
+  return (
+    <nav aria-label="Views" className="mx-3 mb-2 grid gap-px" data-nav-text>
+      <button type="button" className={`${item} text-text`} aria-label={newSessionLabel} data-new-session onClick={onNewSession}>
+        <span className="min-w-0 flex-1 truncate">New session</span>
+        <Kbd shortcut="session.new" tone="plain" />
+      </button>
+      {entry('search', 'Search', 'Search all conversations', false, () => useOverlay.getState().show('search'), 'search')}
+      {entry('upcoming', 'Upcoming', `Upcoming · ${summary.hint?.text ?? (summary.count > 0 ? `${summary.count} planned` : 'nothing planned')}`, view === 'upcoming', () => (sessions(), openUpcoming()))}
+      {entry('activity', 'Activity', today > 0 ? `Activity · ${today} today` : 'Activity', view === 'activity', () => (sessions(), openActivity()))}
+      {browser && entry('browser', 'Browser', tabs > 0 ? `Browser · ${tabs} ${tabs === 1 ? 'tab' : 'tabs'}` : 'Browser', view === 'browser', openBrowserView)}
     </nav>
   );
 }

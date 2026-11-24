@@ -23,7 +23,7 @@ export function EditFavoriteDialog({ favorite, onClose }: { favorite: BrowserFav
     updateFavorite(favorite.id, { title, url: addressBarUrl(address, { anyHost: true })! });
     onClose();
   };
-  const field = 'h-7 w-full rounded-md border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
+  const field = 'field h-7 w-full px-2.5 text-ui outline-none';
 
   return (
     <Dialog
@@ -51,7 +51,7 @@ export function EditFavoriteDialog({ favorite, onClose }: { favorite: BrowserFav
       >
         <label className="grid gap-1 text-meta text-muted" htmlFor={`${id}-title`}>
           Name
-          <input ref={titleRef} id={`${id}-title`} value={title} maxLength={500} onChange={(e) => setTitle(e.target.value)} placeholder={address} className={`${field} border-edge`} data-edit-favorite-title />
+          <input ref={titleRef} id={`${id}-title`} value={title} maxLength={500} onChange={(e) => setTitle(e.target.value)} placeholder={address} className={`${field}`} data-edit-favorite-title />
         </label>
         <label className="grid gap-1 text-meta text-muted" htmlFor={`${id}-address`}>
           Address
@@ -63,7 +63,7 @@ export function EditFavoriteDialog({ favorite, onClose }: { favorite: BrowserFav
             spellCheck={false}
             aria-invalid={tried && problem ? true : undefined}
             aria-describedby={tried && problem ? `${id}-problem` : undefined}
-            className={`${field} font-mono ${tried && problem ? 'border-error' : 'border-edge'}`}
+            className={`${field} font-mono ${tried && problem ? 'border-error' : ''}`}
             data-edit-favorite-address
           />
           {tried && problem && (

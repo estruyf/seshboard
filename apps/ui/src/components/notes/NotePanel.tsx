@@ -121,7 +121,7 @@ export function NotePanel({ sessionId, note, width, onWidth, onClose }: NotePane
           placeholder="push after review, waiting on Jan…"
           aria-invalid={error !== null}
           aria-describedby={error ? `${id}-error` : undefined}
-          className={`w-full resize-none rounded-md border bg-bg px-2.5 py-1.5 text-body text-text outline-none select-text focus:border-accent-ink ${error ? 'border-error' : 'border-edge'}`}
+          className={`field w-full resize-none px-2.5 py-1.5 text-body outline-none select-text ${error ? 'border-error' : ''}`}
           data-note-panel-input
         />
         <p className="text-meta text-muted">

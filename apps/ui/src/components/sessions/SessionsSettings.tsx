@@ -296,7 +296,7 @@ export function SessionsSettings({ scrollRef }: { scrollRef: RefObject<HTMLDivEl
 
 const COLUMNS = 'grid items-center gap-x-3 grid-cols-[20px_minmax(0,3fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,1fr)_28px] @max-[720px]:grid-cols-[20px_minmax(0,3fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_28px]';
 const NARROW_HIDDEN = '@max-[720px]:hidden';
-const FIELD = 'h-7 rounded-md border border-edge bg-bg px-2.5 text-ui text-text';
+const FIELD = 'field h-7 px-2.5 text-ui';
 
 type Line = { kind: 'month'; group: MonthGroup } | { kind: 'row'; row: ManagerRow };
 

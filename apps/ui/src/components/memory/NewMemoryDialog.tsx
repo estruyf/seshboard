@@ -7,7 +7,7 @@ import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { memoryNameProblem, TYPE_CHOICES } from './memoryUi.ts';
 
-const field = 'h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
+const field = 'field h-7 w-full px-2.5 text-ui outline-none';
 
 /**
  * New memory: a name (it becomes the file name, so it is a slug and can't be taken), a type, a one-line description
@@ -103,7 +103,7 @@ export function NewMemoryDialog({
         <label htmlFor={`${id}-body`} className="pt-1.5 text-ui text-muted">
           Text
         </label>
-        <textarea id={`${id}-body`} value={body} onChange={(e) => setBody(e.target.value)} rows={7} spellCheck={false} className="w-full resize-y rounded-md border border-edge bg-bg p-2.5 font-mono text-ui text-text outline-none focus:border-accent-ink" data-memory-new-body />
+        <textarea id={`${id}-body`} value={body} onChange={(e) => setBody(e.target.value)} rows={7} spellCheck={false} className="field w-full resize-y p-2.5 font-mono text-ui outline-none" data-memory-new-body />
       </div>
       {error && (
         <Notice tone="error" className="mt-3">

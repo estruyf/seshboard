@@ -160,6 +160,10 @@ export interface PaletteContext {
   /** The session has a project to keep actions in. */
   canEditActions: boolean;
   colorScheme: ColorScheme;
+  /** Minimal (Settings › Theme) is on. */
+  minimalMode: boolean;
+  /** Code highlighting (Settings › Theme) is on. */
+  codeHighlighting: boolean;
   /** Every theme, for "Theme: <name>", and the one in use. */
   themes: Array<{ id: string; name: string }>;
   themeId: string;

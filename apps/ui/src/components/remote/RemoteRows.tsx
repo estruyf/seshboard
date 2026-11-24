@@ -121,7 +121,7 @@ export function RenameField({ name, label, onSave, onCancel, clearable = false, 
           onCancel();
         }
       }}
-      className="h-6 w-full max-w-72 rounded-md border border-edge bg-bg px-1.5 text-ui text-text"
+      className="field h-6 w-full max-w-72 px-1.5 text-ui"
       data-rename-field
     />
   );

@@ -9,7 +9,7 @@ import { Select } from '../ui/Select.tsx';
 /** The first option of both menus: send nothing, so Claude Code picks from its own settings. */
 const CLAUDE_DEFAULT = "Claude Code's default";
 
-const select = 'h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60';
+const select = 'field h-7 shrink-0 px-2.5 text-ui outline-none';
 
 /**
  * Settings › General › New sessions: the global model and effort, the fallback behind a session's project and Claude

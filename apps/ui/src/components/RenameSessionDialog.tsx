@@ -75,7 +75,7 @@ export function RenameSessionDialog({ sessionId, title, onClose }: { sessionId: 
           placeholder="Session name"
           aria-invalid={error !== null}
           aria-describedby={error ? `${id}-error` : undefined}
-          className={`h-7 w-full rounded-md border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink ${error ? 'border-error' : 'border-edge'}`}
+          className={`field h-7 w-full px-2.5 text-ui outline-none ${error ? 'border-error' : ''}`}
           data-rename-session-input
         />
         {error && (

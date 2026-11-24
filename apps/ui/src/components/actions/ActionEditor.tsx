@@ -36,7 +36,7 @@ import {
 } from './actionForm.ts';
 import { ACTION_ICON, shortcutFromEvent } from './useActions.ts';
 
-const field = 'h-7 w-full rounded-md border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink disabled:opacity-70';
+const field = 'field h-7 w-full px-2.5 text-ui outline-none';
 const fieldBorder = (invalid: boolean) => (invalid ? 'border-error' : 'border-edge');
 const fieldLabel = 'text-ui text-muted';
 /** How many icons the picker shows inline; the rest are behind its ⋯ button. */
@@ -668,7 +668,7 @@ export function ActionEditor({
                     <span className={fieldLabel}>Saved for</span>
                     <Select
                       label="Saved for"
-                      className={`${field} border-edge`}
+                      className={`${field}`}
                       value={draft.scope}
                       onChange={(scope) => edit({ scope })}
                       menuWidth={240}
@@ -684,7 +684,7 @@ export function ActionEditor({
                       <span className={fieldLabel}>Runs in</span>
                       <Select
                         label="Runs in"
-                        className={`${field} border-edge`}
+                        className={`${field}`}
                         value={draft.cwd}
                         onChange={(cwd) => edit({ cwd })}
                         menuWidth={200}

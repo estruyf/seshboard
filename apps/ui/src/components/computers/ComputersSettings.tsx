@@ -7,7 +7,7 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { ComputerRow } from './ComputerRow.tsx';
 
-const field = 'h-7 min-w-0 flex-1 rounded-md border border-edge bg-card px-2 font-mono text-ui text-text placeholder:text-faint';
+const field = 'field h-7 min-w-0 flex-1 bg-card px-2 font-mono text-ui placeholder:text-faint';
 
 /**
  * Settings › Remote, Other computers: the computers this one paired with (`ComputerRow`: its version and updater,

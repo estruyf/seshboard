@@ -1,7 +1,7 @@
 import { bundledThemes } from 'shiki/themes';
 import { describe, expect, it } from 'vitest';
 import { SHIKI_THEMES, type InlineSyntaxTheme } from '@seshboard/protocol/theme-format';
-import { highlightCacheKey, highlightWith, inlineRegistration, setSyntaxThemes, SYNTAX_THEMES, syntaxKey, syntaxThemeId } from './highlight.ts';
+import { highlightCacheKey, highlightedLines, highlightWith, inlineRegistration, plainSyntax, setSyntaxThemes, SYNTAX_THEMES, syntaxKey, syntaxThemeId } from './highlight.ts';
 
 const inline: InlineSyntaxTheme = { name: 'Mine', tokenColors: [{ scope: ['comment'], settings: { foreground: '#00ff00', fontStyle: 'italic' } }, { scope: 'keyword', settings: { foreground: '#ff0000' } }] };
 
@@ -38,5 +38,34 @@ describe('syntax themes', () => {
     expect(html).toContain('--shiki-light:');
     expect(html).toContain('--shiki-dark:#00FF00');
     expect(html).toContain('--shiki-dark-font-style:italic');
+  });
+});
+
+describe('code highlighting off', () => {
+  const tokens = { light: { text: '#171717', faint: '#737373' }, dark: { text: '#ededed', faint: '#8a8a8a' } };
+
+  it('draws code in the text colour, comments faint and italic', async () => {
+    const html = await highlightWith('const a = 1; // note', 'ts', { light: plainSyntax(tokens.light, 'light'), dark: plainSyntax(tokens.dark, 'dark') });
+    const colours = new Set([...(html ?? '').matchAll(/--shiki-light:([^;"]+)/g)].map((m) => m[1]!.toLowerCase()));
+    expect([...colours].sort()).toEqual(['#171717', '#737373']);
+    expect(html).toMatch(/--shiki-light:#737373;--shiki-light-font-style:italic[^>]*>\/\/ note/i);
+  });
+
+  it('gets its own key, so blocks highlight again', () => {
+    const own = setSyntaxThemes({ light: null, dark: null });
+    const plain = setSyntaxThemes({ light: plainSyntax(tokens.light, 'light'), dark: plainSyntax(tokens.dark, 'dark') });
+    expect(plain).not.toBe(own);
+    setSyntaxThemes({ light: null, dark: null });
+  });
+});
+
+describe('highlightedLines', () => {
+  it('gives each line of the code its own HTML', async () => {
+    const html = await highlightWith('const a = 1;\n// two\n', 'ts', { light: null, dark: null });
+    const lines = highlightedLines(html ?? '');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('const');
+    expect(lines[1]).toContain('// two');
+    expect(lines.some((line) => line.startsWith('<span class="line">'))).toBe(false);
   });
 });

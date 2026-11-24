@@ -165,7 +165,7 @@ export function NotificationsSettings() {
                   onHighlight={preview}
                   options={[{ value: NO_SOUND, label: 'None' }, ...(list?.sounds ?? []).map((id) => ({ value: id, label: id }))]}
                   menuWidth={200}
-                  className="h-7 w-30 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                  className="field h-7 w-30 shrink-0 px-2.5 text-ui outline-none"
                   dataAttrs={{ 'data-sound-picker': event }}
                 />
                 <Button

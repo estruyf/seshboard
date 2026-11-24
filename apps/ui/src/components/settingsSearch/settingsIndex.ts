@@ -5,6 +5,7 @@ import { keepAwakeDetail, keepAwakeLabel } from '../general/keepAwake.ts';
 import { BACKGROUND_LABEL, backgroundDetail, NEEDS_YOU_DETAIL, NEEDS_YOU_LABEL, QUICK_START_KEYWORDS, SHORTCUT_DETAIL } from '../general/quickStartCopy.ts';
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
+import { CODE_HIGHLIGHTING_DETAIL, MINIMAL_MODE_DETAIL, PROJECT_COLORS_DETAIL } from '../theme/minimalCopy.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
@@ -124,8 +125,12 @@ export function settingsIndex(): SettingEntry[] {
     },
 
     // Theme
-    { id: 'appearance', page: 'theme', label: 'Appearance', detail: 'Match System, Light or Dark.', keywords: 'dark mode light mode night colour color scheme', target: '[data-color-scheme]' },
-    { id: 'theme', page: 'theme', label: 'Theme', detail: 'Colours for the app, the code blocks and the terminal. Themes are JSON files you can share.', keywords: 'color colors palette syntax', target: '[data-theme-picker]' },
+    { id: 'appearance', page: 'theme', label: 'Light or dark', detail: 'Light, Dark or Follow the system.', keywords: 'appearance dark mode light mode night colour color scheme match system', target: '[data-color-scheme]' },
+    { id: 'appearance-theme', page: 'theme', label: 'Theme', detail: 'Seshboard, Black and white, or Black and white, light.', keywords: 'appearance black white greys grey gray monochrome colours colors', target: '[data-appearance-cards]' },
+    { id: 'minimal-mode', page: 'theme', label: 'Minimal mode', detail: MINIMAL_MODE_DETAIL, keywords: 'quiet calm minimalist less clutter one line chips badges counts borders', target: '[data-minimal-mode]' },
+    { id: 'code-highlighting', page: 'theme', label: 'Code highlighting', detail: CODE_HIGHLIGHTING_DETAIL, keywords: 'syntax colours colors code blocks diffs one colour plain monochrome', target: '[data-code-highlighting]' },
+    { id: 'project-colors', page: 'theme', label: 'Project colours', detail: PROJECT_COLORS_DETAIL, keywords: 'project colors tiles letters icons grey gray', target: '[data-project-colors]' },
+    { id: 'theme', page: 'theme', label: 'Seshboard themes', detail: 'Colours for the app, the code blocks and the terminal. Themes are JSON files you can share.', keywords: 'color colors palette syntax', target: '[data-theme-picker]' },
     { id: 'theme-import', page: 'theme', label: 'Import…', detail: 'Add a theme from a .json file.', keywords: 'theme file json drop', target: '[data-theme-import]' },
     { id: 'theme-folder', page: 'theme', label: 'Open themes folder', detail: 'Where imported themes are kept.', keywords: 'theme files', target: '[data-theme-folder]' },
     { id: 'app-icon', page: 'theme', label: 'App icon', detail: appIconDetail(), keywords: 'icon dock taskbar logo app switcher colourway colorway', target: '[data-app-icon-picker]' },

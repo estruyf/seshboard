@@ -42,7 +42,7 @@ export function PastedTextDialog({ label, text, onSave, onRemove, onClose }: { l
         value={value}
         onChange={(e) => setValue(e.target.value)}
         spellCheck={false}
-        className="h-[50vh] w-full resize-none rounded-lg border border-edge bg-code p-3 font-mono text-ui text-text outline-none [overflow-wrap:anywhere] focus:border-accent-ink"
+        className="field h-[50vh] w-full resize-none rounded-lg bg-code p-3 font-mono text-ui outline-none [overflow-wrap:anywhere]"
         data-pasted-text-editor
       />
     </Dialog>,

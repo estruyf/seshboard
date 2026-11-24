@@ -58,6 +58,8 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     prompts: [],
     canEditActions: false,
     colorScheme: 'system',
+    minimalMode: false,
+    codeHighlighting: true,
     themes: [
       { id: 'demo-time', name: 'Demo Time' },
       { id: 'solarized', name: 'Solarized' },

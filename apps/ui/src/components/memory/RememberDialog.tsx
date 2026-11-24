@@ -16,7 +16,7 @@ import { memoryNameProblem, TYPE_CHOICES } from './memoryUi.ts';
 import { addsLineNote, defaultType, rememberMetadata, suggestName, uniqueName, type RememberFrom } from './rememberView.ts';
 import { useMemoryList, usePersonalMemory } from './useMemoryList.ts';
 
-const field = 'h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
+const field = 'field h-7 w-full px-2.5 text-ui outline-none';
 
 /**
  * Remember this: text from the conversation (a selection or a whole message) saved as a memory file, straight into
@@ -137,7 +137,7 @@ export function RememberDialog({ text, from, sessionId, root, onClose }: { text:
         <label htmlFor={`${id}-text`} className="pt-1.5 text-ui text-muted">
           Text
         </label>
-        <textarea id={`${id}-text`} value={body} onChange={(e) => setBody(e.target.value)} rows={6} className="w-full resize-y rounded-md border border-edge bg-bg p-2.5 text-ui text-text outline-none focus:border-accent-ink" data-remember-text />
+        <textarea id={`${id}-text`} value={body} onChange={(e) => setBody(e.target.value)} rows={6} className="field w-full resize-y p-2.5 text-ui outline-none" data-remember-text />
       </div>
       {secrets.length > 0 && (
         <Notice tone="error" className="mt-3" data-remember-secrets>

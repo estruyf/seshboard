@@ -82,7 +82,7 @@ export function RenameMemoryDialog({
           onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => setValue(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
           onBlur={() => value && setValue(slugify(value))}
-          className="h-7 w-full rounded-md border border-edge bg-bg px-2.5 font-mono text-ui text-text outline-none focus:border-accent-ink"
+          className="field h-7 w-full px-2.5 font-mono text-ui outline-none"
           data-memory-rename-input
         />
         {value !== name && problem && <p className="text-meta text-error">{problem}</p>}

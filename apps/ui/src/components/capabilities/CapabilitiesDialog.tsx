@@ -174,7 +174,7 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, agent = 'Claude 
           placeholder="Filter"
           aria-label={`Filter ${tabLabel.toLowerCase()}`}
           spellCheck={false}
-          className="ml-auto h-7 w-36 rounded-md border border-edge bg-bg px-2 text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink/60"
+          className="field ml-auto h-7 w-36 px-2 text-ui outline-none placeholder:text-faint"
         />
       </div>
 

@@ -130,6 +130,35 @@ describe('fileLinkClick preference', () => {
   });
 });
 
+describe('minimal mode, code highlighting and project colours', () => {
+  it('default to everything shown, in colour', () => {
+    expect(DEFAULT_PREFERENCES.minimalMode).toBe(false);
+    expect(DEFAULT_PREFERENCES.codeHighlighting).toBe(true);
+    expect(DEFAULT_PREFERENCES.projectColors).toBe(true);
+  });
+
+  it('keep on and off, and drop anything else', () => {
+    for (const key of ['minimalMode', 'codeHighlighting', 'projectColors'] as const) {
+      expect(sanitizePreferences({ [key]: true })).toEqual({ [key]: true });
+      expect(sanitizePreferences({ [key]: false })).toEqual({ [key]: false });
+      expect(sanitizePreferences({ [key]: 'on' })).toEqual({});
+      expect(sanitizePreferences({ [key]: 1 })).toEqual({});
+    }
+  });
+
+  it('keeps the last colour theme as a theme id', () => {
+    expect(DEFAULT_PREFERENCES.colorThemeId).toBe('demo-time');
+    expect(sanitizePreferences({ colorThemeId: 'nord' })).toEqual({ colorThemeId: 'nord' });
+    expect(sanitizePreferences({ colorThemeId: 3 })).toEqual({});
+  });
+
+  it('take their defaults in a file saved before they existed', () => {
+    const old = { colorScheme: 'dark', themeId: 'nord' };
+    const prefs = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(old) };
+    expect([prefs.minimalMode, prefs.codeHighlighting, prefs.projectColors]).toEqual([false, true, true]);
+  });
+});
+
 describe('fadeInactivePanes preference', () => {
   it('fades the inactive panes by default', () => {
     expect(DEFAULT_PREFERENCES.fadeInactivePanes).toBe(true);

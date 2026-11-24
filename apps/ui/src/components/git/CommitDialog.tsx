@@ -55,7 +55,7 @@ export function CommitDialog({ branch, files, onCommit, onClose }: { branch: str
         placeholder="Commit message"
         aria-label="Commit message"
         data-commit-message
-        className="block w-full resize-none rounded-md border border-edge bg-bg px-2.5 py-2 text-body text-text outline-none placeholder:text-faint focus:border-accent-ink"
+        className="field block w-full resize-none px-2.5 py-2 text-body outline-none placeholder:text-faint"
       />
       {error && (
         <p role="alert" className="mt-2 text-ui break-words whitespace-pre-wrap text-error">
