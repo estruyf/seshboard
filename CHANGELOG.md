@@ -46,6 +46,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Folders close and open while you filter Files.** With text in the filter, a click on a folder, or ← and →, now closes and opens it. Before, every folder with a match stayed open. A new filter opens them all again.
 - **The sidebar's title lines up in full screen.** On macOS, "Seshboard" now starts at the sidebar's left edge in full screen, in line with the rows under it. It no longer leaves a gap for the hidden window buttons.
 - **Review triggers start when the pull request's branch is in use.** A review used to be skipped with "is checked out in" when another worktree had the branch, such as an earlier review or the session that wrote the pull request. The review now gets its own branch at the pull request's latest commit, and the other worktree stays as it is. A push from the review doesn't update the pull request.
 - **Sessions started by a sub-session show in the sidebar.** A sub-session with sessions of its own now has an arrow to show them, in the sidebar and on your phone. Before, they were missing. When one of them needs you, the top row says so too.

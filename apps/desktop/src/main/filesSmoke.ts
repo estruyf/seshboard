@@ -100,13 +100,30 @@ export async function runFilesTreeStep(win: BrowserWindow, pics?: FilesPictures)
     if (!(await waitInPage(win, `[...${PANEL}.querySelectorAll('[data-files-node]')].some((n) => n.dataset.filesNode.startsWith(${JSON.stringify(`${folder.path}/`)}))`, 3_000))) return `the folder ${folder.path} did not open`;
     opened = `${folder.path}/ opened`;
   }
+  // With a filter on (before a file opens: at Side the viewer then takes the tree's place), the folders of the matches open by themselves, and a click still closes and opens one.
+  let filtered = 'nothing in an open folder to filter on';
+  const nested = (await js(win, `[...${PANEL}.querySelectorAll('[data-files-node]')].find((n) => n.dataset.filesNode.includes('/'))?.dataset.filesNode ?? null`)) as string | null;
+  if (nested) {
+    const dir = nested.slice(0, nested.lastIndexOf('/'));
+    const node = `${PANEL}.querySelector('[data-files-node=${JSON.stringify(dir)}]')`;
+    const shows = `!!${PANEL}.querySelector('[data-files-node=${JSON.stringify(nested)}]')`;
+    await setFieldValue(win, `${S} [data-files-filter]`, nested);
+    if (!(await waitInPage(win, shows, 3_000))) return `the filter "${nested}" did not show it`;
+    await js(win, `${node}.click()`);
+    if (!(await waitInPage(win, `!(${shows}) && ${node}.getAttribute('aria-expanded') === 'false'`, 3_000))) return `a click did not close ${dir} while filtering`;
+    await js(win, `${node}.click()`);
+    if (!(await waitInPage(win, shows, 3_000))) return `a second click did not open ${dir} again while filtering`;
+    await setFieldValue(win, `${S} [data-files-filter]`, '');
+    if (!(await waitInPage(win, `!!${PANEL}.querySelector('[data-files-node=${JSON.stringify(file.path)}]')`, 3_000))) return `clearing the filter did not bring back ${file.path}`;
+    filtered = `${dir}/ closed and opened with a filter on`;
+  }
   await js(win, `${PANEL}.querySelector('[data-files-node=${JSON.stringify(file.path)}]').click()`);
   const path = join(cwd, file.path);
   const expected = firstLine(path);
   if (!(await waitInPage(win, `(${viewer(path)})?.querySelector('[data-file-preview-source], [data-file-preview-markdown]')?.innerText.includes(${JSON.stringify(expected)})`, 5_000))) return `the viewer did not show "${expected}" from ${file.path}`;
   await pictures(win, pics, 'files-tree');
   await pictures(win, pics, 'files-full', 'full');
-  return `ok: the tree lists ${top.length} entries at the top, ${opened}, and ${file.path} opened in the viewer with "${expected.slice(0, 40)}"`;
+  return `ok: the tree lists ${top.length} entries at the top, ${opened}, ${file.path} opened in the viewer with "${expected.slice(0, 40)}", and ${filtered}`;
 }
 
 /** Quick open (⌘⌥P): part of a name opens the file in Files, and `name:3` opens it at line 3. */

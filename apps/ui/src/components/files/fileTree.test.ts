@@ -26,6 +26,11 @@ describe('the file tree', () => {
     expect(visibleRows(buildTree(FILES), new Set(), 'nothing-like-this')).toEqual([]);
   });
 
+  it('closes a folder by hand while filtering', () => {
+    const rows = visibleRows(buildTree(FILES), new Set(), 'cartbu', undefined, new Set(['src/cart']));
+    expect(rows.map((r) => [r.path, r.open])).toEqual([['src', true], ['src/cart', false]]);
+  });
+
   it('names the folders a path is in', () => {
     expect(parentFolders('a/b/c.ts')).toEqual(['a', 'a/b']);
     expect(parentFolders('c.ts')).toEqual([]);
