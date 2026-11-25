@@ -473,7 +473,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
                 </span>
                 <Button variant="quiet" size="sm" iconOnly icon={<ChevronUp size={13} aria-hidden />} aria-label="Previous match" shortcut="find.previous" onClick={() => setFind((f) => f && { ...f, current: f.current - 1 })} />
                 <Button variant="quiet" size="sm" iconOnly icon={<ChevronDown size={13} aria-hidden />} aria-label="Next match" shortcut="find.next" onClick={() => setFind((f) => f && { ...f, current: f.current + 1 })} />
-                <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Close find" kbd="Esc" onClick={closeFind} />
+                <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close find" kbd="Esc" onClick={closeFind} />
               </>
             )}
           </div>

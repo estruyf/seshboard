@@ -3759,7 +3759,7 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
     // Back on a Claude Code profile, so later steps find Usage as it was.
     if (claudeProfile) await pickUsageProfile(claudeProfile);
-    await js("document.querySelector('[data-usage-back]')?.click()");
+    await js("document.querySelector('[data-usage-close]')?.click()");
     await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
     if (!quotaShown) return `Usage for the Copilot profile doesn't show its premium requests (${quotaText})`;
     if (!copilotTokens) return "Usage for the Copilot profile has no Tokens tab with totals";
@@ -3888,7 +3888,7 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-usage-tab=\"tokens\"]')?.click()");
     const codexTokens = await waitInPage(win, "document.querySelector('[data-usage-tab=\"tokens\"]')?.getAttribute('aria-selected') === 'true' && !!document.querySelector('[data-usage-view] [data-usage-headline], [data-usage-view] [data-usage-scan]')", 10_000);
     await js("document.querySelector('[data-usage-tab=\"limits\"]')?.click()");
-    await js("document.querySelector('[data-usage-back]')?.click()");
+    await js("document.querySelector('[data-usage-close]')?.click()");
     await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
     if (!usageOk) return `Usage for the Codex profile doesn't show just its two windows (${usageText})`;
     if (!codexTokens) return 'Usage for the Codex profile has no Tokens tab with totals';
@@ -9038,7 +9038,7 @@ async function runReadModeStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `document.querySelector('[data-read-position]')?.textContent === ${JSON.stringify(before)}`, 3_000))) return 'the arrow buttons did not move back to the first reply';
     pressKey(win, canNext ? 'Right' : 'Left');
     if (!(await waitInPage(win, `document.querySelector('[data-read-position]')?.textContent === ${JSON.stringify(moved)}`, 3_000))) return 'the arrow key did not return to the other reply';
-    await js("document.querySelector('[data-read-back]').click()");
+    await js("document.querySelector('[data-read-close]').click()");
     if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'the back button did not close reading mode';
     const landed = await waitInPage(win, `(() => { const s = ${state}; return s.focus !== null && s.focus !== ${JSON.stringify(second.key)}; })()`, 4_000);
     if (!landed) return `after leaving at another reply the focus is not on that reply's Read button (${JSON.stringify(await js(state))})`;

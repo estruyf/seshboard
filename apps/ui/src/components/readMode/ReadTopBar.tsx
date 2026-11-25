@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, X } from 'lucide-react';
 import type { LiveSession } from '@seshboard/protocol/client';
 import { currentPlatform } from '../../lib/platform.ts';
 import { StatusDot } from '../StatusDot.tsx';
@@ -47,7 +47,7 @@ export function ReadTopBar({
     <header className="drag relative flex h-12 shrink-0 items-center gap-3 border-b border-border px-4" data-read-top-bar>
       {/* The traffic lights end 68px in; this keeps 16px clear of them. Elsewhere the window has its own title bar. */}
       <div className={`flex min-w-0 flex-1 items-center gap-2 ${currentPlatform() === 'darwin' ? 'ml-17' : ''}`}>
-        <Button variant="quiet" iconOnly icon={<ArrowLeft size={15} aria-hidden />} aria-label="Back to the session" onClick={onClose} className="no-drag" data-read-back />
+        <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} kbd="Esc" aria-label="Close reading mode" onClick={onClose} className="no-drag" data-read-close />
         <span className="min-w-0 truncate text-ui font-semibold" data-read-title>
           {title}
         </span>

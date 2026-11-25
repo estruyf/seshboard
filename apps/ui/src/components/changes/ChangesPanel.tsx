@@ -478,7 +478,7 @@ export const ChangesPanel = memo(function ChangesPanel({
           data-changes-resize
         />
       )}
-      {tabs?.(<Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />)}
+      {tabs?.(<Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />)}
       <div className="@container/toolbar edge-b flex h-10 shrink-0 items-center gap-2 px-3" data-scrolled={!listEdge.atTop || undefined} data-changes-header>
         {/* Arrow keys move between the two, like any radio group; only the chosen one is a Tab stop. */}
         <SegmentedControl
@@ -515,7 +515,7 @@ export const ChangesPanel = memo(function ChangesPanel({
         {/* Side, Half or Full (expanded), as every panel on the right. */}
         <PanelSize room="lg" full={expanded} onChange={(full) => toggleExpanded(full)} />
         <Button variant="quiet" size="sm" iconOnly icon={<RefreshCw size={12} />} onClick={onRefresh} data-tooltip="Check git for changes again" aria-label="Refresh changes" />
-        {!tabs && <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />}
+        {!tabs && <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />}
       </div>
 
       {outside.length > 0 && (

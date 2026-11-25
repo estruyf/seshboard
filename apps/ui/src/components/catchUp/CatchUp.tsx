@@ -189,7 +189,7 @@ function CatchUpBanner({ card, actions, committed, changesOpen, details, positio
             <Button variant="secondary" size="md" kbd="space" kbdHideNarrow="small" selected={details} aria-expanded={details} onClick={() => useCatchUp.getState().setDetails(card, !details)} data-catchup-details-toggle>
               Details
             </Button>
-            <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} aria-label="Collapse the catch-up (Esc)" data-tooltip="Collapse (Esc)" onClick={() => actions.fold(true)} data-catchup-collapse />
+            <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} kbd="Esc" aria-label="Collapse the catch-up" data-tooltip="Collapse" onClick={() => actions.fold(true)} data-catchup-collapse />
           </span>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 pl-4">

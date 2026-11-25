@@ -66,7 +66,7 @@ export function FindBar({
       </span>
       <Button variant="quiet" size="sm" iconOnly icon={<ChevronUp size={14} />} disabled={count === 0} onClick={() => onStep(-1)} data-tooltip={`Previous (${formatKeys(keysFor('find.previous'))})`} aria-label="Previous match" />
       <Button variant="quiet" size="sm" iconOnly icon={<ChevronDown size={14} />} disabled={count === 0} onClick={() => onStep(1)} data-tooltip={`Next (${formatKeys(keysFor('find.next'))})`} aria-label="Next match" />
-      <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} onClick={onClose} data-tooltip="Close (Esc)" aria-label="Close find" />
+      <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} kbd="Esc" onClick={onClose} aria-label="Close find" />
     </div>
   );
 }

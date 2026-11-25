@@ -306,7 +306,7 @@ describe('the shortcut registry', () => {
       'usage.limits': [at({ view: 'usage' }), SESSION],
       'usage.tokens': [at({ view: 'usage' }), at({ view: 'new-session' })],
       'usage.period': [at({ view: 'usage' }), HOME],
-      'usage.back': [at({ view: 'usage' }), SESSION],
+      'usage.close': [at({ view: 'usage' }), SESSION],
       'memory.save': [at({ view: 'project' }), SESSION],
     };
     // The menu bar's panel handles its own keys: they never work in the main window.

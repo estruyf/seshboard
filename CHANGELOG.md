@@ -25,6 +25,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **Usage and reading mode close with ×, like Settings.** The **Back** button in Usage and the back arrow in reading mode are now a close button. Esc still closes them. Close buttons no longer repeat Esc in their tooltip.
 - **A slash command stands out in the message box.** When a message starts with a command the session knows, like `/design`, the command shows in the accent colour, so you can tell it from the prompt that goes with it. A path such as `/tmp` stays as it is.
 - **A session in a new worktree opens at once.** Start no longer waits while git fetches the branch and makes the worktree. The session opens with your message and says **Making the worktree…**, and Claude starts once the worktree is there. New session also fetches the branch while you write the prompt, so the worktree is ready sooner. If git can't make the worktree, the session says why and your prompt goes back in the box.
 - **Your phone stays quiet while you use your computer.** In the remote app's Settings › Notifications, Needs you and Finished each have Away, Always or Off. Away is the new default: a notification only comes after 5 minutes without keyboard or mouse, or when the computer is locked or asleep.

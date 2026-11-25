@@ -43,7 +43,9 @@ export function Button({ variant = 'secondary', size = 'md', icon, iconOnly = fa
   const kbd = shortcut ? keysFor(shortcut) : keys;
   const glyphs = kbd ? shortcutGlyphs(kbd) : null;
   const label = rest['aria-label'];
-  const tooltip = rest['data-tooltip'] ?? (iconOnly && label ? `${label}${glyphs ? ` (${glyphs})` : ''}` : undefined);
+  // Esc closes whatever is open, so a close button's tooltip doesn't spell it out; it is still announced.
+  const hint = glyphs && kbd && storedShortcut(kbd) !== 'escape' ? glyphs : null;
+  const tooltip = rest['data-tooltip'] ?? (iconOnly && label ? `${label}${hint ? ` (${hint})` : ''}` : undefined);
   return (
     <button
       type={type}

@@ -1592,9 +1592,9 @@ export const SHORTCUTS = [
     when: (ctx) => ctx.view === "usage",
   },
   {
-    id: "usage.back",
+    id: "usage.close",
     keys: ["escape"],
-    action: "Back to where you were",
+    action: "Close Usage",
     section: "usage",
     when: (ctx) => ctx.view === "usage",
   },

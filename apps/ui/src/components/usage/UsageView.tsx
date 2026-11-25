@@ -1,6 +1,6 @@
 import { ViewHeader } from '../ViewHeader.tsx';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronDown, RefreshCw } from 'lucide-react';
+import { ChevronDown, RefreshCw, X } from 'lucide-react';
 import type { ProfileColor, SessionProvider, UsagePeriod } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { thisComputerName } from '../../lib/platform.ts';
@@ -35,7 +35,7 @@ function ago(at: number, now: number): string {
 
 /** A field or a control that takes keys itself (the breakdown's filter) keeps number keys and Esc. */
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.closest('input, textarea, [contenteditable="true"]') !== null);
-/** In the window's terminal, Esc belongs to the program there (or restores the panel), not to Back. */
+/** In the window's terminal, Esc belongs to the program there (or restores the panel), not to Close. */
 const inTerminal = (target: EventTarget | null) => target instanceof HTMLElement && target.closest('[data-terminal-panel]') !== null;
 /** A menu, dialog or popover is open: it takes Esc first. */
 const overlayOpen = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-popover]') !== null;
@@ -43,7 +43,7 @@ const overlayOpen = () => document.querySelector('[role="dialog"], [role="alertd
 /**
  * Where a profile's plan went: Limits (what's left of each window and when it comes back, % over time, and which
  * sessions used the current window) and Tokens (where the tokens went per session, project, model and day). A main
- * view like Home; Esc and Back return to where it was opened from.
+ * view like Home; Esc and Close return to where it was opened from.
  */
 /** A profile as the message box shows it: its tool's logo in its colour. */
 function ProfileMark({ provider, color }: { provider: SessionProvider; color: ProfileColor }) {
@@ -82,7 +82,7 @@ export function UsageView() {
     return () => clearInterval(timer);
   }, []);
 
-  // The view's keys: ⌘1 and ⌘2 for the tabs, 1 to 4 for the periods, Esc for Back.
+  // The view's keys: ⌘1 and ⌘2 for the tabs, 1 to 4 for the periods, Esc to close.
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -92,7 +92,7 @@ export function UsageView() {
       } else if (matches(event, 'usage.period') && !typing(event.target) && !overlayOpen()) {
         event.preventDefault();
         useUsageView.getState().setPeriod(PERIODS[Number(event.key) - 1]!);
-      } else if (matches(event, 'usage.back') && !overlayOpen() && !inTerminal(event.target)) {
+      } else if (matches(event, 'usage.close') && !overlayOpen() && !inTerminal(event.target)) {
         // Esc in the filter clears it first (the field handles that and marks the key handled).
         event.preventDefault();
         closeUsage();
@@ -170,9 +170,7 @@ export function UsageView() {
               onClick={refresh}
               data-usage-refresh
             />
-            <Button variant="quiet" size="md" shortcut="usage.back" onClick={closeUsage} data-usage-back>
-              Back
-            </Button>
+            <Button variant="quiet" size="md" iconOnly icon={<X size={15} aria-hidden />} shortcut="usage.close" onClick={closeUsage} aria-label="Close usage" data-usage-close />
           </div>
       </ViewHeader>
       {/* The tabs, under the header. */}

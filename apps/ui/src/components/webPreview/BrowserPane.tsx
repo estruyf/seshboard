@@ -724,7 +724,7 @@ function FindBar({ tabId, focus, matches, active }: { tabId: string; focus: numb
       </span>
       <Button variant="quiet" size="sm" iconOnly icon={<ChevronUp size={13} aria-hidden />} aria-label="Previous match" data-tooltip="Previous match" disabled={matches === 0} onClick={() => step('previous')} data-browser-find-previous="" />
       <Button variant="quiet" size="sm" iconOnly icon={<ChevronDown size={13} aria-hidden />} aria-label="Next match" data-tooltip="Next match" disabled={matches === 0} onClick={() => step('next')} data-browser-find-next="" />
-      <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Close find" data-tooltip="Close find" onClick={() => previewPage(tabId)?.closeFind()} data-browser-find-close="" />
+      <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} kbd="Esc" aria-label="Close find" onClick={() => previewPage(tabId)?.closeFind()} data-browser-find-close="" />
     </div>
   );
 }

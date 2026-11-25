@@ -192,7 +192,7 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
           <Button variant="quiet" icon={<Download size={14} />} kbd="⌘S" onClick={save} disabled={!url} data-lightbox-save>
             Save
           </Button>
-          <Button variant="quiet" iconOnly aria-label="Close" kbd="Esc" icon={<X size={16} />} onClick={close} />
+          <Button variant="quiet" iconOnly aria-label="Close" kbd="Esc" icon={<X size={15} aria-hidden />} onClick={close} />
         </span>
       </div>
       <div className={`relative flex min-h-0 w-full flex-1 items-center justify-center ${many ? 'px-14' : ''}`}>

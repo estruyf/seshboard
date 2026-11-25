@@ -5137,8 +5137,8 @@
       "page": "usage"
     },
     {
-      "id": "shortcut:usage.back",
-      "name": "usage.back",
+      "id": "shortcut:usage.close",
+      "name": "usage.close",
       "page": "usage"
     },
     {
