@@ -1,4 +1,5 @@
 import { Bot, CircleAlert, Square, X } from 'lucide-react';
+import { PanelSize, sidePanelClass } from '../transcript/PanelSize.tsx';
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import type { BackgroundTask } from '@seshboard/protocol/client';
 import { useAgentsPanel } from '../../state/agentsPanelStore.ts';
@@ -26,6 +27,10 @@ interface AgentsPanelProps {
   onPick(agent: string): void;
   onStop(taskId: string): Promise<void>;
   width: number;
+  /** Full: the panel takes the whole session area (`useRightPanel().full`). */
+  full?: boolean;
+  /** Picks Full or back; with it, the header shows the panel's size (Side, Half, Full). */
+  onFull?(full: boolean): void;
   onWidth(width: number): void;
   /** Other panels are open too: this row of tabs stands in for the title, with the panel's buttons on its right. */
   tabs?: (actions: ReactNode) => ReactNode;
@@ -137,6 +142,7 @@ function AgentDetail({ run, model, sessionId, cwd, task, now, onStop }: { run: A
  * asked, what it reported and, for a background agent, a Stop button.
  */
 export function AgentsPanel(props: AgentsPanelProps) {
+  const full = props.full ?? false;
   const { sessionId, runs } = props;
   const modelOf = (run: AgentRun) => agentModel(run, props.tokens?.get(run.item.id));
   const asideRef = useRef<HTMLElement>(null);
@@ -186,7 +192,12 @@ export function AgentsPanel(props: AgentsPanelProps) {
     props.onWidth(next);
   };
 
-  const actions = <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close agents" shortcut="agents.toggle" onClick={props.onClose} data-agents-close />;
+  const actions = (
+    <>
+      {props.onFull && <PanelSize full={full} onChange={props.onFull} />}
+      <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close agents" shortcut="agents.toggle" onClick={props.onClose} data-agents-close />
+    </>
+  );
   const summary = `${active.length} running${finished.length ? ` · ${finished.length} finished` : ''}`;
 
   const list = (title: string, tone: 'working' | 'neutral', key: 'active' | 'finished', rows: AgentRun[]) =>
@@ -200,8 +211,8 @@ export function AgentsPanel(props: AgentsPanelProps) {
     );
 
   return (
-    <aside ref={asideRef} aria-label="Agents" tabIndex={-1} onKeyDown={onPanelKey} className="relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l" style={{ width: props.width }} data-agents-panel>
-      <div
+    <aside ref={asideRef} aria-label="Agents" tabIndex={-1} onKeyDown={onPanelKey} className={sidePanelClass(full)} style={full ? undefined : { width: props.width }} data-agents-panel>
+      {!full && <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Agents panel width"
@@ -214,11 +225,11 @@ export function AgentsPanel(props: AgentsPanelProps) {
         className="absolute inset-y-0 -left-0.5 z-10 w-1 cursor-col-resize hover:bg-accent-ink/40 focus-visible:bg-accent-ink/40"
         data-tooltip="Drag (or use ← →) to resize"
         data-agents-resize
-      />
+      />}
       {props.tabs ? (
         props.tabs(actions)
       ) : (
-        <header className="flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
+        <header className="@container/toolbar flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
           <Bot size={16} aria-hidden className="mt-0.5 shrink-0 text-accent-ink" />
           <div className="grid min-w-0 flex-1">
             <h2 className="truncate text-ui font-semibold text-text">Agents</h2>

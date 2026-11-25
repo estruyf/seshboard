@@ -488,6 +488,8 @@ export interface Preferences {
   turnDetails: TurnDetails;
   /** Settings › Conversation: "Fade inactive panes". Off, the panes other than the active one look the same as it; the active one keeps its line. */
   fadeInactivePanes: boolean;
+  /** Settings › Conversation: "Open the side panel in new sessions". A session you start opens with the empty side panel beside it. Off by default. */
+  sidePanelOnNewSession: boolean;
   /**
    * Settings › Theme: "Minimal mode" (⌘⇧.). On, the window shows less at once: sessions as one line with their state
    * as a shape, the message box without its chips, no counts on icons, and no borders round cards. What it hides is
@@ -723,6 +725,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   promptOutline: true,
   turnDetails: "duration",
   fadeInactivePanes: true,
+  sidePanelOnNewSession: false,
   minimalMode: false,
   codeHighlighting: true,
   projectColors: true,
@@ -916,6 +919,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
     out.turnDetails = raw.turnDetails;
   if (typeof raw.fadeInactivePanes === "boolean") out.fadeInactivePanes = raw.fadeInactivePanes;
+  if (typeof raw.sidePanelOnNewSession === "boolean") out.sidePanelOnNewSession = raw.sidePanelOnNewSession;
   if (typeof raw.minimalMode === "boolean") out.minimalMode = raw.minimalMode;
   if (typeof raw.codeHighlighting === "boolean") out.codeHighlighting = raw.codeHighlighting;
   if (typeof raw.projectColors === "boolean") out.projectColors = raw.projectColors;

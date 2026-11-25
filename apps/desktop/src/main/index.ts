@@ -2635,17 +2635,20 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
     if (settled) break;
   }
   await js("document.querySelector('[data-terminal-resize]').focus()");
-  key('Right');
-  if (!(await waitInPage(win, `${PANEL_BOX}.width === ${wide.width - 24}`, 2_000))) return `failed: → on the handle did not narrow the panel (${wide.width}px)`;
+  // Widen first: docked right it has the side panel's width, which can start at the terminal's minimum.
   key('Left');
-  if (!(await waitInPage(win, `${PANEL_BOX}.width === ${wide.width}`, 2_000))) return `failed: ← on the handle did not widen the panel again (${(await box())?.width}px)`;
+  if (!(await waitInPage(win, `${PANEL_BOX}.width === ${wide.width + 24}`, 2_000))) return `failed: ← on the handle did not widen the panel (${wide.width}px)`;
+  key('Right');
+  if (!(await waitInPage(win, `${PANEL_BOX}.width === ${wide.width}`, 2_000))) return `failed: → on the handle did not narrow the panel again (${(await box())?.width}px)`;
   await shot(win, 'terminal-right-light.png');
 
   // Changes also lives on the right: the terminal stays open there, behind Changes, until you pick it on the rail.
   let changes = 'no Changes button (not a git checkout)';
   if (await js("document.querySelector('[data-current-session] [data-toggle-changes]') !== null")) {
+    // Marked, to see that it comes back without loading again: behind Changes it stays mounted, hidden.
+    await js("document.querySelector('[data-terminal-panel]').dataset.smokeKept = ''");
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
-    if (!(await waitInPage(win, `document.querySelector('[data-changes-panel]') && !document.querySelector('[data-terminal-panel]') && document.querySelector('[data-current-session] [data-toggle-terminal]')?.dataset.railState === 'behind'`, 3_000))) {
+    if (!(await waitInPage(win, `document.querySelector('[data-changes-panel]') && !document.querySelector('[data-terminal-panel]')?.checkVisibility() && document.querySelector('[data-current-session] [data-toggle-terminal]')?.dataset.railState === 'behind'`, 3_000))) {
       return 'failed: with Changes open the terminal did not wait behind it on the rail';
     }
     await shot(win, 'terminal-with-changes.png');
@@ -2653,6 +2656,7 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right' && document.querySelector('[data-current-session] [data-toggle-terminal]')?.getAttribute('aria-pressed') === 'true' && document.querySelector('[data-current-session] [data-toggle-changes]')?.dataset.railState === 'behind'", 3_000))) {
       return 'failed: the rail\'s Terminal did not bring the terminal to the front on the right';
     }
+    if (!(await js("document.querySelector('[data-terminal-panel]').hasAttribute('data-smoke-kept')"))) return 'failed: the terminal loaded again when it came back from behind Changes';
     // Behind the terminal, the Changes button brings Changes to the front first; the second click closes it.
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
@@ -2662,9 +2666,17 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
     changes = 'behind Changes on the right, in front from the rail, alone there again after';
   }
 
-  // Maximize: the button, then Esc from it; ⌘⇧J twice.
+  // Maximize: Full in the panel's size (docked right it has Side, Half and Full like every panel there), then Esc
+  // from it; ⌘⇧J twice. A narrow panel shows the sizes behind one button.
   const hidden = "document.querySelector('[data-current-session] [data-transcript]').offsetParent === null";
-  const maximize = await clickLikeAUser(win, '[data-terminal-maximize]');
+  const segment = "[data-terminal-panel] [data-panel-size=\"full\"]";
+  const sizeMenu = '[data-terminal-panel] [data-panel-size-menu]';
+  const segmented = (await js(`!!document.querySelector(${JSON.stringify(segment)})?.checkVisibility()`)) as boolean;
+  if (!segmented) {
+    await clickLikeAUser(win, sizeMenu);
+    if (!(await waitInPage(win, "!!document.querySelector('[role=\"menu\"] [data-panel-size=\"full\"]')", 2_000))) return 'failed: the terminal\'s size button opened no menu with Full';
+  }
+  const maximize = await clickLikeAUser(win, segmented ? segment : '[role="menu"] [data-panel-size="full"]');
   if (!(await waitInPage(win, `${PANEL_BOX}.maximized && ${hidden} && !document.querySelector('[data-current-session] [data-composer-submit]')?.offsetParent`, 3_000))) {
     return `failed: Maximize did not give the terminal the whole view (the click landed on ${maximize.at})`;
   }
@@ -2676,7 +2688,8 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
     return `failed: maximized, the terminal is ${(await box())?.width}px of ${await js(viewWidth)}px`;
   }
   await shot(win, 'terminal-maximized.png');
-  await js("document.querySelector('[data-terminal-maximize]').focus()");
+  // Maximized, the panel may be wide enough for the segments: Esc from whichever shows.
+  await js(`[...document.querySelectorAll('[data-terminal-panel] [data-panel-size="full"], ${sizeMenu}')].find((el) => el.checkVisibility())?.focus()`);
   key('Escape');
   if (!(await waitInPage(win, `!${PANEL_BOX}.maximized && !(${hidden})`, 2_000))) {
     const focused = await js("(() => { const el = document.activeElement; return el ? `${el.tagName.toLowerCase()}${el.closest('.xterm') ? ' in xterm' : ''}${el.closest('[data-terminal-panel]') ? ' in the panel' : ''}` : 'nothing'; })()");

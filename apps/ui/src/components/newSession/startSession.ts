@@ -59,6 +59,8 @@ export interface StartDeps {
   keep(sessionId: string, first: FirstPromptStart): void;
   /** Shows the new session. */
   open(sessionId: string): void;
+  /** Opens the side panel beside it, when Settings asks for that (`openSidePanelOnStart`). */
+  sidePanel?(sessionId: string): void;
   /**
    * Asks the trust question for a cloned repository the engine won't start in yet (`trustRepository`): true once it
    * is trusted. Without it, such a start fails with the engine's error.
@@ -190,6 +192,7 @@ export async function startNewSession(start: NewSessionStart, deps: StartDeps): 
   const { sessionId } = created;
   deps.keep(sessionId, firstPromptOf(start));
   if (start.addProject && !start.fromLink) await deps.addProject(start.cwd).catch(() => {});
+  deps.sidePanel?.(sessionId);
   deps.open(sessionId);
   return { kind: 'started', sessionId };
 }

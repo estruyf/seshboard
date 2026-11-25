@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, GitBranch, GitBranchPlus, SquarePen } from 'lucide-react';
+import { openSidePanelOnStart } from '../../state/sidePanelOnStart.ts';
 import { useEffect, useId, useRef, useState } from 'react';
 import { AUTO_MODEL, remoteOnlyBranches, type ImageAttachment, type LaterDraft, type PermissionMode, type ProjectInspection } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -245,6 +246,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
           trust: (needed) => trustRepository(client, needed),
           addProject: (path) => client.call('projects.add', { path }).then(() => useProjects.getState().reload()),
           keep: useDrafts.getState().keepFirstPrompt,
+          sidePanel: openSidePanelOnStart,
           open: (sessionId) => {
             finish();
             useSessions.getState().select(sessionId);

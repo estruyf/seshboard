@@ -1,4 +1,5 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
+import { openSidePanelOnStart } from '../../state/sidePanelOnStart.ts';
 import { minimalAlert } from '../composer/minimalComposer.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, FileDiff, Folder, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, NotebookPen, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
@@ -159,7 +160,7 @@ import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents
 import { closeCommands, openCommands, pickCommand, toggleCommandsPanel, useSessionCommands } from '../../state/commandsPanelStore.ts';
 import { closeNote, toggleNotePanel, useNotePanel } from '../../state/notePanelStore.ts';
 import { closeChanges, toggleChangesPanel, useSessionChanges } from '../../state/changesPanelStore.ts';
-import { toggleTerminalPanel, useRightPanel, useRightTab } from '../../state/rightPanelStore.ts';
+import { toggleTerminalPanel, useRightPanel, useRightTab, useSidePanelFull } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions, type ReadableReply } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
@@ -653,6 +654,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The side panel with nothing in it (the rail's Show panel): it lists the tools to open there, and gives way to one.
   const launcherRequested = usePanelLauncher((s) => s.open.has(sessionId));
   const showLauncher = launcherShown(launcherRequested, right.open.length, whyRequest !== null) && !terminalMaximized;
+  const launcherQuiet = usePanelLauncher((s) => s.quiet.has(sessionId));
+  // Full for the panels without a Full of their own: the empty panel, Ask, Agents, Commands, Note and mods' panes.
+  const sharedFull = useSidePanelFull(sessionId);
+  const setSharedFull = useCallback((full: boolean) => useRightPanel.getState().setFull(sessionId, full), [sessionId]);
+  const sharedFullShows = sharedFull && !whyRequest && !terminalMaximized && (showLauncher || frontPane !== null || right.tab === 'ask' || right.tab === 'agents' || right.tab === 'commands' || right.tab === 'note');
   // Once a tool opens on the side, the empty panel is done: closing that tool closes the side, as before.
   useEffect(() => {
     if (launcherRequested && (right.open.length > 0 || whyRequest !== null)) closePanelLauncher(sessionId);
@@ -691,6 +697,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     useRightPanel.getState().setTab(sessionId, modPaneTab(focusRequested));
     setPaneFocus((f) => ({ id: focusRequested, nonce: f.nonce + 1 }));
   }, [focusRequested, modPanes]);
+  // Behind another panel the terminal stays mounted (hidden): back in front, it takes the keys, as it did when it mounted.
+  const terminalFront = terminalOnRight && right.tab === 'terminal';
+  const terminalWasFront = useRef(terminalFront);
+  useEffect(() => {
+    if (terminalFront && !terminalWasFront.current && active) {
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-current-session="${CSS.escape(sessionId)}"] [data-terminal-panel] .xterm-helper-textarea`)?.focus());
+    }
+    terminalWasFront.current = terminalFront;
+  }, [terminalFront]);
   // The terminal coming to the right (opened, or docked there) comes to the front, as a panel opened there does.
   const terminalWasOnRight = useRef(terminalOnRight);
   useEffect(() => {
@@ -1478,7 +1493,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
       const outcome = await startNewSession(
         { ...restart, prompt: text, attachments, skipGate: ungated },
-        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, trust: (needed) => trustRepository(client, needed), addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, trust: (needed) => trustRepository(client, needed), addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, sidePanel: openSidePanelOnStart, open: select },
       );
       return outcome.kind === 'started' ? undefined : false;
     }
@@ -1719,6 +1734,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   /** Hide panel: closes whatever the right side shows. */
   const hidePanels = useStableCallback(() => {
     closePanelLauncher(sessionId);
+    useRightPanel.getState().setFull(sessionId, false);
     if (whyRequest) useWhy.getState().close();
     if (showChanges) closeChanges(sessionId);
     if (ask.open) closeAskHere();
@@ -1758,7 +1774,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         rightBlocked={terminalBlocked}
         viewWidth={bodyWidth}
         viewHeight={bodyHeight}
-        shared={terminalOnRight && (right.tabs || halfPanel) ? { width: panelWidth, setWidth: setRightWidth } : undefined}
+        // On the right it is the side panel's width, as every panel there, whether it is alone or not.
+        shared={terminalOnRight ? { width: panelWidth, setWidth: setRightWidth } : undefined}
       />
     </Suspense>
   );
@@ -2103,7 +2120,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
         {/* An expanded Changes panel takes the whole view; the conversation stays mounted (scroll position, drafts) but hidden. */}
         {/* So does the browser in Full: its page is drawn over the panel's slot, which then takes the conversation's room. */}
-        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (right.tab === 'web' && !whyRequest && browserPreview && web?.full && !terminalMaximized) || (right.tab === 'files' && !whyRequest && showFiles && filesState.full && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
+        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (right.tab === 'web' && !whyRequest && browserPreview && web?.full && !terminalMaximized) || (right.tab === 'files' && !whyRequest && showFiles && filesState.full && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') || sharedFullShows ? 'hidden' : 'flex'}`}>
           {findQuery !== null && !terminalMaximized && (
             <FindBar
               query={findQuery}
@@ -2510,10 +2527,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           </div>
           {terminalShown && terminalDock === 'bottom' && terminalPanel}
         </div>
-        {/* Behind another tab on the right, the terminal steps out; its shells keep running and it comes back as it was. */}
-        {terminalShown && terminalDock === 'right' && (!terminalOnRight || right.tab === 'terminal') && terminalPanel}
+        {/* Behind another tab on the right, the terminal stays mounted but hidden, so it comes back as it was, without loading again. */}
+        {terminalShown && terminalDock === 'right' && (
+          <div className={!terminalOnRight || right.tab === 'terminal' ? 'contents' : 'hidden'} data-terminal-behind={terminalOnRight && right.tab !== 'terminal' ? '' : undefined}>
+            {terminalPanel}
+          </div>
+        )}
         {whyRequest && !terminalMaximized && <WhyPanel request={whyRequest} cwd={cwd} />}
-        {showLauncher && <PanelLauncher rows={launcherRows} width={panelWidth} onPick={pickFromLauncher} onClose={() => closePanelLauncher(sessionId)} />}
+        {showLauncher && <PanelLauncher rows={launcherRows} width={panelWidth} onWidth={setRightWidth} full={sharedFull} onFull={setSharedFull} quiet={launcherQuiet} onPick={pickFromLauncher} onClose={() => closePanelLauncher(sessionId)} />}
         {!whyRequest && right.tab === 'changes' && cwd && !terminalMaximized && (
           <ChangesPanel
             sessionId={sessionId}
@@ -2534,6 +2555,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             working={working}
             width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onAsk={askHere}
             onRetry={(threadId, item) => client && void retryAsk(client, sessionId, threadId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
             onQuote={(answer) => useDrafts.getState().requestQuote(sessionId, answer)}
@@ -2550,6 +2573,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             pane={frontPane}
             width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onClose={() => closeModPane(frontPane.id)}
             focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
           />
@@ -2566,6 +2591,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onStop={stopTask}
             width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onClose={() => closeAgents(sessionId)}
           />
         )}
@@ -2579,10 +2606,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onStop={stopTask}
             width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onClose={() => closeCommands(sessionId)}
           />
         )}
-        {!whyRequest && right.tab === 'note' && !terminalMaximized && <NotePanel sessionId={sessionId} note={note} width={panelWidth} onWidth={setRightWidth} onClose={() => closeNote(sessionId)} />}
+        {!whyRequest && right.tab === 'note' && !terminalMaximized && <NotePanel sessionId={sessionId} note={note} width={panelWidth} onWidth={setRightWidth} full={sharedFull} onFull={setSharedFull} onClose={() => closeNote(sessionId)} />}
         {!whyRequest && right.tab === 'files' && cwd && !terminalMaximized && (
           <PreviewOpenerContext.Provider value={openPreviewHere}>
             <FilesPanel sessionId={sessionId} cwd={cwd} width={panelWidth} onWidth={setRightWidth} changes={isRepo ? changes : null} changesBase={changesBase} writes={fileWrites} />

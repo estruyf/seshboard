@@ -1,6 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { launcherKey } from './panelLauncher.ts';
 import type { RailToolId } from './toolRail.ts';
+import { PanelResizeEdge, PanelSize, sidePanelClass } from './PanelSize.tsx';
 
 /** A row of the empty side panel's list, as the session view resolves it from the rail's own item for the tool. */
 export interface LauncherRow {
@@ -13,15 +14,28 @@ export interface LauncherRow {
 
 /**
  * The side panel with nothing in it (the rail's Show panel): a list of the tools that can open here, each with its icon,
- * name and shortcut. No header: the rail's panel button and Esc close it. The list is one block at a menu's width,
+ * name and shortcut. No header, only the panel's size (Side, Half, Full) at the top right: the rail's panel button and
+ * Esc close it. Its left edge resizes it, as every panel's does. The list is one block at a menu's width,
  * in the middle of the panel both ways, so each shortcut sits next to its name; taller than the panel, it starts at the
  * top and scrolls (auto margins in a flex box give way). A pick opens the tool in its place. ↑ ↓ Home End move through
- * the list, Enter opens, Esc closes the panel. The first row takes the focus when it opens.
+ * the list, Enter opens, Esc closes the panel. The first row takes the focus when it opens, unless `quiet` (a new
+ * session opens it beside the message box, which keeps the focus).
  */
-export function PanelLauncher({ rows, width, onPick, onClose }: { rows: readonly (LauncherRow | 'divider')[]; width: number; onPick(id: RailToolId): void; onClose(): void }) {
+export function PanelLauncher({ rows, width, onWidth, full, onFull, quiet = false, onPick, onClose }: {
+  rows: readonly (LauncherRow | 'divider')[];
+  width: number;
+  onWidth(width: number): void;
+  /** It takes the whole session area. */
+  full: boolean;
+  onFull(full: boolean): void;
+  quiet?: boolean;
+  onPick(id: RailToolId): void;
+  onClose(): void;
+}) {
   const list = useRef<HTMLUListElement>(null);
   // After whatever opened it (a palette that hands the focus back as it closes) is done with the focus.
   useEffect(() => {
+    if (quiet) return;
     const frame = requestAnimationFrame(() => list.current?.querySelector<HTMLButtonElement>('[data-panel-launcher-item]')?.focus());
     return () => cancelAnimationFrame(frame);
   }, []);
@@ -42,8 +56,21 @@ export function PanelLauncher({ rows, width, onPick, onClose }: { rows: readonly
   };
 
   return (
-    <aside aria-label="Side panel" tabIndex={-1} onKeyDown={onKeyDown} className="relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l" style={{ width }} data-panel-launcher-panel>
-      <div className="flex min-h-0 flex-1 overflow-y-auto px-3 py-6">
+    <aside
+      aria-label="Side panel"
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      className={sidePanelClass(full)}
+      style={full ? undefined : { width }}
+      data-panel-launcher-panel
+      data-panel-full={full || undefined}
+    >
+      {!full && <PanelResizeEdge width={width} onWidth={onWidth} label="Side panel width" />}
+      {/* Over the list's padding, the same at the bottom, so the list stays in the middle of the panel. */}
+      <div className="@container/toolbar pointer-events-none absolute inset-x-2 top-2 z-10 flex justify-end *:pointer-events-auto" data-panel-launcher-size>
+        <PanelSize full={full} onChange={onFull} />
+      </div>
+      <div className="flex min-h-0 flex-1 overflow-y-auto px-3 py-11">
         <ul ref={list} aria-label="Open in the side panel" className="m-auto flex w-full max-w-70 flex-col gap-px" data-panel-launcher>
           {rows.map((row, i) =>
             row === 'divider' ? (

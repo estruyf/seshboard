@@ -8,6 +8,7 @@ import { shellCommandDetail } from '../general/shellCommand.ts';
 import { CODE_HIGHLIGHTING_DETAIL, MINIMAL_MODE_DETAIL, PROJECT_COLORS_DETAIL } from '../theme/minimalCopy.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
+import { SIDE_PANEL_DETAIL } from '../transcript/sidePanelCopy.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
@@ -305,6 +306,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: "With sessions side by side, the panes you aren't working in are faded until you point at one. Off, they look the same as the active pane, which keeps its line along the top.",
       keywords: 'split view panes tiles dim faded opacity inactive active focus side by side',
       target: '[data-fade-panes-setting]',
+    },
+    {
+      id: 'side-panel-on-new',
+      page: 'conversation',
+      label: 'Open the side panel in new sessions',
+      detail: SIDE_PANEL_DETAIL,
+      keywords: 'side panel right panel open default new session start launcher tools layout',
+      target: '[data-side-panel-on-new-setting]',
     },
     {
       id: 'turn-details',

@@ -1383,7 +1383,7 @@ export function Sidebar() {
       </div>
 
       {minimal ? (
-        <MinimalNav now={now} newSessionLabel={newDraft ? newSessionDraftTooltip(newDraft.name) : remoteNewDraft ? remoteNewSessionDraftTooltip(remoteNewDraft.name) : 'New session'} onNewSession={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))} />
+        <MinimalNav now={now} needsYou={localWaiting} newSessionLabel={newDraft ? newSessionDraftTooltip(newDraft.name) : remoteNewDraft ? remoteNewSessionDraftTooltip(remoteNewDraft.name) : 'New session'} onNewSession={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))} />
       ) : (
         <SidebarNav now={now} needsYou={localWaiting} />
       )}

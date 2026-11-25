@@ -83,7 +83,7 @@ export function SidebarNav({ now, needsYou }: { now: number; needsYou: number })
           aria-current={atBrowser ? 'page' : undefined}
           data-tooltip={browserTip}
           data-nav="browser"
-          onClick={openBrowserView}
+          onClick={() => openBrowserView({ toggle: false })}
           className={look}
         />
       )}
@@ -93,11 +93,13 @@ export function SidebarNav({ now, needsYou }: { now: number; needsYou: number })
 
 /**
  * Minimal mode's top of the sidebar: plain words instead of the icon tray and its badges. New session (with its
- * shortcut on the right), then Search, Upcoming, Activity and Browser, muted, the current one in the text colour. Home
- * stays on its shortcut and in the palette. Counts are in each one's tooltip.
+ * shortcut on the right), then Search, Home, Upcoming, Activity and Browser, muted, the current one in the text colour.
+ * Home is the way back to the sessions from Browser's tabs, as in the tray. Counts are in each one's tooltip.
  */
-export function MinimalNav({ now, onNewSession, newSessionLabel }: { now: number; onNewSession(): void; newSessionLabel: string }) {
+export function MinimalNav({ now, needsYou, onNewSession, newSessionLabel }: { now: number; needsYou: number; onNewSession(): void; newSessionLabel: string }) {
   const view = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
+  // Home is the main area with no session open, as the tray's Home.
+  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   const browser = usePreferences((s) => s.prefs.browserEnabled);
   const summary = useUpcomingSummary(now);
   const today = useSessionsToday(now);
@@ -117,9 +119,10 @@ export function MinimalNav({ now, onNewSession, newSessionLabel }: { now: number
         <Kbd shortcut="session.new" tone="plain" />
       </button>
       {entry('search', 'Search', 'Search all conversations', false, () => useOverlay.getState().show('search'), 'search')}
+      {entry('home', 'Home', needsYou > 0 ? `Home · ${needsYou} need${needsYou === 1 ? 's' : ''} you` : 'Home', atHome, () => (sessions(), useSessions.getState().goHome()))}
       {entry('upcoming', 'Upcoming', `Upcoming · ${summary.hint?.text ?? (summary.count > 0 ? `${summary.count} planned` : 'nothing planned')}`, view === 'upcoming', () => (sessions(), openUpcoming()))}
       {entry('activity', 'Activity', today > 0 ? `Activity · ${today} today` : 'Activity', view === 'activity', () => (sessions(), openActivity()))}
-      {browser && entry('browser', 'Browser', tabs > 0 ? `Browser · ${tabs} ${tabs === 1 ? 'tab' : 'tabs'}` : 'Browser', view === 'browser', openBrowserView)}
+      {browser && entry('browser', 'Browser', tabs > 0 ? `Browser · ${tabs} ${tabs === 1 ? 'tab' : 'tabs'}` : 'Browser', view === 'browser', () => openBrowserView({ toggle: false }))}
     </nav>
   );
 }

@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, Folder, Globe, Maximize2, Minimize2, PanelBottom, PanelRight, Plus, RotateCcw, Sparkles, Square, SquareTerminal, Timer, X } from 'lucide-react';
+import { PanelSize } from '../transcript/PanelSize.tsx';
 import { useEffect, useId, useMemo, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import type { TerminalInfo, TerminalKind } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -216,18 +217,23 @@ export function TerminalPanel({
         }
         data-terminal-dock={dock}
       />
-      <Button
-        variant="quiet"
-        size="sm"
-        iconOnly
-        icon={maximized ? <Minimize2 size={13} aria-hidden /> : <Maximize2 size={13} aria-hidden />}
-        shortcut="terminal.maximize"
-        selected={maximized}
-        aria-pressed={maximized}
-        onClick={() => setMaximized()}
-        aria-label={maximized ? 'Restore terminal' : 'Maximize terminal'}
-        data-terminal-maximize
-      />
+      {/* On the right it is one of the side's panels, with their sizes: Full is maximized. Below, it maximizes. */}
+      {right && sessionId !== null ? (
+        <PanelSize room="lg" full={maximized} onChange={(full) => setMaximized(full)} />
+      ) : (
+        <Button
+          variant="quiet"
+          size="sm"
+          iconOnly
+          icon={maximized ? <Minimize2 size={13} aria-hidden /> : <Maximize2 size={13} aria-hidden />}
+          shortcut="terminal.maximize"
+          selected={maximized}
+          aria-pressed={maximized}
+          onClick={() => setMaximized()}
+          aria-label={maximized ? 'Restore terminal' : 'Maximize terminal'}
+          data-terminal-maximize
+        />
+      )}
       <Button
         variant="quiet"
         size="sm"
@@ -282,7 +288,7 @@ export function TerminalPanel({
       {tabs?.(buttons)}
       {/* As a tab, the terminal's own part stays dark under the right side's row of tabs. */}
       <div className={tabs ? 'theme-dark @container/terminal flex min-h-0 flex-1 flex-col bg-terminal text-text' : 'contents'}>
-        <div className="flex h-9 shrink-0 items-center gap-1 pr-1.5 pl-2">
+        <div className="@container/toolbar flex h-9 shrink-0 items-center gap-1 pr-1.5 pl-2">
           {/* Tabs, then + right after the last one; they scroll sideways when there are many. */}
           <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
             {terminals.length > 0 && (

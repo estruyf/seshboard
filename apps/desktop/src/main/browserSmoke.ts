@@ -115,9 +115,12 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   deps.setBrowser(true);
   if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
   for (const nav of ['home', 'upcoming', 'activity']) if (!(await js(`!!${q(`[data-nav="${nav}"]`)}`))) return `no ${nav} icon in the sidebar's views`;
-  // "browser intro" may have opened it already; Browser again would go back to the sessions.
+  // "browser intro" may have opened it already.
   if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'Browser did not show the Browser view and its tab list';
+  // A second click keeps it: Browser in the views never toggles back to the sessions (Home does that).
+  await js(`${q('[data-nav="browser"]')}.click()`);
+  if (await waitInPage(win, `!${q('[data-browser-tab-list]')}`, 500)) return 'a second click on Browser went back to the sessions';
   if (!(await js(`!!${q('[data-browser-view] [data-browser-empty]')} || !!${q('[data-browser-view] [data-web-preview-slot]')}`))) return 'the Browser view shows neither a page nor its empty state';
   if (await js(`!!${q('[data-browser-view] [data-browser-empty]')} && !!${q('[data-browser-view] [data-browser-address]')}`)) return 'the empty Browser view shows an address bar';
   if (await js(`!!${q('[data-new-session]')}?.checkVisibility()`)) return 'the Browser tab list still shows New session and the search';

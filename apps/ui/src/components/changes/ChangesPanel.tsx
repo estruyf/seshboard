@@ -1,8 +1,9 @@
 import { trashName } from '../../lib/platform.ts';
+import { PanelSize } from '../transcript/PanelSize.tsx';
 import { useThemes } from '../../state/themeStore.ts';
 import { languageFromPath } from '../../lib/highlight.ts';
 import { useHighlightedLines } from '../transcript/useHighlightedLines.ts';
-import { ChevronRight, ExternalLink, Maximize2, MessageSquareText, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
+import { ChevronRight, ExternalLink, MessageSquareText, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
 import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { joinPath, sessionFileKind, type ChangedFile, type ChangesBase, type DiffImage, type GitChanges } from '@seshboard/protocol/client';
@@ -477,7 +478,7 @@ export const ChangesPanel = memo(function ChangesPanel({
         />
       )}
       {tabs?.(<Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />)}
-      <div className="edge-b flex h-10 shrink-0 items-center gap-2 px-3" data-scrolled={!listEdge.atTop || undefined} data-changes-header>
+      <div className="@container/toolbar edge-b flex h-10 shrink-0 items-center gap-2 px-3" data-scrolled={!listEdge.atTop || undefined} data-changes-header>
         {/* Arrow keys move between the two, like any radio group; only the chosen one is a Tab stop. */}
         <SegmentedControl
           mode="radio"
@@ -510,18 +511,8 @@ export const ChangesPanel = memo(function ChangesPanel({
           aria-label="Wrap long lines"
           data-diff-wrap-toggle
         />
-        <Button
-          variant="quiet"
-          size="sm"
-          iconOnly
-          icon={expanded ? <Minimize2 size={13} aria-hidden /> : <Maximize2 size={13} aria-hidden />}
-          selected={expanded}
-          onClick={() => toggleExpanded()}
-          aria-pressed={expanded}
-          data-tooltip={expanded ? 'Back to a side panel' : 'Expand to the whole view'}
-          aria-label={expanded ? 'Back to a side panel' : 'Expand changes to the whole view'}
-          data-changes-expand
-        />
+        {/* Side, Half or Full (expanded), as every panel on the right. */}
+        <PanelSize room="lg" full={expanded} onChange={(full) => toggleExpanded(full)} />
         <Button variant="quiet" size="sm" iconOnly icon={<RefreshCw size={12} />} onClick={onRefresh} data-tooltip="Check git for changes again" aria-label="Refresh changes" />
         {!tabs && <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />}
       </div>

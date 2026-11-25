@@ -81,6 +81,8 @@ export async function runMinimalLayoutStep(win: BrowserWindow, deps: MinimalSmok
       })()`,
     )) as string;
     const got = JSON.parse(checks) as { height: number; dot: string | null; bold: string | null; tip: string; spinner: boolean; tile: boolean; rail: string; summary: string | null };
+    // Home is in the words at the top, the way back to the sessions from the Browser's tabs.
+    if (!(await js(win, `!!document.querySelector('[data-nav-text] [data-nav="home"]')`))) return 'the minimal nav has no Home';
     if (got.height > 36) return `the waiting row is ${got.height}px tall, not one line`;
     if (got.dot !== 'Needs you') return `the waiting row has no Needs you dot (${String(got.dot)})`;
     if (got.bold !== '600') return `the waiting row's title is not bold (${String(got.bold)})`;

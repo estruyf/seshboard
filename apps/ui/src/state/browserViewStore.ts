@@ -33,15 +33,17 @@ export const useSidebarList = create<{ list: SidebarList; setList(list: SidebarL
 }));
 
 /**
- * Browser in the sidebar's views (⌘⇧B outside a session): the Browser view, with its tabs listed in the sidebar. Again
- * while the list shows, the sessions come back. A pop-out has no Browser view: the main window shows it.
+ * The Browser view (⌘⇧B outside a session, Browser in the sidebar's views), with its tabs listed in the sidebar. The
+ * key again, while the list shows, brings the sessions back. A click on Browser in the sidebar (`toggle: false`) only
+ * opens it: Home is the way back. A pop-out has no Browser view: the main window shows it.
  */
-export function openBrowserView(): void {
+export function openBrowserView(options: { toggle?: boolean } = {}): void {
   if (!browserOn()) return;
   if (showInMain({ kind: 'browser' })) return;
   const { list, setList } = useSidebarList.getState();
   const here = useSessions.getState().view === 'browser';
   if (here && list === 'browser') {
+    if (options.toggle === false) return;
     setList('sessions');
     return;
   }

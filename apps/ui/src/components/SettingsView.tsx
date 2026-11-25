@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as Reac
 import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
+import { SIDE_PANEL_DETAIL } from './transcript/sidePanelCopy.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -364,6 +365,15 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               checked={prefs.fadeInactivePanes}
               attr="data-fade-panes-setting"
               onChange={(fadeInactivePanes) => update({ fadeInactivePanes })}
+            />
+          </Section>
+          <Section title="Side panel">
+            <Toggle
+              label="Open the side panel in new sessions"
+              detail={SIDE_PANEL_DETAIL}
+              checked={prefs.sidePanelOnNewSession}
+              attr="data-side-panel-on-new-setting"
+              onChange={(sidePanelOnNewSession) => update({ sidePanelOnNewSession })}
             />
           </Section>
           <Section title="File links">

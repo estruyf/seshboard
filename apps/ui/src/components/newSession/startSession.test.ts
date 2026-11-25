@@ -111,6 +111,14 @@ describe('startNewSession', () => {
     expect(fake.addProject).toHaveBeenCalledWith('/work/app');
   });
 
+  it('opens the side panel before the session shows, so it opens with it', async () => {
+    const fake = deps();
+    const sidePanel = vi.fn(() => void fake.calls.push('side'));
+    await startNewSession(START, { ...fake, sidePanel });
+    expect(sidePanel).toHaveBeenCalledWith('new-1');
+    expect(fake.calls.slice(-2)).toEqual(['side', 'open']);
+  });
+
   it('starts nothing when the gate says stop, or when the prompt was saved for later', async () => {
     const stopped = deps('stop');
     expect(await startNewSession(START, stopped)).toEqual({ kind: 'stopped' });

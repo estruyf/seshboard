@@ -1,4 +1,4 @@
-import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, SquareDashedMousePointer, Star, Trash2, UserRound, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, SquareDashedMousePointer, Star, Trash2, UserRound, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type RefObject, type MouseEvent, type ReactNode } from 'react';
 import { addressBarUrl, browserNavigation, copiedAddress, type BrowserHistoryEntry, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -12,12 +12,10 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
-import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Popover } from '../ui/Popover.tsx';
-import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { addressSuggestions, autoPick, type AddressSuggestion } from './addressSuggestions.ts';
 import { tabMenu } from './tabMenu.tsx';
 import { ProfileMark, ProfileSwitch, profileSwitchMenu, useNewTabMenu } from './ProfileMenus.tsx';
@@ -745,76 +743,4 @@ function EmptyTab({ tabId, owner, offers, browser }: { tabId: string; owner: str
   );
 }
 
-type PanelSizing = 'side' | 'half' | 'full';
-
-/** Side or Half for every panel on the right, Full for this one. */
-function choosePanelSize(value: PanelSizing, onChange: (full: boolean) => void): void {
-  if (value !== 'full') useRightPanel.getState().setSizing(value);
-  onChange(value === 'full');
-}
-
-const SIZE_LABEL: Record<PanelSizing, string> = { side: 'Side', half: 'Half', full: 'Full' };
-
-/**
- * The panel's sizes: beside the conversation at the width you dragged (Side), sharing the session area 50/50 (Half,
- * for every panel on the right, `useRightPanel().sizing`), or the whole session area (Full, this panel). In a narrow
- * toolbar, one button that names the size and opens the three, so the address bar keeps its room.
- */
-export function PanelSize({ full, onChange }: { full: boolean; onChange(full: boolean): void }) {
-  const sizing = useRightPanel((s) => s.sizing);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const value: PanelSizing = full ? 'full' : sizing;
-  const pick = (next: PanelSizing) => choosePanelSize(next, onChange);
-  return (
-    <>
-      <span className="contents @max-[420px]/toolbar:hidden">
-        <SegmentedControl
-          mode="radio"
-          size="sm"
-          label="Panel size"
-          value={value}
-          onChange={pick}
-          segments={(['side', 'half', 'full'] as const).map((size) => ({ value: size, label: SIZE_LABEL[size], data: { 'data-web-preview-size': size } }))}
-          className="ml-1"
-        />
-      </span>
-      <span className="hidden @max-[420px]/toolbar:contents">
-        <Button
-          variant="quiet"
-          size="sm"
-          aria-label={`Panel size: ${SIZE_LABEL[value]}`}
-          data-tooltip="Panel size"
-          aria-haspopup="menu"
-          aria-expanded={menu !== null}
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            setMenu(menu ? null : { x: rect.right - 140, y: rect.bottom + 4 });
-          }}
-          className="ml-0.5 shrink-0"
-          data-web-preview-size-menu={value}
-        >
-          {SIZE_LABEL[value]}
-          <ChevronDown size={11} aria-hidden />
-        </Button>
-      </span>
-      {menu && (
-        <Menu
-          x={menu.x}
-          y={menu.y}
-          label="Panel size"
-          entries={(['side', 'half', 'full'] as const).map((size) => ({ label: SIZE_LABEL[size], checked: value === size, onSelect: () => pick(size), data: { 'data-web-preview-size': size } }))}
-          onClose={() => setMenu(null)}
-        />
-      )}
-    </>
-  );
-}
-
-/** ‹ Conversation, on the left of the toolbar in Full. */
-export function BackToConversation({ onClick }: { onClick(): void }) {
-  return (
-    <Button variant="quiet" size="sm" icon={<ChevronLeft size={13} aria-hidden />} onClick={onClick} className="mr-1" data-web-preview-conversation="">
-      Conversation
-    </Button>
-  );
-}
+export { BackToConversation, PanelSize } from '../transcript/PanelSize.tsx';

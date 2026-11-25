@@ -1,4 +1,5 @@
 import { ViewHeader } from '../ViewHeader.tsx';
+import { openSidePanelOnStart } from '../../state/sidePanelOnStart.ts';
 import { ChevronDown, Clock, CornerDownRight, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, remoteOnlyBranches, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
@@ -1184,6 +1185,7 @@ function LocalNewSession() {
         trust: (needed) => trustRepository(client, needed),
         addProject: (path) => client.call('projects.add', { path }).then(reloadProjects),
         keep: useDrafts.getState().keepFirstPrompt,
+        sidePanel: openSidePanelOnStart,
         open: (sessionId) => {
           // The next session is one session again, as after a pipeline's run.
           setOrchestrate(false);

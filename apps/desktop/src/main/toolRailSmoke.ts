@@ -156,7 +156,22 @@ export async function runPanelLauncherStep(win: BrowserWindow, shot: (name: stri
   if (!ids.includes('terminal')) return `the list has no Terminal (${rows.join(', ')})`;
   if (ids.some((id) => id.startsWith('mod:') || id.startsWith('app:'))) return `the list has a mod's pane or an app (${rows.join(', ')})`;
   if (!rows.includes('terminal+key')) return `Terminal shows no shortcut (${rows.join(', ')})`;
-  if (await js(`!!${panel}.querySelector('header, h2, button:not([data-panel-launcher-item])')`)) return 'the empty side panel still has a header or a close button';
+  if (await js(`!!${panel}.querySelector('header, h2, button:not([data-panel-launcher-item]):not([data-panel-launcher-size] button)')`)) return 'the empty side panel still has a header or a close button';
+  // Its left edge resizes it, as every panel's does: ← widens it by one step, → narrows it back.
+  const resize = q('[data-panel-launcher-panel] [data-panel-resize]');
+  if (!(await js(`!!${resize}`))) return 'the empty side panel has no edge to drag';
+  const before = (await js(`${panel}.getBoundingClientRect().width`)) as number;
+  await js(`${resize}.focus(); ${resize}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))`);
+  if (!(await waitInPage(win, `${panel}.getBoundingClientRect().width > ${before} + 10`, 3_000))) return '← on the edge did not widen the empty side panel';
+  await js(`${resize}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
+  if (!(await waitInPage(win, `Math.abs(${panel}.getBoundingClientRect().width - ${before}) <= 1`, 3_000))) return '→ on the edge did not narrow the empty side panel again';
+  // Full takes the session area: the conversation hides, and Side brings it back.
+  const size = (value: string) => `${panel}.querySelector('[data-panel-launcher-size] [data-panel-size="${value}"]')`;
+  if (!(await js(`!!${size('full')}`))) return 'the empty side panel has no Side, Half and Full';
+  await js(`${size('full')}.click()`);
+  if (!(await waitInPage(win, `${panel}.hasAttribute('data-panel-full') && !${q('[data-composer-root]')}?.checkVisibility()`, 3_000))) return 'Full did not give the empty side panel the whole session area';
+  await js(`${panel}.querySelector('[data-panel-launcher-size] [data-panel-size="side"]').click()`);
+  if (!(await waitInPage(win, `!${panel}.hasAttribute('data-panel-full') && Math.abs(${panel}.getBoundingClientRect().width - ${before}) <= 1`, 3_000))) return 'Side did not put the empty side panel back beside the conversation';
   // The list is one block at a menu's width in the middle of the panel, both ways: at its own width, at half the
   // session area, and as the sheet of a narrow window.
   const centred = async (where: string): Promise<string | null> => {
@@ -211,5 +226,5 @@ export async function runPanelLauncherStep(win: BrowserWindow, shot: (name: stri
   if (!(await waitInPage(win, `!${panel} && ${rail}?.dataset.railState === 'front' && ${button}.dataset.railPanel === 'hide'`, 3_000))) return `${pick} from the list did not open in front in its place`;
   await js(`${button}.click()`);
   if (!(await waitInPage(win, `${rail}?.dataset.railState === 'closed' && !${panel} && ${button}.dataset.railPanel === 'show'`, 3_000))) return 'Hide panel did not close the side';
-  return `ok: Show panel listed ${rows.join(', ')}; Esc closed it; ↓ to ${pick} opened it in front; Hide panel closed the side`;
+  return `ok: Show panel listed ${rows.join(', ')}; ← → on its edge resized it; Full and Side; Esc closed it; ↓ to ${pick} opened it in front; Hide panel closed the side`;
 }

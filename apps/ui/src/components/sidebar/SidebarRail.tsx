@@ -457,7 +457,7 @@ export function SidebarRail() {
             aria-current={view === 'browser' ? 'page' : undefined}
             data-tooltip-placement="right"
             data-nav="browser"
-            onClick={openBrowserView}
+            onClick={() => openBrowserView({ toggle: false })}
             className="no-drag w-9! rounded-lg!"
           />
         )}
