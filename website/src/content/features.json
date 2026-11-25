@@ -2987,6 +2987,11 @@
       "page": "new-session/models-and-options"
     },
     {
+      "id": "feature:composer-command-colour",
+      "name": "A slash command at the start of a message is coloured apart from the prompt after it",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:composer-tray",
       "name": "The message box with the tray under it: profile, model, effort and mode, Tools, context and usage, folding into one chip in a narrow window",
       "page": "sessions/conversation"

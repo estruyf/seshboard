@@ -15203,11 +15203,34 @@ async function runUltrathinkStep(win: BrowserWindow): Promise<string> {
     await settle(win);
     if (await js(`!!document.querySelector('${pane} [data-ultrathink-mirror]')`)) return 'a longer word, ultrathinking, was coloured';
     await empty();
+    // A known slash command at the start is coloured apart from its prompt; a path that only looks like one is not. The
+    // command is the first one the / list offers, so the step works with whatever the session knows.
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('/');
+    await waitInPage(win, `!!document.querySelector('${pane} [data-palette] [role="option"]:not([data-saved-prompt-option]):not([data-link-option]) .font-mono')`, 3_000);
+    const command = (await js(`document.querySelector('${pane} [data-palette] [role="option"]:not([data-saved-prompt-option]):not([data-link-option]) .font-mono')?.textContent ?? ''`)) as string;
+    await empty();
+    const commandNote = command ? `, ${command} at the start is coloured (a path is not)` : ', no command offered to colour';
+    if (command) {
+      const typed = `${command} smoke draft, never sent`;
+      await js(`${box}.focus()`);
+      await win.webContents.insertText(typed);
+      if (!(await waitInPage(win, `document.querySelector('${pane} [data-command-mark]')?.textContent === ${JSON.stringify(command)}`, 3_000))) return `the command ${command} was not coloured in the message box`;
+      const mark = (await js(`(() => { const mark = document.querySelector('${pane} [data-command-mark]'); return { color: getComputedStyle(mark).color, text: mark.parentElement.textContent, value: ${box}.value }; })()`)) as { color: string; text: string; value: string };
+      if (mark.value !== typed || mark.text !== typed) return `the coloured command changed the text (${JSON.stringify(mark.value)})`;
+      if (/rgba\(0, 0, 0, 0\)|transparent/.test(mark.color)) return 'the command is drawn without a colour';
+      await empty();
+      await js(`${box}.focus()`);
+      await win.webContents.insertText('/tmp is not a command');
+      await settle(win);
+      if (await js(`!!document.querySelector('${pane} [data-command-mark]')`)) return 'a path, /tmp, was coloured as a command';
+      await empty();
+    }
 
     // 2. The effort chip's option arms the next message, shows on the chip, and turns off again. A session without an
     // effort chip, a tray folded into one chip, or an effort that is xhigh or max already has no option to try.
     const where = (await js(`(() => { const chip = ${chip}; const tray = document.querySelector('${pane} [data-composer-tray]'); return { chip: !!chip, folded: !!tray?.hasAttribute('data-composer-tray-folded'), effort: chip?.dataset.value ?? '' }; })()`)) as { chip: boolean; folded: boolean; effort: string };
-    if (!where.chip || where.folded) return `ok: ultrathink is coloured in the box (a longer word is not) and the lines line up; skipped the option, ${where.folded ? 'the tray is folded into one chip' : 'this session has no effort chip'}`;
+    if (!where.chip || where.folded) return `ok: ultrathink is coloured in the box (a longer word is not) and the lines line up${commandNote}; skipped the option, ${where.folded ? 'the tray is folded into one chip' : 'this session has no effort chip'}`;
     if (where.effort === 'xhigh' || where.effort === 'max') {
       if (await js(`(() => { ${chip}.click(); return true; })()`) && !(await waitInPage(win, "!!document.querySelector('[data-menu=\"effort\"]')", 3_000))) return 'the effort menu did not open';
       const offered = await js("!!document.querySelector('[data-menu=\"effort\"] [data-ultrathink-toggle]')");
@@ -15218,7 +15241,7 @@ async function runUltrathinkStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!!${chip}.querySelector('[data-ultrathink-armed]') && ${chip}.getAttribute('aria-label').includes('ultrathink')`, 3_000))) return 'the effort chip does not show that ultrathink is on';
     if (!(await toggle('on'))) return 'the effort menu does not offer to turn ultrathink off';
     if (!(await waitInPage(win, `!${chip}.querySelector('[data-ultrathink-armed]')`, 3_000))) return 'ultrathink stayed on the chip after turning it off';
-    return 'ok: ultrathink is coloured in the box (a longer word is not), the lines line up with the box, the effort chip arms it and turns it off again, nothing sent';
+    return `ok: ultrathink is coloured in the box (a longer word is not), the lines line up with the box${commandNote}, the effort chip arms it and turns it off again, nothing sent`;
   } finally {
     // Whatever happened: an empty box, and the option off.
     await empty();

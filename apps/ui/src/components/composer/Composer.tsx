@@ -1,5 +1,5 @@
 import { AtSign, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
-import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
@@ -22,8 +22,9 @@ import { MAX_ATTACHMENTS } from './images.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
-import { hasUltrathink, ultrathinkSend } from './ultrathink.ts';
+import { ultrathinkSend } from './ultrathink.ts';
 import { UltrathinkMirror } from './UltrathinkMirror.tsx';
+import { hasMarks, splitMarks } from './messageMarks.ts';
 import { useUltrathink } from '../../state/ultrathinkStore.ts';
 import { branchOf, linkableSessions } from './sessionLinks.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -275,8 +276,11 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   const left = fillState ? blanksLeft(fillState) : [];
   /** Where "Ultrathink this turn" is kept for this box: its draft key, for a Claude Code box. */
   const armedKey = props.ultrathink && props.draftKey !== undefined ? props.draftKey : null;
-  /** The word is in the box: it is drawn under the text, in colour. */
-  const marked = !!props.ultrathink && hasUltrathink(text);
+  /** The word ultrathink, and a known slash command at the start: drawn under the text, in colour. */
+  const commandNames = useMemo(() => props.commands.map((c) => c.name), [props.commands]);
+  // A side question and the context after a filled prompt don't run commands.
+  const marks = useMemo(() => splitMarks(text, { commands: sideToken || fillState ? [] : commandNames, ultrathink: !!props.ultrathink }), [text, commandNames, props.ultrathink, sideToken, fillState]);
+  const marked = hasMarks(marks);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -1271,7 +1275,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
           )}
           {/* The wrapper holds the box's place in the row, so the coloured copy of the text can sit over exactly the box. */}
           <div className={`relative min-w-0 ${props.large ? 'flex min-h-0 flex-[0_1_auto] flex-col' : 'flex-1'}`}>
-          {marked && <UltrathinkMirror text={text} textarea={ref} className={boxType} disabled={disabled} />}
+          {marked && <UltrathinkMirror text={text} parts={marks} textarea={ref} className={boxType} disabled={disabled} />}
           <textarea
             data-composer
             data-history={props.history?.length ?? 0}
