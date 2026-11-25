@@ -112,6 +112,9 @@ export const IpcChannel = {
   getWindowActive: "seshboard:get-window-active",
   windowShown: "seshboard:window-shown",
   getWindowShown: "seshboard:get-window-shown",
+  /** Main to a window: it went into or out of full screen. */
+  windowFullScreen: "seshboard:window-full-screen",
+  getWindowFullScreen: "seshboard:get-window-full-screen",
   relayDrafts: "seshboard:relay-drafts",
   draftsRelayed: "seshboard:drafts-relayed",
   requestDrafts: "seshboard:request-drafts",
@@ -1363,6 +1366,12 @@ export interface SeshboardBridge {
    */
   windowShown(): boolean;
   onWindowShown(listener: (shown: boolean) => void): () => void;
+  /**
+   * Whether this window is in full screen, read once when the page loads; then follow `onFullScreen`. On macOS the
+   * traffic lights hide in full screen, so headers that leave room for them can start at the edge.
+   */
+  readonly fullScreen: boolean;
+  onFullScreen(listener: (fullScreen: boolean) => void): () => void;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
   readonly popouts: readonly string[];
   /** Fires in every window when a pop-out opens or closes. */

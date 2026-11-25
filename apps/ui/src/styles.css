@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* While the window is in full screen (main.tsx sets the attribute): the traffic lights are hidden then. */
+@custom-variant full-screen (&:where([data-full-screen] *));
+
 :root {
   /* Demo Time Light (github.com/estruyf/vscode-demo-time-theme) */
   --sb-bg: #ffffff;

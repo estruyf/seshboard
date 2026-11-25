@@ -1603,6 +1603,12 @@ app.on('browser-window-created', (_event, win) => {
     },
     windowIsShown,
   );
+  // And whether it is in full screen: the traffic lights hide there, so the headers that leave room for them don't.
+  const sendFullScreen = (fullScreen: boolean) => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(IpcChannel.windowFullScreen, fullScreen);
+  };
+  win.on('enter-full-screen', () => sendFullScreen(true));
+  win.on('leave-full-screen', () => sendFullScreen(false));
 });
 ipcMain.on(IpcChannel.getWindowActive, (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -1611,6 +1617,10 @@ ipcMain.on(IpcChannel.getWindowActive, (event) => {
 ipcMain.on(IpcChannel.getWindowShown, (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   event.returnValue = win ? windowIsShown(win) : true;
+});
+ipcMain.on(IpcChannel.getWindowFullScreen, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  event.returnValue = win ? win.isFullScreen() : false;
 });
 
 ipcMain.on(IpcChannel.getPopouts, (event) => {

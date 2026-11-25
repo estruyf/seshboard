@@ -1373,8 +1373,9 @@ export function Sidebar() {
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
     <aside aria-label="Sidebar" className="relative flex h-full shrink-0 flex-col bg-sidebar forced-colors:border-r" style={{ width }} data-sidebar-open>
-      {/* Traffic lights on the left (macOS); the bar doubles as a window drag handle. */}
-      <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24' : 'pl-4.5'}`}>
+      {/* Traffic lights on the left (macOS), hidden in full screen, where the title starts at the edge like the rows. The
+          bar doubles as a window drag handle. */}
+      <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24 full-screen:pl-4.5' : 'pl-4.5'}`}>
         <span className="text-body font-semibold text-text/90">Seshboard</span>
         {/* Minimal mode: the View menu (grouping, sort and the project filter) sits up here, as the filter row goes. */}
         {minimal && !showTabs && (

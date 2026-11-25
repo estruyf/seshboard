@@ -125,6 +125,12 @@ const bridge: SeshboardBridge = {
     ipcRenderer.on(IpcChannel.windowShown, handler);
     return () => ipcRenderer.off(IpcChannel.windowShown, handler);
   },
+  fullScreen: ipcRenderer.sendSync(IpcChannel.getWindowFullScreen) as boolean,
+  onFullScreen(listener) {
+    const handler = (_event: unknown, fullScreen: boolean) => listener(fullScreen);
+    ipcRenderer.on(IpcChannel.windowFullScreen, handler);
+    return () => ipcRenderer.off(IpcChannel.windowFullScreen, handler);
+  },
   popout: new URLSearchParams(window.location.search).get(POPOUT_QUERY),
   popouts: ipcRenderer.sendSync(IpcChannel.getPopouts) as string[],
   onPopoutsChanged(listener) {
