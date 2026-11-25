@@ -6739,9 +6739,23 @@ async function runChangesStep(win: BrowserWindow): Promise<string> {
     if (layout) return layout;
   }
   await shot(win, 'changes.png');
+  // Open in Files on a changed file: the Files viewer shows it in front, then Changes comes back to the front.
+  let inFiles = '';
+  const target = (await js("(() => { const b = document.querySelector('[data-changes-panel] [data-open-in-files]'); return b ? b.closest('[data-changed-file]').getAttribute('data-changed-file') : null; })()")) as string | null;
+  if (target) {
+    const filesWasOpen = (await js("!!document.querySelector('[data-files-panel]')")) as boolean;
+    await js("document.querySelector('[data-changes-panel] [data-open-in-files]').click()");
+    const shown = `[...document.querySelectorAll('[data-files-viewer]')].some((v) => v.getAttribute('data-files-viewer').replaceAll('\\\\', '/').endsWith('/' + ${JSON.stringify(target)}))`;
+    if (!(await waitInPage(win, shown, 5_000))) return `Open in Files did not show ${target} in the Files viewer`;
+    if (!filesWasOpen) {
+      await js("document.querySelector('[data-files-close]')?.click()");
+      if (!(await waitInPage(win, "!document.querySelector('[data-files-panel]') && !!document.querySelector('[data-changes-panel]')", 5_000))) return 'Changes did not come back after closing Files';
+    }
+    inFiles = ', Open in Files shows the file';
+  }
   const messageActions = (await js("document.querySelectorAll('[data-message-actions]').length")) as number;
   if (!wasOpen) await js("document.querySelector('[data-toggle-changes]').click()");
-  return `ok: ${files} changed files${files ? ', first diff shown, rows full width, wraps on request' : ''}; ${messageActions} messages with actions`;
+  return `ok: ${files} changed files${files ? ', first diff shown, rows full width, wraps on request' : ''}${inFiles}; ${messageActions} messages with actions`;
 }
 
 /**

@@ -3,7 +3,7 @@ import { PanelSize } from '../transcript/PanelSize.tsx';
 import { useThemes } from '../../state/themeStore.ts';
 import { languageFromPath } from '../../lib/highlight.ts';
 import { useHighlightedLines } from '../transcript/useHighlightedLines.ts';
-import { ChevronRight, ExternalLink, MessageSquareText, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
+import { ChevronRight, ExternalLink, FileText, MessageSquareText, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
 import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { joinPath, sessionFileKind, type ChangedFile, type ChangesBase, type DiffImage, type GitChanges } from '@seshboard/protocol/client';
@@ -13,6 +13,7 @@ import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { useDiffComments, useSessionComments } from '../../state/diffCommentsStore.ts';
+import { useFilesPanel } from '../../state/filesPanelStore.ts';
 import { useMemoryView } from '../../state/memoryStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
@@ -593,6 +594,19 @@ export const ChangesPanel = memo(function ChangesPanel({
                   )}
                   {/* Shown on hover, and while the row has keyboard focus so Tab can reach them. */}
                   <span className="hidden shrink-0 items-center group-focus-within:flex group-hover:flex">
+                    {file.status !== 'deleted' && changes.root && (
+                      // Files' viewer, in front of Changes on the right: the whole file, with the lines Claude changed marked.
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        icon={<FileText size={12} />}
+                        data-tooltip="Open in Files"
+                        aria-label={`Open ${name} in Files`}
+                        onClick={() => useFilesPanel.getState().openFile(sessionId, joinPath(changes.root, file.path))}
+                        data-open-in-files
+                      />
+                    )}
                     {file.status !== 'deleted' && changes.root && (
                       <Button
                         variant="quiet"
