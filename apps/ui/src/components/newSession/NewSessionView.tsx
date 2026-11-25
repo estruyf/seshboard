@@ -225,6 +225,8 @@ function LocalNewSession() {
   const presets = useRef(0);
   /** The prompt came from a link and hasn't been sent or cleared: its length, to say so under the message box. */
   const [linkPrompt, setLinkPrompt] = useState<number | null>(null);
+  /** The link's prompt came from a site action in the browser, not a `seshboard://` link. */
+  const [linkPromptFrom, setLinkPromptFrom] = useState<'browser' | undefined>(undefined);
   /** A link's `repo`: being looked up, or not found among your checkouts. */
   const [linkRepo, setLinkRepo] = useState<{ repo: string; state: 'looking' | 'missing' } | null>(null);
   /** The link named no folder: rather than guess, the folder is left empty and the picker opens. */
@@ -498,6 +500,7 @@ function LocalNewSession() {
       setPreset({ text: link.prompt, seq: ++presets.current });
       setDraftPrompt(link.prompt);
       setLinkPrompt(link.prompt.length);
+      setLinkPromptFrom(link.from);
     }
   }, [linkRequest]);
   // Start after this one…: the session's project (through `startIn`, above), Wait for that session, Start by itself on.
@@ -1356,7 +1359,7 @@ function LocalNewSession() {
       </span>
     ) : linkPrompt !== null ? (
       <Notice inline icon={<Link2 size={13} className="text-accent-ink" aria-hidden />} actions={clearButton('data-clear-link-prompt')} data-link-notice>
-        {pendingStart !== null ? 'Starting a session with the prompt from an external link…' : linkNoticeText(linkPrompt)}
+        {pendingStart !== null ? 'Starting a session with the prompt from an external link…' : linkNoticeText(linkPrompt, linkPromptFrom)}
       </Notice>
     ) : parent ? (
       <Notice

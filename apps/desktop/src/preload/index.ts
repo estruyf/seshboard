@@ -85,7 +85,7 @@ const bridge: SeshboardBridge = {
     ipcRenderer.on(IpcChannel.deepLink, handler);
     return () => ipcRenderer.off(IpcChannel.deepLink, handler);
   },
-  startFromPage: (url) => ipcRenderer.send(IpcChannel.startFromPage, url),
+  startFromPage: (request) => ipcRenderer.send(IpcChannel.startFromPage, request),
   // With the preferences, so the first paint already has the theme's colours.
   themes: ipcRenderer.sendSync(IpcChannel.getThemes) as ThemeState,
   onThemesChanged(listener) {

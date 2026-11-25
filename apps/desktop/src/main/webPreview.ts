@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, shell, webContents, type DownloadItem, type Session, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
-import { githubPage, isBrowserPartition, localPreviewUrl, startFromPageLabel, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { isBrowserPartition, localPreviewUrl, siteActionsFor, webPageUrl, WEB_PREVIEW_PARTITION, type SiteAction, type StartFromPageRequest } from '@seshboard/protocol/client';
 import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
 import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, CANVAS_CSS, needsCanvas, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
@@ -34,8 +34,10 @@ export interface WebPreviewGuardDeps {
   askFirst: boolean;
   /** Where pages' downloads go: the Downloads folder, or a folder in the throwaway profile in a smoke run. */
   downloadsDir(): string;
-  /** The page menu's Start session: New session in the main window, from the GitHub pull request or issue at `url`. */
-  startFromPage(url: string): void;
+  /** Settings › Browser › Site actions, read when a page's menu opens. */
+  siteActions(): SiteAction[];
+  /** The page menu's site action: New session in the main window, from the page. */
+  startFromPage(request: StartFromPageRequest): void;
 }
 
 /** Files pages downloaded this run: the only paths Show in Finder will reveal. */
@@ -342,12 +344,22 @@ export const isSessionPage = (contentsId: number): boolean => sessionPages.has(c
 
 /** A page's right-click menu (`pageMenuEntries`), run here against the page, over `owner` (the page's window, or a sign-in window's own). */
 function showPageMenu(host: WebContents, guest: WebContents, params: Electron.ContextMenuParams, deps: WebPreviewGuardDeps, owner = BrowserWindow.fromWebContents(host)): void {
-  const github = deps.browser() ? githubPage(guest.getURL()) : null;
-  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward(), session: sessionPages.has(guest.id), start: github && startFromPageLabel(github) });
-  // Start session leaves the page for New session, which main opens: the page's address is read again when it runs.
-  const run = (id: PageMenuEntryId | 'spelling', word?: string) => (id === 'start-session' ? deps.startFromPage(guest.getURL()) : runPageMenuEntry(host, guest, params, id, word));
+  const url = guest.getURL();
+  const offered = deps.browser() ? siteActionsFor(url, deps.siteActions()) : [];
+  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward(), session: sessionPages.has(guest.id), start: offered.map((action) => ({ action: action.id, label: action.name })) });
+  const run = (id: Exclude<PageMenuEntryId, 'start-session'> | 'spelling', word?: string) => runPageMenuEntry(host, guest, params, id, word);
+  // A site action leaves the page for New session, which main opens, with the page's title and the selection.
+  const start = (action: string) => deps.startFromPage({ url, action, title: guest.getTitle(), selection: params.selectionText });
   const menu = Menu.buildFromTemplate(
-    entries.map((entry) => (entry === 'separator' ? { type: 'separator' as const } : entry.id === 'spelling' ? { label: entry.label, click: () => run('spelling', entry.word) } : { label: entry.label, enabled: entry.enabled, click: () => run(entry.id) })),
+    entries.map((entry) =>
+      entry === 'separator'
+        ? { type: 'separator' as const }
+        : entry.id === 'spelling'
+          ? { label: entry.label, click: () => run('spelling', entry.word) }
+          : entry.id === 'start-session'
+            ? { label: entry.label, click: () => start(entry.action) }
+            : { label: entry.label, enabled: entry.enabled, click: () => run(entry.id) },
+    ),
   );
   menu.popup(owner ? { window: owner } : {});
 }

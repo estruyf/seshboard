@@ -917,6 +917,11 @@
       "page": "browser/tabs-and-pages"
     },
     {
+      "id": "feature:browser-site-actions",
+      "name": "Site actions in Settings › Browser: turn off or change the GitHub ones, or add your own with the pages, a project and a prompt",
+      "page": "browser/tabs-and-pages"
+    },
+    {
       "id": "feature:browser-own-window",
       "name": "A session's browser in a window of its own, with all its tabs, and Move back to the session",
       "page": "browser/in-a-session"

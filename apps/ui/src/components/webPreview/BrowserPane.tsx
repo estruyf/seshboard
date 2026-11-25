@@ -1,6 +1,6 @@
 import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, SquareDashedMousePointer, SquarePen, Star, Trash2, UserRound, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type RefObject, type MouseEvent, type ReactNode } from 'react';
-import { addressBarUrl, browserNavigation, copiedAddress, githubPage, type BrowserHistoryEntry, loadErrorText, shortUrl, startFromPageLabel, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
+import { addressBarUrl, browserNavigation, copiedAddress, siteActionsFor, type BrowserHistoryEntry, loadErrorText, shortUrl, type SiteAction, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { askClearData, askRename, copyAddress, findInPage, pickElement, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
 import { popOutBrowser } from '../../state/browserWindow.ts';
@@ -78,9 +78,12 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   const listId = useId();
   const tabId = tab?.id ?? null;
   const bookmarked = useBookmarkOf(tab) !== undefined;
-  // A GitHub pull request or issue: the bar offers a session from it.
-  const github = browser && tab?.url ? githubPage(tab.url) : null;
+  // The site actions offered on this page (Settings › Browser › Site actions): the bar offers a session from it.
+  const siteActions = usePreferences((s) => s.prefs.siteActions);
+  const offered = useMemo(() => (browser && tab?.url ? siteActionsFor(tab.url, siteActions) : []), [browser, tab?.url, siteActions]);
   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
+  const [startMenu, setStartMenu] = useState<{ x: number; y: number } | null>(null);
+  const startFrom = (action: SiteAction) => tab?.url && window.seshboard?.startFromPage({ url: tab.url, action: action.id, title: tab.title, selection: '' });
   // The suggestions under the address bar (the browser on): open while typing, and the row picked with ↑↓ (null: the
   // first one if Enter should open it, `autoPick`; -1: what was typed).
   const [listOpen, setListOpen] = useState(false);
@@ -267,20 +270,37 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           />
           {showList && <SuggestionList id={listId} anchor={address} suggestions={suggestions} highlighted={highlighted} onPick={open} onHighlight={setPicked} onClose={closeList} />}
         </form>
-        {/* A session from the GitHub pull request or issue: New session in the main window, in a checkout of its
-            repository (main reads the address again). In a narrow panel only its icon shows. */}
-        {github && tab && (
+        {/* The page's site actions: New session in the main window, from this page (main checks the action again).
+            One runs at once, several open a menu. In a narrow panel only the icon shows. */}
+        {offered.length > 0 && (
           <Button
             size="sm"
             icon={<SquarePen size={13} aria-hidden />}
-            aria-label={startFromPageLabel(github)}
-            data-tooltip={`${startFromPageLabel(github)} in ${github.repo}`}
-            onClick={() => tab.url && window.seshboard?.startFromPage(tab.url)}
+            aria-label={offered.length === 1 ? offered[0]!.name : 'Start session'}
+            data-tooltip={offered.length === 1 ? offered[0]!.name : undefined}
+            aria-haspopup={offered.length > 1 ? 'menu' : undefined}
+            aria-expanded={offered.length > 1 ? startMenu !== null : undefined}
+            onClick={(e) => {
+              if (offered.length === 1) return startFrom(offered[0]!);
+              const rect = e.currentTarget.getBoundingClientRect();
+              setStartMenu(startMenu ? null : { x: rect.left, y: rect.bottom + 4 });
+            }}
             className="mr-1"
-            data-browser-start-session={`${github.type}:${github.number}`}
+            data-browser-start-session={offered.map((action) => action.id).join(' ')}
           >
             <span className={NARROW_HIDDEN}>Start session</span>
+            {offered.length > 1 && <ChevronDown size={12} aria-hidden />}
           </Button>
+        )}
+        {startMenu && (
+          <Menu
+            x={startMenu.x}
+            y={startMenu.y}
+            width={260}
+            label="Start session"
+            entries={offered.map((action) => ({ label: action.name, icon: <SquarePen size={13} aria-hidden />, onSelect: () => startFrom(action), data: { 'data-browser-start-action': action.id } }))}
+            onClose={() => setStartMenu(null)}
+          />
         )}
         {/* The tab's browser profile, and the way to move it to another. */}
         {browser && tab && <ProfileSwitch tab={tab} />}

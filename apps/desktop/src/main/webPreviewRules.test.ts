@@ -255,12 +255,12 @@ describe('pageMenuEntries', () => {
     expect(ids(pageMenuEntries({ ...params, selectionText: '  ' }, session))).toEqual(['back', 'forward', 'reload', '-', 'add-element', '-', 'inspect']);
   });
 
-  it('offers Start session on a GitHub pull request or issue, before the message entries', () => {
-    const start = 'Start session from pull request #151';
-    expect(ids(pageMenuEntries(params, { ...page, start }))).toEqual(['back', 'forward', 'reload', '-', 'start-session', '-', 'inspect']);
-    expect(pageMenuEntries(params, { ...page, start })[4]).toMatchObject({ id: 'start-session', label: start, enabled: true });
-    expect(ids(pageMenuEntries({ ...params, selectionText: 'hello' }, { ...page, session: true, start }))).toEqual(['copy', '-', 'start-session', '-', 'quote', 'add-element', '-', 'inspect']);
-    expect(ids(pageMenuEntries(params, { ...page, start: null }))).toEqual(['back', 'forward', 'reload', '-', 'inspect']);
+  it('offers the site actions of the page, before the message entries', () => {
+    const start = [{ action: 'github-pr', label: 'Start session from this pull request' }, { action: 'site-1', label: 'Review with the checklist' }];
+    expect(ids(pageMenuEntries(params, { ...page, start }))).toEqual(['back', 'forward', 'reload', '-', 'start-session', 'start-session', '-', 'inspect']);
+    expect(pageMenuEntries(params, { ...page, start })[5]).toMatchObject({ id: 'start-session', label: 'Review with the checklist', action: 'site-1' });
+    expect(ids(pageMenuEntries({ ...params, selectionText: 'hello' }, { ...page, session: true, start: start.slice(0, 1) }))).toEqual(['copy', '-', 'start-session', '-', 'quote', 'add-element', '-', 'inspect']);
+    expect(ids(pageMenuEntries(params, { ...page, start: [] }))).toEqual(['back', 'forward', 'reload', '-', 'inspect']);
   });
 
   it('offers spelling, then editing in a field, as the field allows', () => {

@@ -4,6 +4,7 @@ import { linkNoticeText, LONG_LINK_PROMPT } from './linkNotice.ts';
 describe('linkNoticeText', () => {
   it('says where the prompt came from', () => {
     expect(linkNoticeText(20)).toBe('Prompt from an external link. Read it before you start the session.');
+    expect(linkNoticeText(20, 'browser')).toBe('Prompt from a page in the browser. Read it before you start the session.');
   });
 
   it('gives the length of a long prompt', () => {

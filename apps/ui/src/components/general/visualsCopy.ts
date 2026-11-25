@@ -11,6 +11,10 @@ export const BROWSER_CONTROL_DETAIL =
   'With the browser allowed, the agent in a session (Claude Code, Copilot or Codex) can open, read and click pages in its Browser panel to check its work. Pages on this computer need no approval. Other sites ask first, or you allow them in the project’s settings. For sessions you start or resume after you change it.';
 
 /** Settings › Browser › Agents › Allow scripts in pages, shared with Settings search. */
+/** Settings › Browser › Site actions, under its title and in Settings' search. */
+export const SITE_ACTIONS_DETAIL =
+  'Start session in the address bar and the right-click menu, on the pages each action names. It opens New session in the project, with the prompt filled in. Nothing starts until you press Enter.';
+
 export const BROWSER_SCRIPTS_DETAIL =
   'The agent can also run scripts in its page, such as a call to the site’s API with your login, and read the page’s requests and their responses. Pages on this computer need no approval. Other sites ask first, apart from the sites you allow, which can then read tokens and change data as you. For sessions you start or resume after you change it.';
 

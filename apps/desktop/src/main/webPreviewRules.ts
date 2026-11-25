@@ -260,14 +260,18 @@ export interface PageMenuParams {
 export type PageMenuEntryId = 'open-link' | 'copy-link' | 'copy-email' | 'copy-image' | 'copy-image-address' | 'cut' | 'copy' | 'paste' | 'select-all' | 'back' | 'forward' | 'reload' | 'start-session' | 'quote' | 'add-element' | 'inspect';
 
 /** One entry of a page's right-click menu, or a line. */
-export type PageMenuEntry = { id: 'spelling'; label: string; word: string } | { id: PageMenuEntryId; label: string; enabled: boolean } | 'separator';
+export type PageMenuEntry =
+  | { id: 'spelling'; label: string; word: string }
+  | { id: 'start-session'; label: string; enabled: boolean; action: string }
+  | { id: Exclude<PageMenuEntryId, 'start-session'>; label: string; enabled: boolean }
+  | 'separator';
 
 /**
  * A page's right-click menu: spelling suggestions, then what was clicked (a link, an email address, an image), then
- * editing, or back, forward and reload when nothing else applies, then Start session on a GitHub pull request or issue
- * (`start`, its label), then on a session's page what goes to its message (the selection, the element), then Inspect.
+ * editing, or back, forward and reload when nothing else applies, then the site actions offered on the page (`start`:
+ * each one's id and name), then on a session's page what goes to its message (the selection, the element), then Inspect.
  */
-export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean; back: boolean; forward: boolean; session: boolean; start?: string | null }): PageMenuEntry[] {
+export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean; back: boolean; forward: boolean; session: boolean; start?: ReadonlyArray<{ action: string; label: string }> }): PageMenuEntry[] {
   const groups: PageMenuEntry[][] = [];
   if (params.isEditable && params.dictionarySuggestions.length) groups.push(params.dictionarySuggestions.slice(0, 5).map((word) => ({ id: 'spelling', label: word, word })));
   const mail = /^mailto:/i.test(params.linkURL);
@@ -290,7 +294,7 @@ export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean
       { id: 'reload', label: 'Reload', enabled: true },
     ]);
   }
-  if (page.start) groups.push([{ id: 'start-session', label: page.start, enabled: true }]);
+  if (page.start?.length) groups.push(page.start.map(({ action, label }) => ({ id: 'start-session', label, enabled: true, action })));
   if (page.session) groups.push([...(params.selectionText.trim() ? [{ id: 'quote', label: 'Quote in message', enabled: true } as const] : []), { id: 'add-element', label: 'Add element to message', enabled: true }]);
   groups.push([{ id: 'inspect', label: 'Inspect', enabled: true }]);
   return groups.flatMap((group, i) => (i ? ['separator' as const, ...group] : group));

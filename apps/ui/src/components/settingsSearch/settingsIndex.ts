@@ -9,7 +9,7 @@ import { CODE_HIGHLIGHTING_DETAIL, MINIMAL_MODE_DETAIL, PROJECT_COLORS_DETAIL } 
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import { SIDE_PANEL_DETAIL } from '../transcript/sidePanelCopy.ts';
-import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -123,6 +123,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: 'Each profile keeps its own logins, site data and cache, so you can use one site with several accounts side by side.',
       keywords: 'browser profile account accounts login logins sign in cookies storage partition container separate test users admin customer reset delete new',
       target: '[data-new-browser-profile]',
+    },
+    {
+      id: 'site-actions',
+      page: 'browser',
+      label: 'Site actions',
+      detail: SITE_ACTIONS_DETAIL,
+      keywords: 'start session page github pull request issue sentry jira url pattern prompt template button address bar right click menu extension',
+      target: '[data-add-site-action]',
     },
 
     // Theme

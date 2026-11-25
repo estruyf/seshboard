@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
-import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
 import { SIDE_PANEL_DETAIL } from './transcript/sidePanelCopy.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
@@ -47,6 +47,7 @@ import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } f
 import { settingsIndex } from './settingsSearch/settingsIndex.ts';
 import { navGroups, SETTINGS_GROUP_LABEL, SETTINGS_SECTIONS, settingsPageOrder, settingsPageShown, settingsSectionLabel, type SettingsPage } from './settingsSections.ts';
 import { BrowserProfilesSettings } from './webPreview/BrowserProfilesSettings.tsx';
+import { SiteActionsSettings } from './webPreview/SiteActionsSettings.tsx';
 import { SectionHeader } from './ui/SectionHeader.tsx';
 
 /** A session row in miniature, drawn with the live theme tokens. */
@@ -667,6 +668,9 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </Section>
           <Section title="Browser profiles" description="Each profile keeps its own logins, site data and cache, so you can use one site with several accounts side by side. Its tabs show its colour.">
             <BrowserProfilesSettings />
+          </Section>
+          <Section title="Site actions" description={SITE_ACTIONS_DETAIL}>
+            <SiteActionsSettings />
           </Section>
         </>
       );

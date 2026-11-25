@@ -15,6 +15,7 @@ import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./au
 import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
 import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
 import type { McpAppCsp } from "./visuals.ts";
+import { DEFAULT_SITE_ACTIONS, sanitizeSiteActions, type SiteAction } from "./sitePages.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
@@ -699,6 +700,11 @@ export interface Preferences {
   railOrder: Exclude<RailTool, "mods">[];
   /** Apps pinned to the rail (its right-click menu), by editor id (`editors.list`), top to bottom. A click opens the session's folder in one. */
   railApps: string[];
+  /**
+   * Settings › Browser › Site actions: Start session in the browser's address bar and page menu on the pages each names
+   * (`sitePages.ts`). The built-in GitHub ones come first unless you moved them; they can be turned off, never removed.
+   */
+  siteActions: SiteAction[];
   /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
   quickActions: boolean;
   /** Settings › Sidebar: which quick actions show ("Show"). Working rows keep Stop either way. */
@@ -790,6 +796,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   railHidden: [],
   railOrder: [...RAIL_ORDER],
   railApps: [],
+  siteActions: DEFAULT_SITE_ACTIONS.map((action) => ({ ...action })),
   quickActions: true,
   quickActionsShow: "all",
   githubStar: "ask",
@@ -1033,6 +1040,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   }
   if (Array.isArray(raw.railApps))
     out.railApps = [...new Set(raw.railApps.filter((id): id is string => typeof id === "string" && RAIL_APP_ID.test(id)))].slice(0, RAIL_APPS_MAX);
+  if (Array.isArray(raw.siteActions)) out.siteActions = sanitizeSiteActions(raw.siteActions);
   if (typeof raw.quickActions === "boolean") out.quickActions = raw.quickActions;
   if (oneOf(["archive", "all"] as const, raw.quickActionsShow))
     out.quickActionsShow = raw.quickActionsShow;
@@ -1158,6 +1166,17 @@ export type DeepLink =
     }
   | { action: "session"; sessionId: string };
 
+/** The browser's Start session, from the window to main: which site action, on which page. */
+export interface StartFromPageRequest {
+  url: string;
+  /** The site action's id. */
+  action: string;
+  /** The page's title, for `{title}`. */
+  title: string;
+  /** Text selected in the page (the page menu only), for `{selection}`. */
+  selection: string;
+}
+
 /** A link to act on, or why one was refused (shown briefly; nothing changes). */
 export type DeepLinkMessage = { link: DeepLink } | { error: string };
 
@@ -1275,10 +1294,10 @@ export interface SeshboardBridge {
   /** A `seshboard://` link was opened (main holds links until this window's renderer is ready). */
   onDeepLink(listener: (message: DeepLinkMessage) => void): () => void;
   /**
-   * The browser's Start session on a GitHub pull request or issue (`githubPage`): main reads the address again and
-   * opens New session in the main window, filled in from it. Any other address does nothing.
+   * The browser's Start session: a site action (`Preferences.siteActions`) on a page. Main checks the action is on and
+   * offered on that address, then opens New session in the main window, filled in from it. Anything else does nothing.
    */
-  startFromPage(url: string): void;
+  startFromPage(request: StartFromPageRequest): void;
   /** Every theme, read once when the page loads (with the preferences), so the first paint has the right colours. */
   readonly themes: ThemeState;
   /** Fires after a theme is added, removed, or its file in the themes folder changes. */
