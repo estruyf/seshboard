@@ -194,8 +194,11 @@ export async function runPanelLauncherStep(win: BrowserWindow, shot: (name: stri
   const halfOpen = await waitInPage(win, `!!${panel} && Math.abs(${panel}.getBoundingClientRect().width - ${widthBefore}) > 1`, 3_000);
   const half = halfOpen ? await centred('at half width') : null;
   if (halfOpen) await shot('side-panel-launcher-half');
+  // Kept in localStorage, so the choice survives a restart (sessionStorage is cleared on quit).
+  const remembered = (await js(`localStorage.getItem('ui.rightPanelSizing')`)) === 'half';
   await toggleHalf();
   if (!halfOpen) return 'Panels at half width did not change the empty side panel';
+  if (!remembered) return 'Panels at half width was not kept for the next start';
   if (half) return half;
   if (!(await waitInPage(win, `!!${panel} && Math.abs(${panel}.getBoundingClientRect().width - ${widthBefore}) <= 1`, 3_000))) return 'the empty side panel did not go back to its own width';
   // The narrowest window: the empty panel is a sheet over the conversation.

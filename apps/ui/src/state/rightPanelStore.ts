@@ -22,6 +22,23 @@ const write = (key: string, value: string) => {
   }
 };
 
+// Half or side is a preference, not a window's layout: kept in localStorage, so it survives a restart and a new
+// window starts with it.
+const readSizing = (): PanelSizing => {
+  try {
+    return localStorage.getItem(SIZING_KEY) === 'half' ? 'half' : 'side';
+  } catch {
+    return 'side';
+  }
+};
+const writeSizing = (sizing: PanelSizing) => {
+  try {
+    localStorage.setItem(SIZING_KEY, sizing);
+  } catch {
+    // Remembering is a convenience.
+  }
+};
+
 /**
  * The right side's tab (when two or more of its panels are open) per session, and the panels' width per window. A
  * session that has not picked a tab starts on the one picked last in this window.
@@ -52,9 +69,9 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
   tab: readTab(read(TAB_KEY)),
   tabs: new Map(),
   width: clampAskWidth(Number(read(WIDTH_KEY)), window.innerWidth),
-  sizing: read(SIZING_KEY) === 'half' ? 'half' : 'side',
+  sizing: readSizing(),
   setSizing: (sizing) => {
-    write(SIZING_KEY, sizing);
+    writeSizing(sizing);
     set({ sizing });
   },
   full: new Set(),
@@ -73,7 +90,7 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
   setWidth: (width) => {
     const next = clampAskWidth(width, window.innerWidth);
     write(WIDTH_KEY, String(next));
-    write(SIZING_KEY, 'side');
+    writeSizing('side');
     set({ width: next, sizing: 'side' });
   },
 }));
