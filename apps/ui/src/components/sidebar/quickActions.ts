@@ -1,6 +1,8 @@
 import type { QuickActionsShow } from '@seshboard/protocol/bridge';
 import type { PipelineRunState } from '@seshboard/protocol/client';
 import type { ShortcutId } from '../../lib/shortcuts.ts';
+import { basename } from '../../lib/format.ts';
+import { isRunRowId } from '../../state/runSelection.ts';
 import { runGoesOn, treeRunsOf } from '../../state/runTree.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { rowStatus, type RowStatus } from '../../state/sidebarRows.ts';
@@ -9,10 +11,10 @@ import { rowStatus, type RowStatus } from '../../state/sidebarRows.ts';
 // session menu's actions each one runs. Pure, so the rules can be tested without React or the stores.
 
 /** A quick action, as its `data-row-action` hook names it. Read covers Mark as read and Mark as unread. */
-export type QuickActionKind = 'read' | 'pin' | 'archive' | 'stop' | 'unarchive';
+export type QuickActionKind = 'new' | 'read' | 'pin' | 'archive' | 'stop' | 'unarchive';
 
 /** The session menu's action a button runs (`SessionMenus` in `useSessionMenu.tsx`), so there is one path for each. */
-export type QuickActionMethod = 'markRead' | 'markUnread' | 'pin' | 'unpin' | 'archive' | 'unarchive' | 'stop';
+export type QuickActionMethod = 'newHere' | 'markRead' | 'markUnread' | 'pin' | 'unpin' | 'archive' | 'unarchive' | 'stop';
 
 /** What the rules read from a row. */
 export interface QuickActionRow {
@@ -29,6 +31,11 @@ export interface QuickActionRow {
   tree: boolean;
   /** Stop has something to stop: a session running in Seshboard, a run that goes on, or another computer's session. */
   canStop: boolean;
+  /**
+   * The folder a new session would start in: the session's own, so a session in a worktree gets its worktree. Null for
+   * another computer's session and a run row, which have no folder here.
+   */
+  folder: string | null;
 }
 
 export interface QuickActionPrefs {
@@ -41,6 +48,8 @@ export interface QuickAction {
   method: QuickActionMethod;
   /** The menu's words for it, which the tooltip and the button's label use. */
   label: string;
+  /** The tooltip, when it says more than the label (New session here names the folder). */
+  tooltip?: string;
   /** Its key in the sidebar, for the tooltip; Stop has none. */
   shortcut: ShortcutId | null;
 }
@@ -62,13 +71,15 @@ export function quickRowOf(data: SessionRowData, archived: boolean, context: { h
     readable: !remote && data.summary !== null,
     tree: remote ? !remote.offline && !!remote.treeRunId : tree.length > 0,
     canStop: remote ? !remote.offline : context.hosted || tree.some(runGoesOn),
+    folder: remote || isRunRowId(data.id) ? null : (data.summary?.cwd ?? null),
   };
 }
 
 const working = (status: RowStatus) => status === 'running' || status === 'needs-you';
 
 /**
- * The buttons a row shows, left to right. A read row offers Mark as unread, Pin and Archive; an unread one Mark as read
+ * The buttons a row shows, left to right. With "All", a row with a folder starts with New session here, in that folder
+ * (its worktree, for a session in one), as the project's + does for the project. A read row offers Mark as unread, Pin and Archive; an unread one Mark as read
  * instead; a working one (or one that needs you) Pin, Stop and Archive, where Archive asks first (Stop and archive); an
  * archived one Unarchive; a run's tree Pin and Archive. "Archive only" keeps Archive, and Stop on working rows. A row
  * working in another app has no Stop: nothing here can stop it.
@@ -79,6 +90,7 @@ export function quickActionsFor(row: QuickActionRow, prefs: QuickActionPrefs): Q
   if (row.archived) return canArchive ? [{ kind: 'unarchive', method: 'unarchive', label: 'Reopen', shortcut: 'sidebar.quick-archive' }] : [];
   const all = prefs.quickActionsShow === 'all';
   const busy = working(row.status);
+  const fresh: QuickAction[] = all && row.folder ? [{ kind: 'new', method: 'newHere', label: 'New session here', tooltip: `New session in ${basename(row.folder)}`, shortcut: null }] : [];
   const read: QuickAction[] =
     all && !busy && row.readable && !row.tree
       ? [row.unread ? { kind: 'read', method: 'markRead', label: 'Mark as read', shortcut: 'sidebar.quick-read' } : { kind: 'read', method: 'markUnread', label: 'Mark as unread', shortcut: 'sidebar.quick-read' }]
@@ -86,7 +98,7 @@ export function quickActionsFor(row: QuickActionRow, prefs: QuickActionPrefs): Q
   const pin: QuickAction[] = all && row.flags ? [row.pinned ? { kind: 'pin', method: 'unpin', label: 'Unpin', shortcut: 'sidebar.quick-pin' } : { kind: 'pin', method: 'pin', label: 'Pin', shortcut: 'sidebar.quick-pin' }] : [];
   const stop: QuickAction[] = busy && row.canStop ? [{ kind: 'stop', method: 'stop', label: 'Stop', shortcut: null }] : [];
   const archive: QuickAction[] = canArchive ? [{ kind: 'archive', method: 'archive', label: 'Done', shortcut: 'sidebar.quick-archive' }] : [];
-  return [...read, ...pin, ...stop, ...archive];
+  return [...fresh, ...read, ...pin, ...stop, ...archive];
 }
 
 /**
@@ -100,7 +112,7 @@ export function quickActionForKey(key: 'archive' | 'read' | 'pin', row: QuickAct
   return every.find((action) => action.kind === key) ?? null;
 }
 
-/** The toast after a quick action: what was done, in the words of its menu item. Stop has none. */
+/** The toast after a quick action: what was done, in the words of its menu item. Stop and New session here have none. */
 export function quickActionToast(method: QuickActionMethod, title: string, left: string | null = null): string | null {
   switch (method) {
     case 'markRead':
@@ -117,12 +129,13 @@ export function quickActionToast(method: QuickActionMethod, title: string, left:
     case 'unarchive':
       return `Reopened “${title}”`;
     case 'stop':
+    case 'newHere':
       return null;
   }
 }
 
 /** The action that takes one back: Undo after a quick action. */
-export const QUICK_UNDO: Record<Exclude<QuickActionMethod, 'stop'>, QuickActionMethod> = {
+export const QUICK_UNDO: Record<Exclude<QuickActionMethod, 'stop' | 'newHere'>, QuickActionMethod> = {
   markRead: 'markUnread',
   markUnread: 'markRead',
   pin: 'unpin',

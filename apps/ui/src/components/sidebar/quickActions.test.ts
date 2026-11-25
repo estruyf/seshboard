@@ -12,6 +12,7 @@ const row = (over: Partial<QuickActionRow> = {}): QuickActionRow => ({
   readable: true,
   tree: false,
   canStop: false,
+  folder: null,
   ...over,
 });
 const ALL: QuickActionPrefs = { quickActions: true, quickActionsShow: 'all' };
@@ -70,6 +71,18 @@ describe('quickActionsFor', () => {
     expect(kinds(row({ status: 'running', canStop: true }), ARCHIVE_ONLY)).toEqual(['stop', 'archive']);
   });
 
+  it('a row with a folder starts with New session here, named after the folder', () => {
+    const folder = '/work/intranet/.claude/worktrees/vivid-river';
+    expect(kinds(row({ folder }))).toEqual(['newHere', 'markUnread', 'pin', 'archive']);
+    expect(kinds(row({ folder, status: 'running', canStop: true }))).toEqual(['newHere', 'pin', 'stop', 'archive']);
+    expect(quickActionsFor(row({ folder }), ALL)[0]).toMatchObject({ kind: 'new', label: 'New session here', tooltip: 'New session in vivid-river', shortcut: null });
+  });
+
+  it('New session here waits for "All", and leaves archived rows alone', () => {
+    expect(kinds(row({ folder: '/work/a' }), ARCHIVE_ONLY)).toEqual(['archive']);
+    expect(kinds(row({ folder: '/work/a', archived: true }))).toEqual(['unarchive']);
+  });
+
   it('off shows nothing', () => {
     expect(kinds(row(), { quickActions: false, quickActionsShow: 'all' })).toEqual([]);
   });
@@ -106,6 +119,7 @@ describe('toasts and undo', () => {
     expect(quickActionToast('markRead', 'x')).toBe('Marked as read');
     expect(quickActionToast('pin', 'x')).toBe('Pinned');
     expect(quickActionToast('stop', 'x')).toBeNull();
+    expect(quickActionToast('newHere', 'x')).toBeNull();
   });
 
   it('every action but Stop has its way back, and undoing twice is where it started', () => {
@@ -120,6 +134,12 @@ describe('quickRowOf', () => {
   it('a session here: flags, a read state, Stop only while Seshboard runs it', () => {
     expect(quickRowOf(data(), false, { hosted: false, runs: [] })).toMatchObject({ flags: true, readable: true, tree: false, canStop: false });
     expect(quickRowOf(data(), false, { hosted: true, runs: [] }).canStop).toBe(true);
+  });
+
+  it('the folder is the session’s own, none for another computer or a run row', () => {
+    expect(quickRowOf(data({ summary: { cwd: '/work/a/wt' } as SessionRowData['summary'] }), false, { hosted: false, runs: [] }).folder).toBe('/work/a/wt');
+    expect(quickRowOf(data({ summary: null }), false, { hosted: false, runs: [] }).folder).toBeNull();
+    expect(quickRowOf(data({ summary: { cwd: '/work/a' } as SessionRowData['summary'], remote: { offline: false } as unknown as SessionRowData['remote'] }), false, { hosted: false, runs: [] }).folder).toBeNull();
   });
 
   it('a session still starting has no flags', () => {

@@ -15365,7 +15365,8 @@ async function runRenameStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Quick actions on hover: hovering a finished session shows its buttons, Archive moves it under Archived with a toast,
- * and Undo brings it back. Archive on a working session asks first (Cancel keeps it). U on the focused row marks it
+ * and Undo brings it back. New session here opens New session in the session's folder. Archive on a working session
+ * asks first (Cancel keeps it). U on the focused row marks it
  * unread, and ⌘Z takes that back. Flags live in the throwaway profile.
  */
 async function runQuickActionsStep(win: BrowserWindow): Promise<string> {
@@ -15405,7 +15406,7 @@ async function runQuickActionsStep(win: BrowserWindow): Promise<string> {
   if (!(await hover(id))) return 'hovering a finished session showed no buttons';
   await shot(win, 'sidebar-quick-actions.png');
   const shown = await actions(id);
-  if (!/^(read,)?pin,archive$/.test(shown)) return `a finished session shows ${shown || 'nothing'}, not Mark read, Pin and Done`;
+  if (!/^new,(read,)?pin,archive$/.test(shown)) return `a finished session shows ${shown || 'nothing'}, not New session here, Mark read, Pin and Done`;
   const label = (await js(`${toolbar(id)}.querySelector('[data-row-action="archive"]').dataset.tooltip`)) as string;
   if (!/^Done \(E\)$/.test(label)) return `the Done tooltip says “${label}”`;
   await js(`${toolbar(id)}.querySelector('[data-row-action="archive"]').click()`);
@@ -15416,6 +15417,18 @@ async function runQuickActionsStep(win: BrowserWindow): Promise<string> {
   // 2. Undo puts it back.
   await js("[...document.querySelectorAll('[data-quick-action-toast]')].at(-1).querySelector('[data-toast-undo]').click()");
   if (!(await waitInPage(win, `(${list}.scrollTop = 0, ${inMainList(id)})`, 3_000))) return 'Undo did not bring the session back';
+
+  // 2b. New session here opens New session in the session's own folder (its worktree, for one in a worktree).
+  if (!(await hover(id))) return 'hovering the session again showed no buttons';
+  const newTip = (await js(`${toolbar(id)}.querySelector('[data-row-action="new"]').dataset.tooltip`)) as string;
+  const folderName = /^New session in (.+)$/.exec(newTip)?.[1];
+  if (!folderName) return `the New session here tooltip says “${newTip}”`;
+  await js(`${toolbar(id)}.querySelector('[data-row-action="new"]').click()`);
+  const picked = `document.querySelector('[data-new-session-view] [data-folder-select]')?.dataset.value ?? ''`;
+  // A Windows path ends in a backslash and the name, the others in a slash and the name.
+  if (!(await waitInPage(win, `[${JSON.stringify('/' + folderName)}, ${JSON.stringify('\\' + folderName)}].some((end) => (${picked}).endsWith(end))`, 3_000))) return `New session here did not open New session in ${folderName}: ${await js(picked)}`;
+  await js(`${row(id)}.click()`);
+  if (!(await waitInPage(win, '!document.querySelector("[data-new-session-view]")', 3_000))) return 'the session did not open again after New session here';
 
   // 3. A working session: Archive asks first, and Cancel keeps it where it is. The demo lists none (its working sessions
   // are on the second profile), so there one is made to look busy: an entry in the made-up home's live registry, kept
@@ -15458,7 +15471,7 @@ async function runQuickActionsStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, unread(id), 2_000))) return 'U on the focused row did not mark it unread';
   await key('z', true);
   if (!(await waitInPage(win, `!${unread(id)}`, 2_000))) return '⌘Z did not undo Mark as unread';
-  return `ok: hover showed Mark read, Pin and Archive; Archive and Undo; ${working}; U and ⌘Z`;
+  return `ok: hover showed New session here, Mark read, Pin and Archive; Archive and Undo; New session here in ${folderName}; ${working}; U and ⌘Z`;
 }
 
 /**

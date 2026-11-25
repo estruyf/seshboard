@@ -185,7 +185,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'quick-actions-show',
       page: 'sidebar',
       label: 'Show',
-      detail: 'Quick actions on hover: Done only, or Read · Pin · Done.',
+      detail: 'Quick actions on hover: Done only, or New · Read · Pin · Done.',
       keywords: 'hover archive done quick actions mark as read pin buttons done only',
       target: '[data-quick-actions-show]',
       // Only while Quick actions on hover is on.

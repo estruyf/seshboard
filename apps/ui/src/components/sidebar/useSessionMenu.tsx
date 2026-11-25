@@ -176,6 +176,14 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
 
   const runMethod = (method: QuickActionMethod, data: SessionRowData, then?: () => void) => {
     switch (method) {
+      case 'newHere': {
+        // The session's own folder, so one in a worktree starts the new one in that worktree.
+        const folder = data.summary?.cwd;
+        if (!folder) return;
+        useProjects.getState().startIn(folder);
+        useSessions.getState().openNewSession();
+        return then?.();
+      }
       case 'markRead':
         markRead(data);
         return then?.();
@@ -195,7 +203,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   };
 
   const quickAction = (method: QuickActionMethod, data: SessionRowData) => {
-    if (method === 'stop') return runMethod(method, data);
+    if (method === 'stop' || method === 'newHere') return runMethod(method, data);
     // Done with something left behind says what (an unsent message asks first, elsewhere).
     const queued = useLater.getState().items.some((item) => item.waitFor.kind === 'session' && item.waitFor.sessionId === data.id);
     const left = method === 'archive' ? leftBehind(rowLooseEnds(useLooseEnds.getState().byOwner.get(data.id) ?? [], { draft: false, queued })) : null;

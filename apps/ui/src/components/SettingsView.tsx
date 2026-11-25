@@ -306,7 +306,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 onChange={(quickActionsShow) => update({ quickActionsShow })}
                 segments={[
                   { value: 'archive', label: 'Done only', data: { 'data-quick-actions-show': 'archive' } },
-                  { value: 'all', label: 'Read · Pin · Done', data: { 'data-quick-actions-show': 'all' } },
+                  { value: 'all', label: 'New · Read · Pin · Done', data: { 'data-quick-actions-show': 'all' } },
                 ]}
                 className="shrink-0"
               />

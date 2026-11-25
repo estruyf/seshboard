@@ -3592,8 +3592,13 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:sidebar-quick-actions-new-here",
+      "name": "New session here: a + on a session row starts a session in its folder or worktree",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "feature:sidebar-quick-actions-setting",
-      "name": "Settings › Sidebar: Quick actions on hover, and Show (Done only or Read · Pin · Done)",
+      "name": "Settings › Sidebar: Quick actions on hover, and Show (Done only or New · Read · Pin · Done)",
       "page": "sessions/sidebar"
     },
     {

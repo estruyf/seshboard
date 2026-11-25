@@ -1,9 +1,10 @@
-import { Check, ChevronRight, Mail, MailOpen, Pin, PinOff, RotateCcw, Square } from 'lucide-react';
+import { Check, ChevronRight, Mail, MailOpen, Pin, PinOff, Plus, RotateCcw, Square } from 'lucide-react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import type { QuickAction, QuickActionMethod } from './quickActions.ts';
 
 const ICON: Record<QuickActionMethod, ReactNode> = {
+  newHere: <Plus size={14} aria-hidden />,
   markRead: <MailOpen size={13} aria-hidden />,
   markUnread: <Mail size={13} aria-hidden />,
   pin: <Pin size={13} aria-hidden />,
@@ -77,8 +78,8 @@ export function RowActions({ id, title, actions, tree, tabbable, onAction }: { i
           key={action.kind}
           type="button"
           tabIndex={tabbable ? 0 : -1}
-          aria-label={`${action.label} ${title}`}
-          data-tooltip={action.shortcut ? `${action.label} (${formatKeys(keysFor(action.shortcut))})` : action.label}
+          aria-label={action.kind === 'new' ? `${action.tooltip ?? action.label}, beside ${title}` : `${action.label} ${title}`}
+          data-tooltip={action.shortcut ? `${action.label} (${formatKeys(keysFor(action.shortcut))})` : (action.tooltip ?? action.label)}
           data-row-action={action.kind}
           // The row never opens or changes the selection from here.
           onMouseDown={(event) => event.stopPropagation()}
