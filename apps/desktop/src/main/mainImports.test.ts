@@ -127,6 +127,7 @@ const PROTOCOL_FILES_MAIN_REACHES = [
   'sessionLinks.ts',
   'sessionNote.ts',
   'sideQuestionConstants.ts',
+  'sitePages.ts',
   'skimMarks.ts',
   'streamBlock.ts',
   'theme.ts',

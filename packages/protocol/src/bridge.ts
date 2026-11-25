@@ -68,6 +68,7 @@ export const IpcChannel = {
   updateState: "seshboard:update-state",
   updateCommand: "seshboard:update-command",
   deepLink: "seshboard:deep-link",
+  startFromPage: "seshboard:start-from-page",
   getThemes: "seshboard:get-themes",
   themesChanged: "seshboard:themes-changed",
   themeCommand: "seshboard:theme-command",
@@ -1152,6 +1153,8 @@ export type DeepLink =
        */
       issue?: string | null;
       pr?: string | null;
+      /** Opened from a page in the browser (its Start session), never from a `seshboard://` link: the banner says so. */
+      from?: "browser";
     }
   | { action: "session"; sessionId: string };
 
@@ -1271,6 +1274,11 @@ export interface SeshboardBridge {
   setWindowButtons(position: "default" | "rail"): void;
   /** A `seshboard://` link was opened (main holds links until this window's renderer is ready). */
   onDeepLink(listener: (message: DeepLinkMessage) => void): () => void;
+  /**
+   * The browser's Start session on a GitHub pull request or issue (`githubPage`): main reads the address again and
+   * opens New session in the main window, filled in from it. Any other address does nothing.
+   */
+  startFromPage(url: string): void;
   /** Every theme, read once when the page loads (with the preferences), so the first paint has the right colours. */
   readonly themes: ThemeState;
   /** Fires after a theme is added, removed, or its file in the themes folder changes. */

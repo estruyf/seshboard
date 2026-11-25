@@ -907,6 +907,11 @@
       "page": "browser/in-a-session"
     },
     {
+      "id": "feature:browser-start-session",
+      "name": "Start session on a GitHub pull request or issue in the browser: New session in a checkout of its repository, filled in from it",
+      "page": "browser/tabs-and-pages"
+    },
+    {
       "id": "feature:browser-own-window",
       "name": "A session's browser in a window of its own, with all its tabs, and Move back to the session",
       "page": "browser/in-a-session"

@@ -9,7 +9,7 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChann
 import { APP_ICONS, DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
-import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { githubPage, previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
@@ -1200,6 +1200,19 @@ function openDeepLink(url: string): void {
   deliverLinkMessage(parsed.ok ? { link: parsed.link } : { error: parsed.error });
 }
 
+/**
+ * The browser's Start session (the address bar's button, the page menu's entry): New session in the main window, filled
+ * in from the GitHub pull request or issue the page shows, in a checkout of its repository. Like a link with `pr` or
+ * `issue`, it never starts on its own. The address is read again here, so a window can only name a page.
+ */
+function startFromPage(url: string): void {
+  const page = githubPage(url);
+  if (!page) return;
+  const ref = String(page.number);
+  console.log(`[main] start from page: ${page.type}`);
+  deliverLinkMessage({ link: { action: 'new-session', prompt: null, cwd: null, project: null, repo: page.repo, autostart: false, question: false, ...(page.type === 'pr' ? { pr: ref } : { issue: ref }), from: 'browser' } });
+}
+
 /** Hands a link (or why one was refused) to the window, or keeps it until the window is ready. */
 function deliverLinkMessage(message: DeepLinkMessage): void {
   if (!app.isReady()) {
@@ -1743,6 +1756,9 @@ const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'g
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
+});
+ipcMain.on(IpcChannel.startFromPage, (_event, url: unknown) => {
+  if (typeof url === 'string' && url.length <= 4096) startFromPage(url);
 });
 // Unsent messages typed in one window show in the others (only the main window saves them).
 ipcMain.on(IpcChannel.relayDrafts, (event, change: unknown) => {
@@ -10267,6 +10283,28 @@ async function attachedRowInDemo(win: BrowserWindow): Promise<string> {
   return 'the demo message showed Attached: #87 with What Claude got';
 }
 
+/**
+ * The browser's Start session, read-only (its button and its page menu entry both end here): main reads a pull
+ * request's address on any of its tabs and opens New session looking for a checkout of its repository, never starting.
+ * An address that isn't a GitHub pull request or issue does nothing. Nothing is sent.
+ */
+async function runStartFromPageStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const hint = "document.querySelector('[data-route-hint]')?.innerText ?? ''";
+  startFromPage('https://github.com/switchboard-smoke/no-such-repo/pull/151/files');
+  if (!(await waitInPage(win, `!!document.querySelector('[data-new-session-view]') && document.querySelector('[data-folder-select]')?.dataset.value === '' && (${hint}).includes('switchboard-smoke/no-such-repo')`, 20_000))) {
+    return `Start session on a pull request did not open New session for its repository (${String(await js(hint))})`;
+  }
+  // Showing that something did not happen: other pages give the time a link would take to arrive.
+  startFromPage('https://example.com/switchboard-smoke/other-repo/pull/1');
+  startFromPage('https://github.com/switchboard-smoke/other-repo/pulls');
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  if ((await js(hint)).includes('other-repo')) return 'Start session acted on a page that is not a pull request or issue';
+  if (await js("!!document.querySelector('[data-current-session]')")) return 'Start session started a session';
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  return 'ok: a pull request page opened New session for its repository without starting; other pages did nothing';
+}
+
 async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const prompt = 'Smoke test from a link:\nsummarise this folder.';
@@ -15754,6 +15792,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session view', () => runNewSessionStep(win));
   // Finding a checkout of an unknown repository walks the folders on disk.
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
+  await step('start session from a page in the browser', () => runStartFromPageStep(win), { timeoutMs: 45_000 });
   await step('shell command: Settings installs and removes seshboard, sesh and switchboard, a folder argument opens New session', () => runShellCommandStep(win));
   await step('# lists issues and pull requests (fake gh), ↩ adds a chip, Esc keeps typing, an Attached row (nothing sent)', () => runGithubListStep(win), { timeoutMs: 45_000 });
   await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
@@ -15970,7 +16009,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 
 app.whenReady().then(() => {
   protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
-  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().browserEnabled, preview: () => preferences.get().webPreview, askFirst: !scripted, downloadsDir: () => (scripted ? smokeDownloads() : app.getPath('downloads')) });
+  installWebPreviewGuards({ openExternal: (url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)), browser: () => preferences.get().browserEnabled, preview: () => preferences.get().webPreview, askFirst: !scripted, downloadsDir: () => (scripted ? smokeDownloads() : app.getPath('downloads')), startFromPage });
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);

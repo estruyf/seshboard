@@ -16,8 +16,8 @@ export interface GithubStartRequest {
   ref: string;
   /** What the `#` list already showed, so New session fills in before gh answers. */
   item: GithubListItem | null;
-  /** Opened from a `seshboard://` link: its own prompt, and whether it asked to start on its own (refused). */
-  link: { prompt: string | null; autostart: boolean } | null;
+  /** Opened from a `seshboard://` link: its own prompt, and whether it asked to start on its own (refused). `from` the browser's Start session. */
+  link: { prompt: string | null; autostart: boolean; from?: 'browser' } | null;
   seq: number;
 }
 

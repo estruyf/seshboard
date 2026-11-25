@@ -276,7 +276,7 @@ function LocalNewSession() {
   const githubRequest = useGithubStart((s) => s.request);
   const startUnderRequest = useStartUnder((s) => s.request);
   /** A link's issue or pull request, waiting for the link's folder (a `repo` is looked up first). */
-  const [linkGithub, setLinkGithub] = useState<{ type: 'issue' | 'pr'; ref: string; prompt: string | null; autostart: boolean } | null>(null);
+  const [linkGithub, setLinkGithub] = useState<{ type: 'issue' | 'pr'; ref: string; prompt: string | null; autostart: boolean; from?: 'browser' } | null>(null);
   // Clone from GitHub: the form (kept in the store, so Run on can move it to another computer) and its clone here.
   const cloneEnabled = useCloneEnabled();
   const cloneForm = useClone((s) => s.form);
@@ -485,7 +485,7 @@ function LocalNewSession() {
     if (!link.cwd && !link.repo) setPickerRequest((n) => n + 1);
     // An issue or pull request: filled in once its folder is known (below), and never started on its own.
     const githubType = link.issue ? 'issue' : link.pr ? 'pr' : null;
-    setLinkGithub(githubType ? { type: githubType, ref: (link.issue ?? link.pr)!, prompt: link.prompt, autostart: link.autostart } : null);
+    setLinkGithub(githubType ? { type: githubType, ref: (link.issue ?? link.pr)!, prompt: link.prompt, autostart: link.autostart, from: link.from } : null);
     setFromGithub(null);
     if (githubType) {
       setPendingStart(null);
@@ -716,7 +716,7 @@ function LocalNewSession() {
   useEffect(() => {
     if (!linkGithub || !cwd || linkRepo) return;
     setLinkGithub(null);
-    startFromGithub({ root: cwd, type: linkGithub.type, ref: linkGithub.ref, item: null, link: { prompt: linkGithub.prompt, autostart: linkGithub.autostart } });
+    startFromGithub({ root: cwd, type: linkGithub.type, ref: linkGithub.ref, item: null, link: { prompt: linkGithub.prompt, autostart: linkGithub.autostart, from: linkGithub.from } });
   }, [linkGithub, cwd, linkRepo]);
   // Find a checkout of the link's repository among your projects and folders with sessions.
   const lookingFor = linkRepo?.state === 'looking' ? linkRepo.repo : null;
@@ -1600,7 +1600,7 @@ function LocalNewSession() {
             <div className="grid shrink-0 gap-2" data-from-link-banner={fromGithub.request.link ? true : undefined}>
               {fromGithub.request.link && (
                 <Notice tone="info" icon={<GitBranch size={14} aria-hidden />}>
-                  {linkBanner(fromGithub.request.type, githubNumber)}
+                  {linkBanner(fromGithub.request.type, githubNumber, fromGithub.request.link.from)}
                 </Notice>
               )}
               {fromGithub.request.link?.autostart && (

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, shell, webContents, type DownloadItem, type Session, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
-import { isBrowserPartition, localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { githubPage, isBrowserPartition, localPreviewUrl, startFromPageLabel, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
 import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
 import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, CANVAS_CSS, needsCanvas, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
@@ -34,6 +34,8 @@ export interface WebPreviewGuardDeps {
   askFirst: boolean;
   /** Where pages' downloads go: the Downloads folder, or a folder in the throwaway profile in a smoke run. */
   downloadsDir(): string;
+  /** The page menu's Start session: New session in the main window, from the GitHub pull request or issue at `url`. */
+  startFromPage(url: string): void;
 }
 
 /** Files pages downloaded this run: the only paths Show in Finder will reveal. */
@@ -297,7 +299,7 @@ async function openAppLink(host: WebContents, url: string, deps: WebPreviewGuard
 }
 
 /** Runs an entry of a page's right-click menu against the page (the smoke run calls it too, as the menu can't be clicked). */
-export function runPageMenuEntry(host: WebContents, guest: WebContents, params: Pick<Electron.ContextMenuParams, 'x' | 'y' | 'linkURL' | 'srcURL' | 'selectionText'>, id: PageMenuEntryId | 'spelling', word?: string) {
+export function runPageMenuEntry(host: WebContents, guest: WebContents, params: Pick<Electron.ContextMenuParams, 'x' | 'y' | 'linkURL' | 'srcURL' | 'selectionText'>, id: Exclude<PageMenuEntryId, 'start-session'> | 'spelling', word?: string) {
   if (guest.isDestroyed()) return;
   switch (id) {
     case 'spelling':
@@ -340,8 +342,10 @@ export const isSessionPage = (contentsId: number): boolean => sessionPages.has(c
 
 /** A page's right-click menu (`pageMenuEntries`), run here against the page, over `owner` (the page's window, or a sign-in window's own). */
 function showPageMenu(host: WebContents, guest: WebContents, params: Electron.ContextMenuParams, deps: WebPreviewGuardDeps, owner = BrowserWindow.fromWebContents(host)): void {
-  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward(), session: sessionPages.has(guest.id) });
-  const run = (id: PageMenuEntryId | 'spelling', word?: string) => runPageMenuEntry(host, guest, params, id, word);
+  const github = deps.browser() ? githubPage(guest.getURL()) : null;
+  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward(), session: sessionPages.has(guest.id), start: github && startFromPageLabel(github) });
+  // Start session leaves the page for New session, which main opens: the page's address is read again when it runs.
+  const run = (id: PageMenuEntryId | 'spelling', word?: string) => (id === 'start-session' ? deps.startFromPage(guest.getURL()) : runPageMenuEntry(host, guest, params, id, word));
   const menu = Menu.buildFromTemplate(
     entries.map((entry) => (entry === 'separator' ? { type: 'separator' as const } : entry.id === 'spelling' ? { label: entry.label, click: () => run('spelling', entry.word) } : { label: entry.label, enabled: entry.enabled, click: () => run(entry.id) })),
   );
