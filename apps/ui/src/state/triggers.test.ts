@@ -219,7 +219,7 @@ describe('a trigger that starts a pipeline', () => {
 });
 
 describe('the Triggers tab', () => {
-  const event = (over: Partial<TriggerEvent>): TriggerEvent => ({ id: 'e', triggerId: 't', key: '#214', kind: 'issue', title: 'Archive keeps the scroll position', url: '', fields: { number: '214' }, status: 'waiting', reason: null, sessionId: null, runId: null, itemId: null, label: null, reassignedTo: null, createdAt: 1, startedAt: null, ...over });
+  const event = (over: Partial<TriggerEvent>): TriggerEvent => ({ id: 'e', triggerId: 't', key: '#214', kind: 'issue', title: 'Archive keeps the scroll position', url: '', fields: { number: '214' }, status: 'waiting', reason: null, sessionId: null, runId: null, itemId: null, label: null, reassignedTo: null, doneAt: null, createdAt: 1, startedAt: null, ...over });
 
   it('says how busy a trigger is', () => {
     expect(statusPill({ paused: false }, { busy: 2, max: 3, waiting: 0 })).toEqual({ text: '2 of 3 busy', tone: 'working' });

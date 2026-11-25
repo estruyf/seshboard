@@ -6,6 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Triggers can mark their work done.** Turn on **Mark done when it finishes** in a trigger. A session it started goes to **Done** once Claude finishes without an error, so it doesn't wait in **To review**. For a trigger that starts a pipeline, the run goes to Done when it is done. A session that fails or is stopped stays for you. Done sessions don't count toward your focus limit.
 - **Start a session in the same folder from the sidebar.** Point at a session and click **+** to open **New session** in that session's folder. For a session in a worktree, the new one starts in the same worktree. It shows when **Quick actions on hover** is set to **New · Read · Pin · Done** (the default).
 - **Put project actions in your order, and see more of them.** Drag an action's pill above the message box, or an action in **Project actions**, to move it. On a focused pill, ⌥← and ⌥→ move it too. The order is kept for each project. The message box now shows as many actions as fit beside it, and the rest go in **N more**.
 - **Open a changed file in Files.** In **Changes**, a file's row has **Open in Files** next to **Open in editor**. It shows the whole file in the Files panel, with the lines Claude changed marked.
@@ -42,6 +43,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Review triggers start when the pull request's branch is in use.** A review used to be skipped with "is checked out in" when another worktree had the branch, such as an earlier review or the session that wrote the pull request. The review now gets its own branch at the pull request's latest commit, and the other worktree stays as it is. A push from the review doesn't update the pull request.
 - **Sessions started by a sub-session show in the sidebar.** A sub-session with sessions of its own now has an arrow to show them, in the sidebar and on your phone. Before, they were missing. When one of them needs you, the top row says so too.
 - **Sessions a session started show under it right away.** They are under that session in the sidebar and on your phone, with their titles, while they start. An orchestrator's sessions show under it on your phone from the start too. Before, a starting session showed on its own as New session until Claude Code wrote its first message.
 - **No toast for each queued message on another computer.** A message you send while Claude works on another computer no longer shows an "Added to Up next" toast over the message box. It shows in Up next, right above the box, with **Send now**.

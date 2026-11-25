@@ -271,6 +271,12 @@ export const WorktreeBranchBase = z.object({
   pullRequest: z.number().int().positive().optional(),
   /** The pull request is from a fork: its branch isn't on this repository's remote, so the worktree tracks nothing. */
   fork: z.boolean().optional(),
+  /**
+   * A pull request's branch checked out in another folder (the session that wrote it, an earlier review): `ownBranch`
+   * makes the worktree a branch of its own from the pull request's latest commit, tracking nothing, instead of refusing.
+   * A trigger's review asks for it: a push from there doesn't update the pull request.
+   */
+  ifTaken: z.literal('ownBranch').optional(),
 });
 export type WorktreeBranchBase = z.infer<typeof WorktreeBranchBase>;
 

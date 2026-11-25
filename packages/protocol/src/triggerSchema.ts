@@ -113,6 +113,11 @@ export const Trigger = z.object({
   stateLabels: StateLabels.default(StateLabels.parse({})),
   /** Assign the issue to you when its work is picked up; issues that already have an assignee are skipped. */
   assignOnPickUp: z.boolean().default(false),
+  /**
+   * Move what it started to Done once it finishes: a session whose turn ended without an error, or a pipeline run that
+   * is done. It stays out of To review, and out of the focus limit's count. One stopped or failed stays for you.
+   */
+  doneWhenFinished: z.boolean().default(false),
   paused: z.boolean().default(false),
   /** Why Seshboard paused it ("gh is signed out"); null when you paused it, or it runs. */
   pausedReason: z.string().max(300).nullable().default(null),
@@ -180,6 +185,8 @@ export const TriggerEvent = z.object({
   label: z.string().max(50).nullable().default(null),
   /** Who has the issue now, when it was assigned to someone else while its session works. */
   reassignedTo: z.string().max(100).nullable().default(null),
+  /** When Seshboard moved its session (or run) to Done (`doneWhenFinished`); it does that once. */
+  doneAt: z.number().nullable().default(null),
   createdAt: z.number(),
   startedAt: z.number().nullable().default(null),
 });

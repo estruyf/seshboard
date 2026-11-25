@@ -41,7 +41,7 @@ async function checkedOutAt(root: string, branch: string): Promise<string | null
  *   With `remote`, or when only the remote has the branch, it starts from the remote's copy, fetched first.
  *
  * Refuses (WorktreeFromError, git's first useful line) when the folder is taken, the branch is checked out somewhere
- * else, or git says no. Nothing is pushed.
+ * else (unless `ifTaken` is `ownBranch`: a pull request then gets `review-<n>-<name>`), or git says no. Nothing is pushed.
  */
 export async function makeWorktreeFrom(root: string, name: string, base: WorktreeBranchBase & { fork?: boolean }, options: WorktreeOptions & { remote?: string } = {}): Promise<{ path: string; branch: string }> {
   const path = worktreePath(root, name);
@@ -60,6 +60,15 @@ export async function makeWorktreeFrom(root: string, name: string, base: Worktre
 
   if (base.pullRequest) {
     const elsewhere = await checkedOutAt(root, base.branch);
+    if (elsewhere && base.ifTaken === 'ownBranch') {
+      // Git checks a branch out in one folder at a time. A branch of its own at the pull request's latest commit, made
+      // by the fetch, tracking nothing: the other folder is left as it is.
+      const own = `review-${base.pullRequest}-${name}`;
+      await run(['fetch', '--quiet', remote, `pull/${base.pullRequest}/head:refs/heads/${own}`], 120_000);
+      await run(['worktree', 'add', '--quiet', path, own]);
+      await copyIncluded(root, path);
+      return { path, branch: own };
+    }
     if (elsewhere) throw new WorktreeFromError(`${base.branch} is checked out in ${elsewhere}. Work on it there, or switch that folder to another branch first.`);
     // Without `+`: a local branch with commits the pull request doesn't have is never overwritten.
     await run(['fetch', '--quiet', remote, `pull/${base.pullRequest}/head:${base.branch}`], 120_000);

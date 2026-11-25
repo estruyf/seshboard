@@ -79,6 +79,8 @@ export interface TriggerForm {
   unattended: boolean;
   /** A pipeline's Push opens the pull request without waiting for you. */
   autoPush: boolean;
+  /** What it started moves to Done once it finished cleanly, instead of waiting in To review. */
+  doneWhenFinished: boolean;
   profileId: string | null;
   model: string | null;
   effort: Effort | null;
@@ -145,6 +147,7 @@ export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | 
     pipelineId: from.pipelineId ?? null,
     unattended: false,
     autoPush: false,
+    doneWhenFinished: false,
     profileId: from.profileId ?? null,
     model: from.model ?? defaults?.model ?? null,
     effort: from.effort ?? defaults?.effort ?? null,
@@ -185,6 +188,7 @@ export function triggerForm(trigger: Trigger): TriggerForm {
     pipelineId: trigger.start?.kind === 'pipeline' ? trigger.start.pipelineId : null,
     unattended: trigger.start?.kind === 'pipeline' && trigger.start.unattended,
     autoPush: trigger.start?.kind === 'pipeline' && trigger.start.autoPush,
+    doneWhenFinished: trigger.doneWhenFinished ?? false,
     profileId: trigger.draft.profileId,
     model: trigger.draft.model,
     effort: trigger.draft.effort,
@@ -268,6 +272,7 @@ export function formToSave(form: TriggerForm): TriggerSave {
     // State labels are for issues and reviews; Assign to me for a label alone, since with an assignee every issue has one.
     stateLabels: hasStateLabels(form.kind) ? form.stateLabels : { ...form.stateLabels, on: false },
     assignOnPickUp: issues && form.which === 'label' && form.assignOnPickUp,
+    doneWhenFinished: form.doneWhenFinished,
     paused: form.paused,
   };
 }

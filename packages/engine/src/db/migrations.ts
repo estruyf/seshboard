@@ -1074,4 +1074,11 @@ export const migrations: readonly string[] = [
     ids        TEXT NOT NULL
   );
   `,
+
+  // v69: A trigger can move what it started to Done once it finishes (`done_when_finished`); `done_at` says it did, so
+  // a session you brought back from Done isn't moved there again.
+  `
+  ALTER TABLE triggers ADD COLUMN done_when_finished INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE trigger_events ADD COLUMN done_at INTEGER;
+  `,
 ];

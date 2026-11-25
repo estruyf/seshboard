@@ -10,7 +10,7 @@ import type { RunHold } from '../schedules/scheduler.ts';
 import { removeDir } from '../util/removeDir.ts';
 import type { GhRun } from './sources/gh.ts';
 import { TriggerStore } from './triggerStore.ts';
-import { TriggerWatcher } from './watcher.ts';
+import { DONE_QUIET_MS, TriggerWatcher } from './watcher.ts';
 
 const FAKE_GH = resolve(import.meta.dirname, '../../../../tests/fixtures/fake-gh-triggers.cjs');
 const START = Date.parse('2026-10-20T10:00:00Z');
@@ -94,11 +94,17 @@ function world(initial: FakeState = {}) {
   const pipelines = new Map<string, Pipeline>(builtInPipelines().map((p) => [p.id, p]));
   const runs = new Map<string, PipelineRunState>();
   const runStarts: Array<{ pipelineId: string; projectRoot: string; profileId: string | null; task: string; title: string; context: string | null; id: string }> = [];
+  /** When each session's transcript last changed; START when not set. */
+  const activity = new Map<string, number>();
+  /** What `markDone` moved to Done: a session's id, or `run:<id>`. */
+  const done: string[] = [];
   const watcher = new TriggerWatcher({
     store,
     gh,
     folderExists: () => true,
     sessionState: (id) => sessions.get(id) ?? null,
+    lastActivity: (id) => activity.get(id) ?? START,
+    markDone: (target) => done.push('sessionId' in target ? target.sessionId : `run:${target.runId}`),
     sessionPr: (id) => prs.get(id) ?? null,
     queued: () => true,
     hold: () => holds.next,
@@ -150,6 +156,9 @@ function world(initial: FakeState = {}) {
     pipelines,
     runs,
     runStarts,
+    activity,
+    done,
+    now: () => now,
     /** Moves a run on: its status, a pull request Push opened, a step's session. */
     setRun: (id: string, status: PipelineRunStatus, extra: { pr?: { number: number; url: string }; stepSession?: string } = {}) => runs.set(id, fakeRun(id, status, extra)),
     fake,
@@ -846,5 +855,77 @@ describe('reviews for you', () => {
     expect(w.started.map((s) => s.draft.pullRequest)).toEqual([{ number: 5, repo: 'o/r', branch: 'stranger/fix-typo', fork: true }]);
     expect(w.store.events().find((e) => e.key === '#6')).toMatchObject({ status: 'skipped', reason: "opened by someone outside the repository's collaborators" });
     expect(w.fake.calls().filter((c) => c[0] === 'pr' && c[1] !== 'list' && c[1] !== 'view')).toEqual([]);
+  });
+});
+
+describe('moving finished work to Done', () => {
+  /** A trigger with one issue started: session-1 works on it. */
+  async function startedOne(over: Partial<TriggerSave> = {}) {
+    const w = world();
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, ...over });
+    await w.watcher.check();
+    w.fake.write((s) => s.issues!.push(issue(5)));
+    await w.tick();
+    return w;
+  }
+
+  it('leaves a finished session in To review when the trigger doesn\'t say so', async () => {
+    const w = await startedOne();
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: true });
+    await w.tick(MINUTE);
+    expect(w.done).toEqual([]);
+  });
+
+  it('moves a session to Done once its turn ended cleanly and its transcript is quiet, and only once', async () => {
+    const w = await startedOne({ doneWhenFinished: true });
+    // Still working: nothing yet.
+    await w.tick(MINUTE);
+    expect(w.done).toEqual([]);
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: true });
+    // The transcript just changed: it waits for it to be quiet, or new activity would bring it straight back.
+    w.activity.set('session-1', w.now());
+    await w.tick(1_000);
+    expect(w.done).toEqual([]);
+    await w.tick(DONE_QUIET_MS);
+    expect(w.done).toEqual(['session-1']);
+    expect(w.store.events()).toMatchObject([{ key: '#5', doneAt: w.now() }]);
+    // Brought back from Done and finished again: it stays.
+    w.watcher.turnEnded('session-1', { ok: true });
+    await w.tick(MINUTE);
+    expect(w.done).toEqual(['session-1']);
+  });
+
+  it('leaves a session that failed or was stopped for you', async () => {
+    const w = await startedOne({ doneWhenFinished: true });
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: false });
+    await w.tick(MINUTE);
+    w.watcher.turnEnded('session-1', { ok: false, stopped: true });
+    await w.tick(MINUTE);
+    expect(w.done).toEqual([]);
+  });
+
+  it('moves a pipeline run to Done when it is done, not when it stopped', async () => {
+    const w = world();
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, start: { kind: 'pipeline', pipelineId: 'builtin-plan-execute-validate-push' }, doneWhenFinished: true });
+    await w.watcher.check();
+    w.fake.write((s) => s.issues!.push(issue(1), issue(2)));
+    await w.tick();
+    w.setRun('run-1', 'waiting');
+    w.setRun('run-2', 'stopped');
+    await w.tick(MINUTE);
+    expect(w.done).toEqual([]);
+    w.setRun('run-1', 'done');
+    await w.tick(MINUTE);
+    expect(w.done).toEqual(['run:run-1']);
+  });
+
+  it('keeps the choice across a save and a read', () => {
+    const w = world();
+    const t = w.save({ source: { kind: 'ci' }, doneWhenFinished: true });
+    expect(w.store.get(t.id)?.doneWhenFinished).toBe(true);
+    expect(w.store.get(w.save({ id: t.id, source: { kind: 'ci' } }).id)?.doneWhenFinished).toBe(false);
   });
 });

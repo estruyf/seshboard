@@ -5447,6 +5447,11 @@
       "page": "projects/triggers"
     },
     {
+      "id": "feature:trigger-done-when-finished",
+      "name": "Mark done when it finishes: a triggered session that ends without an error, or a pipeline run that is done, goes to Done instead of To review (and stops counting toward the focus limit)",
+      "page": "projects/triggers"
+    },
+    {
       "id": "feature:trigger-guardrails",
       "name": "Trigger guardrails: never bypass permissions, pause after 5 failed checks, the first check marks what is there as seen",
       "page": "projects/triggers"

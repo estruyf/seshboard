@@ -1943,7 +1943,8 @@ export function createEngine(options: EngineOptions): Engine {
     const pr = draft.pullRequest ?? null;
     const inWorktree = draft.workspace === 'worktree';
     return {
-      worktree: inWorktree ? { name: randomWorktreeName(), baseRef: pr ? { branch: pr.branch, pullRequest: pr.number, fork: pr.fork ?? false } : worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
+      // A review starts even when the branch is checked out elsewhere (the session that wrote it, an earlier review).
+      worktree: inWorktree ? { name: randomWorktreeName(), baseRef: pr ? { branch: pr.branch, pullRequest: pr.number, fork: pr.fork ?? false, ifTaken: 'ownBranch' as const } : worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
       checkoutBranch: inWorktree || pr ? null : (draft.branch ?? null),
       ...(pr && !inWorktree ? { checkoutPullRequest: { number: pr.number, repo: pr.repo } } : {}),
       ...(pr ? { github: { type: 'pr' as const, repo: pr.repo, number: pr.number, readOnly: false } } : {}),
@@ -2187,6 +2188,19 @@ export function createEngine(options: EngineOptions): Engine {
     gh: ghIn,
     folderExists: (cwd) => !!statSafe(cwd)?.isDirectory(),
     sessionState: scheduledState,
+    lastActivity: (id) => sessions.get(id)?.updatedAt ?? null,
+    // As Done in the sidebar (`sessions.setFlags`, `runs.archive`): the state label comes off, its checks stop being followed.
+    markDone: (target) => {
+      try {
+        const ids = 'sessionId' in target ? (sessions.setFlags(target.sessionId, { archived: true }), [target.sessionId]) : runner ? runner.archive(target.runId, true).map((s) => s.run.id) : [];
+        for (const id of ids) {
+          triggerWatcher?.released(id);
+          checksWatcher.release(id);
+        }
+      } catch (error) {
+        log('warn', `Triggers: couldn't move to Done: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
     // A pull request the session opened, or one on its branch that is still open or merged.
     sessionPr: (id) => linkStore.prsOf(id).find((pr) => pr.state !== 'closed') ?? null,
     queued: (itemId) => !!later.get(itemId),

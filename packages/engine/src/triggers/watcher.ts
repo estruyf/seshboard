@@ -50,6 +50,13 @@ export interface TriggerWatcherDeps {
   folderExists(root: string): boolean;
   /** A session a trigger started, if it is busy: working, or waiting for you. */
   sessionState(sessionId: string): 'working' | 'waiting' | null;
+  /** When the session's transcript last changed (ms); null when it isn't known. */
+  lastActivity?(sessionId: string): number | null;
+  /**
+   * Moves a finished session, or a done pipeline run's tree, to Done (`doneWhenFinished`), as Done in the sidebar does:
+   * its working or needs input label comes off through `released`.
+   */
+  markDone?(target: { sessionId: string } | { runId: string }): void;
   /** A pull request the session opened (or works on); null without one. */
   sessionPr(sessionId: string): { number: number; url: string } | null;
   /** The queued item an event became is still on the queue. */
@@ -80,6 +87,12 @@ export interface TriggerWatcherDeps {
 
 /** What a check read from its source. */
 type Answer = { items: SourceItem[]; branch: string | null };
+
+/**
+ * How long a finished session's transcript must be quiet before it moves to Done. Done lasts until new activity, so a
+ * line Claude Code writes after the turn (a title, a hook's output) would bring it straight back.
+ */
+export const DONE_QUIET_MS = 10_000;
 
 /** How long the gh account and a project's default branch are kept. */
 const ACCOUNT_MS = 60 * 60_000;
@@ -115,6 +128,8 @@ export class TriggerWatcher {
   private readonly reads = new Map<string, { at: number; result: Awaited<ReturnType<GhRun>> }>();
   private readonly accounts = new Map<string, { at: number; login: string | null; defaultBranch: string | null }>();
   private nudgeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Looks again once a finished session's transcript has been quiet long enough to move to Done. */
+  private doneTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly deps: TriggerWatcherDeps) {}
 
@@ -225,6 +240,7 @@ export class TriggerWatcher {
   close(): void {
     this.closed = true;
     clearTimeout(this.nudgeTimer);
+    clearTimeout(this.doneTimer);
   }
 
   private async pass(): Promise<void> {
@@ -242,7 +258,46 @@ export class TriggerWatcher {
       if (!trigger.paused) await this.advance(trigger);
     }
     await this.syncLabels();
+    // After the labels: a review's pull request says reviewed before its session's Done takes the working label off.
+    this.finishDone();
     if (this.snapshot() !== before) this.deps.changed();
+  }
+
+  /**
+   * Moves what triggers with `doneWhenFinished` started to Done once it finished: a session whose last turn ended
+   * cleanly and whose transcript is quiet, or a pipeline run that is done. Once per event, so a session you bring back
+   * stays. One that failed or was stopped stays in To review.
+   */
+  private finishDone(): void {
+    const { store, markDone } = this.deps;
+    if (!markDone) return;
+    const now = this.now();
+    let wait: number | null = null;
+    for (const trigger of store.list()) {
+      if (!trigger.doneWhenFinished) continue;
+      for (const { event } of store.eventsOf(trigger.id)) {
+        if (event.status !== 'started' || event.doneAt !== null) continue;
+        if (event.runId) {
+          if (this.deps.run(event.runId)?.run.status !== 'done') continue;
+          markDone({ runId: event.runId });
+        } else if (event.sessionId) {
+          if (this.outcomes.get(event.sessionId) !== 'clean' || this.deps.sessionState(event.sessionId)) continue;
+          const quietAt = (this.deps.lastActivity?.(event.sessionId) ?? 0) + DONE_QUIET_MS;
+          if (quietAt > now) {
+            wait = Math.min(wait ?? Infinity, quietAt - now);
+            continue;
+          }
+          markDone({ sessionId: event.sessionId });
+        } else continue;
+        store.setDone(event.id, now);
+        this.deps.log('info', `Triggers: “${trigger.name}” moved ${event.runId ? 'its run' : 'its session'} for ${eventRef(event)} to Done`);
+      }
+    }
+    if (wait !== null && !this.closed) {
+      clearTimeout(this.doneTimer);
+      this.doneTimer = setTimeout(() => void this.check(), wait + 250);
+      this.doneTimer.unref?.();
+    }
   }
 
   /**

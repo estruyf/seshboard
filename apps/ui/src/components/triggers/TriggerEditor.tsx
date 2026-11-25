@@ -585,7 +585,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
           <Field label={startsPipeline ? 'Task' : 'Prompt'} htmlFor={`${id}-prompt`}>
             <TriggerPromptField id={`${id}-prompt`} value={form.prompt} onChange={(prompt) => update({ prompt })} kind={form.kind} describedBy={`${id}-prompt-hint`} invalid={tried && !form.prompt.trim()} />
             <p id={`${id}-prompt-hint`} className="mt-0.5 text-meta text-muted">
-              {`Type {{ for event fields.${startsPipeline ? ' It fills {{task}} in the steps.' : ''} ${issues ? "The issue's text" : reviews ? "The pull request's text, comments and reviews" : "The failed jobs' log"} ${reviews ? 'go' : 'goes'} ${startsPipeline ? 'to the first step' : 'in'} as context to read, not instructions.${reviews ? " The session works on the pull request's branch." : ''}`}
+              {`Type {{ for event fields.${startsPipeline ? ' It fills {{task}} in the steps.' : ''} ${issues ? "The issue's text" : reviews ? "The pull request's text, comments and reviews" : "The failed jobs' log"} ${reviews ? 'go' : 'goes'} ${startsPipeline ? 'to the first step' : 'in'} as context to read, not instructions.${reviews ? " The session works on the pull request's branch, or on its own copy when another folder has that branch." : ''}`}
             </p>
           </Field>
           <Field label="Runs with" labelId={`${id}-runs`}>
@@ -651,6 +651,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
               )}
             </div>
           </Field>
+          <Checkbox checked={form.doneWhenFinished} onChange={(doneWhenFinished) => update({ doneWhenFinished })} dataAttrs={{ 'data-trigger-done-when-finished': true }}>
+            <span className="grid gap-0.5">
+              <span className="text-ui text-text">Mark done when it finishes</span>
+              <span className="text-meta text-muted">
+                {startsPipeline ? 'A finished run goes to Done instead of To review.' : 'A session that finishes without an error goes to Done instead of To review.'} One that fails or is stopped stays for you.
+              </span>
+            </span>
+          </Checkbox>
         </Section>
 
         <Section section="limits" number={number('limits')} title="Limits" folded={folds.has('limits') ? limitsLine(form) : null} onOpen={() => open('limits')}>
