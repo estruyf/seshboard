@@ -47,6 +47,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Checking for updates no longer fails while a release is being built.** For the first minutes after a release or a beta comes out, its download isn't ready yet. Seshboard now offers the release before it, if that one is newer than yours, and the new release on a later check.
 - **Panels at half width is remembered.** The setting now stays on after you quit and open Seshboard again. Before, the panels went back to their side width on every start.
 - **Folders close and open while you filter Files.** With text in the filter, a click on a folder, or ← and →, now closes and opens it. Before, every folder with a match stayed open. A new filter opens them all again.
 - **The sidebar's title lines up in full screen.** On macOS, "Seshboard" now starts at the sidebar's left edge in full screen, in line with the rows under it. It no longer leaves a gap for the hidden window buttons.
