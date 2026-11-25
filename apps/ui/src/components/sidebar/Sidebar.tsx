@@ -836,7 +836,9 @@ export function Sidebar() {
   const remoteRuns = useRemoteTreeRuns();
   // An orchestrator's sessions nest under it the same way (docs/orchestrator.md).
   const orchestrators = useOrchestrators((s) => s.orchestrators);
-  const started = useMemo(() => startedBy(orchestrators), [orchestrators]);
+  // So do the sessions other sessions started (start_session).
+  const startedChildren = useOrchestrators((s) => s.started);
+  const started = useMemo(() => startedBy(orchestrators, startedChildren), [orchestrators, startedChildren]);
   const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept, remoteRuns, started), [merged, runs, now, archiveAfterDays, kept, remoteRuns, started]);
   const openParents = usePipelineTree((s) => s.open);
   const { active, archived, snoozed } = useMemo(
@@ -1541,7 +1543,11 @@ export function Sidebar() {
                       position={row.child.position}
                       count={row.child.count}
                       style={sidebarStyle}
-                      selected={row.data.id === listSelected}
+                      // A closed parent stands for its open sub-session, at every level of the tree.
+                      selected={row.data.id === listSelected || (row.parent?.open === false && forest.parentOf.get(listSelected ?? '') === row.data.id)}
+                      expanded={row.parent?.open}
+                      childCount={row.parent?.count}
+                      onToggleTree={toggleParent}
                       beside={listView === 'session' && row.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(row.data.id)}
                       tabbable={row.data.id === tabStopId}
                       waitingFor={waitingFor(row.data)}

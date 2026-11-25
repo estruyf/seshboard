@@ -18,6 +18,7 @@ import {
   type ProjectDefaults,
   type SessionStartAsk,
   type SessionSummary,
+  type StartedChild,
   type StartSessionArgs,
   type WorkerEnd,
   type WorkerLine,
@@ -86,6 +87,12 @@ export class Orchestrator {
    * restart such a session still starts, but not under the one that asked.
    */
   private readonly childItems = new Map<string, { parentId: string; title: string }>();
+  /**
+   * Sessions other sessions started, by id: under which and with what title. Sent with the orchestrators, so a window
+   * nests one under its session while it starts, before its transcript (and so its summary's parent) exists. In memory:
+   * after a restart the summary says it.
+   */
+  private readonly started = new Map<string, { parentId: string; title: string }>();
 
   constructor(private readonly deps: OrchestratorDeps) {}
 
@@ -130,6 +137,11 @@ export class Orchestrator {
   }
 
   /** Every orchestrator with what it started, for the windows. */
+  /** The sessions other sessions started (start_session on their `seshboard` server), oldest first. */
+  startedChildren(): StartedChild[] {
+    return [...this.started].map(([sessionId, { parentId, title }]) => ({ sessionId, parentId, title }));
+  }
+
   infos(): OrchestratorInfo[] {
     return this.deps.store.list().map((o) => ({
       ...o,
@@ -268,8 +280,15 @@ export class Orchestrator {
     } catch (error) {
       return fail(`The user allowed it, but "${args.title}" could not start: ${(error as Error).message}`);
     }
-    this.deps.setParent(sessionId, parentId);
+    this.child(sessionId, parentId, args.title);
     return { text: `The user allowed it. ${this.startedText(args.title, sessionId, args, workspace, agent)} It runs on its own, under this session in the sidebar.` };
+  }
+
+  /** A session another one started: under it in the sidebar, and in what the windows hear, so it shows there now. */
+  private child(sessionId: string, parentId: string, title: string): void {
+    this.started.set(sessionId, { parentId, title });
+    this.deps.setParent(sessionId, parentId);
+    this.deps.changed();
   }
 
   /** A session joins the orchestrator's: stored, and under it in the sidebar. */
@@ -284,7 +303,7 @@ export class Orchestrator {
     const child = this.childItems.get(itemId);
     if (child) {
       this.childItems.delete(itemId);
-      this.deps.setParent(sessionId, child.parentId);
+      this.child(sessionId, child.parentId, child.title);
       return child.title;
     }
     const started = this.deps.store.itemStarted(itemId, sessionId);
@@ -304,7 +323,8 @@ export class Orchestrator {
   sessionRemoved(sessionId: string): void {
     const own = this.deps.store.get(sessionId) !== null;
     if (own) this.deps.store.remove(sessionId);
-    if (this.deps.store.workerRemoved(sessionId) || own) this.deps.changed();
+    const child = this.started.delete(sessionId);
+    if (this.deps.store.workerRemoved(sessionId) || own || child) this.deps.changed();
   }
 
   private async listSessions(orchestratorId: string, projectRoot: string): Promise<string> {

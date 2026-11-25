@@ -351,6 +351,16 @@ describe('sidebarTree', () => {
     expect(mostUrgent(['idle', 'unread', 'failed'])).toBe('failed');
   });
 
+  it('nests a session a sub-session started under that one, and lifts the top row by its whole tree', () => {
+    const tree = sidebarTree([row('top', null, 'idle'), row('mid', 'top', 'working'), row('a', 'mid', 'idle'), row('b', 'mid', 'needsYou')]);
+    expect(tree.roots.map((r) => r.id)).toEqual(['top']);
+    expect(tree.children.get('mid')!.map((r) => r.id)).toEqual(['a', 'b']);
+    expect(tree.status.get('mid')).toBe('needsYou');
+    expect(tree.status.get('top')).toBe('needsYou');
+    // A loop of parents ends.
+    expect(sidebarTree([row('x', 'y', 'idle'), row('y', 'x', 'working')]).roots).toEqual([]);
+  });
+
   it('nests under a run row, and shows a child whose parent is gone on its own', () => {
     const state = runState({ id: 'run-9', parentSessionId: null }, [{ sessionId: 'plan' }]);
     const tree = sidebarTree([row('plan', 'run-9', 'working'), row('orphan', 'gone')], [state]);

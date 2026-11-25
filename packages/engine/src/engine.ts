@@ -1385,7 +1385,7 @@ export function createEngine(options: EngineOptions): Engine {
   // The orchestrator (docs/orchestrator.md): a session that hands work to other sessions. Its tools reach this bridge
   // from whatever agent runs it; a start goes through the same holds as a scheduled run.
   const orchestratorStore = new OrchestratorStore(cache.db);
-  const orchestratorsChanged = () => broadcast('orchestrator.changed', { orchestrators: orchestrator.infos() });
+  const orchestratorsChanged = () => broadcast('orchestrator.changed', { orchestrators: orchestrator.infos(), started: orchestrator.startedChildren() });
   /** The profiles a session can start with, the project's own first: Claude Code's, and providers that can start sessions. */
   const orchestratorAgents = (projectRoot: string): OrchestratorAgent[] => {
     const startable = new Set<string>(providerCatalog(providerOptions).filter((p) => p.canStart).map((p) => p.id));
@@ -2989,6 +2989,7 @@ export function createEngine(options: EngineOptions): Engine {
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list(), kept: keptSessions() }),
       triggerSessions: () => triggers.sessions(),
       orchestrators: () => orchestrator.infos(),
+      startedChildren: () => orchestrator.startedChildren(),
       archiveAfterDays: () => retention.archiveAfterDays,
       scope: () => sidebarScope,
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
@@ -4243,7 +4244,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (item.autoStart && item.waitFor.kind === 'slot') autoStarter?.armForLimit(item.id);
       return { item };
     },
-    'orchestrator.list': () => ({ orchestrators: orchestrator.infos() }),
+    'orchestrator.list': () => ({ orchestrators: orchestrator.infos(), started: orchestrator.startedChildren() }),
     'later.start': async ({ id }) => {
       const item = later.get(id);
       if (!item) throw new RpcError('NOT_FOUND', 'That item is no longer in the queue');

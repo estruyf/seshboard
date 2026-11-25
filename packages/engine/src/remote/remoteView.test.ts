@@ -147,6 +147,20 @@ describe('remoteSessions with runs', () => {
     expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW })).not.toHaveProperty('orchestrators');
   });
 
+  it('puts a session another session or an orchestrator started under it while it starts, with the title it was given', () => {
+    const host = (sessionId: string) => ({ sessionId, cwd: ROOT, state: 'running', startedAt: NOW, promptedAt: NOW, queue: [], backgroundTasks: [], profileId: 'default' }) as unknown as SessionHostInfo;
+    const orc = { sessionId: 'orc', projectRoot: ROOT, createdAt: 1, workers: [{ sessionId: 'worker', itemId: null, title: 'Fix login', startedAt: 2 }] };
+    const list = remoteSessions(
+      { summaries: [summary('plain', null), summary('orc', null), summary('done', null)], live: [], hosts: [host('child'), host('worker')] },
+      { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), orchestrators: [orc], started: [{ sessionId: 'child', parentId: 'plain', title: 'PR 2575' }, { sessionId: 'done', parentId: 'plain', title: 'Given title' }], now: NOW },
+    );
+    const byId = new Map(list.sessions.map((s) => [s.id, s]));
+    expect(byId.get('child')).toMatchObject({ parentId: 'plain', title: 'PR 2575' });
+    expect(byId.get('worker')).toMatchObject({ parentId: 'orc', title: 'Fix login' });
+    // Once it has a transcript, its own title shows.
+    expect(byId.get('done')).toMatchObject({ parentId: 'plain', title: 'done' });
+  });
+
   it("gives a read-only provider's session its resume command, in place of the message box", () => {
     const codex = { ...summary('019a-codex', null), provider: 'codex' } as SessionSummary;
     const copilot = { ...summary('copilot-1', null), provider: 'copilot' } as SessionSummary;

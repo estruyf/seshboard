@@ -155,6 +155,8 @@ const OrchestratorInfoSchema = z.object({
     }),
   ),
 });
+/** A session another session started (`StartedChild`): it goes under that session in the sidebar from the start. */
+const StartedChildSchema = z.object({ sessionId: z.string(), parentId: z.string(), title: z.string().max(MAX_WORKER_TITLE) });
 const AppStateKey = z.string().min(1).max(200);
 const SessionId = z.string().min(1).max(200);
 const Prompt = z.string().max(MAX_PROMPT_LENGTH);
@@ -1424,7 +1426,7 @@ export const contract = {
      * brief of the run before your text, and its sub-sessions go under that session.
      */
     /** The orchestrators (docs/orchestrator.md) and the sessions each started. */
-    'orchestrator.list': { params: z.object({}), result: z.object({ orchestrators: z.array(OrchestratorInfoSchema) }) },
+    'orchestrator.list': { params: z.object({}), result: z.object({ orchestrators: z.array(OrchestratorInfoSchema), started: z.array(StartedChildSchema).optional() }) },
     'runs.write': { params: z.object({ runId: z.string().min(1).max(100), text: z.string().min(1).max(MAX_PROMPT_LENGTH) }), result: z.object({ sessionId: z.string() }) },
 
     // --- Settings backup -----------------------------------------------------------------------
@@ -1870,7 +1872,7 @@ export const contract = {
     'triggers.notice': z.object({ notices: z.array(TriggerNotice) }),
     /** Pipelines were saved, deleted or imported: the built-ins and yours. */
     /** An orchestrator was started, or one started, queued or lost a session. */
-    'orchestrator.changed': z.object({ orchestrators: z.array(OrchestratorInfoSchema) }),
+    'orchestrator.changed': z.object({ orchestrators: z.array(OrchestratorInfoSchema), started: z.array(StartedChildSchema).optional() }),
     'pipelines.changed': z.object({ pipelines: z.array(Pipeline) }),
     /** A run changed: a step started or ended, it waits for you, or it ended. */
     'runs.changed': z.object({ state: PipelineRunState }),

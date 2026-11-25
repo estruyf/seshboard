@@ -11,7 +11,7 @@ import { SidebarRail } from './SidebarRail.tsx';
 
 // The sidebar's order (⌃⇥, ⌘P) nests pipelines' sub-sessions under their runs: it reads them from the pipelines store.
 provideTreeRuns(() => usePipelines.getState().runs.values());
-provideStarted(() => startedBy(useOrchestrators.getState().orchestrators));
+provideStarted(() => startedBy(useOrchestrators.getState().orchestrators, useOrchestrators.getState().started));
 // Other computers' runs too, from their last lists.
 provideRemoteTreeRuns(currentRemoteTreeRuns);
 

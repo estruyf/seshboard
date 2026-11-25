@@ -44,8 +44,14 @@ export function listTree(sessions: readonly ListedSession[], runs: readonly List
   for (const computer of computers) {
     const rows = sessions.filter((s) => s.computer === computer).map((row) => ({ id: row.sessionId, parentId: row.parentId ?? null, status: TREE_OF[row.status], row }));
     const tree = sidebarTree(rows, runs.filter((r) => r.computer === computer), runTreeStatus);
+    // Every session under a root goes in its list, depth first: a session a sub-session started too.
+    const below = (id: string, seen: Set<string>): Array<(typeof rows)[number]> => {
+      if (seen.has(id)) return [];
+      seen.add(id);
+      return (tree.children.get(id) ?? []).flatMap((kid) => [kid, ...below(kid.id, seen)]);
+    };
     for (const node of tree.roots) {
-      const kids = (tree.children.get(node.id) ?? []).map((kid) => kid.row);
+      const kids = below(node.id, new Set()).map((kid) => kid.row);
       const lifted = tree.status.get(node.id);
       const status = lifted && lifted !== 'idle' ? STATUS_OF[lifted] : node.row.status;
       const updatedAt = Math.max(node.row.updatedAt, ...kids.map((kid) => kid.updatedAt));

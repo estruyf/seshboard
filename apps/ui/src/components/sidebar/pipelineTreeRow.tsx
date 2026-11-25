@@ -80,6 +80,9 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   tabbable,
   waitingFor,
   archived = false,
+  expanded,
+  childCount = 0,
+  onToggleTree,
   onClick,
   onMenu,
   onMiddleClick,
@@ -98,6 +101,13 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   waitingFor: string | null;
   /** Under an archived parent, in Archived. */
   archived?: boolean;
+  /**
+   * It has sub-sessions of its own (a session it started asked for more): whether they show, and how many. Missing:
+   * it has none, and the row has no chevron.
+   */
+  expanded?: boolean;
+  childCount?: number;
+  onToggleTree?(id: string): void;
   onClick(event: MouseEvent, data: SessionRowData): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
   onMiddleClick(data: SessionRowData): void;
@@ -108,7 +118,7 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   const minimal = useMinimal();
   const projectName = useProjects((s) => s.projects.get(data.projectRoot)?.name) ?? basename(data.projectRoot);
   // A session an orchestrator just started has no transcript yet: it goes by the title its orchestrator gave it.
-  const startedTitle = useOrchestrators((s) => (data.summary ? null : workerTitle(s.orchestrators, data.id)));
+  const startedTitle = useOrchestrators((s) => (data.summary ? null : workerTitle(s.orchestrators, data.id, s.started)));
   const title = startedTitle ?? data.title;
   const meta = step ? stepMeta(step.state, step.row) : null;
   const tone = childTone(status, step?.row.status ?? null);
@@ -128,6 +138,7 @@ export const PipelineStepRow = memo(function PipelineStepRow({
         type="button"
         role="treeitem"
         aria-level={level}
+        aria-expanded={expanded}
         aria-posinset={position}
         aria-setsize={count}
         aria-selected={selected}
@@ -138,6 +149,7 @@ export const PipelineStepRow = memo(function PipelineStepRow({
         data-tree-child={data.summary?.parentId ?? ''}
         data-archived={archived || undefined}
         data-indexed={data.summary !== null}
+        data-tree-parent={expanded}
         data-tooltip={[title, line, projectName].filter(Boolean).join('\n')}
         data-row-leading={rowLeading('pipeline-step', { minimal })}
         onClick={(e) => onClick(e, data)}
@@ -171,6 +183,7 @@ export const PipelineStepRow = memo(function PipelineStepRow({
             {line && <span className={`truncate text-meta leading-4 ${waitingFor ? 'font-medium text-warn' : 'text-faint'}`} data-tree-meta>{line}</span>}
           </span>
         )}
+        {expanded !== undefined && onToggleTree && <TreeChevron open={expanded} count={childCount} noun="session" onToggle={() => onToggleTree(data.id)} />}
       </button>
     </div>
   );

@@ -204,6 +204,16 @@ export interface OrchestratorInfo {
   workers: OrchestratorWorker[];
 }
 
+/**
+ * A session another session started (its `seshboard` server's start_session): which one asked, and the title it gave.
+ * The sidebar nests it under that session from the start, before its transcript says so, as it does an orchestrator's.
+ */
+export interface StartedChild {
+  sessionId: string;
+  parentId: string;
+  title: string;
+}
+
 /** Where a started session stands, as the overview groups them. */
 export type WorkerState = 'waiting' | 'working' | 'queued' | 'review' | 'idle';
 

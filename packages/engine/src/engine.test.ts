@@ -883,7 +883,7 @@ describe('engine over a MessagePort', () => {
     await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '' } });
     expect(await defaultsOf()).not.toHaveProperty('planModeInstructions');
     // No session is an orchestrator yet.
-    expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [] });
+    expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [], started: [] });
     await client.call('projects.remove', { root: dataDir });
     expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual([PARSER]);
   });

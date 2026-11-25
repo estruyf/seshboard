@@ -245,6 +245,23 @@ describe('Orchestrator: a session that asks to start another', () => {
     expect(orchestrator.systemTextFor('worker-1')).toBeNull();
   });
 
+  it('tells the windows about each session it starts, with its parent and title, until the session is deleted', async () => {
+    const { orchestrator, changes } = setup();
+    const before = changes();
+    await Promise.all(['PR 1', 'PR 2'].map((title) => orchestrator.startChild('plain', { title, prompt: `Review ${title}.` })));
+    // Sent at once, so a window nests them under the session while they start, before their transcripts exist.
+    expect(orchestrator.startedChildren()).toEqual([
+      { sessionId: 'worker-1', parentId: 'plain', title: 'PR 1' },
+      { sessionId: 'worker-2', parentId: 'plain', title: 'PR 2' },
+    ]);
+    expect(changes() - before).toBe(2);
+    // Not an orchestrator: nothing about it goes with the orchestrators.
+    expect(orchestrator.infos().map((o) => o.sessionId)).toEqual(['orc']);
+    orchestrator.sessionRemoved('worker-1');
+    expect(orchestrator.startedChildren()).toEqual([{ sessionId: 'worker-2', parentId: 'plain', title: 'PR 2' }]);
+    expect(changes() - before).toBe(3);
+  });
+
   it('starts nothing when you deny it, or when the arguments are wrong', async () => {
     const { orchestrator, started, asks, answer } = setup();
     answer(false);
@@ -261,6 +278,7 @@ describe('Orchestrator: a session that asks to start another', () => {
     expect(queued).toHaveLength(1);
     expect(orchestrator.itemStarted('item-1', 'later-1')).toBe('Fix lint');
     expect(parents.get('later-1')).toBe('plain');
+    expect(orchestrator.startedChildren()).toEqual([{ sessionId: 'later-1', parentId: 'plain', title: 'Fix lint' }]);
     expect(orchestrator.itemStarted('item-1', 'later-2')).toBeNull();
   });
 

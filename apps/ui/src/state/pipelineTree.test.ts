@@ -170,6 +170,17 @@ describe('the tree in the list', () => {
     expect(rows[2]).toMatchObject({ child: { position: 2 } });
   });
 
+  it('gives a sub-session with sessions of its own a toggle, and lists them under it once open', () => {
+    const deep = sidebarForest([row('top'), row('mid', {}, 'top'), row('pr-1', {}, 'mid'), row('pr-2', {}, 'mid')], [], NOW);
+    const list = (open: string[]) => buildListRows(deep.roots, [], { now: NOW, archivedOpen: false, children: deep.children, openParents: new Set(open) }).flatMap((r) => (r.kind === 'session' ? [r] : []));
+    const midOnly = list(['top']);
+    expect(midOnly.map((r) => r.data.id)).toEqual(['top', 'mid']);
+    expect(midOnly[1]).toMatchObject({ parent: { open: false, count: 2 }, child: { parentId: 'top', level: 2 } });
+    const all = list(['top', 'mid']);
+    expect(all.map((r) => r.data.id)).toEqual(['top', 'mid', 'pr-1', 'pr-2']);
+    expect(all[2]).toMatchObject({ child: { parentId: 'mid', position: 1, count: 2, level: 3 } });
+  });
+
   it('keeps the parent of the open sub-session in a closed section', () => {
     const list = buildListRows(forest.roots, [], { now: NOW, archivedOpen: false, children: forest.children, closed: new Set(['open']), selectedId: 'exec' });
     expect(list.flatMap((r) => (r.kind === 'session' ? [r.data.id] : []))).toEqual(['parent']);

@@ -27,6 +27,7 @@ import { skimMarks,
   type RemoteTriggerOrigin,
   type TriggerSession,
   type SessionHostInfo,
+  type StartedChild,
   type TranscriptBlock,
   type TranscriptMessage,
   type RemoteUsageBreakdown,
@@ -62,6 +63,8 @@ export interface ListOptions {
   triggers?: readonly TriggerSession[];
   /** Every orchestrator: those among the sessions listed go along, for their overview. */
   orchestrators?: readonly OrchestratorInfo[];
+  /** The sessions other sessions started (start_session): under those from the start, as an orchestrator's are. */
+  started?: readonly StartedChild[];
   /** Providers whose sessions are read-only here (Codex), with the command that continues one (`{sessionId}` in it). */
   readOnlyProviders?: ReadonlyMap<string, string>;
   now?: number;
@@ -84,9 +87,22 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
   // A step's session sits under its run's parent before its transcript says so (a session still starting).
   const stepParent = new Map<string, string>();
   for (const { run, steps } of options.runs ?? []) for (const step of steps) if (step.sessionId) stepParent.set(step.sessionId, run.parentSessionId ?? run.id);
+  // So does a session an orchestrator or another session started, with the title it was given until it has its own.
+  const startedTitle = new Map<string, string>();
+  for (const child of options.started ?? []) {
+    stepParent.set(child.sessionId, child.parentId);
+    startedTitle.set(child.sessionId, child.title);
+  }
+  for (const o of options.orchestrators ?? []) {
+    for (const w of o.workers) {
+      if (!w.sessionId) continue;
+      stepParent.set(w.sessionId, o.sessionId);
+      startedTitle.set(w.sessionId, w.title);
+    }
+  }
   const sessions: RemoteSession[] = listed.map((s) => ({
     id: s.id,
-    title: s.title,
+    title: (flags.has(s.id) ? null : startedTitle.get(s.id)) ?? s.title,
     projectId: projectIdOf(s.projectRoot),
     projectName: options.projectNames.get(s.projectRoot) ?? lastSegment(s.projectRoot),
     branch: s.branch,

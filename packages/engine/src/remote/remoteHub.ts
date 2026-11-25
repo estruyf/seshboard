@@ -72,6 +72,7 @@ import {
   type RemoteProfile,
   type TriggerSession,
   type OrchestratorInfo,
+  type StartedChild,
   remoteOnlyBranches,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
@@ -203,6 +204,8 @@ export interface RemoteHubOptions {
   triggerSessions?(): readonly TriggerSession[];
   /** Every orchestrator and the sessions it started (docs/orchestrator.md), for the overview on the phone. */
   orchestrators?(): readonly OrchestratorInfo[];
+  /** The sessions other sessions started (start_session), under those on the phone while they start. */
+  startedChildren?(): readonly StartedChild[];
   archiveAfterDays(): number;
   /** The sidebar's scope, so the phone lists what the sidebar lists. */
   scope(): 'switchboard' | 'all';
@@ -879,7 +882,8 @@ export class RemoteHub {
     const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
     const triggers = this.options.triggerSessions?.();
     const orchestrators = this.options.orchestrators?.();
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(orchestrators ? { orchestrators } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
+    const started = this.options.startedChildren?.();
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(orchestrators ? { orchestrators } : {}), ...(started ? { started } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
   }
 
   /** The sessions in Done, which a phone may list and reopen (nothing else). */
