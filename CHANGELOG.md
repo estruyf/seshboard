@@ -6,6 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Put project actions in your order, and see more of them.** Drag an action's pill above the message box, or an action in **Project actions**, to move it. On a focused pill, ⌥← and ⌥→ move it too. The order is kept for each project. The message box now shows as many actions as fit beside it, and the rest go in **N more**.
 - **Open a changed file in Files.** In **Changes**, a file's row has **Open in Files** next to **Open in editor**. It shows the whole file in the Files panel, with the lines Claude changed marked.
 - **Start a session from a page in the browser.** On a GitHub pull request or issue, the address bar shows **Start session**, and the page's right-click menu has it too. New session opens in your checkout of that repository, filled in from the pull request or issue, in a new worktree. Type what you want, then start. Nothing starts on its own. In **Settings › Browser › Site actions** you can turn these off, rename them and give them a prompt, or add your own: the pages they show on (such as `https://*.sentry.io/issues/*`), a project and a prompt with `{url}`, `{title}` and `{selection}`. With more than one for a page, Start session opens a menu.
 - **Fields, dropdowns and text areas have a clear edge in every theme, also in Minimal mode.** Their edge stands out from what is behind them, and a field you click shows that it has focus. The arrow on a dropdown is easier to see.

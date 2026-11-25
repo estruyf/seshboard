@@ -290,7 +290,7 @@ const SCOPE_LABEL: Record<ListedAction['scope'], string> = { project: 'This proj
 
 /** Actions: the project's actions (yours, shared and global), each opening the editor; New action starts one. */
 export function ProjectActionsTab({ root }: { root: string }) {
-  const { actions, sharedFile, errors, reload } = useProjectActionList(root);
+  const { actions, sharedFile, errors, reload, reorder } = useProjectActionList(root);
   const [editing, setEditing] = useState<{ action: ListedAction | null } | null>(null);
   const [status, flash] = useFlash();
   return (
@@ -345,6 +345,7 @@ export function ProjectActionsTab({ root }: { root: string }) {
           initialAction={editing.action}
           initial={editing.action ? null : {}}
           onChanged={reload}
+          onReorder={reorder}
           onSaved={(_saved, _previous, another) => {
             if (!another) setEditing(null);
             flash('Action saved');

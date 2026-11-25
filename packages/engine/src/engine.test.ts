@@ -1113,6 +1113,13 @@ describe('engine over a MessagePort', () => {
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'lint' })).resolves.toMatchObject({ kind: 'terminal' });
     await client.call('actions.delete', { projectRoot: project, shared: true, id: 'lint' });
     expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['shared', 'greet']);
+    // You can move them: the order is yours, and a rename keeps the action's place.
+    changed.length = 0;
+    await client.call('actions.reorder', { projectRoot: project, ids: ['greet', 'shared'] });
+    expect(changed).toEqual([project]);
+    expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['greet', 'shared']);
+    await client.call('actions.save', { projectRoot: project, previousId: 'greet', action: { id: 'hello', name: 'Hello', command: 'echo hi' } });
+    expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['hello', 'shared']);
     await expect(client.call('actions.save', { projectRoot: null, shared: true, action: { id: 'x', name: 'X', command: 'x' } })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(changed).toContain(project);
   });

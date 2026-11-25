@@ -4169,6 +4169,13 @@ export function createEngine(options: EngineOptions): Engine {
         if (!projectRoot) throw new RpcError('INVALID_PARAMS', 'A shared action needs its project');
         actions.saveShared(projectRoot, action, previousId);
       } else actions.save(projectRoot, action, previousId);
+      // A renamed action keeps its place among the pills.
+      if (previousId && previousId !== action.id) actions.renameInOrder(projectRoot, previousId, action.id);
+      broadcast('actions.changed', { root: projectRoot });
+      return {};
+    },
+    'actions.reorder': ({ projectRoot, ids }) => {
+      actions.setOrder(projectRoot, ids);
       broadcast('actions.changed', { root: projectRoot });
       return {};
     },

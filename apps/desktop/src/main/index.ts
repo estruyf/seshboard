@@ -2780,8 +2780,9 @@ async function addAction(win: BrowserWindow, name: string, command: string): Pro
 /**
  * The context menu on project actions: a right-click on a pill offers Run, Edit… and Delete…; Edit…
  * opens the editor on that action and a rename shows on the pill as the editor closes; Shift+F10 opens
- * the menu from the keyboard and Escape hands focus back; an action behind "N more" has the same menu,
- * and Delete… asks first. Light theme, then dark. The added commands only print or sleep.
+ * the menu from the keyboard and Escape hands focus back; ⌥→ moves a pill and the order is kept; a row too
+ * narrow for every pill puts the rest behind "N more", whose actions have the same menu, and Delete… asks
+ * first. Light theme, then dark. The added commands only print or sleep.
  */
 async function runActionMenuStep(win: BrowserWindow): Promise<string> {
   const scheme = preferences.get().colorScheme;
@@ -2821,9 +2822,29 @@ async function actionMenuChecks(win: BrowserWindow): Promise<string> {
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
   if (!(await waitInPage(win, `!document.querySelector('[role=menu]') && document.activeElement === ${pill('smoke-action')}`, 2_000))) return 'failed: Escape did not close the menu and return to the pill';
 
-  // Two more actions put one behind "N more"; its menu item has the same context menu.
   for (const name of ['Smoke two', 'Smoke three']) if (!(await addAction(win, name, 'echo smoke'))) return `failed: could not add ${name}`;
-  if (!(await waitInPage(win, "document.querySelector('[data-current-session] [data-more-actions]')", 3_000))) return 'failed: no "N more" pill with four actions';
+
+  // ⌥→ on a pill moves it one place to the right, and the order stays once the list is read again.
+  const order = "[...document.querySelectorAll('[data-current-session] [data-measure-pill]')].map((e) => e.dataset.measurePill).join(',')";
+  const ids = ((await js(order)) as string).split(',');
+  const at = ids.indexOf('smoke-action');
+  if (at === -1 || at === ids.length - 1) return `failed: Smoke action is not followed by another action (${ids.join(', ')})`;
+  const moved = [...ids.slice(0, at), ids[at + 1]!, 'smoke-action', ...ids.slice(at + 2)].join(',');
+  await js(`${pill('smoke-action')}?.focus()`);
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right', modifiers: ['alt'] });
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right', modifiers: ['alt'] });
+  if (!(await waitInPage(win, `(${order}) === ${JSON.stringify(moved)}`, 3_000))) return `failed: ⌥→ on the pill gave the order ${await js(order)}, not ${moved}`;
+  await settle(win);
+  if ((await js(order)) !== moved) return `failed: the order went back to ${await js(order)} after the list was read again`;
+
+  // In a row too narrow for them all, the pills that don't fit go behind "N more"; its menu items have the same context menu.
+  const row = "document.querySelector('[data-current-session] [data-action-pills]')";
+  await js(`${row}.style.maxWidth = '150px'`);
+  const shown = "document.querySelectorAll('[data-current-session] [data-action-pill]').length";
+  const behind = "Number.parseInt(document.querySelector('[data-current-session] [data-more-actions]')?.innerText ?? '0')";
+  if (!(await waitInPage(win, `${behind} > 0 && ${shown} + ${behind} === ${ids.length}`, 3_000))) {
+    return `failed: in a narrow row ${await js(shown)} pills and "${await js(behind)} more" for ${ids.length} actions`;
+  }
   await js("document.querySelector('[data-current-session] [data-more-actions]').click()");
   if (!(await waitInPage(win, "document.querySelector('[role=menu] [role=menuitem][data-action]')", 2_000))) return 'failed: "N more" did not open';
   const hidden = (await js("document.querySelector('[role=menu] [role=menuitem][data-action]').dataset.action")) as string;
@@ -2834,10 +2855,12 @@ async function actionMenuChecks(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[role=menu] [data-action-menu-item=\"delete\"]').click()");
   if (!(await waitInPage(win, "document.querySelector('[role=alertdialog] [data-confirm]')", 2_000))) return 'failed: Delete… did not ask first';
   await js("document.querySelector('[role=alertdialog] [data-confirm]').click()");
-  if (!(await waitInPage(win, `!document.querySelector('[role=alertdialog]') && !document.querySelector('[data-current-session] [data-more-actions]') && (${status}).includes('Action deleted')`, 3_000))) {
+  await js(`${row}.style.maxWidth = ''`);
+  const left = "[...document.querySelectorAll('[data-current-session] [data-measure-pill]')].map((e) => e.dataset.measurePill)";
+  if (!(await waitInPage(win, `!document.querySelector('[role=alertdialog]') && !${left}.includes(${JSON.stringify(hidden)}) && (${status}).includes('Action deleted')`, 3_000))) {
     return `failed: deleting ${hidden} did not remove it`;
   }
-  return `ok: right-click and Shift+F10 open Run, Edit…, Delete…; Edit… renamed the pill at once with "Action saved"; Delete… from "N more" asked, then removed ${hidden}`;
+  return `ok: right-click and Shift+F10 open Run, Edit…, Delete…; Edit… renamed the pill at once with "Action saved"; ⌥→ moved a pill and the order stayed; a narrow row put ${ids.length} actions behind "N more" as they fit; Delete… from "N more" asked, then removed ${hidden}`;
 }
 
 /** Switches light or dark from main, as View → Appearance does, and waits until the page has repainted in it. */

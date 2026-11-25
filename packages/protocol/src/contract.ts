@@ -930,6 +930,14 @@ export const contract = {
       params: z.object({ projectRoot: AbsolutePath.nullable(), action: ProjectAction, previousId: z.string().optional(), shared: z.boolean().optional() }),
       result: z.object({}),
     },
+    /**
+     * The order of the project's actions (above the message box, in menus and the editor), yours, across your own,
+     * shared and global ones. Actions it leaves out follow in their usual order.
+     */
+    'actions.reorder': {
+      params: z.object({ projectRoot: AbsolutePath, ids: z.array(z.string().max(64)).max(500) }),
+      result: z.object({}),
+    },
     /** Deletes one of your actions, or with `shared` takes it out of the project's .seshboard.json. */
     'actions.delete': { params: z.object({ projectRoot: AbsolutePath.nullable(), id: z.string(), shared: z.boolean().optional() }), result: z.object({}) },
     /**

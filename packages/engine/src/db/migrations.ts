@@ -1065,4 +1065,13 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE owned_sessions ADD COLUMN cwd TEXT;
   `,
+
+  // v68: The order you gave a project's actions (dragged pills, the editor's list): their ids, as JSON, across yours,
+  // shared and global ones. Actions it doesn't name follow in the list's own order. A choice of yours: never dropped.
+  `
+  CREATE TABLE action_order (
+    project_id TEXT PRIMARY KEY,
+    ids        TEXT NOT NULL
+  );
+  `,
 ];

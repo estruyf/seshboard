@@ -2567,6 +2567,11 @@
       "page": "projects/actions"
     },
     {
+      "id": "feature:action-order",
+      "name": "Drag project actions to change their order; the pills above the message box show as many as fit",
+      "page": "projects/actions"
+    },
+    {
       "id": "feature:action-pills",
       "name": "Action pills above the message box",
       "page": "projects/actions"
@@ -4485,6 +4490,11 @@
       "id": "feature:side-panel-size",
       "name": "Every panel on the right, the empty one too, has Side, Half or Full in its header and resizes from its left edge; Settings › Conversation › Open the side panel in new sessions opens it with each session you start",
       "page": "sessions/tool-rail"
+    },
+    {
+      "id": "shortcut:actions.move",
+      "name": "Move a project action",
+      "page": "projects/actions"
     },
     {
       "id": "shortcut:rail.move",

@@ -270,6 +270,7 @@ describe('the shortcut registry', () => {
       'upnext.edit': [{ ...SESSION, running: true }, SESSION],
       'upnext.move': [{ ...SESSION, running: true }, SESSION],
       'rail.move': [SESSION, HOME],
+      'actions.move': [SESSION, HOME],
       'upnext.remove': [{ ...SESSION, running: true }, SESSION],
       'mode.cycle': [SESSION, HOME],
       'composer.send': [at({ view: 'new-session' }), HOME],

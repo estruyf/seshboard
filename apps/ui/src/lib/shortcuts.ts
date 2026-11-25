@@ -272,7 +272,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail" | "files" | "text";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail" | "files" | "text" | "actions";
 
 export interface ShortcutDef {
   id: string;
@@ -1094,6 +1094,16 @@ export const SHORTCUTS = [
     note: "Or drag it. A button moves only inside its group",
     when: inSession,
     where: "rail",
+  },
+  {
+    id: "actions.move",
+    keys: ["alt+arrowleft", "alt+arrowright", "alt+arrowup", "alt+arrowdown"],
+    action: "Move a project action",
+    section: "session",
+    context: "On an action above the message box (left or right), or in the list of the actions editor (up or down)",
+    note: "Or drag it",
+    when: inSession,
+    where: "actions",
   },
   {
     id: "web.toggle",

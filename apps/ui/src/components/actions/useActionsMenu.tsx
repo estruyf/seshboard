@@ -12,6 +12,7 @@ import type { MenuEntry } from '../Menu.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { ActionEditor, DeleteActionDialog } from './ActionEditor.tsx';
 import { applySavedAction, scopeParams, withoutAction } from './actionForm.ts';
+import { moveActionId } from './actionPills.ts';
 import { appKeyInTerminal, sameShortcut } from '../../lib/shortcuts.ts';
 import { ACTION_ICON, formatShortcut, shortcutFromEvent, useProjectActionList } from './useActions.ts';
 
@@ -31,6 +32,8 @@ export interface ActionsMenu {
   edit: (action: ListedAction) => void;
   /** Asks, then deletes the action (Delete… in its context menu). */
   askDelete: (action: ListedAction) => void;
+  /** Puts the action at index `to` of the list without it (a drag, ⌥← ⌥→), and keeps the order for the project. */
+  move: (id: string, to: number) => void;
   /** A short confirmation after a save or delete ("Action saved"), cleared after a moment. */
   status: string | null;
 }
@@ -60,7 +63,7 @@ export function useActionsMenu({
   const projectRoot = root && isAbsolutePath(root) ? root : null;
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  const { actions, sharedFile, errors, reload, update } = useProjectActionList(projectRoot);
+  const { actions, sharedFile, errors, reload, update, reorder } = useProjectActionList(projectRoot);
   const togglePanel = useTerminals((s) => s.togglePanel);
   const setActive = useTerminals((s) => s.setActive);
   /** The open editor, and the action it starts on (`fresh`: a new action, from the palette's New action…). */
@@ -133,7 +136,8 @@ export function useActionsMenu({
 
   const edit = (action: ListedAction) => setEditor({ action });
   const askDelete = (action: ListedAction) => setDeleting(action);
-  if (!projectRoot) return { sessionId, entries: [], overlays: null, error: null, actions: [], run, openEditor: null, edit, askDelete, status: null };
+  const move = (id: string, to: number) => reorder(moveActionId(actions.map((a) => a.id), id, to));
+  if (!projectRoot) return { sessionId, entries: [], overlays: null, error: null, actions: [], run, openEditor: null, edit, askDelete, move, status: null };
   const openEditor = () => setEditor({ action: null });
   const entries: MenuEntry[] = [
     { heading: 'Project actions' },
@@ -162,6 +166,7 @@ export function useActionsMenu({
           initialAction={editor.action}
           initial={editor.fresh ? {} : null}
           onChanged={reload}
+          onReorder={reorder}
           onSaved={(saved, previous, another) => {
             // The pill changes now; the reload that follows confirms it.
             update((list) => applySavedAction(list, saved, previous));
@@ -218,5 +223,5 @@ export function useActionsMenu({
       )}
     </>
   );
-  return { sessionId, entries, overlays, error, actions, run, openEditor, edit, askDelete, status };
+  return { sessionId, entries, overlays, error, actions, run, openEditor, edit, askDelete, move, status };
 }

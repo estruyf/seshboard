@@ -1,7 +1,7 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { basename } from '../../lib/format.ts';
 import { MoreHorizontal, Plus, Share2, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type HTMLAttributes, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { ACTION_ICONS, joinPath, type ActionIcon, type ActionSuggestion, type ListedAction } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -34,7 +34,10 @@ import {
   type ActionDraft,
   type DraftErrors,
 } from './actionForm.ts';
+import { moveActionId } from './actionPills.ts';
 import { ACTION_ICON, shortcutFromEvent } from './useActions.ts';
+import { matches } from '../../lib/shortcuts.ts';
+import { useQueueDrag } from '../queue/useQueueDrag.ts';
 
 const field = 'field h-7 w-full px-2.5 text-ui outline-none';
 const fieldBorder = (invalid: boolean) => (invalid ? 'border-error' : 'border-edge');
@@ -138,19 +141,40 @@ function ShortcutInput({
   );
 }
 
-/** One row of the left list: a real button inside an `<li>`. */
-function Row({ selected, onClick, children, data }: { selected?: boolean; onClick(): void; children: ReactNode; data?: Record<`data-${string}`, string | boolean> }) {
+/** One row of the left list: a real button inside an `<li>`. An action's row can be dragged (`drag`) and shows where a dragged one lands (`mark`). */
+function Row({
+  selected,
+  onClick,
+  children,
+  data,
+  drag,
+  mark = null,
+  dragging = false,
+  onKeyDown,
+}: {
+  selected?: boolean;
+  onClick(): void;
+  children: ReactNode;
+  data?: Record<`data-${string}`, string | boolean>;
+  drag?: HTMLAttributes<HTMLButtonElement>;
+  mark?: 'before' | 'after' | null;
+  dragging?: boolean;
+  onKeyDown?(event: KeyboardEvent<HTMLButtonElement>): void;
+}) {
   return (
-    <li>
+    <li className="relative">
       <button
         type="button"
         onClick={onClick}
+        onKeyDown={onKeyDown}
         aria-current={selected ? 'true' : undefined}
-        className={`flex min-h-8 w-full items-center gap-2.5 rounded-md px-2.5 py-1 text-left text-ui text-text ${selected ? 'bg-selected font-semibold' : 'hover:bg-border/45'}`}
+        className={`flex min-h-8 w-full items-center gap-2.5 rounded-md px-2.5 py-1 text-left text-ui text-text ${selected ? 'bg-selected font-semibold' : 'hover:bg-border/45'} ${dragging ? 'opacity-50' : ''}`}
+        {...drag}
         {...data}
       >
         {children}
       </button>
+      {mark && <span aria-hidden className={`pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-accent-ink ${mark === 'before' ? '-top-px' : '-bottom-px'}`} data-action-drop={mark} />}
     </li>
   );
 }
@@ -279,6 +303,7 @@ export function ActionEditor({
   initial,
   initialAction,
   onChanged,
+  onReorder,
   onSaved,
   onClose,
 }: {
@@ -290,6 +315,8 @@ export function ActionEditor({
   /** The action to start on (Edit… on a pill). */
   initialAction?: ListedAction | null;
   onChanged(): void;
+  /** Puts the actions in this order (their ids): a row dragged, or moved with ⌥↑ ⌥↓, inside its section. */
+  onReorder(ids: string[]): void;
   /** After a successful save: the action as saved, and the one it was edited from (null for a new one). `another` is set by "Save and add another": the editor stays open on a blank form. */
   onSaved(saved: ListedAction, previous: { scope: ListedAction['scope']; id: string } | null, another: boolean): void;
   onClose(): void;
@@ -431,10 +458,37 @@ export function ActionEditor({
 
   const PreviewIcon = ACTION_ICON[draft.icon];
 
+  // Rows move inside their section (yours, or the shared file's): the order is the one the pills above the message box keep.
+  const ids = actions.map((a) => a.id);
+  const sharedIds = new Set(shared.map((a) => a.id));
+  const sameSection = (a: string, b: string) => sharedIds.has(a) === sharedIds.has(b);
+  const move = (dragged: string, to: number) => onReorder(moveActionId(ids, dragged, to));
+  const drag = useQueueDrag({ ids: () => ids, move, mime: 'application/x-seshboard-action-row', canDrop: sameSection });
+  /** ⌥↑ ⌥↓ on a row: past the next action of its section, keeping focus on it. */
+  const onRowKey = (a: ListedAction) => (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!matches(event.nativeEvent, 'actions.move') || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+    event.preventDefault();
+    const section = (event.key === 'ArrowUp' ? [...ids].reverse() : ids).filter((other) => sameSection(other, a.id));
+    const neighbour = section[section.indexOf(a.id) + 1];
+    if (!neighbour) return;
+    // Up: where the one before it is. Down: after the next one, which moves up one place once this one is out.
+    move(a.id, ids.indexOf(neighbour));
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-action-row="${CSS.escape(a.id)}"]`)?.focus());
+  };
+
   const actionRow = (a: ListedAction) => {
     const Icon = ACTION_ICON[a.icon];
     return (
-      <Row key={actionKey(a)} selected={selected !== null && actionKey(selected) === actionKey(a)} onClick={() => select(a)}>
+      <Row
+        key={actionKey(a)}
+        selected={selected !== null && actionKey(selected) === actionKey(a)}
+        onClick={() => select(a)}
+        drag={drag.props(a.id)}
+        mark={drag.markFor(a.id)}
+        dragging={drag.dragging === a.id}
+        onKeyDown={onRowKey(a)}
+        data={{ 'data-action-row': a.id }}
+      >
         <Icon size={14} className="shrink-0 text-muted" aria-hidden />
         <span className="min-w-0 flex-1 truncate">{a.name}</span>
         {a.scope === 'global' && <span className="shrink-0 rounded border border-edge px-1.5 text-meta font-normal text-muted">All projects</span>}
