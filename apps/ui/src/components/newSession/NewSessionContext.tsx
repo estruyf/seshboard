@@ -38,7 +38,7 @@ export function NewSessionContext({ projectName, root, sections, rows, focus, no
   return (
     <aside
       aria-label="About this project"
-      className="grid min-w-0 content-start gap-5 empty:hidden @min-[860px]/new-session:col-start-2 @min-[860px]/new-session:min-h-[120px] @min-[860px]/new-session:overflow-y-auto [@media(max-height:680px)]:@min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:col-start-3 @min-[1200px]/new-session:row-start-1 @min-[1200px]/new-session:pt-[52px]"
+      className="grid min-w-0 content-start gap-5 empty:hidden @min-[860px]/new-session:col-start-2 @min-[860px]/new-session:min-h-[120px] @min-[860px]/new-session:overflow-y-auto [@media(max-height:680px)]:@min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:col-start-3 @min-[1200px]/new-session:row-start-1 @min-[1200px]/new-session:content-center-safe"
       data-new-session-context
     >
       {sections.includes('in-project') && (

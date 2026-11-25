@@ -1581,7 +1581,7 @@ function LocalNewSession() {
 
           {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onDone={(root) => root && changeFolder(root)} />}
 
-          <main className="flex min-w-0 flex-col gap-3.5 @min-[860px]/new-session:min-h-0 [@media(max-height:680px)]:@min-[860px]/new-session:overflow-y-auto">
+          <main className="flex min-w-0 flex-col gap-3.5 @min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:justify-center-safe [@media(max-height:680px)]:@min-[860px]/new-session:overflow-y-auto">
             {/* When stacked the projects come first and say what this is: the heading is for screen readers there. */}
             <div className="sr-only shrink-0 @min-[860px]/new-session:not-sr-only" data-new-session-heading>
               {/* The header names the view: here, where it runs. */}
