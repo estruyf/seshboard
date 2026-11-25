@@ -508,6 +508,11 @@ export interface Preferences {
   codeHighlighting: boolean;
   /** Settings › Theme: "Project colours". Off, project tiles and letters show in grey. On by default. */
   projectColors: boolean;
+  /**
+   * Settings › Theme: "File icons". The VS Code icon theme the Files tree draws its icons from, as
+   * `publisher.extension/theme` (`fileIcons.themes`). `""` is none: the tree shows no icons. None by default.
+   */
+  fileIconTheme: string;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
   /** Settings › Remote: "Show in the sidebar when nobody is connected", the quiet "Remote on · nobody connected" line. */
@@ -739,6 +744,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   minimalMode: false,
   codeHighlighting: true,
   projectColors: true,
+  fileIconTheme: "",
   confirmQuit: true,
   remoteIdleLine: true,
   sessionScope: "switchboard",
@@ -934,6 +940,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.minimalMode === "boolean") out.minimalMode = raw.minimalMode;
   if (typeof raw.codeHighlighting === "boolean") out.codeHighlighting = raw.codeHighlighting;
   if (typeof raw.projectColors === "boolean") out.projectColors = raw.projectColors;
+  if (typeof raw.fileIconTheme === "string" && raw.fileIconTheme.length <= 500) out.fileIconTheme = raw.fileIconTheme.trim();
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
   if (typeof raw.remoteIdleLine === "boolean") out.remoteIdleLine = raw.remoteIdleLine;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))

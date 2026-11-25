@@ -187,6 +187,11 @@
       "page": "sessions/files"
     },
     {
+      "id": "feature:file-icons",
+      "name": "File icons in Files from a VS Code icon theme",
+      "page": "sessions/files"
+    },
+    {
       "id": "feature:changes-open-in-files",
       "name": "Open a changed file in Files from Changes",
       "page": "terminal-changes-git/changes"

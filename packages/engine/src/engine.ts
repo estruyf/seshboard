@@ -221,6 +221,7 @@ import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { readPreview, readPreviewImage } from './system/filePreview.ts';
+import { IconThemes } from './system/iconThemes.ts';
 import { grep } from './system/grep.ts';
 import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
@@ -1026,6 +1027,8 @@ export function createEngine(options: EngineOptions): Engine {
   const files = new FileIndex();
   /** The search running for each `searchId` (one per window), so a newer one can cancel it. */
   const grepSearches = new Map<string, AbortController>();
+  // VS Code's file icon themes for the Files tree, read from the editors' extensions folders.
+  const iconThemes = new IconThemes();
   /**
    * Throws NOT_FOUND unless `cwd` is a folder Seshboard knows: a session's folder (indexed, live or started here) or a
    * project's root. The Files panel lists and searches only those, never any folder a caller names.
@@ -4203,6 +4206,9 @@ export function createEngine(options: EngineOptions): Engine {
       }
     },
     'files.image': ({ path }) => readPreviewImage(path),
+    'fileIcons.themes': () => ({ themes: iconThemes.list() }),
+    'fileIcons.theme': ({ id }) => ({ theme: iconThemes.load(id) }),
+    'fileIcons.icons': async ({ id, icons }) => ({ icons: await iconThemes.icons(id, icons) }),
     'editors.list': async () => {
       const editors = detectEditors(await editorEnv());
       const stored = appState.get(defaultEditorKey);

@@ -18,6 +18,7 @@ import { appearanceChoice, appearancePatch, BLACK_AND_WHITE, type AppearanceChoi
 import { CODE_HIGHLIGHTING_DETAIL, MINIMAL_MODE_DETAIL, PROJECT_COLORS_DETAIL } from './minimalCopy.ts';
 import { basename } from '../../lib/format.ts';
 import { useFlash } from '../ui/useFlash.ts';
+import { FileIconSettings } from './FileIconSettings.tsx';
 import { AppIconSettings } from './AppIconSettings.tsx';
 import { Heading } from './Heading.tsx';
 import { ThemePreview } from './ThemePreview.tsx';
@@ -174,7 +175,7 @@ function AppearanceCards({ choice, colorTheme, mode, onPick }: { choice: Appeara
 
 /**
  * Settings › Theme: Appearance (Minimal mode, the three theme cards, light or dark), Seshboard's colour themes while
- * Seshboard is picked, Code highlighting and Project colours, then the app icon.
+ * Seshboard is picked, Code highlighting, Project colours and File icons, then the app icon.
  */
 export function ThemeSettings() {
   const colorScheme = usePreferences((s) => s.prefs.colorScheme);
@@ -326,6 +327,7 @@ export function ThemeSettings() {
       <section className="grid gap-4" aria-label="Colours">
         <Toggle label="Code highlighting" detail={CODE_HIGHLIGHTING_DETAIL} checked={codeHighlighting} attr="data-code-highlighting" onChange={(codeHighlighting) => update({ codeHighlighting })} />
         <Toggle label="Project colours" detail={PROJECT_COLORS_DETAIL} checked={projectColors} attr="data-project-colors" onChange={(projectColors) => update({ projectColors })} />
+        <FileIconSettings />
       </section>
 
       <AppIconSettings />

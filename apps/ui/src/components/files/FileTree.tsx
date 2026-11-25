@@ -5,6 +5,9 @@ import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import type { OpenFilesMenu } from './FilesMenu.tsx';
 import type { TouchedFiles } from './touchedFiles.ts';
 import { buildTree, treeKey, visibleRows, type FileTreeRow } from './fileTree.ts';
+import { FileIcon } from './FileIcon.tsx';
+import { useFileIconTheme } from '../../state/fileIconStore.ts';
+import { useCurrentMode } from '../theme/ThemeSettings.tsx';
 
 const ROW_PX = 26;
 /** How far one level of the tree is indented. */
@@ -38,6 +41,11 @@ interface FileTreeProps {
  */
 export function FileTree({ files, truncated, error, open, filter, onFilter, onToggle, onOpen, selected, touched, reveal, onContextMenu }: FileTreeProps) {
   const root = useMemo(() => buildTree(files ?? []), [files]);
+  // Settings › Theme › File icons: a VS Code icon theme, or none.
+  const iconTheme = useFileIconTheme();
+  const light = useCurrentMode() === 'light';
+  // A theme that draws open and closed folders hides the arrows, as VS Code does with it.
+  const arrows = !iconTheme?.hidesExplorerArrows;
   // While filtering, every folder with a match is open; these are the ones closed by hand since the filter last changed.
   const [closed, setClosed] = useState<{ filter: string; paths: ReadonlySet<string> }>({ filter, paths: new Set() });
   const closedNow = closed.filter === filter ? closed.paths : NONE;
@@ -166,9 +174,12 @@ export function FileTree({ files, truncated, error, open, filter, onFilter, onTo
                   data-files-dir={row.dir || undefined}
                   data-files-touched={state ?? undefined}
                 >
-                  <span className="flex w-3.5 shrink-0 justify-center text-faint" aria-hidden>
-                    {row.dir ? row.open ? <ChevronDown size={12} /> : <ChevronRight size={12} /> : null}
-                  </span>
+                  {arrows && (
+                    <span className="flex w-3.5 shrink-0 justify-center text-faint" aria-hidden>
+                      {row.dir ? row.open ? <ChevronDown size={12} /> : <ChevronRight size={12} /> : null}
+                    </span>
+                  )}
+                  {iconTheme && <FileIcon theme={iconTheme} path={row.path} dir={row.dir} open={row.open} light={light} />}
                   <span className="min-w-0 flex-1 truncate">{row.name}</span>
                   {state && <span aria-label={state === 'changed' ? 'Changed in this session' : 'Read in this session'} className={`size-1.5 shrink-0 rounded-full ${state === 'changed' ? 'bg-accent-ink' : 'bg-faint'}`} />}
                 </div>

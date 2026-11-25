@@ -325,3 +325,45 @@ export const EditorInfo = z.object({
   icon: z.string().optional(),
 });
 export type EditorInfo = z.infer<typeof EditorInfo>;
+
+/** A file icon theme an editor (VS Code, Cursor, …) has installed (`fileIcons.themes`). */
+export const FileIconThemeInfo = z.object({
+  /** `publisher.extension/theme`, what the `fileIconTheme` preference saves. */
+  id: z.string(),
+  label: z.string(),
+  /** The editor it was found in, such as "VS Code". */
+  editor: z.string(),
+});
+export type FileIconThemeInfo = z.infer<typeof FileIconThemeInfo>;
+
+const IconMap = z.record(z.string(), z.string());
+
+/**
+ * Which icon a file or folder gets, as VS Code's icon themes say it: icon ids by file name, extension (without the
+ * dot, `test.ts` before `ts`), folder name and language. Names are in lower case.
+ */
+export const FileIconAssociations = z.object({
+  file: z.string().optional(),
+  folder: z.string().optional(),
+  folderExpanded: z.string().optional(),
+  fileExtensions: IconMap.optional(),
+  fileNames: IconMap.optional(),
+  folderNames: IconMap.optional(),
+  folderNamesExpanded: IconMap.optional(),
+  languageIds: IconMap.optional(),
+});
+export type FileIconAssociations = z.infer<typeof FileIconAssociations>;
+
+/** A loaded file icon theme (`fileIcons.theme`); the icons themselves come from `fileIcons.icons`. */
+export const FileIconTheme = z.object({
+  id: z.string(),
+  label: z.string(),
+  /** The theme shows open and closed folder icons in place of the arrows, as VS Code does with it. */
+  hidesExplorerArrows: z.boolean(),
+  base: FileIconAssociations,
+  /** What changes in light mode. */
+  light: FileIconAssociations.nullable(),
+  /** The language of a file, by extension (without the dot) and by name, both in lower case. */
+  languages: z.object({ extensions: IconMap, fileNames: IconMap }),
+});
+export type FileIconTheme = z.infer<typeof FileIconTheme>;

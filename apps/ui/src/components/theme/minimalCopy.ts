@@ -9,3 +9,6 @@ export const CODE_HIGHLIGHTING_DETAIL = 'Colours code and diffs by syntax. Off: 
 
 /** Project colours (`projectColors`). */
 export const PROJECT_COLORS_DETAIL = "A project's colour on its tile and in the sidebar. Off: projects show their letter in grey.";
+
+/** File icons (`fileIconTheme`). */
+export const FILE_ICONS_DETAIL = 'Icons for files and folders in Files, from an icon theme installed in VS Code, Cursor or Windsurf.';

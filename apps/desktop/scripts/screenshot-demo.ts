@@ -200,6 +200,35 @@ class Transcript {
   }
 }
 
+/** The id of the demo's VS Code icon theme, as Settings › Theme › File icons saves it. */
+export const DEMO_ICON_THEME = 'seshboard-demo.file-icons/demo-icons';
+
+/**
+ * A small VS Code file icon theme, installed in the demo's `~/.vscode/extensions`, so Settings › Theme › File icons
+ * has one to offer and the Files tree draws its icons: a folder, `src`, TypeScript (by language), Markdown, JSON,
+ * README and a plain file, each a coloured square with a letter.
+ */
+function iconThemeExtension(home: string): void {
+  const glyph = (colour: string, letter: string) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="3" fill="${colour}"/><text x="8" y="11.5" font-family="sans-serif" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">${letter}</text></svg>`;
+  const icons: Record<string, string> = { file: glyph('#868e96', 'F'), folder: glyph('#f59f00', 'D'), 'folder-open': glyph('#fab005', 'O'), src: glyph('#37b24d', 'S'), ts: glyph('#1c7ed6', 'T'), md: glyph('#7048e8', 'M'), json: glyph('#e8590c', 'J'), readme: glyph('#0ca678', 'R') };
+  const theme = {
+    iconDefinitions: Object.fromEntries(Object.keys(icons).map((id) => [id, { iconPath: `./icons/${id}.svg` }])),
+    file: 'file',
+    folder: 'folder',
+    folderExpanded: 'folder-open',
+    folderNames: { src: 'src' },
+    fileExtensions: { md: 'md', json: 'json' },
+    fileNames: { 'readme.md': 'readme' },
+    languageIds: { typescript: 'ts', typescriptreact: 'ts' },
+  };
+  write(join(home, '.vscode', 'extensions', 'seshboard-demo.file-icons-1.0.0'), {
+    'package.json': `${JSON.stringify({ name: 'file-icons', publisher: 'seshboard-demo', version: '1.0.0', contributes: { iconThemes: [{ id: 'demo-icons', label: 'Demo File Icons', path: './theme.json' }] } }, null, 2)}\n`,
+    'theme.json': `${JSON.stringify(theme, null, 2)}\n`,
+    ...Object.fromEntries(Object.entries(icons).map(([id, svg]) => [`icons/${id}.svg`, svg])),
+  });
+}
+
 /** A config folder as Claude Code leaves it after `/login`: the account it signed in with (no credentials). */
 function configFolder(dir: string, email: string, organization: string): void {
   mkdirSync(join(dir, 'sessions'), { recursive: true });
@@ -490,6 +519,7 @@ export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdi
   const now = Date.now();
   configFolder(configDir, 'you@example.com', 'Personal');
   configFolder(workConfigDir, 'you@company.example', 'Company');
+  iconThemeExtension(home);
 
   const acme = join(dev, 'acme-store');
   repo(

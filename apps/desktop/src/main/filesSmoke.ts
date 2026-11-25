@@ -264,3 +264,35 @@ export async function runFilesFromLinkStep(win: BrowserWindow): Promise<string> 
   await settle(win);
   return `ok: ${link.target} opened in Files${line ? ` at line ${line}` : ''}`;
 }
+
+/** The demo home's VS Code icon theme (`iconThemeExtension` in scripts/screenshot-demo.ts). */
+const DEMO_ICON_THEME = 'seshboard-demo.file-icons/demo-icons';
+
+/**
+ * File icons: with the demo's VS Code icon theme picked in Settings › Theme › File icons, the tree draws README.md,
+ * package.json and the `src` folder with that theme's icons; with None, it draws none.
+ */
+export async function runFilesIconsStep(win: BrowserWindow, deps: { fileIconTheme(): string; update(patch: { fileIconTheme: string }): void }, pics?: FilesPictures): Promise<string> {
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: only in the demo home, which has an icon theme installed';
+  const cwd = await sessionCwd(win);
+  if (!cwd) return 'ok: the session has no folder';
+  if (!existsSync(join(cwd, 'README.md')) || !existsSync(join(cwd, 'package.json'))) return 'ok: no README.md and package.json in the session folder';
+  const was = deps.fileIconTheme();
+  try {
+    deps.update({ fileIconTheme: DEMO_ICON_THEME });
+    if (!(await openFiles(win))) return 'Files did not open';
+    // At Side the viewer stands in for the tree while a file is open: its ‹ Files brings the tree back.
+    await js(win, `${PANEL}.querySelector('[data-files-show-tree]')?.click()`);
+    const iconOf = (path: string) => `${PANEL}?.querySelector('[data-files-node=${JSON.stringify(path)}] [data-file-icon]')`;
+    const drawn = (path: string, icon: string) => `(${iconOf(path)})?.dataset.fileIcon === ${JSON.stringify(icon)} && !!(${iconOf(path)})?.querySelector('img[src^="data:image/svg+xml"]')`;
+    if (!(await waitInPage(win, drawn('README.md', 'readme'), 10_000))) return `README.md has no "readme" icon (it has ${await js(win, `(${iconOf('README.md')})?.dataset.fileIcon ?? 'none'`)})`;
+    if (!(await waitInPage(win, drawn('package.json', 'json'), 3_000))) return `package.json has no "json" icon (it has ${await js(win, `(${iconOf('package.json')})?.dataset.fileIcon ?? 'none'`)})`;
+    if (!(await waitInPage(win, drawn('src', 'src'), 3_000))) return `the src folder has no "src" icon (it has ${await js(win, `(${iconOf('src')})?.dataset.fileIcon ?? 'none'`)})`;
+    await pictures(win, pics, 'files-icons');
+    deps.update({ fileIconTheme: '' });
+    if (!(await waitInPage(win, `!${PANEL}?.querySelector('[data-file-icon]')`, 3_000))) return 'the icons stayed with File icons set to None';
+    return 'ok: README.md, package.json and src drawn with the demo icon theme, and none with None';
+  } finally {
+    deps.update({ fileIconTheme: was });
+  }
+}

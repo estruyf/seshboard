@@ -6,6 +6,8 @@ import {
   AutoEffortSchema,
   AutoTierSchema,
   EditorInfo,
+  FileIconTheme,
+  FileIconThemeInfo,
   Effort,
   ImageAttachment,
   ModelOption,
@@ -914,6 +916,15 @@ export const contract = {
       result: z.object({ mediaType: z.string(), data: z.string() }),
     },
     'editors.list': { params: z.object({}), result: z.object({ editors: z.array(EditorInfo), defaultId: z.string().nullable() }) },
+    /** The file icon themes installed in VS Code and the editors built on it (Insiders, Cursor, Windsurf, VSCodium). */
+    'fileIcons.themes': { params: z.object({}), result: z.object({ themes: z.array(FileIconThemeInfo) }) },
+    /** A file icon theme's associations, to pick each file's icon; null when it is no longer installed or can't be read. */
+    'fileIcons.theme': { params: z.object({ id: z.string().min(1).max(500) }), result: z.object({ theme: FileIconTheme.nullable() }) },
+    /** Icons of a theme as data URLs (SVG or PNG), by id; null for one it doesn't have or that can't be read. */
+    'fileIcons.icons': {
+      params: z.object({ id: z.string().min(1).max(500), icons: z.array(z.string().max(300)).max(500) }),
+      result: z.object({ icons: z.record(z.string(), z.string().nullable()) }),
+    },
     /**
      * Opens a folder or file (optionally at a line) in an editor; `editorId` defaults to the user's default. Picking an
      * editor makes it the default, unless `keepDefault` (an app pinned to the rail).

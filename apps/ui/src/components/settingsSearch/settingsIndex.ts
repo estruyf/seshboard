@@ -5,7 +5,7 @@ import { keepAwakeDetail, keepAwakeLabel } from '../general/keepAwake.ts';
 import { BACKGROUND_LABEL, backgroundDetail, NEEDS_YOU_DETAIL, NEEDS_YOU_LABEL, QUICK_START_KEYWORDS, SHORTCUT_DETAIL } from '../general/quickStartCopy.ts';
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
-import { CODE_HIGHLIGHTING_DETAIL, MINIMAL_MODE_DETAIL, PROJECT_COLORS_DETAIL } from '../theme/minimalCopy.ts';
+import { CODE_HIGHLIGHTING_DETAIL, FILE_ICONS_DETAIL, MINIMAL_MODE_DETAIL, PROJECT_COLORS_DETAIL } from '../theme/minimalCopy.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import { SIDE_PANEL_DETAIL } from '../transcript/sidePanelCopy.ts';
@@ -138,6 +138,7 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'appearance-theme', page: 'theme', label: 'Theme', detail: 'Seshboard, Black and white, or Black and white, light.', keywords: 'appearance black white greys grey gray monochrome colours colors', target: '[data-appearance-cards]' },
     { id: 'minimal-mode', page: 'theme', label: 'Minimal mode', detail: MINIMAL_MODE_DETAIL, keywords: 'quiet calm minimalist less clutter one line chips badges counts borders', target: '[data-minimal-mode]' },
     { id: 'code-highlighting', page: 'theme', label: 'Code highlighting', detail: CODE_HIGHLIGHTING_DETAIL, keywords: 'syntax colours colors code blocks diffs one colour plain monochrome', target: '[data-code-highlighting]' },
+    { id: 'file-icons', page: 'theme', label: 'File icons', detail: FILE_ICONS_DETAIL, keywords: 'icon theme icon pack vs code vscode material seti explorer files tree folders', target: '[data-file-icon-theme]' },
     { id: 'project-colors', page: 'theme', label: 'Project colours', detail: PROJECT_COLORS_DETAIL, keywords: 'project colors tiles letters icons grey gray', target: '[data-project-colors]' },
     { id: 'theme', page: 'theme', label: 'Seshboard themes', detail: 'Colours for the app, the code blocks and the terminal. Themes are JSON files you can share.', keywords: 'color colors palette syntax', target: '[data-theme-picker]' },
     { id: 'theme-import', page: 'theme', label: 'Import…', detail: 'Add a theme from a .json file.', keywords: 'theme file json drop', target: '[data-theme-import]' },
