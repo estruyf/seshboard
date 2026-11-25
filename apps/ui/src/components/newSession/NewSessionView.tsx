@@ -84,6 +84,7 @@ import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { linkNoticeText } from './linkNotice.ts';
 import { startFromGithub, useGithubStart, type GithubStartRequest } from '../../state/githubStartStore.ts';
+import { usePrefetchBase } from './usePrefetchBase.ts';
 import { useStartUnder } from '../../state/startUnderStore.ts';
 import { currentCheckoutBlocked, forkCaution, linkBanner, NO_AUTOSTART, otherRepository, prBranch, readOnlyFork, startNote, startPrompt, takenWorktreeNames, uniqueWorktreeName, worktreeNameFor } from '../github/githubStart.ts';
 import { chipItem, reasonLine } from '../github/githubText.ts';
@@ -922,6 +923,7 @@ function LocalNewSession() {
 
   const canWorktree = options.git && (inspection?.isGitRepo ?? false) && !freshClone;
   const useWorktree = d.workspace === 'worktree' && canWorktree;
+  usePrefetchBase(client, cwd, useWorktree && !noWorktree, d.baseRef);
   const effectiveName = nameTouched ? worktreeName : suggestedName;
   const branch = inspection?.branch ?? (cwd ? (lastBranches.get(cwd) ?? null) : null);
   const folderBranches = useMemo(() => (cwd && inspection?.branch ? new Map(lastBranches).set(cwd, inspection.branch) : lastBranches), [lastBranches, cwd, inspection]);

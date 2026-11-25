@@ -10,6 +10,12 @@ export class WorktreeFromError extends Error {}
 /** Where a worktree named `name` goes: the place Claude Code's `--worktree` uses, so Seshboard treats it like one. */
 export const worktreePath = (root: string, name: string) => joinPath(root, `.claude/worktrees/${name}`);
 
+/** How a worktree is made: git's environment, and `fetchBranch` to fetch a remote's branch the shared way (`BaseFetches`). */
+export interface WorktreeOptions {
+  env?: Record<string, string>;
+  fetchBranch?: (remote: string, branch: string) => Promise<void>;
+}
+
 /** The folder a branch is checked out in (the main checkout or another worktree), or null. */
 async function checkedOutAt(root: string, branch: string): Promise<string | null> {
   const out = await git(root, ['worktree', 'list', '--porcelain']).catch(() => '');
@@ -37,7 +43,7 @@ async function checkedOutAt(root: string, branch: string): Promise<string | null
  * Refuses (WorktreeFromError, git's first useful line) when the folder is taken, the branch is checked out somewhere
  * else, or git says no. Nothing is pushed.
  */
-export async function makeWorktreeFrom(root: string, name: string, base: WorktreeBranchBase & { fork?: boolean }, options: { env?: Record<string, string>; remote?: string } = {}): Promise<{ path: string; branch: string }> {
+export async function makeWorktreeFrom(root: string, name: string, base: WorktreeBranchBase & { fork?: boolean }, options: WorktreeOptions & { remote?: string } = {}): Promise<{ path: string; branch: string }> {
   const path = worktreePath(root, name);
   if (existsSync(path)) throw new WorktreeFromError(`There is a worktree named ${name} already. Give this one another name.`);
   const env = { ...options.env, GIT_TERMINAL_PROMPT: '0' };
@@ -72,7 +78,8 @@ export async function makeWorktreeFrom(root: string, name: string, base: Worktre
     // The remote's copy, asked for or because only the remote has it: fetch it first. Offline, the copy here will do.
     const at = base.remote ?? remote;
     from = `refs/remotes/${at}/${base.branch}`;
-    await git(root, ['fetch', '--quiet', '--no-tags', at, `+refs/heads/${base.branch}:${from}`], { env, timeout: 120_000 }).catch(() => '');
+    if (options.fetchBranch) await options.fetchBranch(at, base.branch).catch(() => {});
+    else await git(root, ['fetch', '--quiet', '--no-tags', at, `+refs/heads/${base.branch}:${from}`], { env, timeout: 120_000 }).catch(() => '');
     if (!(await exists(from))) throw new WorktreeFromError(base.remote ? `There is no branch ${base.branch} on ${at}.` : `There is no branch ${base.branch} here or on ${at}.`);
   }
   const branch = `worktree-${name}`;
@@ -88,7 +95,7 @@ export async function makeWorktreeFrom(root: string, name: string, base: Worktre
  * is no origin, or it doesn't say which branch is its default). Same folder, branch (`worktree-<name>`, tracking
  * nothing) and copied files as `makeWorktreeFrom`.
  */
-export async function makeWorktree(root: string, name: string, baseRef: 'fresh' | 'head', options: { env?: Record<string, string> } = {}): Promise<{ path: string; branch: string }> {
+export async function makeWorktree(root: string, name: string, baseRef: 'fresh' | 'head', options: WorktreeOptions = {}): Promise<{ path: string; branch: string }> {
   if (baseRef === 'fresh') {
     // `origin/main`: what origin's HEAD points at, as the last fetch or clone recorded it.
     const head = (await git(root, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { allowExitCodes: [1, 128] }).catch(() => '')).trim();

@@ -33,6 +33,7 @@ import { globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, newSess
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
 import { branchLabel, branchNote } from '../newSession/trayLabels.ts';
 import { baseChoices } from '../newSession/worktreeBases.ts';
+import { usePrefetchBase } from '../newSession/usePrefetchBase.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { Switch } from '../ui/Toggle.tsx';
@@ -149,6 +150,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
 
   const canWorktree = options.git && (inspection?.isGitRepo ?? false);
   const useWorktree = d.workspace === 'worktree' && canWorktree;
+  usePrefetchBase(client, root, useWorktree, d.baseRef);
   const checkoutBranch = checkoutBranchFor(d, useWorktree, gitBranches.current);
   const branchTaken = branchBlocked(checkoutBranch, gitBranches.checkedOutElsewhere);
   const trayBranch = branchLabel({

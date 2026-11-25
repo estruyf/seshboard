@@ -259,11 +259,26 @@ const StreamingBlock = memo(function StreamingBlock({ sessionId, since, showIndi
   });
   // A new session on Auto: your message waits until Auto has picked its model.
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
+  // A new session's worktree is still being made: Claude Code starts in it once it is there.
+  const preparing = useHosts((s) => s.hosts.get(sessionId)?.preparing === true);
   // Claude Code is compacting: the host says so, so it shows after switching sessions and in pop-outs too.
   const compacting = useHosts((s) => s.hosts.get(sessionId)?.compacting === true);
   // Claude Code is retrying a failed API call: say so, with the wait counting down, instead of looking stuck.
   const apiRetry = useHosts((s) => s.hosts.get(sessionId)?.apiRetry);
-  const now = useTicker((choosing || !!apiRetry) && showIndicator);
+  const now = useTicker((choosing || preparing || !!apiRetry) && showIndicator);
+  if (preparing) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-preparing-worktree>
+        <p className="flex min-w-0 items-center gap-2 text-ui text-muted" role="status">
+          <span className="flex w-4 shrink-0 justify-center">
+            <WorkingPanel />
+          </span>
+          {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
+          <span className="shrink-0">Making the worktree…</span>
+        </p>
+      </div>
+    );
+  }
   if (choosing) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>

@@ -162,6 +162,8 @@ export const SessionHostInfo = z.object({
   autoPick: AutoPick.nullable().optional(),
   /** Auto is still picking the model this session starts on; your first message waits for it. */
   autoChoosing: z.boolean().optional(),
+  /** Seshboard is still making the new session's worktree; Claude Code starts in it once it is there. Missing: it isn't. */
+  preparing: z.boolean().optional(),
   /** Its profile is at a plan usage limit: what is queued waits, and new sessions in the profile wait too. */
   usageLimit: UsageLimitHit.nullable().optional(),
   /**

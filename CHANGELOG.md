@@ -24,6 +24,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 ### Changed
 
 - **A slash command stands out in the message box.** When a message starts with a command the session knows, like `/design`, the command shows in the accent colour, so you can tell it from the prompt that goes with it. A path such as `/tmp` stays as it is.
+- **A session in a new worktree opens at once.** Start no longer waits while git fetches the branch and makes the worktree. The session opens with your message and says **Making the worktree…**, and Claude starts once the worktree is there. New session also fetches the branch while you write the prompt, so the worktree is ready sooner. If git can't make the worktree, the session says why and your prompt goes back in the box.
 - **Your phone stays quiet while you use your computer.** In the remote app's Settings › Notifications, Needs you and Finished each have Away, Always or Off. Away is the new default: a notification only comes after 5 minutes without keyboard or mouse, or when the computer is locked or asleep.
 - **Projects and browser profiles under the Browser's tabs.** In the Browser view, the bottom of the sidebar now has **Projects** and **Browser profiles** next to Settings. Browser profiles opens **Settings › Browser** at your profiles. So does **Browser profiles…** in a tab's profile menu.
 - **Home and New session sit in the middle of a tall window.** On a big screen they no longer start at the top edge, so you don't have to look up to use them.

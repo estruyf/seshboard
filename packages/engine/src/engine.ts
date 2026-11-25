@@ -78,6 +78,7 @@ import {
   accountKey,
   accountTag,
   type ClaudeWorktreeRequest,
+  type WorktreeRequest,
   focusSessions,
   projectOf,
   type LaterItem,
@@ -127,7 +128,8 @@ import { SavedPromptStore } from './prompts/savedPromptStore.ts';
 import { GithubService } from './git/github.ts';
 import { FORK_READ_ONLY, GithubOriginStore } from './git/githubOrigins.ts';
 import { checkoutPullRequest as checkoutPullRequest_, PrCheckoutError } from './git/prCheckout.ts';
-import { makeWorktree, makeWorktreeFrom, WorktreeFromError } from './git/worktreeFrom.ts';
+import { makeWorktree, makeWorktreeFrom, worktreePath, WorktreeFromError, type WorktreeOptions } from './git/worktreeFrom.ts';
+import { BaseFetches } from './git/baseFetches.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { QueueAutoStarter } from './later/autoStart.ts';
 import { ScheduleStore } from './schedules/scheduleStore.ts';
@@ -745,6 +747,20 @@ export function createEngine(options: EngineOptions): Engine {
     if (needed) throw trustNeededError(needed);
   }
   const projectDefaultBranch = (cwd: string) => projects.defaultsOf(resolver.resolve(cwd).root).defaultBranch;
+  /** Fetches of the branch new worktrees start from, shared by New session's prefetch and the start (`createSession`). */
+  const baseFetches = new BaseFetches();
+  /**
+   * The remote branch a new worktree in `cwd` from `baseRef` fetches before git makes it (as `createSession` does), or
+   * null when it fetches none here: a pull request's, a local branch's, or one Claude Code makes itself.
+   */
+  const worktreeFetchFor = async (cwd: string, baseRef: WorktreeRequest['baseRef']): Promise<{ root: string; remote: string; branch: string } | null> => {
+    const root = resolver.resolve(cwd).root;
+    if (typeof baseRef === 'object') return baseRef.remote && !baseRef.pullRequest ? { root, remote: baseRef.remote, branch: baseRef.branch } : null;
+    const branch = baseRef === 'fresh' ? projectDefaultBranch(cwd) : null;
+    if (!branch) return null;
+    const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
+    return remotes.includes('origin') ? { root, remote: 'origin', branch } : null;
+  };
   // Every base branch question (changes, worktrees, branches, pull requests) asks the project first.
   setProjectDefaultBranch(projectDefaultBranch);
   // --- Clone from GitHub: Settings › Projects ----------------------------------------------------------------------
@@ -2880,31 +2896,60 @@ export function createEngine(options: EngineOptions): Engine {
     let cwd = params.cwd;
     let worktree: ClaudeWorktreeRequest | null = null;
     let setupBranch: string | undefined;
-    const made = async (make: (root: string, env: Record<string, string>) => Promise<{ path: string; branch: string }>) => {
+    /** Where the worktree made here goes, and its branch: known before git runs, so the session can open first. */
+    let planned: { path: string; branch: string } | null = null;
+    const made = (make: (root: string, options: WorktreeOptions) => Promise<{ path: string; branch: string }>): Promise<{ path: string; branch: string }> => {
+      const root = resolver.resolve(params.cwd).root;
+      const path = worktreePath(root, asked!.name);
+      // Said at once, before the session opens, as git would say it after.
+      if (existsSync(path)) throw new RpcError('GIT_FAILED', `There is a worktree named ${asked!.name} already. Give this one another name.`);
+      const base = asked!.baseRef;
+      planned = { path, branch: typeof base === 'object' && base.pullRequest ? base.branch : `worktree-${asked!.name}` };
+      const done = (async () => {
+        const env = (await shell.ready).env;
+        // The fetch New session started while you wrote the prompt, joined or skipped when it is fresh (`worktree.prefetch`).
+        const result = await make(root, { env, fetchBranch: (remote, branch) => baseFetches.ensure(root, remote, branch, env) });
+        setupBranch = result.branch;
+        return result;
+      })();
+      // Whoever waits for it says what went wrong.
+      done.catch(() => {});
+      return done;
+    };
+    /** The worktree being made in the background: Claude Code's session opens meanwhile, and starts in it once it is there. */
+    let preparing: Promise<{ path: string; branch: string }> | null = null;
+    if (asked && typeof asked.baseRef === 'object') {
+      const base = asked.baseRef;
+      preparing = made((root, options) => makeWorktreeFrom(root, asked.name, base, options));
+    } else if (asked && asked.baseRef === 'fresh' && projectDefaultBranch(params.cwd)) {
+      // A project that names its own default branch starts fresh worktrees from origin's copy of it, not from origin's HEAD.
+      const branch = projectDefaultBranch(params.cwd)!;
+      preparing = made(async (root, options) => {
+        const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
+        return makeWorktreeFrom(root, asked.name, { branch, ...(remotes.includes('origin') ? { remote: 'origin' } : {}) }, options);
+      });
+    } else if (asked && provider !== 'claude') {
+      const baseRef = asked.baseRef as ClaudeWorktreeRequest['baseRef'];
+      preparing = made((root, options) => makeWorktree(root, asked.name, baseRef, options));
+    } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
+    if (preparing && provider !== 'claude') {
+      // Another provider's session starts in its folder, so it waits for the worktree here.
       try {
-        const done = await make(resolver.resolve(params.cwd).root, (await shell.ready).env);
-        cwd = done.path;
-        setupBranch = done.branch;
+        cwd = (await preparing).path;
       } catch (error) {
         if (error instanceof WorktreeFromError) throw new RpcError('GIT_FAILED', error.message);
         throw error;
       }
-    };
-    if (asked && typeof asked.baseRef === 'object') {
-      const base = asked.baseRef;
-      await made((root, env) => makeWorktreeFrom(root, asked.name, base, { env }));
-    } else if (asked && asked.baseRef === 'fresh' && projectDefaultBranch(params.cwd)) {
-      // A project that names its own default branch starts fresh worktrees from origin's copy of it, not from origin's HEAD.
-      const branch = projectDefaultBranch(params.cwd)!;
-      await made(async (root, env) => {
-        const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
-        return makeWorktreeFrom(root, asked.name, { branch, ...(remotes.includes('origin') ? { remote: 'origin' } : {}) }, { env });
-      });
-    } else if (asked && provider !== 'claude') {
-      const baseRef = asked.baseRef as ClaudeWorktreeRequest['baseRef'];
-      await made((root, env) => makeWorktree(root, asked.name, baseRef, { env }));
-    } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
-    const worktreeSetupFor = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
+      preparing = null;
+    }
+    const prepared = preparing;
+    const worktreeSetupFor = asked
+      ? async (id: string) => {
+          // A worktree that couldn't be made has nothing to set up: the session says why.
+          if (prepared && !(await prepared.then(() => true, () => false))) return;
+          await worktreeSetup(id, params.cwd, asked.name, setupBranch)?.();
+        }
+      : undefined;
     // An orchestrator is one before its first message goes, so its first tool call already finds it.
     const setup = orchestratorRoot
       ? (id: string) => {
@@ -2930,12 +2975,15 @@ export function createEngine(options: EngineOptions): Engine {
         const effort = route.ok && !create.effort ? route.effort : null;
         return { model: route.ok ? route.model : null, effort, autoPick: autoPickOf(route.ok ? { ...route, effort } : { ...route, model: null, effort: null }) };
       };
-      sessionId = await hosts.create({ ...create, ...own, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
+      const prepare = prepared ? prepared.then((done) => ({ cwd: done.path })) : undefined;
+      sessionId = await hosts.create({ ...create, ...own, cwd, worktree, profileId, ...(prepare ? { prepare } : {}), ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
     }
     if (origin) {
       // Where it works on the pull request (the checkout's top folder, as git status reports it), and on which branch.
-      const top = await topLevel(cwd).catch(() => cwd);
-      const branch = setupBranch ?? (checkoutPullRequest ? (await listBranches(cwd).catch(() => ({ current: null }))).current : null);
+      // A worktree made here is its own top folder, on the branch it was planned with, so that needs no wait for git.
+      const where = planned as { path: string; branch: string } | null;
+      const top = where ? where.path : await topLevel(cwd).catch(() => cwd);
+      const branch = where ? where.branch : checkoutPullRequest ? (await listBranches(cwd).catch(() => ({ current: null }))).current : null;
       githubOrigins.save(sessionId, origin, { cwd: top, branch });
     }
     underParent(sessionId, params.parentSessionId);
@@ -4057,6 +4105,21 @@ export function createEngine(options: EngineOptions): Engine {
       if (questions.contains(cwd)) questions.ensure();
       const profile = profileId && profiles.has(profileId) ? profileId : folderProfile(cwd);
       if (statSafe(cwd)?.isDirectory()) void hosts.prewarm(cwd, profile, effort).catch((error: Error) => log('debug', `Pre-warm failed: ${error.message}`));
+      return {};
+    },
+    'worktree.prefetch': async ({ cwd, baseRef }) => {
+      if (!statSafe(cwd)?.isDirectory() || !resolver.resolve(cwd).gitDir) return {};
+      try {
+        // Nothing runs in a cloned repository before its trust question is answered.
+        assertTrusted(cwd);
+      } catch {
+        return {};
+      }
+      const target = await worktreeFetchFor(cwd, baseRef);
+      if (target) {
+        const env = (await shell.ready).env;
+        void baseFetches.ensure(target.root, target.remote, target.branch, env);
+      }
       return {};
     },
     'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),

@@ -110,6 +110,15 @@ function connect(extra: { worktreeFactsWaitMs?: number; trashed?: string[][]; tr
   return { engine, client, dataDir, projectDir };
 }
 
+/** Waits for a condition the engine reaches on its own (a session that starts after git has made its worktree). */
+const until = async (check: () => Promise<boolean>, timeoutMs = 8_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error('timed out');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+};
+
 describe('engine over a MessagePort', () => {
   it('answers ping', async () => {
     const { client } = connect();
@@ -805,6 +814,8 @@ describe('engine over a MessagePort', () => {
     // A queued item keeps the branch as a ref; starting it makes the worktree from that branch.
     const { item } = await client.call('later.add', { draft: { cwd: repo, prompt: 'hi', workspace: 'worktree', baseRef: 'refs/heads/dev' } });
     await client.call('later.start', { id: item.id });
+    // The session opens first; Claude Code starts once git has made the worktree.
+    await until(async () => created.length === 1);
     const made = created.at(-1)!;
     expect(made.worktree).toBeUndefined();
     expect(made.cwd).toMatch(/[\\/]\.claude[\\/]worktrees[\\/][^\\/]+$/);
@@ -1442,13 +1453,6 @@ describe('Claude profiles', () => {
         .join('\n') + '\n',
     );
   };
-  const until = async (check: () => Promise<boolean>, timeoutMs = 8_000) => {
-    const deadline = Date.now() + timeoutMs;
-    while (!(await check())) {
-      if (Date.now() > deadline) throw new Error('timed out');
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  };
 
   it('lists, searches and runs sessions from two config folders, each with its own login', async () => {
     const previous = process.env.CLAUDE_CONFIG_DIR;
@@ -1582,6 +1586,46 @@ describe('Claude profiles', () => {
     expect(created[0]!.worktree).toBeUndefined();
     expect(created[0]!.cwd).toBe(join(repo, '.claude', 'worktrees', 'from-dev'));
     expect((await git(created[0]!.cwd!, ['rev-parse', 'HEAD'])).trim()).toBe(dev);
+  });
+
+  it("fetches a new worktree's base while the prompt is written, so Start doesn't fetch it again", async () => {
+    const created: Array<{ cwd?: string; worktree?: string | null }> = [];
+    const { client } = connect({ sdk: fakeSdk(created), path: process.env.PATH ?? '' });
+    const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-prefetch-')));
+    cleanups.push(() => rmSync(scratch, { recursive: true, force: true }));
+    const origin = join(scratch, 'origin');
+    const repo = join(scratch, 'repo');
+    mkdirSync(origin);
+    const commit = (cwd: string, message: string) => git(cwd, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', message]);
+    await git(origin, ['init', '-q', '-b', 'dev']);
+    await commit(origin, 'first');
+    await git(scratch, ['clone', '-q', origin, repo]);
+    await client.call('projects.add', { path: repo });
+    await client.call('projects.setDefaults', { root: repo, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: 'dev' } });
+
+    await commit(origin, 'second');
+    const second = (await git(origin, ['rev-parse', 'HEAD'])).trim();
+    await client.call('worktree.prefetch', { cwd: repo, baseRef: 'fresh' });
+    await until(async () => (await git(repo, ['rev-parse', 'refs/remotes/origin/dev'])).trim() === second);
+
+    // Fresh enough: Start makes the worktree from what was fetched, without fetching (and finding the third commit).
+    await commit(origin, 'third');
+    await client.call('session.create', { cwd: repo, prompt: 'hi', worktree: { name: 'prefetched', baseRef: 'fresh' } });
+    await until(async () => created.length === 1);
+    expect((await git(created[0]!.cwd!, ['rev-parse', 'HEAD'])).trim()).toBe(second);
+  });
+
+  it('refuses a worktree name that is taken before the session opens', async () => {
+    const created: Array<{ cwd?: string; worktree?: string | null }> = [];
+    const { client } = connect({ sdk: fakeSdk(created), path: process.env.PATH ?? '' });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-taken-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'first']);
+    await client.call('projects.add', { path: repo });
+    mkdirSync(join(repo, '.claude', 'worktrees', 'taken'), { recursive: true });
+    await expect(client.call('session.create', { cwd: repo, prompt: 'hi', worktree: { name: 'taken', baseRef: { branch: 'main' } } })).rejects.toMatchObject({ code: 'GIT_FAILED' });
+    expect(created).toEqual([]);
   });
 
   it('switches the branch of a checkout, keeps uncommitted work and refuses while Claude works there', async () => {

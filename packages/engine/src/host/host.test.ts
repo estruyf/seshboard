@@ -1578,7 +1578,7 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
-  it('holds the first message until setup has finished', async () => {
+  it('shows the first message at once, and holds it from Claude Code until setup has finished', async () => {
     const t = setup();
     let finishSetup!: () => void;
     const setupDone = new Promise<void>((resolve) => (finishSetup = resolve));
@@ -1593,11 +1593,68 @@ describe('HostManager', () => {
       },
     });
     expect(seen).toEqual([id]);
+    expect(t.messages[0]).toMatchObject({ id, messages: [{ type: 'user' }] });
     await new Promise((r) => setTimeout(r, 50));
-    expect(t.messages).toEqual([]);
+    expect(lastState(t.infos, id)).toBe('starting');
     finishSetup();
     await until(() => lastState(t.infos, id) === 'idle');
+    t.manager.closeAll();
+  });
+
+  it('opens a session while its worktree is made, and starts Claude Code in it once it is there', async () => {
+    const t = setup();
+    let made!: (done: { cwd: string }) => void;
+    const prepare = new Promise<{ cwd: string }>((resolve) => (made = resolve));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', prepare });
+    // The session and your message show; Claude Code hasn't started.
+    expect(t.created).toEqual([id]);
     expect(t.messages[0]).toMatchObject({ id, messages: [{ type: 'user' }] });
+    expect(t.infos.at(-1)).toMatchObject({ sessionId: id, cwd: '/w', state: 'starting', preparing: true });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(t.queries).toHaveLength(0);
+    made({ cwd: '/w/.claude/worktrees/calm-fox' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.cwd).toBe('/w/.claude/worktrees/calm-fox');
+    expect(t.infos.at(-1)).toMatchObject({ cwd: '/w/.claude/worktrees/calm-fox' });
+    expect(t.infos.at(-1)!.preparing).toBeUndefined();
+    t.manager.closeAll();
+  });
+
+  it('turns fast mode on once the worktree is there, without holding up the start', async () => {
+    const t = setup();
+    let made!: (done: { cwd: string }) => void;
+    const prepare = new Promise<{ cwd: string }>((resolve) => (made = resolve));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', prepare, fastMode: true });
+    expect(t.queries).toHaveLength(0);
+    made({ cwd: '/w/.claude/worktrees/calm-fox' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)).toMatchObject({ fastMode: 'on' });
+    t.manager.closeAll();
+  });
+
+  it('fails with git\'s reason when the worktree can\'t be made, and offers nothing to send again', async () => {
+    const t = setup();
+    // git fails after the session has opened (the fetch found no such branch).
+    const prepare = new Promise<{ cwd: string }>((_, reject) => setTimeout(() => reject(new Error('There is no branch dev on origin.')), 20));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', prepare });
+    await until(() => lastState(t.infos, id) === 'error');
+    expect(t.infos.at(-1)).toMatchObject({ error: 'Could not make the worktree: There is no branch dev on origin.' });
+    expect(t.infos.at(-1)!.unsent).toBeUndefined();
+    expect(t.infos.at(-1)!.preparing).toBeUndefined();
+    expect(t.queries).toHaveLength(0);
+    t.manager.closeAll();
+  });
+
+  it('never starts Claude Code for a session closed while its worktree is made', async () => {
+    const t = setup();
+    let made!: (done: { cwd: string }) => void;
+    const prepare = new Promise<{ cwd: string }>((resolve) => (made = resolve));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', prepare });
+    t.manager.close(id);
+    made({ cwd: '/w/.claude/worktrees/calm-fox' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(t.queries).toHaveLength(0);
+    expect(lastState(t.infos, id)).toBe('closed');
     t.manager.closeAll();
   });
 

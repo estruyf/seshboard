@@ -752,6 +752,14 @@ export const contract = {
       params: z.object({ cwd: AbsolutePath, profileId: ProfileId.nullable().default(null), effort: Effort.nullable().default(null) }),
       result: z.object({}),
     },
+    /**
+     * Fetches the remote branch a new worktree from `baseRef` starts from (`origin/dev`), while the prompt is written, so
+     * Start finds it fresh and doesn't wait on the network. Does nothing when that start fetches nothing.
+     */
+    'worktree.prefetch': {
+      params: z.object({ cwd: AbsolutePath, baseRef: WorktreeRequest.shape.baseRef }),
+      result: z.object({}),
+    },
     'models.list': { params: z.object({}), result: z.object({ models: z.array(ModelOption) }) },
     /**
      * Plan usage (5-hour and weekly limits) from Claude Code's /usage report, or for a Codex profile its rate limits in

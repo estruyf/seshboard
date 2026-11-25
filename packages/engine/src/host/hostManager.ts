@@ -241,6 +241,11 @@ export interface CreateParams {
   fastMode?: boolean | undefined;
   worktree: ClaudeWorktreeRequest | null;
   /**
+   * The worktree the engine is still making for it, and its folder (`HostConfig.prepare`): the session opens in `cwd`
+   * at once, and Claude Code starts in the worktree once it is there.
+   */
+  prepare?: Promise<{ cwd: string }>;
+  /**
    * Runs after Claude Code has started (and created the worktree) but before
    * the first message, e.g. setup actions. Failures are logged; the message still goes.
    */
@@ -326,8 +331,9 @@ export class HostManager {
 
   async create(params: CreateParams): Promise<string> {
     await this.deps.links?.warm(params.prompt);
-    // A warm process started without the read-only hook, the orchestrator's tools and any text after the prompt.
-    const warm = params.readOnly || params.orchestrator || params.appendSystem ? undefined : this.takeWarm(params);
+    // A warm process started without the read-only hook, the orchestrator's tools and any text after the prompt, and
+    // in another folder than a worktree still being made.
+    const warm = params.readOnly || params.orchestrator || params.appendSystem || params.prepare ? undefined : this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
       {
@@ -339,6 +345,7 @@ export class HostManager {
         permissionMode: params.permissionMode,
         effort: params.effort,
         worktree: params.worktree,
+        ...(params.prepare ? { prepare: params.prepare } : {}),
         ...(params.readOnly ? { readOnly: true } : {}),
         ...(params.orchestrator ? { orchestrate: true } : {}),
         ...(params.appendSystem ? { appendSystem: params.appendSystem } : {}),
@@ -354,19 +361,16 @@ export class HostManager {
       if (params.permissionMode !== 'default') await host.setPermissionMode(params.permissionMode).catch(() => {});
     }
     // Sent the same way for a warm process and a new one. If it fails the session starts at standard speed, and says so.
-    if (params.fastMode) await host.setFastMode(true).catch((error: Error) => this.deps.log('warn', `Fast mode did not turn on: ${error.message}`));
+    // Claude Code takes it only once it runs: while a worktree is made, the first message waits for it instead of Start.
+    const fastMode = params.fastMode ? host.setFastMode(true).catch((error: Error) => this.deps.log('warn', `Fast mode did not turn on: ${error.message}`)) : undefined;
+    if (fastMode && !params.prepare) await fastMode;
     // Claude Code has already failed (no login, a folder it can't start in): no message can go, so say why.
     if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
     // Return the id now, so the window can show the session (and its setup terminals) right away.
     const setup = params.beforeFirstMessage?.(sessionId).catch((error: Error) => this.deps.log('warn', `Worktree setup failed: ${error.message}`));
-    if (params.pickModel) {
-      // Your message shows while Auto chooses; Claude Code gets it once the model is set.
-      host.send(params.prompt, params.attachments, Promise.all([setup, this.pickModel(host, sessionId, params.pickModel)]));
-    } else if (setup) {
-      void setup.then(() => host.active && host.send(params.prompt, params.attachments));
-    } else {
-      host.send(params.prompt, params.attachments);
-    }
+    // Your message shows at once; Claude Code gets it once Auto has set the model, setup has run and fast mode is on.
+    const waits = [setup, params.pickModel ? this.pickModel(host, sessionId, params.pickModel) : undefined, params.prepare ? fastMode : undefined].filter((w) => w !== undefined);
+    host.send(params.prompt, params.attachments, waits.length ? Promise.all(waits) : undefined);
     return sessionId;
   }
 

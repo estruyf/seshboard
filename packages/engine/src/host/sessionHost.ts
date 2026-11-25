@@ -92,6 +92,12 @@ export interface HostConfig {
   /** For forks: the session being forked. */
   forkFrom?: string;
   cwd: string;
+  /**
+   * The worktree Seshboard is still making for a new session (`git fetch` and `git worktree add`), and the folder it
+   * gives: Claude Code starts there once it settles. Meanwhile the session shows (in `cwd`) and takes messages, so
+   * starting one never waits on git. If it fails, the session fails with git's reason.
+   */
+  prepare?: Promise<{ cwd: string }>;
   /** The Claude profile (login); `env` already points at its config folder. */
   profileId: string;
   mode: 'new' | 'resume' | 'fork';
@@ -373,6 +379,7 @@ export class SessionHost {
       sessionId: config.sessionId,
       cwd: config.cwd,
       state: 'starting',
+      ...(config.prepare ? { preparing: true } : {}),
       model: config.model,
       permissionMode: config.permissionMode,
       effort: config.effort,
@@ -406,8 +413,28 @@ export class SessionHost {
   }
 
   start(): void {
-    this.query = (async () => this.startQuery({ prompt: this.input, options: buildOptions(this.config, this.events.log) }))().then(
+    this.query = (async () => {
+      let config = this.config;
+      if (config.prepare) {
+        let cwd: string;
+        try {
+          ({ cwd } = await config.prepare);
+        } catch (error) {
+          this.failPreparing(error);
+          return undefined;
+        }
+        config = { ...config, cwd };
+        if (!this.closing) this.update({ cwd, preparing: undefined });
+      }
+      // Closed while its worktree was being made: Claude Code never starts.
+      if (this.closing) return undefined;
+      return this.startQuery({ prompt: this.input, options: buildOptions(config, this.events.log) });
+    })().then(
       (query) => {
+        if (!query) {
+          this.input.end();
+          return undefined;
+        }
         // The loop catches its own failures; this is the last line, so nothing becomes an unhandled rejection.
         this.loop(query).catch((error: unknown) => this.events.log('error', `Session ${this.sessionId} broke: ${(error as Error).message}`));
         this.mods.setBridge(modsBridge(query));
@@ -770,6 +797,18 @@ export class SessionHost {
       // Whoever listens failing must not stop this host from tracking its own state.
       this.events.log('warn', `Could not report session ${this.sessionId}: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Its worktree couldn't be made: the session fails with git's reason. Nothing is offered to send again (Claude Code
+   * never had a folder to start in); New session's first prompt comes back in the box instead.
+   */
+  private failPreparing(error: unknown): void {
+    const message = `Could not make the worktree: ${error instanceof Error ? error.message : String(error)}`;
+    this.events.log('warn', `Session ${this.sessionId}: ${message}`);
+    this.initReject(new Error(message));
+    this.early = null;
+    if (!this.closing) this.update({ state: 'error', error: message, preparing: undefined, ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
   }
 
   private fail(error: unknown): void {
