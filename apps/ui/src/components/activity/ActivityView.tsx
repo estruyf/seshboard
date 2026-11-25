@@ -1,6 +1,7 @@
 import { ViewHeader } from '../ViewHeader.tsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronDown, ChevronLeft, ChevronRight, Copy, Download, FileDiff, GitCommitHorizontal, GitPullRequest, Loader2, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Copy, Download, FileDiff, GitCommitHorizontal, GitPullRequest, Loader2, MonitorSmartphone, Repeat, Sparkles, User, X, Zap } from 'lucide-react';
+import type { ActivityStarter } from '@seshboard/protocol/client';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { homeSessions } from '../home/homeModel.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -20,9 +21,10 @@ import type { TooltipRow } from '../ui/Tooltip.tsx';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { LegendItem } from '../usage/charts.tsx';
 import { useCostFormat } from '../usage/useCost.ts';
+import { formatTokens } from '../usage/usageModel.ts';
 import { ActivityCopyDialog } from './ActivityCopyDialog.tsx';
 import { ActivityExportDialog } from './ActivityExportDialog.tsx';
-import { addDays, barParts, countsByDay, dayLabel, dayNumber, dayOf, daysBetween, dayShort, dayTitle, formatWorked, formatWorkedShort, inDays, inProject, mondayOf, neighbourLine, plural, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sessionsOnce, statsOf, stripBars, summaryParts, timesTypical, typicalLine, WEEK_DAYS, weekdayShort, weekOf, type ActivityRow, type ActivityStats, type DayRange, type DayScore, type ProjectGroup, type ScorePart, type StripBars } from './activityModel.ts';
+import { addDays, barParts, countsByDay, dayLabel, dayNumber, dayOf, daysBetween, dayShort, dayTitle, formatWorked, formatWorkedShort, inDays, inProject, mondayOf, neighbourLine, plural, projectGroups, projectShare, anyoneElse, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sessionsOnce, starterGroups, starterName, starterTooltip, statsOf, stripBars, tokensText, summaryParts, timesTypical, typicalLine, WEEK_DAYS, weekdayShort, weekOf, type ActivityRow, type ActivityStats, type DayRange, type DayScore, type ProjectGroup, type ScorePart, type StarterGroup, type StripBars } from './activityModel.ts';
 import { RangePicker } from './RangePicker.tsx';
 import { useActivityRange, useDaySummary, useTypicalDay, type DaySummary } from './useActivity.ts';
 import { openWebLink } from '../../state/browserActions.ts';
@@ -187,6 +189,7 @@ export function ActivityView() {
           </div>
 
           {!loading && groups.length > 0 && <ProjectsCard groups={groups} />}
+          {!loading && anyoneElse(shown) && <StartersCard rows={shown} />}
           {!loading && shown.length > 0 && <WhatYouDid rows={shown} known={rows} span={span} today={today} scroller={scroller} />}
           {loading && (
             <p className="flex items-center gap-2 text-ui text-muted" aria-busy data-activity-loading>
@@ -369,7 +372,7 @@ function RangeBars({ days, today, counts, bars, onDay }: { days: readonly string
 function PinnedBar({ strip: { days, span, picked, today, counts, onDay, onMove, atLatest }, rows }: { strip: StripProps; rows: readonly ActivityRow[] }) {
   const stats = useMemo(() => statsOf(rows), [rows]);
   const cost = useCostFormat();
-  const line = [plural(stats.sessions, 'session'), plural(stats.turns, 'turn'), formatWorked(stats.activeMs), plural(stats.commits, 'commit'), plural(stats.prs, 'pull request'), ...(cost && stats.costUsd !== null ? [cost(stats.costUsd)] : [])].join(' · ');
+  const line = [plural(stats.sessions, 'session'), plural(stats.turns, 'turn'), formatWorked(stats.activeMs), plural(stats.commits, 'commit'), plural(stats.prs, 'pull request'), ...(stats.tokens > 0 ? [tokensText(stats.tokens)] : []), ...(cost && stats.costUsd !== null ? [cost(stats.costUsd)] : [])].join(' · ');
   return (
     <div className="absolute inset-x-0 top-full" data-activity-pinned>
       <div className="edge-b bg-bg" data-scrolled>
@@ -458,6 +461,7 @@ function Numbers({ rows }: { rows: readonly ActivityRow[] }) {
       <Stat value={formatWorked(stats.activeMs)} label="Claude working" data="time" />
       <Stat value={String(stats.commits)} label={stats.commits === 1 ? 'commit' : 'commits'} data="commits" />
       <Stat value={String(stats.prs)} label={stats.prs === 1 ? 'pull request' : 'pull requests'} data="prs" />
+      <Stat value={formatTokens(stats.tokens)} label={stats.tokens === 1 ? 'token' : 'tokens'} data="tokens" />
       {cost && stats.costUsd !== null && <Stat value={cost(stats.costUsd)} label="cost" data="cost" />}
     </div>
   );
@@ -547,6 +551,60 @@ function ProjectsCard({ groups }: { groups: readonly ProjectGroup[] }) {
   );
 }
 
+/** A starter's icon: the bolt of a trigger and the repeat of a schedule, as on the sidebar's rows. */
+function StarterIcon({ starter, size }: { starter: ActivityStarter | null; size: number }) {
+  if (!starter) return <User size={size} className="shrink-0 text-muted" aria-hidden />;
+  if (starter.kind === 'trigger') return <Zap size={size} className="shrink-0 text-trigger" aria-hidden />;
+  if (starter.kind === 'schedule') return <Repeat size={size} className="shrink-0 text-muted" aria-hidden />;
+  return <MonitorSmartphone size={size} className="shrink-0 text-muted" aria-hidden />;
+}
+
+function StarterBar({ group, top }: { group: StarterGroup; top: number }) {
+  const share = top > 0 ? group.tokens / top : 0;
+  return (
+    <div
+      className="grid grid-cols-[minmax(0,180px)_minmax(0,1fr)_64px_56px] items-center gap-2.5 rounded-md px-1.5 py-1 text-ui @max-[560px]:grid-cols-[minmax(0,1fr)_64px_56px]"
+      data-tooltip={group.starter ? starterTooltip(group.starter) : undefined}
+      data-activity-starter={group.starter?.kind ?? 'here'}
+      data-activity-starter-id={group.starter?.id}
+    >
+      <span className="flex min-w-0 items-center gap-1.5">
+        <StarterIcon starter={group.starter} size={14} />
+        <span className="min-w-0 truncate">{group.name}</span>
+        <span className="shrink-0 text-meta text-muted">{group.sessions}</span>
+      </span>
+      <span className="h-2 overflow-hidden rounded bg-border/60 @max-[560px]:hidden" aria-hidden>
+        <span className="block h-full bg-accent" style={{ width: `${Math.max(1, Math.round(share * 100))}%` }} />
+      </span>
+      <span className="text-right text-meta text-muted tabular-nums" data-activity-starter-tokens={group.tokens}>
+        {formatTokens(group.tokens)}
+      </span>
+      <span className="text-right text-meta text-muted tabular-nums">{formatWorked(group.activeMs)}</span>
+    </div>
+  );
+}
+
+/** Who started the sessions on screen, by their tokens: which device, trigger or schedule uses this computer the most. */
+function StartersCard({ rows }: { rows: readonly ActivityRow[] }) {
+  const groups = useMemo(() => starterGroups(rows), [rows]);
+  const top = groups.reduce((most, group) => Math.max(most, group.tokens), 0);
+  return (
+    <section aria-labelledby="activity-starters" className="grid gap-2 rounded-xl bg-text/6 px-4 py-3.5" data-activity-starters>
+      <div className="flex items-center gap-2">
+        <h2 id="activity-starters" className="text-ui font-semibold">
+          Started by
+        </h2>
+        <span className="ml-auto text-meta text-muted">Sessions · tokens · time</span>
+      </div>
+      <div className="grid gap-0.5">
+        {groups.map((group) => (
+          <StarterBar key={group.key} group={group} top={top} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ProjectHeader({ group, first, open, onToggle }: { group: ProjectGroup; first: boolean; open: boolean; onToggle: (() => void) | null }) {
   const project = useProjects((s) => (group.root ? s.projects.get(group.root) : undefined));
   const name = (
@@ -593,6 +651,11 @@ function SessionRow({ row, needsYou, span, today }: { row: ActivityRow; needsYou
         <ChevronDown size={13} className={`shrink-0 text-faint transition-transform motion-reduce:transition-none ${open ? '' : '-rotate-90'}`} aria-hidden />
         <span className="min-w-0 flex-1 truncate text-text">{row.title}</span>
         {row.computer && <ComputerChip name={row.computer.name} computerId={row.computer.id} data-activity-computer />}
+        {row.startedBy && (
+          <Pill tone="muted" icon={<StarterIcon starter={row.startedBy} size={12} />} aria-label={starterTooltip(row.startedBy)} data-tooltip={starterTooltip(row.startedBy)} shrink className="max-w-40 @max-[640px]:hidden" data-activity-started-by={row.startedBy.kind}>
+            {starterName(row.startedBy)}
+          </Pill>
+        )}
         {row.commits > 0 && (
           <Pill tone="muted" icon={<GitCommitHorizontal size={12} aria-hidden />} aria-label={plural(row.commits, 'commit')} data-tooltip={plural(row.commits, 'commit')} data-activity-commits={row.commits}>
             {row.commits}
@@ -618,6 +681,9 @@ function SessionRow({ row, needsYou, span, today }: { row: ActivityRow; needsYou
             needs you
           </Pill>
         )}
+        <span className="w-14 shrink-0 text-right text-meta whitespace-nowrap text-muted tabular-nums @max-[560px]:hidden" data-tooltip={row.tokens ? `${row.tokens.toLocaleString()} tokens` : undefined} data-activity-session-tokens={row.tokens ?? 0}>
+          {row.tokens ? formatTokens(row.tokens) : ''}
+        </span>
         <span className="w-30 shrink-0 text-right text-meta whitespace-nowrap text-muted tabular-nums">
           {span === 'day' ? clock.format(row.firstAt) : span === 'week' ? `${weekdayShort(row.day)} ${dayNumber(row.day)}` : dayLabel(row.day, today)}
           {row.activeMs > 0 && ` · ${formatWorked(row.activeMs)}`}

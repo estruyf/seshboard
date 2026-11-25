@@ -5272,6 +5272,11 @@
       "page": "sessions/activity"
     },
     {
+      "id": "feature:activity-started-by",
+      "name": "Activity: who started each session (a paired device with its ID, a trigger or a schedule), Started by with sessions, tokens and time per starter, tokens per session, and both in Export",
+      "page": "sessions/activity"
+    },
+    {
       "id": "feature:activity-score",
       "name": "Activity: each day's bar is an activity score against your typical day, stacked by time, turns and shipped, with a typical-day line and a tooltip per day",
       "page": "sessions/activity"

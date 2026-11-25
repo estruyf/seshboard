@@ -62,6 +62,8 @@ export interface SessionDay {
   turns: number;
   asks: string[];
   costUsd: number | null;
+  /** Input, output, cache reads and cache writes (`cache_write_1h` is a part of `cache_write`). */
+  tokens: number;
 }
 
 /**
@@ -75,7 +77,7 @@ export function sessionDays(rows: { messages: readonly MessageRow[]; prompts: re
     const key = `${day}\0${sessionId}`;
     let found = days.get(key);
     if (!found) {
-      found = { day, sessionId, moments: [], firstAt: 0, lastAt: 0, activeMs: 0, hours: new Array<number>(24).fill(0), turns: 0, asks: [], costUsd: null };
+      found = { day, sessionId, moments: [], firstAt: 0, lastAt: 0, activeMs: 0, hours: new Array<number>(24).fill(0), turns: 0, asks: [], costUsd: null, tokens: 0 };
       days.set(key, found);
     }
     return found;
@@ -109,6 +111,7 @@ export function sessionDays(rows: { messages: readonly MessageRow[]; prompts: re
   for (const row of rows.usage) {
     const entry = days.get(`${clock.dayOf(row.hour)}\0${row.session_id}`) ?? days.get(`${clock.dayOf(row.hour + 3_599_999)}\0${row.session_id}`);
     if (!entry) continue;
+    entry.tokens += row.input + row.output + row.cache_read + row.cache_write;
     const cost = hourlyCostOf(row);
     if (cost !== null) entry.costUsd = (entry.costUsd ?? 0) + cost;
   }

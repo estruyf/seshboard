@@ -82,7 +82,9 @@ if (process.argv.includes('--demo')) {
   // Two sessions Auto started that grew past their first prompt, with their picks, for the step-up note's step.
   const autoSuggest = writeAutoSuggestDemo(world.home);
   const demoUsage = join(world.home, 'smoke-demo-usage.json');
-  writeFileSync(demoUsage, JSON.stringify({ profiles: [], autoPicks: autoSuggest.autoPicks }));
+  // One session a phone started, for Activity's Started by.
+  const fromPhone = world.history['Write a getting started guide']?.id;
+  writeFileSync(demoUsage, JSON.stringify({ profiles: [], autoPicks: autoSuggest.autoPicks, remoteStarts: fromPhone ? [{ sessionId: fromPhone, deviceId: 'smoke-phone', deviceName: 'Smoke phone' }] : [] }));
   Object.assign(childEnv, { SESHBOARD_DEMO_USAGE: demoUsage, SESHBOARD_SMOKE_AUTO_SUGGEST: JSON.stringify({ effort: autoSuggest.effort, model: autoSuggest.model }) });
 }
 

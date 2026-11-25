@@ -12263,6 +12263,16 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   if (!(await js(`${stat} >= ${daySessions} && ${total} === ${stat}`))) return 'Week does not count the whole week';
   const listed = `new Set([...document.querySelectorAll('${list} [data-activity-session]')].map((row) => row.dataset.activitySession))`;
   if (!(await js(`${listed}.size === document.querySelectorAll('${list} [data-activity-session]').length`))) return 'Week lists a session twice';
+  // The week's tokens, and in the demo the session a phone started: its row says so, and Started by counts it.
+  if (!(await js(`!!document.querySelector('${view} [data-activity-stat="tokens"]')`))) return 'the numbers have no tokens';
+  if (process.env.SESHBOARD_SMOKE_DEMO) {
+    const fromPhone = `[...document.querySelectorAll('${list} [data-activity-session]')].find((row) => row.innerText.includes('Write a getting started guide'))`;
+    if (await js(`!!${fromPhone}`)) {
+      if (!(await js(`${fromPhone}.querySelector('[data-activity-started-by="device"]')?.dataset.tooltip === 'Started from Smoke phone (device smoke-phone)'`))) return 'the session a phone started does not say so';
+      if (!(await js(`!!document.querySelector('${view} [data-activity-starters] [data-activity-starter="device"][data-activity-starter-id="smoke-phone"]') && !!document.querySelector('${view} [data-activity-starters] [data-activity-starter="here"]')`))) return 'Started by does not list the phone and you';
+    }
+    if (!(await js(`[...document.querySelectorAll('${list} [data-activity-session-tokens]')].some((el) => Number(el.dataset.activitySessionTokens) > 0)`))) return 'no session of the week shows its tokens';
+  }
   await shot(win, 'activity-week.png');
   // A day picked in the strip goes back to that day.
   await js(`${busiest}.click()`);

@@ -357,6 +357,8 @@ export interface DemoUsage {
   autoPicks?: Array<{ configDir: string; sessionId: string | null; pick: AutoPick; routingModel: string; tokens: TokenCounts }>;
   /** Catch-up cards for the demo sessions, as if their turns had just finished. */
   catchUps?: CatchUp[];
+  /** Demo sessions a paired device started from afar, for Activity's Started by (the smoke test). */
+  remoteStarts?: Array<{ sessionId: string; deviceId: string; deviceName: string }>;
   /**
    * A file the screenshot tour writes to show a usage limit on one session, only for its picture: `{ sessionId, kind,
    * resetsAt, held }` sets it (with `held` messages in its Up next), anything else (or no file) clears it.
@@ -1799,6 +1801,7 @@ export function createEngine(options: EngineOptions): Engine {
   };
   const catchUpStore = new CatchUpStore(cache.db);
   for (const card of options.demoUsage?.catchUps ?? []) catchUpStore.save(card);
+  for (const start of options.demoUsage?.remoteStarts ?? []) cache.db.prepare('INSERT OR REPLACE INTO remote_session_origins (session_id, device_id, device_name, started_at) VALUES (?, ?, ?, ?)').run(start.sessionId, start.deviceId, start.deviceName, Date.now());
   const catchUp = new CatchUpService({
     store: catchUpStore,
     transcript: (id) => source.messages(id),

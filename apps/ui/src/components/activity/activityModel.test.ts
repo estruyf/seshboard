@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityCsv, activityMarkdown, addDays, addMonths, BAR_FULL, BAR_GAP, barParts, calendarWeeks, countsByDay, dayScore, dayOf, daysBetween, dayTitle, exportFileName, formatWorked, formatWorkedShort, inDays, inProject, lastActiveDay, lastDayLabel, mondayOf, neighbourLine, pickFrom, pickTill, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sameDayInMonth, sessionsOnce, standupText, statsByDay, statsOf, scoreScale, shippedOf, stripWeek, summaryExtras, summaryParts, summaryPlain, timesTypical, typicalDay, typicalLine, weekOf, type ActivityRow } from './activityModel.ts';
+import { activityCsv, activityMarkdown, addDays, addMonths, BAR_FULL, BAR_GAP, barParts, calendarWeeks, countsByDay, dayScore, dayOf, daysBetween, dayTitle, exportFileName, formatWorked, formatWorkedShort, inDays, inProject, lastActiveDay, lastDayLabel, mondayOf, neighbourLine, pickFrom, pickTill, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sameDayInMonth, sessionsOnce, starterGroups, starterTooltip, standupText, statsByDay, statsOf, scoreScale, shippedOf, stripWeek, summaryExtras, summaryParts, summaryPlain, timesTypical, typicalDay, typicalLine, weekOf, type ActivityRow } from './activityModel.ts';
 
 const row = (over: Partial<ActivityRow> = {}): ActivityRow => ({
   day: '2026-11-02',
@@ -149,7 +149,7 @@ describe('statsOf', () => {
   it('counts a session once over its days, and a pull request once', () => {
     const pr = { number: 253, url: 'https://x/pull/253' };
     const stats = statsOf([row({ commits: 2, prs: [pr] }), row({ day: '2026-11-03', commits: 1, prs: [pr], costUsd: null }), row({ sessionId: 's2', costUsd: 2 })]);
-    expect(stats).toEqual({ sessions: 2, turns: 9, activeMs: 144 * 60_000, commits: 3, prs: 1, costUsd: 3.5 });
+    expect(stats).toEqual({ sessions: 2, turns: 9, activeMs: 144 * 60_000, commits: 3, prs: 1, costUsd: 3.5, tokens: 0 });
   });
 
   it('has no cost when none is known', () => {
@@ -307,12 +307,54 @@ describe('Copy for standup', () => {
   });
 });
 
+describe('Started by', () => {
+  it('groups the sessions by who started them, the most tokens first, a session over days once', () => {
+    const phone = { kind: 'device', id: 'dev-1', name: 'Ana’s phone' } as const;
+    const groups = starterGroups([
+      row({ tokens: 100 }),
+      row({ sessionId: 'p1', tokens: 500, startedBy: phone }),
+      row({ sessionId: 'p1', day: '2026-11-03', tokens: 300, startedBy: phone }),
+      row({ sessionId: 't1', tokens: 50, startedBy: { kind: 'trigger', id: 't', name: 'Failed CI' } }),
+      row({ sessionId: 'r1', tokens: 10, computer: { id: 'c1', name: 'Studio' } }),
+    ]);
+    expect(groups.map((g) => [g.name, g.sessions, g.tokens])).toEqual([
+      ['Ana’s phone', 1, 800],
+      ['You, at this computer', 1, 100],
+      ['Trigger: Failed CI', 1, 50],
+      ['At Studio', 1, 10],
+    ]);
+  });
+
+  it('adds up a session\'s tokens over its days and keeps who started it', () => {
+    const phone = { kind: 'device', id: 'dev-1', name: 'Ana’s phone' } as const;
+    const [once] = sessionsOnce([row({ tokens: 5, startedBy: phone }), row({ day: '2026-11-03', firstAt: new Date(2026, 10, 3).getTime(), tokens: 7, startedBy: phone })]);
+    expect(once).toMatchObject({ tokens: 12, startedBy: phone });
+    expect(statsOf([row({ tokens: 5 }), row({ sessionId: 's2' })]).tokens).toBe(5);
+  });
+
+  it('names a device with its id in the tooltip', () => {
+    expect(starterTooltip({ kind: 'device', id: 'dev-1', name: 'Ana’s phone' })).toBe('Started from Ana’s phone (device dev-1)');
+    expect(starterTooltip({ kind: 'schedule', id: 's', name: 'Morning' })).toBe('Started by schedule: Morning');
+  });
+});
+
 describe('Export', () => {
   it('writes CSV a spreadsheet reads safely', () => {
     const csv = activityCsv([row({ title: '=HYPERLINK("x"), danger', commits: 2, files: 5, prs: [{ number: 7, url: 'u' }] })]);
     const [head, line] = csv.trim().split('\n');
-    expect(head).toBe('Date,Project,Session,Computer,Start,End,Minutes,Turns,Commits,Files,Pull requests,Cost (USD)');
-    expect(line).toBe(`2026-11-02,seshboard,"'=HYPERLINK(""x""), danger",,09:12,10:00,48,3,2,5,#7,1.50`);
+    expect(head).toBe('Date,Project,Session,Session ID,Computer,Started by,Started by name,Started by ID,Start,End,Minutes,Turns,Commits,Files,Pull requests,Tokens,Cost (USD)');
+    expect(line).toBe(`2026-11-02,seshboard,"'=HYPERLINK(""x""), danger",s1,,At the computer,,,09:12,10:00,48,3,2,5,#7,,1.50`);
+  });
+
+  it('says who started each session and its tokens, for a report', () => {
+    const csv = activityCsv([row({ tokens: 1_234_567, startedBy: { kind: 'device', id: 'dev-1', name: 'Ana’s phone' } }), row({ sessionId: 's2', startedBy: { kind: 'trigger', id: 't1', name: 'Failed CI' } })]);
+    const [, phone, trigger] = csv.trim().split('\n');
+    expect(phone).toContain(',Remote device,Ana’s phone,dev-1,');
+    expect(phone).toContain(',1234567,1.50');
+    expect(trigger).toContain(',Trigger,Failed CI,t1,');
+    const markdown = activityMarkdown([row({ tokens: 1_200_000, startedBy: { kind: 'device', id: 'dev-1', name: 'Ana’s phone' } })], 'en-GB');
+    expect(markdown).toContain('- A session (09:12, 48m, 1.2M tokens, started by Ana’s phone)');
+    expect(markdown).toContain('**Started by**\n\n- Ana’s phone: 1 session, 48m, 1.2M tokens');
   });
 
   it('writes Markdown by day and project, with what it did', () => {
