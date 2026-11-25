@@ -1544,7 +1544,7 @@ function LocalNewSession() {
       {/* The view is a container, so the sidebar and side panels count. Stacked, it scrolls; in columns, each column does. */}
       <div ref={viewRef} className="@container/new-session flex min-h-0 flex-1 flex-col overflow-y-auto @min-[860px]/new-session:overflow-hidden">
         <div className={NEW_SESSION_GRID} data-new-session-view data-new-session-layout={layoutMode}>
-          <aside aria-label="Projects" className="flex min-w-0 flex-col gap-2.5 @min-[860px]/new-session:row-span-2 @min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:row-span-1" data-new-session-projects>
+          <aside aria-label="Projects" className="flex min-w-0 flex-col gap-2.5 @min-[860px]/new-session:row-span-2 @min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:row-span-1 @min-[1200px]/new-session:justify-center-safe" data-new-session-projects>
             {/* With a paired computer: where Claude runs. */}
             <RunOnSwitch fill />
             {cloneForm ? (

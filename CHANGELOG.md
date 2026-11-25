@@ -26,7 +26,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
-- **New session sits in the middle of the window.** With three columns, the message box and the project details are centred next to the project list, not at the top.
+- **New session sits in the middle of the window.** With three columns, the project list, the message box and the project details are centred in the window, not at the top.
 - **Usage and reading mode close with ×, like Settings.** The **Back** button in Usage and the back arrow in reading mode are now a close button. Esc still closes them. Close buttons no longer repeat Esc in their tooltip.
 - **A slash command stands out in the message box.** When a message starts with a command the session knows, like `/design`, the command shows in the accent colour, so you can tell it from the prompt that goes with it. A path such as `/tmp` stays as it is.
 - **A session in a new worktree opens at once.** Start no longer waits while git fetches the branch and makes the worktree. The session opens with your message and says **Making the worktree…**, and Claude starts once the worktree is there. New session also fetches the branch while you write the prompt, so the worktree is ready sooner. If git can't make the worktree, the session says why and your prompt goes back in the box.

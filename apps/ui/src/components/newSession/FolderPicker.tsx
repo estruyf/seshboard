@@ -513,8 +513,9 @@ export function FolderPicker({
     );
 
   return (
-    // A container: the list shows one or two columns as the picker (not the window) narrows.
-    <div ref={rootRef} className="@container relative flex min-h-0 flex-1 flex-col gap-2" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    // A container: the list shows one or two columns as the picker (not the window) narrows. In three columns it is as
+    // tall as its rows, so the projects centre beside the message box; it shrinks and scrolls when they don't fit.
+    <div ref={rootRef} className="@container relative flex min-h-0 flex-1 flex-col gap-2 @min-[1200px]/new-session:flex-initial" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {open ? (
         // As tall as its rows, like the short list, so the footer stays under them; it shrinks and scrolls when they don't fit.
         <div className="flex min-h-0 flex-col gap-2" data-folder-list>
