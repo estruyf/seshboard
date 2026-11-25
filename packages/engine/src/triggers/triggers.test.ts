@@ -98,13 +98,18 @@ function world(initial: FakeState = {}) {
   const activity = new Map<string, number>();
   /** What `markDone` moved to Done: a session's id, or `run:<id>`. */
   const done: string[] = [];
+  /** The same, with whether its worktree's branch is let go. */
+  const doneTargets: Array<Parameters<NonNullable<ConstructorParameters<typeof TriggerWatcher>[0]['markDone']>>[0]> = [];
   const watcher = new TriggerWatcher({
     store,
     gh,
     folderExists: () => true,
     sessionState: (id) => sessions.get(id) ?? null,
     lastActivity: (id) => activity.get(id) ?? START,
-    markDone: (target) => done.push('sessionId' in target ? target.sessionId : `run:${target.runId}`),
+    markDone: (target) => {
+      doneTargets.push(target);
+      done.push('sessionId' in target ? target.sessionId : `run:${target.runId}`);
+    },
     sessionPr: (id) => prs.get(id) ?? null,
     queued: () => true,
     hold: () => holds.next,
@@ -158,6 +163,7 @@ function world(initial: FakeState = {}) {
     runStarts,
     activity,
     done,
+    doneTargets,
     now: () => now,
     /** Moves a run on: its status, a pull request Push opened, a step's session. */
     setRun: (id: string, status: PipelineRunStatus, extra: { pr?: { number: number; url: string }; stepSession?: string } = {}) => runs.set(id, fakeRun(id, status, extra)),
@@ -897,6 +903,16 @@ describe('moving finished work to Done', () => {
     expect(w.done).toEqual(['session-1']);
   });
 
+  it('lets the branch go only in a worktree the trigger made', async () => {
+    for (const workspace of ['worktree', 'current'] as const) {
+      const w = await startedOne({ doneWhenFinished: true, draft: { workspace } as TriggerSave['draft'] });
+      w.sessions.set('session-1', null);
+      w.watcher.turnEnded('session-1', { ok: true });
+      await w.tick(DONE_QUIET_MS + 1_000);
+      expect(w.doneTargets).toEqual([{ sessionId: 'session-1', worktree: workspace === 'worktree' }]);
+    }
+  });
+
   it('leaves a session that failed or was stopped for you', async () => {
     const w = await startedOne({ doneWhenFinished: true });
     w.sessions.set('session-1', null);
@@ -920,6 +936,7 @@ describe('moving finished work to Done', () => {
     w.setRun('run-1', 'done');
     await w.tick(MINUTE);
     expect(w.done).toEqual(['run:run-1']);
+    expect(w.doneTargets).toEqual([{ runId: 'run-1', worktree: true }]);
   });
 
   it('keeps the choice across a save and a read', () => {

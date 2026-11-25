@@ -5453,7 +5453,7 @@
     },
     {
       "id": "feature:trigger-done-when-finished",
-      "name": "Mark done when it finishes: a triggered session that ends without an error, or a pipeline run that is done, goes to Done instead of To review (and stops counting toward the focus limit)",
+      "name": "Mark done when it finishes: a triggered session that ends without an error, or a pipeline run that is done, goes to Done instead of To review (and stops counting toward the focus limit), and its worktree lets the branch go",
       "page": "projects/triggers"
     },
     {

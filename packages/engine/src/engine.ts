@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import {
   SKIM_MARKS_PROMPT,
   ORCHESTRATOR_TOKEN_ENV,
@@ -128,6 +128,7 @@ import { SavedPromptStore } from './prompts/savedPromptStore.ts';
 import { GithubService } from './git/github.ts';
 import { FORK_READ_ONLY, GithubOriginStore } from './git/githubOrigins.ts';
 import { checkoutPullRequest as checkoutPullRequest_, PrCheckoutError } from './git/prCheckout.ts';
+import { releaseBranch } from './git/releaseBranch.ts';
 import { makeWorktree, makeWorktreeFrom, worktreePath, WorktreeFromError, type WorktreeOptions } from './git/worktreeFrom.ts';
 import { BaseFetches } from './git/baseFetches.ts';
 import { LaterStore } from './later/laterStore.ts';
@@ -2186,6 +2187,17 @@ export function createEngine(options: EngineOptions): Engine {
    */
   const smokeTriggerStarts = join(options.dataDir, 'smoke-trigger-starts.jsonl');
   const ghIn = async (args: string[], cwd: string, timeout?: number) => runGh(defaultGh(), args, { cwd, env: (await shell.ready).env, ...(timeout ? { timeout } : {}) });
+  /**
+   * Lets the branch of a worktree a trigger made go once its work is Done, so a later review of the same pull request
+   * checks the branch out instead of making its own. The folder and its changes stay; a busy folder is left alone.
+   */
+  const releaseTriggerBranch = async (folder: string) => {
+    const result = await releaseBranch(folder, sessionActivity());
+    if ('released' in result) {
+      worktreeFacts.invalidate([folder]);
+      log('info', `Triggers: let ${result.released} go in ${folder}`);
+    } else if (result.skipped !== 'MAIN' && result.skipped !== 'DETACHED') log('info', `Triggers: kept the branch in ${folder}: ${result.reason}`);
+  };
   triggerWatcher = new TriggerWatcher({
     store: triggers,
     gh: ghIn,
@@ -2195,11 +2207,16 @@ export function createEngine(options: EngineOptions): Engine {
     // As Done in the sidebar (`sessions.setFlags`, `runs.archive`): the state label comes off, its checks stop being followed.
     markDone: (target) => {
       try {
-        const ids = 'sessionId' in target ? (sessions.setFlags(target.sessionId, { archived: true }), [target.sessionId]) : runner ? runner.archive(target.runId, true).map((s) => s.run.id) : [];
+        const states = 'runId' in target && runner ? runner.archive(target.runId, true) : [];
+        const ids = 'sessionId' in target ? (sessions.setFlags(target.sessionId, { archived: true }), [target.sessionId]) : states.map((s) => s.run.id);
         for (const id of ids) {
           triggerWatcher?.released(id);
           checksWatcher.release(id);
         }
+        if (!target.worktree) return;
+        // A run made its worktree when its folder isn't the project's; a session's is the folder it worked in.
+        const folders = 'sessionId' in target ? [sessionCwd(target.sessionId)] : states.filter((s) => resolve(s.run.cwd) !== resolve(s.run.projectRoot)).map((s) => s.run.cwd);
+        for (const folder of new Set(folders)) if (folder) void releaseTriggerBranch(folder);
       } catch (error) {
         log('warn', `Triggers: couldn't move to Done: ${error instanceof Error ? error.message : String(error)}`);
       }

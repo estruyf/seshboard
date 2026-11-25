@@ -54,9 +54,10 @@ export interface TriggerWatcherDeps {
   lastActivity?(sessionId: string): number | null;
   /**
    * Moves a finished session, or a done pipeline run's tree, to Done (`doneWhenFinished`), as Done in the sidebar does:
-   * its working or needs input label comes off through `released`.
+   * its working or needs input label comes off through `released`. With `worktree`, the trigger made the folder it
+   * worked in, and its branch is let go, so a later review of the same pull request can check it out.
    */
-  markDone?(target: { sessionId: string } | { runId: string }): void;
+  markDone?(target: ({ sessionId: string } | { runId: string }) & { worktree: boolean }): void;
   /** A pull request the session opened (or works on); null without one. */
   sessionPr(sessionId: string): { number: number; url: string } | null;
   /** The queued item an event became is still on the queue. */
@@ -279,7 +280,8 @@ export class TriggerWatcher {
         if (event.status !== 'started' || event.doneAt !== null) continue;
         if (event.runId) {
           if (this.deps.run(event.runId)?.run.status !== 'done') continue;
-          markDone({ runId: event.runId });
+          // A run's worktree is the engine's to judge (its folder against the project's).
+          markDone({ runId: event.runId, worktree: true });
         } else if (event.sessionId) {
           if (this.outcomes.get(event.sessionId) !== 'clean' || this.deps.sessionState(event.sessionId)) continue;
           const quietAt = (this.deps.lastActivity?.(event.sessionId) ?? 0) + DONE_QUIET_MS;
@@ -287,7 +289,7 @@ export class TriggerWatcher {
             wait = Math.min(wait ?? Infinity, quietAt - now);
             continue;
           }
-          markDone({ sessionId: event.sessionId });
+          markDone({ sessionId: event.sessionId, worktree: trigger.draft.workspace === 'worktree' });
         } else continue;
         store.setDone(event.id, now);
         this.deps.log('info', `Triggers: “${trigger.name}” moved ${event.runId ? 'its run' : 'its session'} for ${eventRef(event)} to Done`);

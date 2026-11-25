@@ -655,7 +655,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
             <span className="grid gap-0.5">
               <span className="text-ui text-text">Mark done when it finishes</span>
               <span className="text-meta text-muted">
-                {startsPipeline ? 'A finished run goes to Done instead of To review.' : 'A session that finishes without an error goes to Done instead of To review.'} One that fails or is stopped stays for you.
+                {startsPipeline ? 'A finished run goes to Done instead of To review.' : 'A session that finishes without an error goes to Done instead of To review.'} One that fails or is stopped stays for you.{folder ? '' : ' A worktree it made lets its branch go, so a later review can use the branch.'}
               </span>
             </span>
           </Checkbox>
