@@ -58,6 +58,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Effort, mode and usage stay under the message box when costs don't fit.** With the cost after each usage window on, a session's tray hid effort, mode and the usage circles in one chip, even in a wide window. The costs now go first, and the chips fold only when the line still doesn't fit.
 - **The app icon you pick stays in the Dock after you quit (macOS).** Before, the Dock went back to the Graphite icon once Seshboard closed. If you keep Seshboard in the Dock and it still shows the old icon after the update, quit and open Seshboard once.
 - **Checking for updates no longer fails while a release is being built.** For the first minutes after a release or a beta comes out, its download isn't ready yet. Seshboard now offers the release before it, if that one is newer than yours, and the new release on a later check.
 - **Panels at half width is remembered.** The setting now stays on after you quit and open Seshboard again. Before, the panels went back to their side width on every start.

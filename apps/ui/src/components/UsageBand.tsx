@@ -166,14 +166,14 @@ export function UsageBand({ profileId, compact = false, footer = false, cost = t
               <span>{footerLabel(limit)}</span>
             </Meter>
             {costs[i] && (
-              <span className="tabular-nums text-faint @max-[400px]/meters:hidden" data-usage-cost={limit.kind}>
+              <span className="tabular-nums text-faint @max-[400px]/meters:hidden" data-usage-cost={limit.kind} data-tray-cost>
                 {costs[i]}
               </span>
             )}
           </span>
         ))}
         {extra?.enabled && extra.usedCredits !== null && extra.usedCredits > 0 && (
-          <span className="whitespace-nowrap @max-[400px]/meters:hidden">
+          <span className="whitespace-nowrap @max-[400px]/meters:hidden" data-tray-cost>
             <span className="text-ok">{money(extra.usedCredits, extra.currency)}</span> extra
           </span>
         )}
