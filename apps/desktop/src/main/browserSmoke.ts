@@ -27,6 +27,7 @@ const PAGES: Record<string, string> = {
   '/long': `<title>Smoke browser long ${'title '.repeat(40)}</title><h1>Long</h1>`,
   // A click that reaches the button marks the body: a pick must keep it from the page.
   '/profile': '<title>Smoke profile</title><h1>Profile</h1>',
+  '/from-link': '<title>Smoke from a link</title><h1>From a link</h1>',
   '/download': `<title>Smoke download</title><a id=file href=/file/${DOWNLOAD_NAME}>File</a>`,
   '/pick': '<title>Smoke pick</title><main><h1 id=heading>Pick me</h1><p id=words>Some words to quote here.</p><button class="cta" data-testid=buy onclick="document.body.dataset.clicked=1">Buy now</button></main>',
 };
@@ -55,6 +56,8 @@ export interface BrowserSmokeDeps {
   reload(): void;
   /** Where pages' downloads go in a smoke run (a folder in the throwaway profile). */
   downloadsDir: string;
+  /** Opens a `seshboard://` link as macOS hands one over (main's `openDeepLink`). */
+  openLink?(url: string): void;
 }
 
 let server: Server | null = null;
@@ -975,6 +978,44 @@ export async function runBrowserOutsideLinkStep(win: BrowserWindow, deps: Browse
   if (await js(`!!${q(`${S} [data-web-preview-tabs]`)} || !!${q(`${S} [data-web-preview-pin]`)}`)) return 'the web preview shows tabs or a pin with the browser off';
   await js(`${q(`${S} [data-web-preview-close]`)}.click()`);
   return 'ok: with the browser off, the outside link went to the browser and the page stayed';
+}
+
+/**
+ * "browser link": `seshboard://open?url=…` (what LinkLane sends) opens the page in a tab of the Browser view, and the
+ * same link again brings that tab forward instead of a second one. A file: address is refused, and with the browser off
+ * the link says where to turn it on. Leaves the browser on, with the tab closed.
+ */
+export async function runBrowserLinkStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!deps.openLink) return 'no way to open a link';
+  const page = `${await site()}from-link`;
+  const link = `seshboard://open?url=${encodeURIComponent(page)}`;
+  const rows = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].filter((t) => t.textContent.includes('Smoke from a link'))`;
+  const error = q('[data-link-error]');
+  const dismiss = async () => {
+    await js(`${error}?.querySelector('button')?.click()`);
+    await waitInPage(win, `!${error}`, 2_000);
+  };
+  deps.setBrowser(true);
+  await dismiss();
+  deps.openLink(link);
+  if (!(await until(() => pageWithTitle('Smoke from a link') !== undefined, 10_000))) return 'the link did not load its page';
+  if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${rows}.length === 1`, 3_000))) return `the page is not a tab of the Browser view (${String(await js(`${rows}.length`))} tabs)`;
+  deps.openLink(link);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if ((await js(`${rows}.length`)) !== 1) return 'the same link again opened a second tab';
+  deps.openLink(`seshboard://open?url=${encodeURIComponent('file:///etc/hosts')}`);
+  if (!(await waitInPage(win, `${error}?.innerText.includes('http and https')`, 3_000))) return 'a file: address showed no error';
+  await dismiss();
+  deps.setBrowser(false);
+  deps.openLink(link);
+  const off = await waitInPage(win, `${error}?.innerText.includes('Turn on Allow browser')`, 3_000);
+  await dismiss();
+  deps.setBrowser(true);
+  if (!off) return 'with the browser off the link showed no error';
+  await js(`${rows}[0]?.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
+  if (!(await waitInPage(win, `${rows}.length === 0`, 3_000))) return 'could not close the tab the link opened';
+  return 'ok: a link opened its page in the Browser view, again brought the same tab forward, refused file: and said to turn the browser on';
 }
 
 /**

@@ -14,6 +14,8 @@ const isOurProtocol = (protocol: string) => protocol === `${DEEP_LINK_SCHEME}:` 
 export const MAX_LINK_PROMPT = 5_000;
 /** Anything longer is not a link someone typed or generated on purpose. */
 const MAX_URL_LENGTH = 32_000;
+/** Longest web address an `open` link may carry. */
+const MAX_OPEN_URL = 8_000;
 
 /**
  * Characters that change how text displays without showing themselves: bidirectional overrides and
@@ -76,6 +78,8 @@ function checkFolder(cwd: string, platform: string): string | ParsedLink {
  *   `issue=` or `pr=` (a number, `#123` or a link) fills New session in from that issue or pull request of the
  *   project; it needs `cwd`, `project` or `repo`, and such a link never starts on its own (`autostart` is ignored).
  * - `seshboard://session/<sessionId>`
+ * - `seshboard://open?url=<http(s) address>`: the page in the Browser view, or with `session=<id>` in that session's
+ *   Browser panel. Browser pickers such as LinkLane send links here.
  *
  * `platform` decides what an absolute folder looks like (a drive path on Windows); tests pass it.
  */
@@ -171,7 +175,27 @@ export function parseDeepLink(raw: string, platform: string = process.platform):
     return { ok: true, link: { action: 'session', sessionId: id } };
   }
 
-  return fail(action ? `Seshboard links can't do "${action.slice(0, 40)}". Use new-session or session.` : 'The link has no action. Use new-session or session.');
+  if (action === 'open') {
+    if (parts.length > 1) return fail('Unexpected path after open in the link.');
+    const raw = url.searchParams.get('url')?.trim() ?? '';
+    if (!raw) return fail('The link has no url to open.');
+    if (raw.length > MAX_OPEN_URL) return fail('The address in the link is too long.');
+    let page: URL;
+    try {
+      page = new URL(raw);
+    } catch {
+      return fail('The address in the link is not a valid web address.');
+    }
+    // Only web pages: no file:, javascript:, data: or app schemes, which a link from anywhere must not reach.
+    if (page.protocol !== 'http:' && page.protocol !== 'https:') return fail('Links can only open http and https pages.');
+    // `https://you@bank.example@evil.example` reads as one site and goes to another.
+    if (page.username || page.password) return fail('The address in the link may not contain a user name or password.');
+    const session = url.searchParams.get('session')?.trim() ?? '';
+    if (session && !SESSION_ID.test(session)) return fail('The link does not name a valid session.');
+    return { ok: true, link: { action: 'open', url: page.href, sessionId: session || null } };
+  }
+
+  return fail(action ? `Seshboard links can't do "${action.slice(0, 40)}". Use new-session, session or open.` : 'The link has no action. Use new-session, session or open.');
 }
 
 /**

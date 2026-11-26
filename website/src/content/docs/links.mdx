@@ -1,6 +1,6 @@
 ---
 title: Links
-description: Open Seshboard from a seshboard:// link, to start a session with a prompt or jump to an existing one.
+description: Open Seshboard from a seshboard:// link, to start a session with a prompt, jump to an existing one or open a web page.
 ---
 
 import Kbd from '../../components/Kbd.astro';
@@ -10,7 +10,7 @@ import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../components/Related.astro';
 
-A `seshboard://` link opens Seshboard on New session with the project and prompt filled in, or jumps to a session. Put links in runbooks, alerts, READMEs, issue templates, or Raycast and Alfred scripts, or open them from a shell.
+A `seshboard://` link opens Seshboard on New session with the project and prompt filled in, jumps to a session, or opens a web page in Seshboard's browser. Put links in runbooks, alerts, READMEs, issue templates, or Raycast and Alfred scripts, or open them from a shell.
 
 <Screenshot name="new-session" alt="New session with a project picked and a prompt in the message box, the way a link leaves it for you to read before you start" eager />
 
@@ -81,6 +81,32 @@ seshboard://session/0b9a7c1e-1234-4abc-9def-001122334455
 ```
 
 This shows that session, as if you picked it in the sidebar. To get a session's ID, right-click it in the sidebar and choose **Copy session ID**, or run *Copy session id* in the command palette (<Kbd shortcut="palette.commands" />).
+
+## Open a web page
+
+```text
+seshboard://open?url=https%3A%2F%2Fgithub.com%2Facme%2Fpayments%2Fpulls
+seshboard://open?url=http%3A%2F%2Flocalhost%3A5173&session=0b9a7c1e-1234-4abc-9def-001122334455
+```
+
+This opens the page in a tab of the [Browser view](/browser/overview/). If a tab already shows that address, that tab comes to the front instead. With `session`, the page opens in that session's Browser panel.
+
+| Parameter | What it does |
+|---|---|
+| `url` | The page to open, URL-encoded. Only `http` and `https` addresses work. |
+| `session` | A session's ID. The page opens in that session's Browser panel, not in the Browser view. |
+
+The link needs **Allow browser** on, in [Settings › General](/settings/#general). With it off, the link shows a message and opens nothing.
+
+### From a browser picker
+
+A browser picker (an app that asks which browser opens each link you click) can send links to Seshboard. [LinkLane](https://github.com/estruyf/LinkLane) lists Seshboard as one of its browsers once Seshboard is installed. Pick Seshboard there and the link opens in the Browser view.
+
+From a shell, encode the address with `jq`:
+
+```bash
+open "seshboard://open?url=$(jq -rn --arg v 'https://example.com/?q=a&b' '$v|@uri')"
+```
 
 ## Open a folder from a terminal
 
@@ -184,14 +210,15 @@ seshboard://new-session?repo=acme/payments&prompt=Alert%3A%20p95%20latency%20abo
 
 Links can come from any web page or chat message, so Seshboard checks each one before it changes anything. A link it refuses shows a short message at the bottom of the window saying why, and nothing else happens. That covers:
 
-- an action other than `new-session` or `session`;
+- an action other than `new-session`, `session` or `open`;
 - a prompt longer than 5,000 characters, or with control characters or invisible characters (such as zero-width spaces) that can hide text;
 - a `cwd` that isn't an absolute path, is a network location, or contains `.` or `..`; on Windows also a folder without a drive letter (`\dev\payments`) or with a colon after the drive;
 - a `project` that isn't one of your projects;
 - a `repo` that isn't `owner/name`;
 - an `autostart` value other than `1`, `true`, `yes`, `0`, `false` or `no`;
 - an `issue` or `pr` that isn't a number, `#123` or its link on GitHub; both in one link; or one without `project`, `repo` or `cwd`;
-- a session ID that isn't one, or a session that isn't on this computer.
+- a session ID that isn't one, or a session that isn't on this computer;
+- an `open` link without a `url`, with an address that isn't `http` or `https` (such as `file:` or `javascript:`), or with a user name or password in the address.
 
 Parameters Seshboard doesn't know are ignored, so a link made for a newer version still opens.
 
@@ -200,6 +227,7 @@ Parameters Seshboard doesn't know are ignored, so a link made for a newer versio
 - **Nothing happens.** <Os mac="macOS sends seshboard:// links to the copy of Seshboard it knows. Move Seshboard to Applications and open it once." windows="Seshboard registers seshboard:// links for you when it starts. Open it once from the Start menu after installing it. A build you run with npm run dev doesn't register them." />
 - **An `autostart` link didn't start.** It needs a prompt and a folder: `project`, `cwd`, or a `repo` Seshboard can find.
 - **The folder is empty.** The link names no folder, or no project or recent folder has a git remote on that `repo`. Add the checkout as a project, use `cwd`, or choose **Clone owner/name** to clone it (with [Clone from GitHub](/projects/clone-from-github/) on).
+- **A page link says to turn on the browser.** Turn on **Allow browser** in [Settings › General](/settings/#general), then open the link again.
 - **The prompt looks wrong.** Check the encoding: spaces as `%20`, new lines as `%0A`, `&` as `%26`, `#` as `%23`, `+` as `%2B`.
 
 ## Settings
@@ -208,4 +236,4 @@ Links have no settings. What a started session uses comes from the [project's se
 
 ## Related
 
-<Related pages={['new-session/form', 'projects/clone-from-github', 'sessions/github-issues', 'sessions/saved-prompts', 'projects/settings']} />
+<Related pages={['new-session/form', 'browser/overview', 'projects/clone-from-github', 'sessions/github-issues', 'sessions/saved-prompts', 'projects/settings']} />

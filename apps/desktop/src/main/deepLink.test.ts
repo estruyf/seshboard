@@ -152,6 +152,31 @@ describe('parseDeepLink: session and others', () => {
   });
 });
 
+describe('parseDeepLink: open', () => {
+  const open = (url: string) => `seshboard://open?url=${encodeURIComponent(url)}`;
+
+  it('reads a web address, with its query and fragment', () => {
+    expect(link(open('https://example.com/a b?x=1&y=2#top'))).toEqual({ action: 'open', url: 'https://example.com/a%20b?x=1&y=2#top', sessionId: null });
+    expect(link(open('http://localhost:5173/'))).toMatchObject({ url: 'http://localhost:5173/' });
+    expect(link('switchboard:open?url=https%3A%2F%2Fexample.com')).toMatchObject({ action: 'open', url: 'https://example.com/' });
+  });
+
+  it('names a session when the link does', () => {
+    expect(link(`${open('https://example.com')}&session=0b9a7c1e-1234-4abc-9def-001122334455`)).toMatchObject({ sessionId: '0b9a7c1e-1234-4abc-9def-001122334455' });
+    expect(error(`${open('https://example.com')}&session=%3Cscript%3E`)).toMatch(/session/);
+  });
+
+  it('refuses anything that is not a web page', () => {
+    expect(error('seshboard://open')).toMatch(/no url/);
+    expect(error('seshboard://open?url=')).toMatch(/no url/);
+    expect(error(open('example.com'))).toMatch(/not a valid web address/);
+    for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'data:text/html,hi', 'seshboard://open?url=x', 'vscode://file/x']) expect(error(open(url))).toMatch(/only open http and https/);
+    expect(error(open('https://you@bank.example@evil.example/'))).toMatch(/user name or password/);
+    expect(error(open(`https://example.com/${'a'.repeat(9_000)}`))).toMatch(/too long/);
+    expect(error('seshboard://open/extra?url=https%3A%2F%2Fexample.com')).toMatch(/Unexpected path/);
+  });
+});
+
 describe('linkFromArgv', () => {
   it('finds the link among the arguments', () => {
     expect(linkFromArgv(['/Applications/Seshboard.app/Contents/MacOS/Seshboard', '--flag', 'seshboard://session/abc'])).toBe('seshboard://session/abc');

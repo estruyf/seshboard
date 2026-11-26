@@ -40,7 +40,7 @@ import { installBrowserAgent } from './browserAgent.ts';
 import { runBrowserAgentStep, runBrowserScriptsStep, runBrowserServerStep } from './browserAgentSmoke.ts';
 import { runPanelLauncherStep, runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
-import { runBrowserDownloadStep, runBrowserFavoritesStep, runBrowserIntroStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserStopStep, runBrowserSuggestionsStep, runBrowserTextPageStep, runBrowserViewStep, runBrowserWindowStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
+import { runBrowserDownloadStep, runBrowserFavoritesStep, runBrowserIntroStep, runBrowserLinkStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserStopStep, runBrowserSuggestionsStep, runBrowserTextPageStep, runBrowserViewStep, runBrowserWindowStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -1197,6 +1197,10 @@ function openDeepLink(url: string): void {
   }
   const parsed = parseDeepLink(url);
   console.log(`[main] link: ${parsed.ok ? parsed.link.action : `refused (${parsed.error})`}`);
+  // A page needs the browser: with it off, say where to turn it on rather than show nothing.
+  if (parsed.ok && parsed.link.action === 'open' && !preferences.get().browserEnabled) {
+    return deliverLinkMessage({ error: 'Turn on Allow browser in Settings › General to open pages from links.' });
+  }
   deliverLinkMessage(parsed.ok ? { link: parsed.link } : { error: parsed.error });
 }
 
@@ -16075,7 +16079,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     }
     updatePreferences({ colorScheme: scheme });
   };
-  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win), agent: (request) => browserAgent.run(request), downloadsDir: smokeDownloads() };
+  const browserDeps: BrowserSmokeDeps = { shot: bothSchemes, setBrowser: (on) => updatePreferences({ browserEnabled: on }), setPrefs: (patch) => updatePreferences(patch), outside: webPreviewOutside, reload: () => reloadForSmoke(win), agent: (request) => browserAgent.run(request), downloadsDir: smokeDownloads(), openLink: openDeepLink };
   await step('browser intro: the sidebar card opens the browser, no page with previews off', () => runBrowserIntroStep(win, browserDeps));
   await step('browser view: Browser in the sidebar, a tab on a local page, its title in the list', () => runBrowserViewStep(win, browserDeps));
   await step('browser server: runs as this app, lists its tools, and says when it has no session', async () => {
@@ -16103,6 +16107,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     runBrowserWindowStep(win, { ...browserDeps, browserWindowOf: (id) => { const open = browserPopouts.get(id); return open && !open.isDestroyed() ? open : undefined; }, shotOf: (target, name) => shot(target, name) }), { timeoutMs: 60_000 });
   await step('browser pick: an element picked on a session\'s page and the page\'s menu send to the message', () => runBrowserPickStep(win, browserDeps), { timeoutMs: 45_000 });
   await step('browser download: a link to a file saves it in the Downloads folder, with a toast to show it', () => runBrowserDownloadStep(win, browserDeps));
+  await step('browser link: seshboard://open opens its page in the Browser view, once, and refuses file: and a browser that is off', () => runBrowserLinkStep(win, browserDeps));
   await step('browser outside link: with the browser off, an outside link goes to the browser', () => runBrowserOutsideLinkStep(win, browserDeps));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });

@@ -1174,7 +1174,14 @@ export type DeepLink =
       /** Opened from a page in the browser (its Start session), never from a `seshboard://` link: the banner says so. */
       from?: "browser";
     }
-  | { action: "session"; sessionId: string };
+  | { action: "session"; sessionId: string }
+  | {
+      action: "open";
+      /** An http or https address, without a user name or password in it. */
+      url: string;
+      /** Open it in this session's Browser panel; null for the Browser view. */
+      sessionId: string | null;
+    };
 
 /** The browser's Start session, from the window to main: which site action, on which page. */
 export interface StartFromPageRequest {

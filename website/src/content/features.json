@@ -3112,6 +3112,11 @@
       "page": "links"
     },
     {
+      "id": "feature:deep-link-open",
+      "name": "seshboard://open: a web page in the Browser view or a session's Browser panel",
+      "page": "links"
+    },
+    {
       "id": "feature:deep-link-question",
       "name": "question links",
       "page": "links"
