@@ -20,18 +20,26 @@ interface FileEditorProps {
   onSave(): void;
   /** Whether the file is still in edit mode when the editor goes away: its model is then kept for the next one. */
   keep(): boolean;
+  /** Lines Claude changed in this file (from Changes), with what they were: a bar in the gutter, the old text on hover. */
+  marks?: ReadonlyMap<number, string | null>;
+  /** Search in files' matches in this file, and the one picked. */
+  search?: { matches: ReadonlyArray<{ line: number; column: number; length: number }>; current: number };
+  /** The lines picked changed (null: none). */
+  onPick?(lines: { start: number; end: number } | null): void;
+  /** Esc with nothing of the editor's to close. */
+  onEscape?(): void;
 }
 
 /**
  * A file's text in Monaco, which loads on first use (its own chunk and workers). The theme follows the app's tokens
  * and the light or dark mode; ⌘S calls `onSave`.
  */
-export const FileEditor = forwardRef<FileEditorHandle | null, FileEditorProps>(function FileEditor({ path, editKey, seq, value, extension, wrap, autoFocus = true, onDirty, onSave, keep }, ref) {
+export const FileEditor = forwardRef<FileEditorHandle | null, FileEditorProps>(function FileEditor({ path, editKey, seq, value, extension, wrap, autoFocus = true, onDirty, onSave, keep, marks, search, onPick, onEscape }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [handle, setHandle] = useState<FileEditorHandle | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const callbacks = useRef({ onDirty, onSave, keep });
-  callbacks.current = { onDirty, onSave, keep };
+  const callbacks = useRef({ onDirty, onSave, keep, onPick, onEscape });
+  callbacks.current = { onDirty, onSave, keep, onPick, onEscape };
   useImperativeHandle(ref, () => handle as FileEditorHandle, [handle]);
 
   useEffect(() => {
@@ -40,7 +48,7 @@ export const FileEditor = forwardRef<FileEditorHandle | null, FileEditorProps>(f
     let disposed = false;
     let created: FileEditorHandle | null = null;
     void import('./monacoEditor.ts')
-      .then(({ createFileEditor }) => createFileEditor(el, { key: editKey, seq, value, path, extension, wrap, onDirty: (d) => callbacks.current.onDirty(d), onSave: () => callbacks.current.onSave() }))
+      .then(({ createFileEditor }) => createFileEditor(el, { key: editKey, seq, value, path, extension, wrap, onDirty: (d) => callbacks.current.onDirty(d), onSave: () => callbacks.current.onSave(), onPick: (lines) => callbacks.current.onPick?.(lines), onEscape: () => callbacks.current.onEscape?.() }))
       .then(
         (editor) => {
           if (disposed) return editor.dispose(callbacks.current.keep());
@@ -59,6 +67,8 @@ export const FileEditor = forwardRef<FileEditorHandle | null, FileEditorProps>(f
   }, [path]);
 
   useEffect(() => handle?.setWrap(wrap), [handle, wrap]);
+  useEffect(() => handle?.setMarks(marks), [handle, marks]);
+  useEffect(() => handle?.setSearch(search?.matches ?? [], search?.current ?? -1), [handle, search]);
 
   // The theme follows the app's: its tokens, its syntax colours and the mode.
   const active = useThemes((s) => s.active);

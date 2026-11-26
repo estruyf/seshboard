@@ -4,7 +4,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename } from '../../lib/format.ts';
-import { ariaKeysFor, formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
+import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { useFilePreview } from '../../state/filePreviewStore.ts';
 import { useFilesPanel, type FileTab } from '../../state/filesPanelStore.ts';
@@ -124,16 +124,34 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
   const [saving, setSaving] = useState(false);
   /** A tab with unsaved edits whose close asks first. */
   const [closing, setClosing] = useState<string | null>(null);
-  // HTML comes from `files.read` with a policy added, so its text isn't the file's: it isn't editable yet.
-  const canEdit = text !== null && modified !== null && kind !== 'html';
-  const startEdit = () => canEdit && editsApi().start(sessionId, tab.path, text!, modified!);
+  const canEdit = text !== null && modified !== null;
+  /**
+   * The file's text as it is on disk, to edit: what the viewer read, except for HTML, which the viewer gets with a
+   * policy and inlined images added, so it is read again raw.
+   */
+  const diskText = async (): Promise<{ text: string; modified: number } | null> => {
+    if (kind !== 'html') return text !== null && modified !== null ? { text, modified } : null;
+    if (!client) return null;
+    const raw = await client.call('files.read', { path: tab.path, raw: true });
+    return raw.content === null ? null : { text: raw.content, modified: raw.modified };
+  };
+  const startEdit = () => {
+    if (!canEdit) return;
+    void diskText().then((disk) => disk && editsApi().start(sessionId, tab.path, disk.text, disk.modified));
+  };
+  /** Starts the editor again from the file on disk, dropping any edits (no edits, or Reload on the notice). */
+  const reloadEdit = () =>
+    void diskText().then((disk) => {
+      const current = editsApi().edits.get(editKey(sessionId, tab.path));
+      if (disk && current) editsApi().update(sessionId, tab.path, { saved: disk.text, modified: disk.modified, seq: current.seq + 1, dirty: false, changedOnDisk: null });
+    });
   // Done or Discard: the editor goes and, out of edit mode, drops the model.
   const stopEdit = () => editsApi().stop(sessionId, tab.path);
   // A new read of the file in front (Claude wrote it, Reload, the window came back, its tab came to the front): with
   // no edits the editor takes the new text; with edits, a notice asks.
   useEffect(() => {
     if (!edit || modified === null || text === null || modified === edit.modified) return;
-    if (!edit.dirty) editsApi().update(sessionId, tab.path, { saved: text, modified, seq: edit.seq + 1 });
+    if (!edit.dirty) reloadEdit();
     else if (edit.changedOnDisk !== modified) editsApi().update(sessionId, tab.path, { changedOnDisk: modified });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modified, text]);
@@ -272,7 +290,8 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
   useLayoutEffect(() => {
     const owner = SEARCH_OWNER(sessionId);
     const root = bodyRef.current?.querySelector('[data-file-preview-source]');
-    if (!search || !root) return clearFindHighlights(owner);
+    // While editing, the editor marks them (`editorSearch`).
+    if (!search || !root || isEditing) return clearFindHighlights(owner);
     const ranges: Range[] = [];
     let current: Range | null = null;
     search.matches.forEach((m, i) => {
@@ -283,11 +302,19 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
       if (i === search.current) current = range;
     });
     setFindHighlights(owner, ranges, current);
-  }, [search, domVersion, sessionId]);
+  }, [search, domVersion, sessionId, isEditing]);
+  const editorSearch = useMemo(() => (search ? { matches: search.matches, current: search.current } : undefined), [search?.matches, search?.current]);
   useEffect(() => () => clearFindHighlights(SEARCH_OWNER(sessionId)), [sessionId]);
 
   // --- Lines to Claude ---------------------------------------------------------------------------------------------
   const [selection, setSelection] = useState<{ start: number; end: number; x: number; y: number } | null>(null);
+  /** The lines picked in the editor (no floating bar there: it would sit over the text you edit). */
+  const [editPick, setEditPick] = useState<{ start: number; end: number } | null>(null);
+  useEffect(() => setEditPick(null), [tab.path, isEditing]);
+  /** The lines picked, in the viewer or the editor. */
+  const picked = isEditing ? editPick : selection;
+  /** Lines `start` to `end`: from the editor while editing (its text now), else from the file read. */
+  const linesOf = (start: number, end: number) => (isEditing && editorRef.current ? editorRef.current.linesText(start, end) : (text ?? '').split(/\r?\n/).slice(start - 1, end).join('\n'));
   /** The lines the text picked in the source spans, or null (nothing picked, or the rendered page). */
   const pickedLines = (): { start: number; end: number; range: Range } | null => {
     const root = bodyRef.current;
@@ -309,9 +336,8 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
     setSelection({ start: Math.min(a, b), end: Math.max(a, b), x: Math.max(8, Math.min(rect.left - box.left, box.width - 340)), y: above >= 4 ? above : rect.bottom - box.top + 6 });
   };
   const linesItem = () => {
-    if (!selection || text === null) return null;
-    const lines = text.split(/\r?\n/).slice(selection.start - 1, selection.end).join('\n');
-    return fileLinesItem(tab.path, { start: selection.start, end: selection.end }, lines, fenceLanguage(tab.path));
+    if (!picked || text === null) return null;
+    return fileLinesItem(tab.path, { start: picked.start, end: picked.end }, linesOf(picked.start, picked.end), fenceLanguage(tab.path));
   };
   /** The file itself, when no lines are picked: as the companion's Add Selection does with nothing selected. */
   const addFile = () => addToMessage(sessionId, [{ kind: 'file', path: tab.path, directory: false }], name);
@@ -340,26 +366,27 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
       // In the editor too: the editor passes ⌘F on to the viewer's find bar.
       event.preventDefault();
       openFind();
+    } else if (matches(event, 'files.add-lines')) {
+      // In the editor too: the editor passes the app's shortcuts on.
+      event.preventDefault();
+      if (picked) addLines(false);
+      else addFile();
     } else if (isEditing && (event.target as HTMLElement).closest('[data-file-editor]')) {
       // Monaco has the keys it handles; the rest go on to the app.
-    } else if (matches(event, 'files.add-lines')) {
-      event.preventDefault();
-      if (selection) addLines(false);
-      else addFile();
     } else if (isContextMenuKey(event) && !(event.target as HTMLElement).closest('[role="tab"], [role="toolbar"], input')) {
       event.preventDefault();
       openViewerMenu(null, bodyRef.current ?? event.currentTarget);
     }
   };
   const openViewerMenu = (event: MouseEvent | null, element: Element) => {
-    const lines = pickedLines();
+    const lines = isEditing ? editPick : pickedLines();
     if (lines && !selection) readSelection();
     onContextMenu({ kind: 'viewer', path: tab.path, lines: lines ? { start: lines.start, end: lines.end } : null }, event, element, { addLines: (focus) => (lines ? addPicked(lines, focus) : addFile()) });
   };
   /** Adds lines picked when the menu opened (the menu's focus may clear the toolbar's state). */
   const addPicked = (lines: { start: number; end: number }, focus: boolean) => {
     if (text === null) return;
-    const item = fileLinesItem(tab.path, lines, text.split(/\r?\n/).slice(lines.start - 1, lines.end).join('\n'), fenceLanguage(tab.path));
+    const item = fileLinesItem(tab.path, lines, linesOf(lines.start, lines.end), fenceLanguage(tab.path));
     useDrafts.getState().addContext(sessionId, [item]);
     if (focus) useDrafts.getState().requestFocus(sessionId);
     else toast(`Added ${item.label} to the message`);
@@ -379,7 +406,8 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
   return (
     <section
       aria-label={name}
-      className={`flex min-h-0 min-w-0 flex-1 flex-col ${inset ? 'pl-2' : ''}`}
+      // A container, so the path bar compacts by the viewer's own width (Side, Half, Full, a narrow split).
+      className={`@container flex min-h-0 min-w-0 flex-1 flex-col ${inset ? 'pl-2' : ''}`}
       onKeyDown={onKeyDown}
       // Not on a button (the selection's own toolbar): reading the selection there would redraw the toolbar under the
       // pointer between the press and the release, and the browser would send no click.
@@ -449,34 +477,42 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
       {/* The path and the tools sit on the file's surface too, so the tab in front runs into the file. */}
       <div className="flex h-9 shrink-0 items-center gap-1 bg-code px-2" data-files-viewer-bar="">
         {lead}
-        <nav aria-label="Path" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-1 text-ui text-muted">
-          {crumbs.map((part, i) => {
-            const last = i === crumbs.length - 1;
-            if (last)
-              return (
-                <span key={i} className="flex min-w-0 items-center gap-1.5 font-semibold text-text" aria-current="page">
-                  <span className="truncate">{part}</span>
-                  {isEditing && dirty && tabs.length <= 1 && <span aria-label="Not saved" className="size-1.5 shrink-0 rounded-full bg-text" data-files-dirty="" />}
-                </span>
-              );
-            const folder = crumbs.slice(0, i + 1).join('/');
-            return (
-              <span key={i} className="flex min-w-0 shrink items-center gap-1">
-                {relative !== null ? (
-                  <button type="button" onClick={() => onFolder(folder)} className="truncate rounded px-0.5 hover:bg-border/50 hover:text-text" data-files-crumb={folder}>
-                    {part}
-                  </button>
-                ) : (
-                  <span className="truncate">{part}</span>
-                )}
-                <span aria-hidden>›</span>
+        {/* The file's name keeps its room; its folders give theirs up first, cut from the left so the nearest stays
+            ("…components › "). */}
+        <nav aria-label="Path" className="flex min-w-0 flex-1 items-center overflow-hidden px-1 text-ui text-muted" data-files-crumbs="">
+          {crumbs.length > 1 && (
+            <span className="min-w-3 shrink truncate [direction:rtl] text-left" data-tooltip={crumbs.slice(0, -1).join(' › ')}>
+              <span dir="ltr" className="[unicode-bidi:isolate]">
+                {crumbs.slice(0, -1).map((part, i) => {
+                  const folder = crumbs.slice(0, i + 1).join('/');
+                  return (
+                    <span key={i}>
+                      {relative !== null ? (
+                        <button type="button" onClick={() => onFolder(folder)} className="rounded px-0.5 hover:bg-border/50 hover:text-text" data-files-crumb={folder}>
+                          {part}
+                        </button>
+                      ) : (
+                        <span className="px-0.5">{part}</span>
+                      )}
+                      <span aria-hidden className="px-0.5">
+                        ›
+                      </span>
+                    </span>
+                  );
+                })}
               </span>
-            );
-          })}
+            </span>
+          )}
+          <span className="flex max-w-full min-w-0 shrink-0 items-center gap-1.5 pl-0.5 font-semibold text-text" aria-current="page" data-files-crumb-name="">
+            <span className="truncate">{crumbs.at(-1)}</span>
+            {isEditing && dirty && tabs.length <= 1 && <span aria-label="Not saved" className="size-1.5 shrink-0 rounded-full bg-text" data-files-dirty="" />}
+          </span>
         </nav>
         {changedHere && marks && marks.size > 0 && (
-          <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-meta text-text" data-files-changed-lines={marks.size}>
-            changed by Claude · {marks.size} {marks.size === 1 ? 'line' : 'lines'}
+          // In a narrow panel only the count: the tooltip says the rest.
+          <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-meta whitespace-nowrap text-text" data-tooltip={`Claude changed ${marks.size} ${marks.size === 1 ? 'line' : 'lines'} of this file`} data-files-changed-lines={marks.size}>
+            <span className="@max-[560px]:hidden">changed by Claude · </span>
+            {marks.size} {marks.size === 1 ? 'line' : 'lines'}
           </span>
         )}
         {onShowDiff && (
@@ -497,7 +533,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
         <div className="ml-auto flex items-center">
           {isEditing ? (
             <>
-              <Button variant="primary" size="sm" data-tooltip={`Save (${formatKeys(keysFor('files.save'))})`} aria-keyshortcuts={ariaKeysFor('files.save')} disabled={!dirty && changedOnDisk === null} aria-busy={saving || undefined} onClick={() => void save(tab.path)} data-files-save="">
+              <Button variant="primary" size="sm" shortcut="files.save" disabled={!dirty && changedOnDisk === null} aria-busy={saving || undefined} onClick={() => void save(tab.path)} data-files-save="">
                 {saving ? 'Saving…' : 'Save'}
               </Button>
               {/* A secondary action next to the primary one is bordered, never bare text (the design system's Buttons). */}
@@ -516,10 +552,10 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
             size="sm"
             iconOnly
             icon={<MessageSquarePlus size={14} aria-hidden />}
-            aria-label={selection ? `Add ${lineSpan(selection.start, selection.end)} to message` : 'Add file to message'}
+            aria-label={picked ? `Add ${lineSpan(picked.start, picked.end)} to message` : 'Add file to message'}
             shortcut="files.add-lines"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => (selection ? addLines(false) : addFile())}
+            onClick={() => (picked ? addLines(false) : addFile())}
             data-files-add-to-message=""
           />
           <Button variant="quiet" size="sm" iconOnly icon={<Search size={14} aria-hidden />} aria-label="Find in file" shortcut="files.find" onClick={openFind} data-files-find-open="" />
@@ -530,7 +566,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
           <Button variant="quiet" size="sm" iconOnly icon={<Maximize2 size={13} aria-hidden />} aria-label="Open in a dialog" data-file-preview-detach="" onClick={() => useFilePreview.getState().detach(sessionId)} />
         </div>
       </div>
-      <div ref={bodyRef} className="relative flex min-h-0 flex-1" onContextMenu={(e) => !(e.target as HTMLElement).closest('input, [role="toolbar"]') && openViewerMenu(e, e.currentTarget)} data-files-viewer-body="">
+      <div ref={bodyRef} tabIndex={-1} className="relative flex min-h-0 flex-1 outline-none" onContextMenu={(e) => !(e.target as HTMLElement).closest('input, [role="toolbar"]') && openViewerMenu(e, e.currentTarget)} data-files-viewer-body="">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {isEditing && changedOnDisk !== null && (
             <Notice
@@ -539,7 +575,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
               data-files-changed-on-disk=""
               actions={
                 <>
-                  <Button size="sm" onClick={() => edit && text !== null && modified !== null && editsApi().update(sessionId, tab.path, { saved: text, modified, seq: edit.seq + 1, dirty: false, changedOnDisk: null })}>
+                  <Button size="sm" onClick={reloadEdit}>
                     Reload
                   </Button>
                   <Button size="sm" onClick={() => void save(tab.path, true)}>
@@ -564,6 +600,12 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
               onDirty={(d) => editsApi().update(sessionId, tab.path, { dirty: d })}
               onSave={() => void save(tab.path)}
               keep={() => editsApi().edits.has(key)}
+              marks={marks}
+              search={editorSearch}
+              onPick={setEditPick}
+              // Esc with nothing of the editor's open leaves the editor, rather than closing the panel under your
+              // edits; the next Esc closes the panel, as in the viewer.
+              onEscape={() => bodyRef.current?.focus()}
             />
           )}
           {!isEditing && body}
@@ -628,7 +670,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
             )}
           </div>
         )}
-        {selection && (
+        {selection && !isEditing && (
           <div role="toolbar" aria-label={`Selected ${lineSpan(selection.start, selection.end)}`} className="absolute z-10 flex items-center gap-0.5 rounded-lg p-1 overlay" style={{ left: selection.x, top: selection.y }} data-files-selection-bar="">
             <Button variant="quiet" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => addLines(true)} data-files-ask-lines="">
               Ask about {lineSpan(selection.start, selection.end)}
@@ -642,8 +684,7 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
           </div>
         )}
       </div>
-      {/* The editor doesn't draw Claude's marks yet, so its legend would point at nothing. */}
-      {kind === 'code' && showsSource && !isEditing && marks && marks.size > 0 && (
+      {kind === 'code' && (showsSource || isEditing) && marks && marks.size > 0 && (
         <p className="flex shrink-0 items-center gap-1.5 px-3 py-1 text-meta text-muted">
           <span aria-hidden className="h-3 w-[3px] bg-accent-ink" />A line Claude changed in this session. Hover it for the old text.
         </p>

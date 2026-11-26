@@ -866,10 +866,11 @@ export const contract = {
      * Reads a Markdown, HTML or code file (see `previewKind`), or any other text file (`kind: 'text'`, a file with no
      * NUL byte in its first 8 KB), to show it. `content` is null when the file is over `MAX_PREVIEW_BYTES` (`size` still
      * says how big it is). HTML comes with a Content-Security-Policy meta added and its local images inlined as data
-     * URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a folder or a binary file.
+     * URIs, unless `raw` (the text as it is on disk, to edit it). `modified` is the mtime in ms. NOT_FOUND when it is
+     * missing; UNSUPPORTED for a folder or a binary file.
      */
     'files.read': {
-      params: z.object({ path: AbsolutePath }),
+      params: z.object({ path: AbsolutePath, raw: z.boolean().optional() }),
       result: z.object({ kind: z.enum(['markdown', 'html', 'code', 'text']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
     },
     /**

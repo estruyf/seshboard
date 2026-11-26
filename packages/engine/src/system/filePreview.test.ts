@@ -102,6 +102,8 @@ describe('readPreview', () => {
     expect(a.kind).toBe('html');
     expect(a.content).toMatch(/^<meta http-equiv="Content-Security-Policy" content="default-src 'none'.*><html><head><title>/);
     expect((await readPreview(join(dir, 'b.HTM'))).content).toMatch(/^<meta http-equiv="Content-Security-Policy".*<p>plain<\/p>$/);
+    // Raw, to edit it: the page as it is on disk.
+    expect(await readPreview(join(dir, 'b.HTM'), { raw: true })).toMatchObject({ kind: 'html', content: '<p>plain</p>' });
   });
 
   it('inlines the images next to an HTML file', async () => {

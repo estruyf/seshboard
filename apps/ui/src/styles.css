@@ -1029,6 +1029,12 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
   background-color: var(--sb-accent);
   color: var(--sb-on-accent);
 }
+/* A line Claude changed, in the file editor's gutter: the same bar as in the viewer. */
+.monaco-editor .sb-claude-mark {
+  background-color: var(--sb-accent-ink);
+  width: 3px !important;
+  margin-left: 3px;
+}
 /* The same marks in the file editor (Monaco), where the find bar draws them as decorations. */
 .monaco-editor .sb-find-match {
   background-color: color-mix(in srgb, var(--sb-accent) 35%, transparent);

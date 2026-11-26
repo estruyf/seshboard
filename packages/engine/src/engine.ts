@@ -4199,7 +4199,7 @@ export function createEngine(options: EngineOptions): Engine {
     'fs.folders': ({ path, prefix }) => listFolders(path, prefix),
     'files.search': async ({ cwd, query, limit }) => ({ files: await files.search(cwd, query, limit) }),
     'files.resolve': async ({ cwd, paths }) => ({ paths: await files.resolve(cwd, paths) }),
-    'files.read': ({ path }) => readPreview(path),
+    'files.read': ({ path, raw }) => readPreview(path, { raw }),
     'files.list': ({ cwd }) => {
       assertKnownFolder(cwd);
       return files.listAll(cwd);

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync, type Dirent } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync, type Dirent } from 'node:fs';
 import { join } from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { isAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
@@ -340,6 +340,8 @@ export async function runFilesEditStep(win: BrowserWindow, pics?: FilesPictures)
   if (!path) return 'ok: no TypeScript or JSON file in the session folder';
   const before = readFileSync(path, 'utf8');
   const name = path.slice(cwd.length + 1);
+  // A page this step makes, and takes away after.
+  const page = join(cwd, 'seshboard-smoke-edit.html');
   const v = `(${viewer(path)})`;
   try {
     if (!(await openFiles(win))) return 'Files did not open';
@@ -357,6 +359,9 @@ export async function runFilesEditStep(win: BrowserWindow, pics?: FilesPictures)
     // The editor's surface is the app's code background, in both modes.
     const sameSurface = `getComputedStyle(${v}.querySelector('.monaco-editor-background')).backgroundColor === getComputedStyle(${v}.querySelector('[data-file-editor]')).backgroundColor`;
     if (!(await waitInPage(win, sameSurface, 3_000))) return `the editor's background (${await js(win, `getComputedStyle(${v}.querySelector('.monaco-editor-background')).backgroundColor`)}) is not the code background (${await js(win, `getComputedStyle(${v}.querySelector('[data-file-editor]')).backgroundColor`)})`;
+    // Claude's changes show in the editor's gutter, as in the viewer (before this step writes the file).
+    const changedLines = (await js(win, `Number(${v}.querySelector('[data-files-changed-lines]')?.dataset.filesChangedLines ?? 0)`)) as number;
+    if (changedLines > 0 && !(await waitInPage(win, `${v}.querySelectorAll('.monaco-editor .sb-claude-mark').length > 0`, 3_000))) return `${name} has ${changedLines} lines Claude changed, but the editor marks none`;
     let schemes = 'no pictures';
     if (pics) {
       const was = pics.scheme();
@@ -424,6 +429,11 @@ export async function runFilesEditStep(win: BrowserWindow, pics?: FilesPictures)
       await js(win, `window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(other)}, sessionId: document.querySelector('${S}').dataset.currentSession } }))`);
       if (!(await waitInPage(win, `${PANEL}.querySelector('[data-files-tab-front]')?.dataset.filesTab === ${JSON.stringify(other)}`, 5_000))) return "package.json did not come in front";
       if (!(await js(win, `!!${tabOf(path)}?.querySelector('[data-files-dirty]')`))) return 'the edited tab lost its unsaved dot behind another tab';
+      // A second file in edit mode at the same time.
+      const otherViewer = `(${viewer(other)})`;
+      if (!(await waitInPage(win, `!!${otherViewer}?.querySelector('[data-files-edit]')`, 5_000))) return 'package.json opened without Edit';
+      await js(win, `${otherViewer}.querySelector('[data-files-edit]').click()`);
+      if (!(await waitInPage(win, `!!${otherViewer}?.querySelector('[data-file-editor="ready"] .view-line')`, 5_000))) return 'package.json did not go into edit mode with the other file still in it';
       await js(win, `${tabOf(path)}.click()`);
       // Its undo history came back too: ⌘Z below takes the y back.
       if (!(await waitInPage(win, `!!${v}?.querySelector('[data-file-editor="ready"] .view-line')?.innerText.startsWith('y/*')`, 3_000)))
@@ -436,7 +446,44 @@ export async function runFilesEditStep(win: BrowserWindow, pics?: FilesPictures)
       await clickAt(win, `${v}.querySelector('.monaco-editor .view-line')`);
       press(win, 'Z', ['meta']);
       if (!(await waitInPage(win, `!${v}.querySelector('[data-files-dirty]')`, 3_000))) return 'undo back to the saved text still shows the file unsaved';
+      // package.json is still in edit mode behind it; Done takes it out.
+      await js(win, `${tabOf(other)}.click()`);
+      if (!(await waitInPage(win, `!!${otherViewer}?.querySelector('[data-file-editor="ready"]')`, 5_000))) return 'package.json left edit mode while the other file was in front';
+      await js(win, `${otherViewer}.querySelector('[data-files-edit-done]').click()`);
+      await js(win, `${tabOf(path)}.click()`);
+      if (!(await waitInPage(win, `!!${v}?.querySelector('[data-file-editor="ready"]')`, 5_000))) return `${name} left edit mode`;
+      await clickAt(win, `${v}.querySelector('.monaco-editor .view-line')`);
     }
+
+    // The path bar keeps the file's name whole at this width; the folders give way first.
+    if (!(await js(win, `(() => { const n = ${v}.querySelector('[data-files-crumb-name] .truncate'); return !!n && n.scrollWidth <= n.clientWidth; })()`))) return `the path bar cut the file's name ("${String(await js(win, `${v}.querySelector('[data-files-crumb-name]')?.innerText`))}")`;
+
+    // Lines picked in the editor go to the message: ⇧↓ picks the first two, and Add to message names them.
+    press(win, 'Up', ['meta']);
+    press(win, 'Down', ['shift']);
+    press(win, 'Down', ['shift']);
+    if (!(await waitInPage(win, `${v}.querySelector('[data-files-add-to-message]')?.getAttribute('aria-label') === 'Add lines 1–2 to message'`, 3_000)))
+      return `picking lines in the editor did not reach Add to message ("${String(await js(win, `${v}.querySelector('[data-files-add-to-message]')?.getAttribute('aria-label')`))}")`;
+    const chips = `document.querySelectorAll('${S} [data-context-chip="file"]').length`;
+    const chipsBefore = (await js(win, chips)) as number;
+    await js(win, `${v}.querySelector('[data-files-add-to-message]').click()`);
+    if (!(await waitInPage(win, `${chips} > ${chipsBefore}`, 3_000))) return 'Add to message with lines picked in the editor put no chip in the message box';
+    await js(win, `[...document.querySelectorAll('${S} [data-context-chip="file"]')].at(-1).querySelector('[data-context-chip-remove]').click()`);
+
+    // Esc is the editor's while it has something to close: the lines still picked go first. With nothing left, Esc
+    // leaves the editor, and the panel stays (with the file still in edit mode).
+    // A click in the lines picked gives the editor its focus back and keeps them picked.
+    await clickAt(win, `${v}.querySelector('.monaco-editor .view-line')`);
+    if (!(await waitInPage(win, `${v}.querySelector('[data-files-add-to-message]')?.getAttribute('aria-label') === 'Add lines 1–2 to message' && !!${v}.querySelector('.monaco-editor')?.classList.contains('focused')`, 3_000)))
+      return 'a click in the picked lines lost them or did not focus the editor';
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 2, y: 2 });
+    press(win, 'Escape');
+    if (!(await waitInPage(win, `${v}.querySelector('[data-files-add-to-message]')?.getAttribute('aria-label') === 'Add file to message' && !!${v}.querySelector('.monaco-editor')?.classList.contains('focused')`, 3_000)))
+      return 'the first Esc did not clear the lines picked in the editor, or left it';
+    press(win, 'Escape');
+    if (!(await waitInPage(win, `!!${PANEL} && !${v}.querySelector('.monaco-editor')?.classList.contains('focused') && !!${v}.querySelector('[data-file-editor="ready"]')`, 3_000)))
+      return `the second Esc did not leave the editor, or closed the panel or edit mode (${String(await js(win, `JSON.stringify({ panel: !!${PANEL}, focused: ${PANEL} ? !!${v}?.querySelector('.monaco-editor')?.classList.contains('focused') : null, editing: ${PANEL} ? !!${v}?.querySelector('[data-file-editor]') : null })`))})`;
+    await clickAt(win, `${v}.querySelector('.monaco-editor .view-line')`);
 
     press(win, 'Up', ['meta']);
     await settle(win);
@@ -456,8 +503,19 @@ export async function runFilesEditStep(win: BrowserWindow, pics?: FilesPictures)
     if (!readFileSync(path, 'utf8').includes('written by someone else')) return 'the save overwrote a change made on disk';
     await js(win, `${v}.querySelector('[data-files-edit-done]').click()`);
     if (!(await waitInPage(win, `!${v}.querySelector('[data-file-editor]') && !!${v}.querySelector('[data-file-preview-source]')`, 3_000))) return 'Discard did not go back to the viewer';
-    return `ok: Monaco loaded in ${loadMs}ms with ${name} in ${colours} colours on the code background (${schemes}), ⌘S wrote the typed text${lineEndings ? ' with its line endings' : ' but changed its line endings'}, a change on disk showed a notice ${notice} and was kept; ${freed.length} Monaco keys taken over by the app's shortcuts, ⌘K in the editor opened the palette, ⌘F the find bar, which closed on its button, edits kept behind another tab and asked before closing`;
+
+    // An HTML page edits as it is on disk: not the copy the viewer shows, with a policy and inlined images added.
+    writeFileSync(page, '<p>edit me</p>\n');
+    await js(win, `window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(page)}, sessionId: document.querySelector('${S}').dataset.currentSession } }))`);
+    const pv = `(${viewer(page)})`;
+    if (!(await waitInPage(win, `!!${pv}?.querySelector('[data-files-edit]')`, 5_000))) return 'an HTML page opened without Edit';
+    await js(win, `${pv}.querySelector('[data-files-edit]').click()`);
+    if (!(await waitInPage(win, `${pv}?.querySelector('[data-file-editor="ready"] .view-line')?.innerText.replace(/\\u00a0/g, ' ').trim() === '<p>edit me</p>'`, 5_000)))
+      return `the HTML page in the editor is not its text on disk ("${String(await js(win, `${pv}?.querySelector('[data-file-editor] .view-line')?.innerText.slice(0, 60)`))}")`;
+    await js(win, `${pv}.querySelector('[data-files-edit-done]').click()`);
+    return `ok: Monaco loaded in ${loadMs}ms with ${name} in ${colours} colours on the code background (${schemes}), ⌘S wrote the typed text${lineEndings ? ' with its line endings' : ' but changed its line endings'}, a change on disk showed a notice ${notice} and was kept; ${freed.length} Monaco keys taken over by the app's shortcuts, ⌘K in the editor opened the palette, ⌘F the find bar, which closed on its button, edits kept behind another tab and asked before closing, two files in edit mode at once, Claude's marks in the gutter${changedLines ? '' : ' (none here)'}, picked lines added to the message, Esc cleared the pick, then left the editor and kept the panel, an HTML page edited as it is on disk`;
   } finally {
     writeFileSync(path, before);
+    rmSync(page, { force: true });
   }
 }

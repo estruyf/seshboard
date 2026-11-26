@@ -115,7 +115,7 @@ async function looksLikeText(path: string): Promise<boolean> {
  * the UI can say why. `inlineImages: false` leaves an HTML page's images out: for another device, a page could name
  * any image on the disk.
  */
-export async function readPreview(path: string, options: { maxBytes?: number; inlineImages?: boolean } = {}): Promise<FilePreview> {
+export async function readPreview(path: string, options: { maxBytes?: number; inlineImages?: boolean; raw?: boolean } = {}): Promise<FilePreview> {
   const info = await statFile(path);
   // Images are `files.image`'s, whatever their bytes say.
   const kind = previewKind(path) ?? (!/\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic)$/i.test(path) && (await looksLikeText(path)) ? 'text' : null);
@@ -129,7 +129,8 @@ export async function readPreview(path: string, options: { maxBytes?: number; in
   } catch (error) {
     throw fsError(error, path);
   }
-  if (kind !== 'html') return { ...base, content: text };
+  // `raw`: the text as it is on disk, to edit it (an HTML page without the policy and inlined images it gets to show).
+  if (kind !== 'html' || options.raw) return { ...base, content: text };
   return { ...base, content: withPreviewCsp(options.inlineImages === false ? text : await inlineHtmlImages(text, dirname(path))) };
 }
 

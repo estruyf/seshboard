@@ -187,6 +187,17 @@ export interface FileEditorHandle {
   highlightFind(query: string, current: number): number;
   /** Brings the `current` match of `query` into view and picks it. */
   revealFind(query: string, current: number): void;
+  /**
+   * Marks the lines Claude changed (by line number in the text as it was read), with the old text on hover (null for
+   * an added line). They move with the text as you edit.
+   */
+  setMarks(marks: ReadonlyMap<number, string | null> | undefined): void;
+  /** Marks Search in files' matches (1-based line and column) and the `current` one, which comes into view. */
+  setSearch(matches: ReadonlyArray<{ line: number; column: number; length: number }>, current: number): void;
+  /** The lines picked, or null for none (an empty selection). */
+  pickedLines(): { start: number; end: number } | null;
+  /** The text of lines `start` to `end` as it is in the editor now. */
+  linesText(start: number, end: number): string;
   focus(): void;
   /**
    * Closes the editor. `keep`: the file stays in edit mode (another tab in front, the panel closed), so its model (text,
@@ -207,6 +218,10 @@ export interface FileEditorOptions {
   wrap: boolean;
   onDirty(dirty: boolean): void;
   onSave(): void;
+  /** The lines picked changed (null: none). */
+  onPick?(lines: { start: number; end: number } | null): void;
+  /** Esc with nothing of the editor's to close (no selection, second cursor, suggestions or hover). */
+  onEscape?(): void;
 }
 
 let editorCount = 0;
@@ -292,6 +307,18 @@ export async function createFileEditor(el: HTMLElement, options: FileEditorOptio
     editor.trigger('menu', event.inputType === 'historyUndo' ? 'undo' : 'redo', null);
   };
   el.addEventListener('beforeinput', onHistory, true);
+  // Monaco takes every Esc (it marks the key handled even when it does nothing with it), so the app never sees one.
+  // With nothing of the editor's to close, Esc is the app's: `onEscape` (the viewer leaves the editor).
+  const onEscape = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || !options.onEscape) return;
+    const selections = editor.getSelections() ?? [];
+    const shown = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)].some((w) => w.offsetParent !== null && !w.classList.contains('hidden'));
+    if (selections.length > 1 || selections.some((s) => !s.isEmpty()) || shown('.monaco-editor .suggest-widget.visible') || shown('.monaco-hover')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    options.onEscape();
+  };
+  el.addEventListener('keydown', onEscape, true);
   lastEditor = editor;
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => options.onSave());
   // A draft starts unsaved: no version of it is the saved one until a save.
@@ -314,6 +341,16 @@ export async function createFileEditor(el: HTMLElement, options: FileEditorOptio
     if (dirty) options.onDirty((dirty = false));
   };
   live.set(options.key, { model, markSaved });
+  const claudeMarks = editor.createDecorationsCollection();
+  const searchMarks = editor.createDecorationsCollection();
+  const pickedLines = () => {
+    const selection = editor.getSelection();
+    if (!selection || selection.isEmpty()) return null;
+    // A selection that ends at the start of a line does not take that line.
+    const end = selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber ? selection.endLineNumber - 1 : selection.endLineNumber;
+    return { start: selection.startLineNumber, end };
+  };
+  const picks = editor.onDidChangeCursorSelection(() => options.onPick?.(pickedLines()));
   return {
     getValue: () => model.getValue(),
     selectedText: () => {
@@ -334,6 +371,23 @@ export async function createFileEditor(el: HTMLElement, options: FileEditorOptio
       editor.revealRangeInCenterIfOutsideViewport(range);
     },
     markSaved,
+    setMarks: (marks) => {
+      // Set once per editor and per change of the marks, never on an edit: the decorations move with the text.
+      claudeMarks.set(
+        [...(marks ?? [])].filter(([line]) => line >= 1 && line <= model.getLineCount()).map(([line, old]) => ({
+          range: new monaco.Range(line, 1, line, 1),
+          options: { isWholeLine: true, linesDecorationsClassName: 'sb-claude-mark', hoverMessage: { value: old === null ? 'Added by Claude' : `Before Claude changed it:\n\n\`\`\`\n${old}\n\`\`\`` } },
+        })),
+      );
+    },
+    setSearch: (matches, current) => {
+      const ranges = matches.filter((m) => m.line >= 1 && m.line <= model.getLineCount()).map((m) => new monaco.Range(m.line, m.column, m.line, m.column + m.length));
+      searchMarks.set(ranges.map((range, i) => ({ range, options: { inlineClassName: i === current ? 'sb-find-current' : 'sb-find-match' } })));
+      const at = ranges[current];
+      if (at) editor.revealRangeInCenterIfOutsideViewport(at);
+    },
+    pickedLines,
+    linesText: (start, end) => model.getValueInRange(new monaco.Range(start, 1, end, model.getLineMaxColumn(Math.min(end, model.getLineCount())))),
     setWrap: (wrap) => editor.updateOptions({ wordWrap: wrap ? 'on' : 'off' }),
     revealLine: (line) => {
       editor.revealLineInCenter(line);
@@ -343,10 +397,14 @@ export async function createFileEditor(el: HTMLElement, options: FileEditorOptio
     dispose: (keep) => {
       stopPassing();
       el.removeEventListener('beforeinput', onHistory, true);
+      el.removeEventListener('keydown', onEscape, true);
       findMarks.clear();
       if (lastEditor === editor) lastEditor = null;
       if (live.get(options.key)?.model === model) live.delete(options.key);
       changes.dispose();
+      picks.dispose();
+      claudeMarks.clear();
+      searchMarks.clear();
       if (keep) kept.set(options.key, { model, seq: options.seq, savedVersion, view: editor.saveViewState() });
       editor.dispose();
       if (!keep) model.dispose();
