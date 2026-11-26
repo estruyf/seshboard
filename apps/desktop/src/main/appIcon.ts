@@ -13,13 +13,19 @@ export interface AppIconHost {
   /** Every open window (the main one and the pop-outs). */
   windows(): { setIcon(icon: string): void; isDestroyed(): boolean }[];
   exists(path: string): boolean;
+  /**
+   * Keeps the choice for the Dock tile plug-in (macOS, packaged builds), which shows it in the Dock after the app quits
+   * (native/dock-tile): main writes it to the app's defaults and tells the plug-in.
+   */
+  remember?(key: AppIconKey): void;
 }
 
 /**
  * Settings › Theme › App icon, applied without a restart: the Dock's icon on macOS (which the app switcher shows too),
  * and the windows' icon elsewhere (the taskbar shows the window's). Only while the app runs: Finder, Launchpad, the
  * Start menu and pinned shortcuts keep the bundle's icon, since changing those means writing to the signed bundle or
- * to the shortcut. So the choice is applied again at every launch, before the first window.
+ * to the shortcut. So the choice is applied again at every launch, before the first window. On macOS the Dock tile
+ * plug-in keeps it in the Dock after a quit too (`remember`).
  */
 export class AppIcon {
   #key: AppIconKey = DEFAULT_APP_ICON;
@@ -35,6 +41,7 @@ export class AppIcon {
   /** Shows a colourway (a key this version doesn't know is Graphite) in the Dock or on every open window. */
   apply(value: unknown): void {
     this.#key = appIconKey(value);
+    if (this.host.platform === 'darwin') this.host.remember?.(this.#key);
     if (this.#key === DEFAULT_APP_ICON && !this.#changed && this.host.bundled) return;
     const file = this.#file();
     if (!file) return;

@@ -60,6 +60,8 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Signs the Dock tile plug-in that afterPack builds into Contents/PlugIns, which electron-builder skips, then the app.
+  sign: scripts/macSign.mjs
 dmg:
   title: Seshboard
 win:

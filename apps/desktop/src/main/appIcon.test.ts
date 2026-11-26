@@ -84,6 +84,21 @@ describe('AppIcon', () => {
     expect(windows.windows[0]!.icons).toEqual([]);
   });
 
+  it('keeps every choice for the Dock tile plug-in on macOS, Graphite included', () => {
+    const { fake } = host('darwin');
+    const kept: string[] = [];
+    const icon = new AppIcon({ ...fake, remember: (key) => void kept.push(key) });
+    icon.apply('graphite');
+    icon.apply('forest');
+    icon.apply('sunset');
+    expect(kept).toEqual(['graphite', 'forest', 'graphite']);
+
+    const windows = host('win32');
+    const elsewhere: string[] = [];
+    new AppIcon({ ...windows.fake, remember: (key) => void elsewhere.push(key) }).apply('forest');
+    expect(elsewhere).toEqual([]);
+  });
+
   it('takes an unknown key as Graphite', () => {
     const { fake, dock } = host('darwin');
     const icon = new AppIcon(fake);

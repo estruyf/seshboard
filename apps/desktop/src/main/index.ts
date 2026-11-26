@@ -241,7 +241,15 @@ const appIcon = new AppIcon({
   dock: app.dock,
   windows: () => BrowserWindow.getAllWindows(),
   exists: existsSync,
+  // The Dock tile plug-in, only in a packaged build (scripts/dockTile.mjs), reads the key from the app's defaults.
+  remember: app.isPackaged && process.platform === 'darwin' ? rememberDockIcon : undefined,
 });
+/** Keeps the Dock's colourway for after a quit, once per change: the plug-in reads it again on the notification. */
+function rememberDockIcon(key: string): void {
+  if (systemPreferences.getUserDefault('SeshboardAppIcon', 'string') === key) return;
+  systemPreferences.setUserDefault('SeshboardAppIcon', 'string', key);
+  systemPreferences.postNotification('SeshboardAppIconChanged', {}, true);
+}
 /**
  * Settings › Theme › App icon › Show when Claude is working: the Dock's icon lights its jacks in turn while a session
  * works (macOS only; the Notifier says when). Frames are drawn from the colourway's own Dock file.
