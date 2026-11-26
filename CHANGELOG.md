@@ -60,6 +60,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **The window opens where you left it after a restart.** Seshboard can start before macOS connects your external displays. The window then opened small, in another place, and kept that place. It now waits for its display and goes back to its place and size, maximised too.
 - **Effort, mode and usage stay under the message box.** The estimated cost of each usage window made the line under the message box so long that effort, mode and the usage circles went into one chip, even in a wide window. Each window's cost is now in the usage tooltip, and the line keeps the session's cost. If the line still doesn't fit, the session's cost goes first, and the chips fold only after that.
 - **Browser permission cards say what the agent wants to do.** A click or a typed text names the element in the page's own words, such as Click “New issue”, instead of a code like `e105`. Opening a page, pressing a key and running a script say so too.
 - **Update news stays in the main window.** "Updated to Seshboard …" and the other update toasts no longer show in the Quick start or menu bar panel, so they wait for you in the main window.

@@ -60,7 +60,7 @@ import { guarded } from './guarded.ts';
 import { IdlePanel, PANEL_IDLE_MS } from './idlePanel.ts';
 import { QuickStartPress } from './quickStartPress.ts';
 import { QuickStartUse, shouldPrewarm } from './quickStartUse.ts';
-import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
+import { fitsWhereSaved, placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
 const here = import.meta.dirname;
@@ -1507,6 +1507,8 @@ function installMenu(): void {
 /** The window's last size, position and display. Scripted runs always start at the default size. */
 const windowState = scripted ? undefined : new WindowStateStore(join(app.getPath('userData'), 'window-state.json'));
 const WINDOW_MIN = { width: 900, height: 560 };
+/** How long a window that opened away from its saved place waits for that display to connect. */
+const WINDOW_DISPLAY_WAIT_MS = 2 * 60_000;
 
 /** Saves where the window is, so the next one opens there. A maximized window keeps the size it returns to. */
 function rememberWindowState(win: BrowserWindow): void {
@@ -1534,7 +1536,11 @@ const titleBar = (): Electron.BrowserWindowConstructorOptions =>
 
 function createWindow(): BrowserWindow {
   const saved = windowState?.get();
-  const placed = saved && placeWindow(saved.bounds, screen.getAllDisplays().map((d) => d.workArea), WINDOW_MIN);
+  const workAreas = () => screen.getAllDisplays().map((d) => d.workArea);
+  const placed = saved && placeWindow(saved.bounds, workAreas(), WINDOW_MIN);
+  // After a restart the app often opens before macOS connects the external displays, so the saved place doesn't fit
+  // yet. The window then waits a while for its display, and saves nothing: until then, moves come from macOS.
+  let waitingFor = saved && !fitsWhereSaved(saved.bounds, workAreas(), WINDOW_MIN) ? saved : undefined;
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -1564,8 +1570,38 @@ function createWindow(): BrowserWindow {
       smokeWindow = { content: win.getContentSize(), workArea: screen.getPrimaryDisplay().workAreaSize };
     }
   });
+  if (waitingFor) {
+    const restore = () => {
+      if (!waitingFor || win.isDestroyed() || !win.isVisible()) return;
+      if (!fitsWhereSaved(waitingFor.bounds, workAreas(), WINDOW_MIN)) return;
+      const { bounds, maximized } = waitingFor;
+      stopWaiting();
+      if (win.isFullScreen()) return;
+      if (win.isMaximized()) win.unmaximize();
+      win.setBounds(bounds);
+      if (maximized) win.maximize();
+    };
+    // Past this, the display isn't coming back soon: the window stays where it is, and that place is saved.
+    const timer = setTimeout(() => {
+      stopWaiting();
+      rememberWindowState(win);
+    }, WINDOW_DISPLAY_WAIT_MS);
+    const stopWaiting = () => {
+      waitingFor = undefined;
+      clearTimeout(timer);
+      screen.off('display-added', restore);
+      screen.off('display-metrics-changed', restore);
+    };
+    screen.on('display-added', restore);
+    screen.on('display-metrics-changed', restore);
+    // A display may have come between creating the window and showing it.
+    win.once('show', restore);
+    win.once('closed', stopWaiting);
+  }
   // Saved when a move or resize ends and on close, so a crash or a forced quit keeps the last position too.
-  const remember = () => rememberWindowState(win);
+  const remember = () => {
+    if (!waitingFor) rememberWindowState(win);
+  };
   win.on('resized', remember);
   win.on('moved', remember);
   win.on('maximize', remember);
