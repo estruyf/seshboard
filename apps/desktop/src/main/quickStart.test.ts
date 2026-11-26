@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { QuickStartStatus } from '@seshboard/protocol/bridge';
-import { DRAFT_KEPT_MS, inUseLog, keepsDraft, QUICK_START_HEIGHT, QUICK_START_PAD, QUICK_START_WIDTH, QuickStart, quickStartBounds, toAccelerator, type QuickStartHost } from './quickStart.ts';
+import { inUseLog, QUICK_START_HEIGHT, QUICK_START_PAD, QUICK_START_WIDTH, QuickStart, quickStartBounds, toAccelerator, type QuickStartHost } from './quickStart.ts';
 
 describe('the shortcut as an accelerator', () => {
   it('writes the default as Control+Alt+Space on every platform', () => {
@@ -50,20 +50,11 @@ describe('where the panel goes', () => {
   });
 });
 
-describe('the draft', () => {
-  it('stays for five minutes after the panel hid', () => {
-    expect(keepsDraft(1_000, 1_000 + DRAFT_KEPT_MS - 1)).toBe(true);
-    expect(keepsDraft(1_000, 1_000 + DRAFT_KEPT_MS)).toBe(false);
-    expect(keepsDraft(null, 5)).toBe(false);
-  });
-});
-
 function fakeHost(taken: string[] = []) {
   const calls: string[] = [];
   const statuses: QuickStartStatus[] = [];
   const logs: string[] = [];
   let shown = false;
-  let now = 0;
   let press: (() => void) | null = null;
   const host: QuickStartHost = {
     platform: 'darwin',
@@ -85,9 +76,8 @@ function fakeHost(taken: string[] = []) {
     },
     log: (message) => void logs.push(message),
     status: (status) => void statuses.push(status),
-    now: () => now,
   };
-  return { host, calls, statuses, logs, press: () => press?.(), at: (ms: number) => void (now = ms) };
+  return { host, calls, statuses, logs, press: () => press?.() };
 }
 
 describe('QuickStart', () => {
@@ -121,18 +111,15 @@ describe('QuickStart', () => {
     expect(fake.calls.at(-1)).toBe('unregister Command+Shift+Space');
   });
 
-  it('keeps the draft when it opens within five minutes of hiding', () => {
+  it('opens empty every time, and with its draft only after a screenshot', () => {
     const fake = fakeHost();
     const quick = new QuickStart(fake.host);
     quick.setShortcut('ctrl+alt+space');
-    fake.at(10_000);
     quick.open();
     quick.hide();
-    fake.at(10_000 + 60_000);
-    quick.open();
-    quick.hidden();
-    fake.at(10_000 + 60_000 + DRAFT_KEPT_MS);
-    quick.open();
-    expect(fake.calls.filter((c) => c.startsWith('show'))).toEqual(['show false', 'show true', 'show false']);
+    fake.press();
+    fake.press();
+    quick.open(true);
+    expect(fake.calls.filter((c) => c.startsWith('show'))).toEqual(['show false', 'show false', 'show true']);
   });
 });

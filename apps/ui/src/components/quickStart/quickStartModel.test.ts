@@ -6,12 +6,14 @@ import {
   backspaceAtStart,
   changedOptions,
   EMPTY_FIELD,
+  escapeStep,
   firstLine,
   moveActive,
   optionsSource,
   pickProject,
   quickStartProjects,
   quickStartSections,
+  QUESTION_ROW,
   quickActions,
   lastSession,
   quickListSection,
@@ -20,6 +22,7 @@ import {
   tokenLabel,
   whereLabel,
   type QuickOptions,
+  type QuickRow,
 } from './quickStartModel.ts';
 
 const NOW = 1_700_000_000_000;
@@ -95,7 +98,9 @@ describe('the sections', () => {
 
   it('leaves out Needs you when it is off, or while typing; Quick question only when it matches', () => {
     expect(quickStartSections({ needsYou: [waiting], showNeedsYou: false, projects: projectsShown, filter: '', questions: true }).map((s) => s.id)).toEqual(['projects', 'more']);
-    expect(quickStartSections({ needsYou: [waiting], showNeedsYou: true, projects: [], filter: 'qq', questions: true }).map((s) => s.id)).toEqual(['more']);
+    const question = quickStartSections({ needsYou: [waiting], showNeedsYou: true, projects: [], filter: 'qq', questions: true });
+    expect(question.map((s) => s.id)).toEqual(['results']);
+    expect(question[0]!.rows.map((r) => r.kind)).toEqual(['question']);
     expect(quickStartSections({ needsYou: [waiting], showNeedsYou: true, projects: [], filter: 'seshb', questions: true })).toEqual([]);
   });
 
@@ -135,21 +140,53 @@ describe('the sections', () => {
     expect(quickActions({ canShoot: false, attached: 0 }).map((a) => a.id)).toEqual(['open-app']);
   });
 
-  it('puts Actions first, and keeps only the ones that match what was typed', () => {
+  it('puts Actions first while nothing is typed', () => {
     const QUICK_ACTIONS = quickActions({ canShoot: true, attached: 0 });
     const all = quickStartSections({ actions: QUICK_ACTIONS, needsYou: [waiting], showNeedsYou: true, projects: projectsShown, filter: '', questions: true });
     expect(all.map((s) => s.id)).toEqual(['actions', 'needs-you', 'projects', 'more']);
-    expect(quickStartSections({ actions: QUICK_ACTIONS, needsYou: [], showNeedsYou: true, projects: [], filter: 'screen', questions: false }).map((s) => s.id)).toEqual(['actions']);
-    expect(quickStartSections({ actions: QUICK_ACTIONS, needsYou: [], showNeedsYou: true, projects: [], filter: 'xyzq', questions: false })).toEqual([]);
   });
 
-  it('starts on the first row, or on the first project while typing or once something is attached', () => {
+  describe('while typing', () => {
+    const QUICK_ACTIONS = quickActions({ canShoot: true, attached: 0 });
+    const results = (filter: string, projects = list('recent', filter)) => {
+      const sections = quickStartSections({ actions: QUICK_ACTIONS, needsYou: [waiting], showNeedsYou: true, projects, filter, questions: true });
+      expect(sections.map((s) => s.id)).toEqual(sections.length ? ['results'] : []);
+      return sections.flatMap((s) => s.rows);
+    };
+    const name = (row: QuickRow) => (row.kind === 'action' ? row.action.label : row.kind === 'project' ? row.project.name : row.kind === 'question' ? QUESTION_ROW.label : row.id);
+
+    it('lists actions, projects and Quick question in one list, the best match first', () => {
+      // The project that matched loosely by its path came first before.
+      const playwright = new Map([['/Users/me/Developer/projects/playwright-github-actions-reporter', project('/Users/me/Developer/projects/playwright-github-actions-reporter', 'playwright-github-actions-reporter', { lastActivity: NOW - HOUR })]]);
+      const loose = quickStartProjects({ projects: playwright, activity, branches, order: 'recent', filter: 'scree', home: '/Users/me', now: NOW });
+      expect(loose).toHaveLength(1);
+      expect(results('scree', loose).map(name)).toEqual(['Take a screenshot', 'playwright-github-actions-reporter']);
+      expect(name(results('quick')[0]!)).toBe('Quick question');
+      expect(name(results('question')[0]!)).toBe('Quick question');
+      expect(name(results('wl')[0]!)).toBe('worklog-web');
+      expect(name(results('seshb')[0]!)).toBe('seshboard');
+    });
+
+    it('a project scored higher than an action stays above it, with ⌘ numbers in the order listed', () => {
+      const rows = results('se');
+      const projects = rows.filter((r) => r.kind === 'project');
+      expect(projects.map((r) => (r.kind === 'project' ? r.number : null))).toEqual(projects.map((_, i) => i + 1));
+    });
+
+    it('keeps only what matches', () => {
+      expect(results('xyzq')).toEqual([]);
+      expect(results('screen').map((r) => r.kind)).not.toContain('project');
+    });
+  });
+
+  it('starts on the first row: the best match while typing, the first project once something is attached', () => {
     const QUICK_ACTIONS = quickActions({ canShoot: true, attached: 0 });
     const rows = quickStartSections({ actions: QUICK_ACTIONS, needsYou: [], showNeedsYou: true, projects: projectsShown, filter: '', questions: true }).flatMap((s) => s.rows);
     expect(firstActive(rows, { typed: false, attached: false })).toBe(0);
     expect(rows[firstActive(rows, { typed: false, attached: true })]!.kind).toBe('project');
-    expect(rows[firstActive(rows, { typed: true, attached: false })]!.kind).toBe('project');
-    expect(firstActive(rows.filter((r) => r.kind !== 'project'), { typed: true, attached: false })).toBe(0);
+    expect(firstActive(rows, { typed: true, attached: false })).toBe(0);
+    expect(firstActive(rows, { typed: true, attached: true })).toBe(0);
+    expect(firstActive(rows.filter((r) => r.kind !== 'project'), { typed: false, attached: true })).toBe(0);
   });
 
   it('moves with ↑ and ↓, staying at the ends', () => {
@@ -182,6 +219,26 @@ describe('the token', () => {
 
   it('is announced with how to change it', () => {
     expect(tokenLabel('seshboard')).toBe('Project: seshboard. Backspace to change.');
+  });
+});
+
+describe('Esc', () => {
+  const field = (extra: Partial<typeof EMPTY_FIELD> = {}) => ({ ...EMPTY_FIELD, ...extra });
+
+  it('goes back one step at a time: the task, out of the project, then the typed text, then the panel', () => {
+    expect(escapeStep({ done: false, list: false, field: field({ project: '/p/seshboard', task: 'Fix it' }) })).toBe('clear-task');
+    expect(escapeStep({ done: false, list: false, field: field({ project: '/p/seshboard' }) })).toBe('unpick');
+    expect(escapeStep({ done: false, list: false, field: field({ query: 'sesh' }) })).toBe('clear-query');
+    expect(escapeStep({ done: false, list: false, field: field() })).toBe('close');
+  });
+
+  it('leaves a list before it clears what was typed in it', () => {
+    expect(escapeStep({ done: false, list: true, field: field({ query: 'zz' }) })).toBe('leave-list');
+    expect(escapeStep({ done: false, list: true, field: field() })).toBe('leave-list');
+  });
+
+  it('closes the confirmation after a start', () => {
+    expect(escapeStep({ done: true, list: false, field: field({ query: 'sesh' }) })).toBe('close');
   });
 });
 

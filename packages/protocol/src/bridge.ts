@@ -1470,8 +1470,8 @@ export interface SeshboardBridge {
    */
   quickStartReady(): void;
   /**
-   * In the quick start panel: the global shortcut showed it. `keepDraft` is false when it was hidden long enough
-   * (5 minutes) for what was typed to go.
+   * In the quick start panel: the global shortcut showed it. `keepDraft` is true only when a screenshot hid it a moment
+   * ago; otherwise it starts empty.
    */
   onQuickStartShown(listener: (keepDraft: boolean) => void): () => void;
   /** In the quick start panel: a key the app menu would have taken (⌘W, ⌘M…), handed to the panel. */

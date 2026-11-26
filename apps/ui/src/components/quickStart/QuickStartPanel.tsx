@@ -31,6 +31,7 @@ import { Kbd } from '../ui/Kbd.tsx';
 import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import {
   backspaceAtStart,
+  escapeStep,
   changedOptions,
   EMPTY_FIELD,
   firstActive,
@@ -95,7 +96,8 @@ const ACTIONS: { id: string; label: string; shortcut: ShortcutId }[] = [
  * The quick start panel (its own see-through window, `QuickStartApp`), which the global shortcut opens over any app:
  * what needs you, then your projects (⌘1–⌘9). Picking one makes it a token in the field, which then takes the task,
  * with the project's options under it. ↩ starts the session in the background, ⌘↩ starts it and opens Seshboard, and
- * ⌘K has the rest. Esc closes it, keeping what was typed for five minutes.
+ * ⌘K has the rest. Esc goes back one step at a time (`escapeStep`): the task, out of the project or a list, then the typed
+ * text, then the panel. Each time it opens, it starts empty.
  */
 export function QuickStartPanel() {
   const connection = useEngineConnection();
@@ -128,6 +130,8 @@ export function QuickStartPanel() {
   const [list, setList] = useState<QuickList | null>(null);
   /** macOS hasn't given Seshboard Screen Recording: what the panel says about it, with Open Settings. */
   const [noScreenAccess, setNoScreenAccess] = useState<string | null>(null);
+  /** What was typed on the first screen when a project or a list took its place: Esc brings it back. */
+  const rootQuery = useRef('');
   // Every system has an area picker (on Linux, a screenshot tool); main says when none is installed.
   const canShoot = typeof bridge()?.quickStartScreenshot === 'function';
 
@@ -186,6 +190,7 @@ export function QuickStartPanel() {
     setActionsOpen(false);
     setNoScreenAccess(null);
     setList(null);
+    rootQuery.current = '';
     attach.setAttachments([]);
   };
   const focusField = () => requestAnimationFrame(() => (field.project ? taskRef.current : inputRef.current)?.focus());
@@ -267,6 +272,7 @@ export function QuickStartPanel() {
       setSetup(null);
       setOptions(null);
     }
+    rootQuery.current = field.query;
     setField((f) => pickProject(f, root));
   };
 
@@ -276,6 +282,7 @@ export function QuickStartPanel() {
     if (action.id === 'clear-images') return clearImages();
     if (action.id === 'last-session' && action.sessionId) return openSession(action.sessionId);
     if (action.id === 'working' || action.id === 'review') {
+      rootQuery.current = field.query;
       setList(action.id);
       setField((f) => ({ ...f, query: '' }));
       return;
@@ -286,10 +293,26 @@ export function QuickStartPanel() {
     }
   };
 
-  /** From a list back to the first screen. */
+  /** From a list back to the first screen, with what was typed there. */
   const leaveList = () => {
     setList(null);
-    setField((f) => ({ ...f, query: '' }));
+    setField((f) => ({ ...f, query: rootQuery.current }));
+  };
+  /** Esc with a project picked and no task: back to the list that found it. */
+  const unpick = () => setField((f) => ({ ...f, project: null, query: rootQuery.current }));
+
+  /** Esc: one step back. */
+  const escape = () => {
+    const step = escapeStep({ done: !!done, list: !!list, field });
+    if (step === 'clear-task') setField((f) => ({ ...f, task: '' }));
+    else if (step === 'unpick') unpick();
+    else if (step === 'leave-list') leaveList();
+    else if (step === 'clear-query') setField((f) => ({ ...f, query: '' }));
+    else {
+      // Closed with Esc: cleared now, so the next open shows nothing of it. Other hides are cleared when it shows again.
+      close();
+      reset();
+    }
   };
 
   /** The draft as the queue keeps it. */
@@ -434,10 +457,10 @@ export function QuickStartPanel() {
     if (matches(event, 'quickstart.actions')) return handled(() => field.project && !done && setActionsOpen((open) => !open));
     if (done) {
       if (matches(event, 'quickstart.open-started') && done.sessionId) return handled(() => openSession(done.sessionId!));
-      if (event.key === 'Escape') return handled(close);
+      if (event.key === 'Escape') return handled(escape);
       return false;
     }
-    if (event.key === 'Escape') return handled(list ? leaveList : close);
+    if (event.key === 'Escape') return handled(escape);
     if (list && event.key === 'Backspace' && !field.query) return handled(leaveList);
     if (canShoot && matches(event, 'quickstart.screenshot')) return handled(() => void shoot());
     if (attached && matches(event, 'quickstart.clear-images')) return handled(clearImages);
@@ -648,7 +671,7 @@ export function QuickStartPanel() {
                   </p>
                 )}
                 <div id="quick-start-list" role="listbox" aria-label="Start a session in" className="min-h-0 overflow-y-auto pb-2" data-quick-start-list>
-                  {sections.length === 0 && <p className="px-4.5 py-3 text-ui text-faint">{list ? 'No session matches.' : 'No project matches.'}</p>}
+                  {sections.length === 0 && <p className="px-4.5 py-3 text-ui text-faint">{list ? 'No session matches.' : 'Nothing matches.'}</p>}
                   {sections.map((section) => (
                     <div key={section.id} role="group" aria-label={section.title} data-quick-start-section={section.id}>
                       <div aria-hidden className="px-4.5 pt-2.5 pb-1 text-meta font-semibold text-faint">
@@ -744,8 +767,9 @@ function Row({ row, index, active, onHover, onPick, questionsDir }: { row: Quick
     const shortcut = row.action.id === 'clear-images' ? 'quickstart.clear-images' : row.action.id === 'screenshot' ? 'quickstart.screenshot' : null;
     return (
       <div {...common} data-quick-start-action-row={row.action.id}>
-        <span className="flex size-5.5 shrink-0 items-center justify-center text-muted">
-          <Icon size={16} aria-hidden />
+        <span className={`flex size-5.5 shrink-0 items-center justify-center ${row.action.id === 'working' ? 'text-accent-ink' : 'text-muted'}`}>
+          {/* Working sessions spins in the working colour, as working does everywhere. */}
+          <Icon size={16} className={row.action.id === 'working' ? 'animate-spin motion-reduce:animate-none' : undefined} aria-hidden />
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
           <span className="shrink-0">{row.action.label}</span>

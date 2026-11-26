@@ -1,8 +1,7 @@
 /**
  * Quick start (Settings › General › Quick start): a global shortcut, ⌃⌥Space by default (Ctrl+Alt+Space elsewhere),
  * opens a small panel over whatever app is in front to start a session, like Raycast, without bringing Seshboard's
- * window forward. The rules (the shortcut as Electron writes it, where the panel goes, how long a draft is kept) are
- * pure, for testing; `QuickStart` gets `globalShortcut` and the window through a host, as `DockActivity` does.
+ * window forward. The rules (the shortcut as Electron writes it, where the panel goes) are pure, for testing; `QuickStart` gets `globalShortcut` and the window through a host, as `DockActivity` does.
  */
 
 import type { QuickStartStatus } from '@seshboard/protocol/bridge';
@@ -16,8 +15,6 @@ export const QUICK_START_PAD = 24;
  * through (clicks go to the app under it), and the chips' menus and ⌘K's open there.
  */
 export const QUICK_START_HEIGHT = 640;
-/** A draft closed with Esc (or by clicking away) comes back with the next shortcut for this long. */
-export const DRAFT_KEPT_MS = 5 * 60_000;
 
 /** The registry's modifiers (`cmd`, `ctrl`, `alt`, `shift`) as Electron's accelerators write them. */
 const MODIFIERS: Record<string, string> = { cmd: 'Command', ctrl: 'Control', alt: 'Alt', shift: 'Shift' };
@@ -80,9 +77,6 @@ export function quickStartBounds(workArea: Rect): Rect {
   return { x, y, width, height };
 }
 
-/** Whether what was typed comes back: the panel was hidden less than five minutes ago, and not by a start. */
-export const keepsDraft = (hiddenAt: number | null, now: number): boolean => hiddenAt !== null && now - hiddenAt < DRAFT_KEPT_MS;
-
 /** What the log says when another app has the shortcut. */
 export const inUseLog = (accelerator: string): string => `[quick start] ${accelerator} is in use by another app; pick another in Settings › General › Quick start`;
 
@@ -93,13 +87,15 @@ export interface QuickStartHost {
   unregister(accelerator: string): void;
   /** Whether the panel is on screen. */
   visible(): boolean;
-  /** Puts the panel over the app in front, without bringing Seshboard's window forward. `keepDraft`: what was typed stays. */
+  /**
+   * Puts the panel over the app in front, without bringing Seshboard's window forward. `keepDraft`: what was typed stays
+   * (only after a screenshot hid it); otherwise it opens empty.
+   */
   show(keepDraft: boolean): void;
   hide(): void;
   log(message: string): void;
   /** The shortcut's state changed: Settings shows it. */
   status(status: QuickStartStatus): void;
-  now(): number;
 }
 
 /**
@@ -110,7 +106,6 @@ export class QuickStart {
   #shortcut: string | null = null;
   #accelerator: string | null = null;
   #registered = false;
-  #hiddenAt: number | null = null;
 
   constructor(private readonly host: QuickStartHost) {}
 
@@ -150,19 +145,14 @@ export class QuickStart {
     else this.open();
   }
 
-  open(): void {
-    this.host.show(keepsDraft(this.#hiddenAt, this.host.now()));
+  /** Shows the panel empty, as every press of the shortcut does. A screenshot brings it back with its draft (`keepDraft`). */
+  open(keepDraft = false): void {
+    this.host.show(keepDraft);
   }
 
-  /** Esc, a click elsewhere: the draft is kept for five minutes. */
+  /** Esc, a click elsewhere, the shortcut again. */
   hide(): void {
     if (!this.host.visible()) return;
-    this.#hiddenAt = this.host.now();
     this.host.hide();
-  }
-
-  /** The panel hid by itself (it lost focus): the draft is kept from now. */
-  hidden(): void {
-    this.#hiddenAt = this.host.now();
   }
 }

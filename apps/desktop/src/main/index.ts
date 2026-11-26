@@ -1072,7 +1072,6 @@ const quickStart = new QuickStart({
   status: (status) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.quickStartStatus, status);
   },
-  now: () => Date.now(),
 });
 
 function showQuickStartPanel(keepDraft: boolean): BrowserWindow {
@@ -1120,7 +1119,6 @@ function createQuickStartPanel(): BrowserWindow {
     if (quickStartPinned || panel.isDestroyed() || !panel.isVisible()) return;
     quickStart.hide();
   });
-  panel.on('hide', () => quickStart.hidden());
   panel.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' || !(process.platform === 'darwin' ? input.meta : input.control) || input.alt) return;
     const key = input.key.toLowerCase();
@@ -1238,11 +1236,11 @@ async function captureScreenshot(around: { hide(): void; show(): void }): Promis
 
 /**
  * Take a screenshot in the quick start panel: the panel hides, the picker opens over the app in front, and the panel
- * comes back with its draft (it was hidden a moment ago, so the draft is kept).
+ * comes back with its draft.
  */
 ipcMain.handle(IpcChannel.quickStartScreenshot, (event): Promise<QuickStartScreenshot> | QuickStartScreenshot => {
   if (!quickStartPanel || event.sender.id !== quickStartPanel.webContents.id) return { kind: 'failed', message: 'Only the quick start panel takes screenshots here.' };
-  return captureScreenshot({ hide: () => quickStart.hide(), show: () => quickStart.open() });
+  return captureScreenshot({ hide: () => quickStart.hide(), show: () => quickStart.open(true) });
 });
 
 /**
@@ -12099,7 +12097,7 @@ async function runQuickStartColdStep(): Promise<string> {
   }
 }
 
-/** Typing a project's name and ↩ makes it a token; ⌫ at the start takes it away again. */
+/** Typing a project's name and ↩ makes it a token; ⌫ at the start takes it away again. Esc goes back one step at a time. */
 function runQuickStartTokenStep(): Promise<string> {
   return withQuickStart(async (panel, js, project) => {
     const picked = await pickQuickStartProject(panel, js, project);
@@ -12108,7 +12106,30 @@ function runQuickStartTokenStep(): Promise<string> {
     pressKey(panel, 'Backspace');
     if (!(await waitInPage(panel, "!document.querySelector('[data-quick-start-token]') && document.activeElement?.hasAttribute('data-quick-start-field')", 3_000))) return 'failed: ⌫ at the start did not go back to the list';
     await shot(panel, 'quick-start-token.png');
-    return 'ok: the project became a token with its defaults, and ⌫ went back to the list';
+    // Esc, as in a launcher: out of the project with the name still typed, then the name goes, then the panel.
+    const again = await pickQuickStartProject(panel, js, project);
+    if ('failed' in again) return `failed: picking it again: ${again.failed}`;
+    const fieldIs = (value: string) => `!document.querySelector('[data-quick-start-token]') && document.querySelector('[data-quick-start-field]')?.value === ${JSON.stringify(value)}`;
+    panel.webContents.insertText('Smoke: a task Esc clears');
+    if (!(await waitInPage(panel, "document.querySelector('[data-quick-start-task]')?.value === 'Smoke: a task Esc clears'", 3_000))) return 'failed: the task did not take the typing';
+    pressKey(panel, 'Escape');
+    if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start-token]') && document.querySelector('[data-quick-start-task]')?.value === ''", 3_000))) return 'failed: Esc with a task did not clear it and keep the project';
+    pressKey(panel, 'Escape');
+    if (!(await waitInPage(panel, fieldIs(project.name), 3_000))) return `failed: Esc did not go back to the list with ${project.name} typed`;
+    pressKey(panel, 'Escape');
+    if (!(await waitInPage(panel, fieldIs(''), 3_000))) return 'failed: the second Esc did not clear the field';
+    if (!panel.isVisible()) return 'failed: Esc closed the panel before the field was empty';
+    panel.webContents.insertText(project.name);
+    if (!(await waitInPage(panel, fieldIs(project.name), 3_000))) return 'failed: typing after Esc did not reach the field';
+    // Typed again and closed: the next open starts empty.
+    quickStart.hide();
+    if (!(await until(() => !panel.isVisible(), 3_000))) return 'failed: the panel did not hide';
+    showQuickStartPanel(false);
+    if (!(await until(() => panel.isVisible(), 5_000))) return 'failed: the panel did not show again';
+    if (!(await waitInPage(panel, fieldIs(''), 3_000))) return 'failed: the panel opened again with what was typed';
+    pressKey(panel, 'Escape');
+    if (!(await until(() => !panel.isVisible(), 3_000))) return 'failed: Esc in an empty field did not close the panel';
+    return 'ok: the project became a token with its defaults, ⌫ went back to the list, Esc cleared the task, went back to the name, cleared it and closed, and it opened empty';
   });
 }
 
@@ -12200,15 +12221,17 @@ async function runComposerScreenshotStep(win: BrowserWindow): Promise<string> {
 function runQuickStartScreenshotStep(): Promise<string> {
   return withQuickStart(async (panel, js, project) => {
     const thumbs = "document.querySelectorAll('[data-quick-start] [data-attachments] img').length";
-    const actions = "!!document.querySelector('[data-quick-start-section=\"actions\"]')";
     const onShot = "document.querySelector('[data-quick-start-action-row=\"screenshot\"]')?.getAttribute('aria-selected') === 'true'";
     const sections = "JSON.stringify([...document.querySelectorAll('[data-quick-start-section]')].map((s) => s.dataset.quickStartSection))";
     if (!(await waitInPage(panel, "document.querySelector('[data-quick-start-section]')?.dataset.quickStartSection === 'actions'", 3_000))) return `failed: Actions is not the first section (${await js(sections)})`;
     if (!(await waitInPage(panel, onShot, 3_000))) return 'failed: the list does not start on Take a screenshot';
-    // Typing filters Actions too.
+    // Typing ranks the actions with the projects in one list: the best match is selected, whatever kind it is.
     await js("document.querySelector('[data-quick-start-field]').focus()");
+    panel.webContents.insertText('scree');
+    if (!(await waitInPage(panel, onShot, 3_000))) return `failed: typing scree did not select Take a screenshot (${await js(sections)})`;
+    await js("document.querySelector('[data-quick-start-field]').select(); true");
     panel.webContents.insertText('zzqx');
-    if (!(await waitInPage(panel, `!${actions}`, 3_000))) return 'failed: typing did not filter out Take a screenshot';
+    if (!(await waitInPage(panel, "!document.querySelector('[data-quick-start-action-row=\"screenshot\"]')", 3_000))) return 'failed: typing did not filter out Take a screenshot';
     await js("document.querySelector('[data-quick-start-field]').select(); true");
     pressKey(panel, 'Backspace');
     if (!(await waitInPage(panel, onShot, 3_000))) return 'failed: clearing the field did not go back to Take a screenshot';
