@@ -20,6 +20,7 @@ import { MenuBar, PANEL_WIDTH, panelHeight, panelPosition, quitsWhenAllClosed, t
 import { EngineProcess } from './engineProcess.ts';
 import { QuickStart, quickStartBounds } from './quickStart.ts';
 import { SCREEN_RECORDING_SETTINGS, SCREENCAPTURE, screencaptureArgs, takeScreenshot } from './quickStartScreenshot.ts';
+import { linuxPicker, NO_LINUX_PICKER, SNIP_URI, snipRunning, waitForSnip, type PickerCommand } from './screenshotPickers.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.ts';
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
@@ -1152,32 +1153,71 @@ const SMOKE_SCREENSHOT = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQV
 /** One picker at a time: a second press while it is open does nothing. */
 let screenshotOpen = false;
 
+/** The image on the clipboard as a PNG, or null (Windows: the Snipping Tool puts its picture there). */
+async function clipboardPng(): Promise<Buffer | null> {
+  try {
+    for (const item of await clipboard.read()) {
+      if (!item.types.includes('image/png')) continue;
+      const blob = (await item.getType('image/png')) as Blob;
+      return Buffer.from(await blob.arrayBuffer());
+    }
+  } catch {
+    // An empty or unreadable clipboard holds no picture.
+  }
+  return null;
+}
+
+/** Runs a picker command; resolves with its stderr when it closes, and fails only when it can't start. */
+function runPicker(command: { file: string; args: string[] }): Promise<string> {
+  return new Promise<string>((done, fail) =>
+    execFile(command.file, command.args, { maxBuffer: 1024 * 1024 }, (error, _stdout, stderr) => (error && (error as NodeJS.ErrnoException).code === 'ENOENT' ? fail(error) : done(String(stderr)))),
+  );
+}
+
 /**
- * The system's area picker (macOS), with Seshboard out of the way: `hide` runs before it opens and `show` after it
- * closes, whether a picture was taken or the picker was left with Esc. One picker at a time.
+ * The system's area picker, with Seshboard out of the way: `hide` runs before it opens and `show` after it closes,
+ * whether a picture was taken or the picker was left with Esc. One picker at a time. macOS runs `screencapture`, Linux
+ * the first screenshot tool on the PATH, Windows the Snipping Tool's picker (its picture comes through the clipboard).
  */
 async function captureScreenshot(around: { hide(): void; show(): void }): Promise<QuickStartScreenshot> {
-  if (process.platform !== 'darwin') return { kind: 'failed', message: 'Screenshots work on macOS for now.' };
   if (screenshotOpen) return { kind: 'cancelled' };
+  // On Linux the tool is found before anything hides, so a missing one is said where the button was pressed.
+  let linux: PickerCommand | null = null;
+  const tempFile = join(tmpdir(), `seshboard-screenshot-${randomUUID()}.png`);
+  if (process.platform === 'linux' && !scripted) {
+    linux = linuxPicker(process.env, (file) => existsSync(file), tempFile);
+    if (!linux) return { kind: 'failed', message: NO_LINUX_PICKER };
+  }
   screenshotOpen = true;
   around.hide();
   try {
+    const pick = async (file: string): Promise<string> => {
+      if (scripted) return (writeFileSync(file, Buffer.from(SMOKE_SCREENSHOT, 'base64')), '');
+      if (process.platform === 'darwin') return runPicker({ file: SCREENCAPTURE, args: screencaptureArgs(file) });
+      if (linux) return runPicker(linux);
+      const picture = await waitForSnip({
+        readImage: clipboardPng,
+        open: () => shell.openExternal(SNIP_URI),
+        running: () => new Promise<boolean>((done) => execFile('tasklist', ['/FO', 'CSV', '/NH'], { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => done(!error && snipRunning(String(stdout))))),
+        sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
+        now: () => Date.now(),
+      });
+      if (picture) writeFileSync(file, picture);
+      return '';
+    };
     const result = await takeScreenshot({
-      tempFile: () => join(tmpdir(), `seshboard-screenshot-${randomUUID()}.png`),
-      pick: (file) =>
-        scripted
-          ? Promise.resolve((writeFileSync(file, Buffer.from(SMOKE_SCREENSHOT, 'base64')), ''))
-          : new Promise<string>((done, fail) =>
-              execFile(SCREENCAPTURE, screencaptureArgs(file), (error, _stdout, stderr) => (error && (error as NodeJS.ErrnoException).code === 'ENOENT' ? fail(error) : done(String(stderr)))),
-            ),
+      tempFile: () => tempFile,
+      pick,
       read: (file) => readFile(file).catch(() => null),
       remove: (file) => rm(file, { force: true }),
       toJpeg: (png) => nativeImage.createFromBuffer(png).toJPEG(85),
       toClipboard: (png) => {
-        if (scripted) return;
+        // The Snipping Tool put it there already.
+        if (scripted || process.platform === 'win32') return;
         void clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]).catch((error: Error) => console.warn(`[screenshot] it did not go on the clipboard: ${error.message}`));
       },
-      screenAccess: () => scripted || systemPreferences.getMediaAccessStatus('screen') === 'granted',
+      // Only macOS asks for Screen Recording.
+      screenAccess: () => scripted || process.platform !== 'darwin' || systemPreferences.getMediaAccessStatus('screen') === 'granted',
       now: () => new Date(),
     });
     if (result.kind !== 'image') console.warn(`[screenshot] ${result.kind}${result.kind === 'failed' ? `: ${result.message}` : ''}`);
@@ -1204,12 +1244,15 @@ ipcMain.handle(IpcChannel.quickStartScreenshot, (event): Promise<QuickStartScree
 ipcMain.handle(IpcChannel.takeScreenshot, (event): Promise<QuickStartScreenshot> => {
   const win = BrowserWindow.fromWebContents(event.sender);
   return captureScreenshot({
+    // macOS hides the whole app; elsewhere the window that asked steps aside.
     hide: () => {
-      if (!scripted) app.hide();
+      if (scripted) return;
+      if (process.platform === 'darwin') app.hide();
+      else win?.hide();
     },
     show: () => {
       if (scripted || !win || win.isDestroyed()) return;
-      app.show();
+      if (process.platform === 'darwin') app.show();
       win.show();
       win.focus();
     },
@@ -12104,8 +12147,7 @@ async function runQuickStartLaterStep(win: BrowserWindow): Promise<string> {
       if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start-actions] [data-quick-start-action=\"later\"]')", 3_000))) return 'failed: ⌘K did not open the actions';
       // The throwaway folder isn't a git repository, so there is no worktree to start in; Change profile… needs two profiles.
       const actions = JSON.parse((await js("JSON.stringify([...document.querySelectorAll('[data-quick-start-action]')].map((a) => a.dataset.quickStartAction))")) as string) as string[];
-      // Take a screenshot is macOS only.
-      const expected = ['start-open', 'model', 'mode', 'profile', 'paste', 'screenshot', 'later'].filter((a) => (a !== 'profile' || actions.includes('profile')) && (a !== 'screenshot' || process.platform === 'darwin'));
+      const expected = ['start-open', 'model', 'mode', 'profile', 'paste', 'screenshot', 'later'].filter((a) => a !== 'profile' || actions.includes('profile'));
       if (actions.join() !== expected.join()) return `failed: the actions are ${actions.join(', ')}`;
       await shot(panel, 'quick-start-actions.png');
       await js("document.querySelector('[data-quick-start-action=\"later\"]').click()");
@@ -12123,12 +12165,11 @@ async function runQuickStartLaterStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * The camera in the open session's message box (macOS) takes a screenshot (the smoke picker writes a small PNG) and
+ * The camera in the open session's message box takes a screenshot (the smoke picker writes a small PNG) and
  * attaches it; × takes it off again, so nothing is left in the box. Needs the session opened by the first steps; New
  * session's box is the same one, though it stays off there until a project is picked.
  */
 async function runComposerScreenshotStep(win: BrowserWindow): Promise<string> {
-  if (process.platform !== 'darwin') return 'ok: skipped, screenshots are macOS only';
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const scope = '[data-current-session]';
   const button = `document.querySelector('${scope} [data-screenshot]')`;
@@ -12149,7 +12190,6 @@ async function runComposerScreenshotStep(win: BrowserWindow): Promise<string> {
  * small PNG), the panel comes back with the picture attached and the first project selected, and picking it keeps it.
  */
 function runQuickStartScreenshotStep(): Promise<string> {
-  if (process.platform !== 'darwin') return Promise.resolve('ok: skipped, screenshots are macOS only');
   return withQuickStart(async (panel, js, project) => {
     const thumbs = "document.querySelectorAll('[data-quick-start] [data-attachments] img').length";
     const actions = "!!document.querySelector('[data-quick-start-section=\"actions\"]')";

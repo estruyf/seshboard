@@ -143,10 +143,10 @@ export const IpcChannel = {
   quickStartKey: "seshboard:quick-start-key",
   getQuickStartStatus: "seshboard:get-quick-start-status",
   quickStartStatus: "seshboard:quick-start-status",
-  /** From the quick start panel: hide it, let the person pick an area of the screen (macOS), and show it again. */
+  /** From the quick start panel: hide it, let the person pick an area of the screen, and show it again. */
   quickStartScreenshot: "seshboard:quick-start-screenshot",
   openScreenRecordingSettings: "seshboard:open-screen-recording-settings",
-  /** From a message box (macOS): hide Seshboard, let the person pick an area of the screen, and bring the window back. */
+  /** From a message box: hide Seshboard, let the person pick an area of the screen, and bring the window back. */
   takeScreenshot: "seshboard:take-screenshot",
 } as const;
 
@@ -1477,12 +1477,12 @@ export interface SeshboardBridge {
   /** In the quick start panel: a key the app menu would have taken (⌘W, ⌘M…), handed to the panel. */
   onQuickStartKey(listener: (key: QuickStartKey) => void): () => void;
   /**
-   * From the quick start panel (macOS): hides it, opens the system's area picker (as ⌃⇧⌘4 does) and shows the panel
+   * From the quick start panel: hides it, opens the system's area picker (Snipping Tool on Windows, a screenshot tool on Linux) and shows the panel
    * again with its draft. The picture is also put on the clipboard.
    */
   quickStartScreenshot(): Promise<QuickStartScreenshot>;
   /**
-   * From a message box (macOS): hides Seshboard, opens the system's area picker (as ⌃⇧⌘4 does) and brings this window
+   * From a message box: hides Seshboard (macOS) or this window, opens the system's area picker and brings this window
    * back. The picture is also put on the clipboard.
    */
   takeScreenshot(): Promise<QuickStartScreenshot>;

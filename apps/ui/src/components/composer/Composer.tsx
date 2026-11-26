@@ -20,7 +20,6 @@ import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.
 import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { MAX_ATTACHMENTS, mergeAttachments } from './images.ts';
 import { screenshotOutcome } from './screenshot.ts';
-import { currentPlatform } from '../../lib/platform.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
@@ -286,8 +285,8 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [shooting, setShooting] = useState(false);
-  // The system's area picker is macOS only for now.
-  const canShoot = currentPlatform() === 'darwin' && typeof window.seshboard?.takeScreenshot === 'function';
+  // Every system has an area picker (on Linux, a screenshot tool); main says when none is installed.
+  const canShoot = typeof window.seshboard?.takeScreenshot === 'function';
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1033,7 +1032,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
       updatePalette(value, caret);
     });
   };
-  /** Take a screenshot (macOS): Seshboard hides, the area picker opens, and the picture is attached here. */
+  /** Take a screenshot: Seshboard steps aside, the area picker opens, and the picture is attached here. */
   const screenshot = async () => {
     if (!canShoot || shooting || disabled) return;
     setShooting(true);

@@ -128,8 +128,8 @@ export function QuickStartPanel() {
   const [list, setList] = useState<QuickList | null>(null);
   /** macOS hasn't given Seshboard Screen Recording: what the panel says about it, with Open Settings. */
   const [noScreenAccess, setNoScreenAccess] = useState<string | null>(null);
-  // The system's area picker is macOS only for now.
-  const canShoot = currentPlatform() === 'darwin';
+  // Every system has an area picker (on Linux, a screenshot tool); main says when none is installed.
+  const canShoot = typeof bridge()?.quickStartScreenshot === 'function';
 
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);

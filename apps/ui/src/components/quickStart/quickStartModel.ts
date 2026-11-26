@@ -85,7 +85,7 @@ export function lastSession<T extends QuickSessionRow>(rows: readonly T[]): T | 
 const sessionsLabel = (count: number, what: string) => `${count} ${what}`;
 
 /**
- * The first screen's actions. With nothing attached: Take a screenshot (macOS only), Open Seshboard, Open the last
+ * The first screen's actions. With nothing attached: Take a screenshot, Open Seshboard, Open the last
  * session, and the Working and To review lists when they have sessions. Once images are attached, only what works on
  * them: Take another screenshot and Remove all images, so several can go with one task and the draft can start again.
  */

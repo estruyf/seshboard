@@ -232,7 +232,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⇧⇥ | Change the permission mode (in the quick start panel) |
 | ⌘P | Change the profile (in the quick start panel) |
 | ⌘V | Attach the clipboard (in the quick start panel) |
-| ⌘⇧S | Take a screenshot and attach it (in the quick start panel; macOS) |
+| ⌘⇧S | Take a screenshot and attach it (in the quick start panel) |
 | ⌘⇧⌫ | Remove all attached images (in the quick start panel) |
 | ⌘L | Add to Later instead (in the quick start panel) |
 | ⌘O | Open the new session (in the quick start panel) |
@@ -353,7 +353,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | # | Attach an issue or pull request (at the start of a word, in a project on GitHub) |
 | ⌥↩ | New session from it (on an issue or pull request in the # list) |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
-| ⌘⇧S | Take a screenshot and attach it (Pick an area as with ⌃⇧⌘4; macOS) |
+| ⌘⇧S | Take a screenshot and attach it (Pick an area of the screen) |
 | ⇥ | Next blank (in a saved prompt; After the last blank, on to the text under the prompt) |
 | ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank takes it out of the prompt) |
 | ↑ or ↓ | Bring back an earlier message (at the start of your text; Esc goes back to what you were typing) |
