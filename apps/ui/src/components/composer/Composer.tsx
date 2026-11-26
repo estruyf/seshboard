@@ -1,4 +1,4 @@
-import { AtSign, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
+import { AtSign, Camera, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
 import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -18,7 +18,9 @@ import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
 import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
-import { MAX_ATTACHMENTS } from './images.ts';
+import { MAX_ATTACHMENTS, mergeAttachments } from './images.ts';
+import { screenshotOutcome } from './screenshot.ts';
+import { currentPlatform } from '../../lib/platform.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
@@ -283,6 +285,9 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   const marked = hasMarks(marks);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [shooting, setShooting] = useState(false);
+  // The system's area picker is macOS only for now.
+  const canShoot = currentPlatform() === 'darwin' && typeof window.seshboard?.takeScreenshot === 'function';
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -987,6 +992,9 @@ export const Composer = memo(function Composer(props: ComposerProps) {
     } else if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
       event.preventDefault();
       openPicker();
+    } else if (canShoot && matches(event.nativeEvent, 'composer.screenshot')) {
+      event.preventDefault();
+      void screenshot();
     } else if (send) {
       event.preventDefault();
       void (send === 'secondary' ? submitSecondary() : submit());
@@ -1025,6 +1033,23 @@ export const Composer = memo(function Composer(props: ComposerProps) {
       updatePalette(value, caret);
     });
   };
+  /** Take a screenshot (macOS): Seshboard hides, the area picker opens, and the picture is attached here. */
+  const screenshot = async () => {
+    if (!canShoot || shooting || disabled) return;
+    setShooting(true);
+    setNotice(null);
+    try {
+      const outcome = screenshotOutcome(await window.seshboard?.takeScreenshot());
+      if (outcome.image) {
+        const { next, notice: left } = mergeAttachments(attachments, [outcome.image], 1);
+        setAttachments(next);
+        setNotice(left ?? outcome.notice);
+      } else setNotice(outcome.notice);
+      ref.current?.focus();
+    } finally {
+      setShooting(false);
+    }
+  };
   const hasText = !!text.trim() || chips.length > 0 || !!fillState;
   const hasMessage = hasText || attachments.length > 0;
   const attach = (
@@ -1052,6 +1077,20 @@ export const Composer = memo(function Composer(props: ComposerProps) {
         aria-label="Attach images"
         data-attach
       />
+      {canShoot && (
+        <Button
+          variant="quiet"
+          size="sm"
+          iconOnly
+          icon={<Camera size={15} />}
+          onClick={() => void screenshot()}
+          disabled={disabled || shooting}
+          shortcut="composer.screenshot"
+          aria-label={shooting ? 'Taking a screenshot…' : 'Take a screenshot'}
+          aria-busy={shooting}
+          data-screenshot
+        />
+      )}
       {addContext && (
         <Button
           variant="quiet"

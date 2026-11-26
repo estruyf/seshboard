@@ -143,6 +143,11 @@ export const IpcChannel = {
   quickStartKey: "seshboard:quick-start-key",
   getQuickStartStatus: "seshboard:get-quick-start-status",
   quickStartStatus: "seshboard:quick-start-status",
+  /** From the quick start panel: hide it, let the person pick an area of the screen (macOS), and show it again. */
+  quickStartScreenshot: "seshboard:quick-start-screenshot",
+  openScreenRecordingSettings: "seshboard:open-screen-recording-settings",
+  /** From a message box (macOS): hide Seshboard, let the person pick an area of the screen, and bring the window back. */
+  takeScreenshot: "seshboard:take-screenshot",
 } as const;
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
@@ -172,6 +177,17 @@ export interface QuickStartStatus {
   shortcut: string;
   registered: boolean;
 }
+
+/**
+ * What Take a screenshot in the quick start panel came back with: the area picked (also on the clipboard, as ⌃⇧⌘4
+ * does), nothing when the picker was left with Esc, or why it failed. `screenAccess` is false when macOS hasn't given
+ * Seshboard Screen Recording: the picture then holds only the desktop, without the other apps' windows.
+ */
+export type QuickStartScreenshot =
+  | { kind: "image"; mediaType: "image/png" | "image/jpeg"; data: string; name: string; screenAccess: boolean }
+  | { kind: "cancelled" }
+  /** `screenAccess: false`: the picker wrote nothing because macOS hasn't given Seshboard Screen Recording. */
+  | { kind: "failed"; message: string; screenAccess?: false };
 
 /** A key the app menu would take in the quick start panel (⌘W, ⌘M…), handed to the page instead. */
 export interface QuickStartKey {
@@ -1460,6 +1476,18 @@ export interface SeshboardBridge {
   onQuickStartShown(listener: (keepDraft: boolean) => void): () => void;
   /** In the quick start panel: a key the app menu would have taken (⌘W, ⌘M…), handed to the panel. */
   onQuickStartKey(listener: (key: QuickStartKey) => void): () => void;
+  /**
+   * From the quick start panel (macOS): hides it, opens the system's area picker (as ⌃⇧⌘4 does) and shows the panel
+   * again with its draft. The picture is also put on the clipboard.
+   */
+  quickStartScreenshot(): Promise<QuickStartScreenshot>;
+  /**
+   * From a message box (macOS): hides Seshboard, opens the system's area picker (as ⌃⇧⌘4 does) and brings this window
+   * back. The picture is also put on the clipboard.
+   */
+  takeScreenshot(): Promise<QuickStartScreenshot>;
+  /** Opens System Settings › Privacy & Security › Screen Recording (macOS). */
+  openScreenRecordingSettings(): void;
   /** How quick start's global shortcut stands (Settings › General says when another app has it). */
   quickStartStatus(): Promise<QuickStartStatus>;
   /** Fires in every window when the global shortcut is registered again (changed in Settings, or at launch). */

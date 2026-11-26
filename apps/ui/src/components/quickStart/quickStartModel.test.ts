@@ -12,6 +12,10 @@ import {
   pickProject,
   quickStartProjects,
   quickStartSections,
+  quickActions,
+  lastSession,
+  quickListSection,
+  firstActive,
   startProblem,
   tokenLabel,
   whereLabel,
@@ -93,6 +97,59 @@ describe('the sections', () => {
     expect(quickStartSections({ needsYou: [waiting], showNeedsYou: false, projects: projectsShown, filter: '', questions: true }).map((s) => s.id)).toEqual(['projects', 'more']);
     expect(quickStartSections({ needsYou: [waiting], showNeedsYou: true, projects: [], filter: 'qq', questions: true }).map((s) => s.id)).toEqual(['more']);
     expect(quickStartSections({ needsYou: [waiting], showNeedsYou: true, projects: [], filter: 'seshb', questions: true })).toEqual([]);
+  });
+
+  it('lists Open Seshboard, the last session, and Working and To review when they have sessions', () => {
+    expect(quickActions({ canShoot: true, attached: 0 }).map((a) => a.id)).toEqual(['screenshot', 'open-app']);
+    const all = quickActions({ canShoot: false, attached: 0, last: { id: 's1', title: 'Fix the build', project: 'seshboard' }, working: 2, review: 1 });
+    expect(all.map((a) => [a.id, a.detail])).toEqual([
+      ['open-app', 'Bring its window to the front'],
+      ['last-session', 'Fix the build · seshboard'],
+      ['working', '2 working'],
+      ['review', '1 to review'],
+    ]);
+    expect(all[1]!.sessionId).toBe('s1');
+  });
+
+  it('picks the last session on this computer that is not done', () => {
+    const row = (id: string, updatedAt: number, extra: object = {}) => ({ id, title: id, projectRoot: '/p', updatedAt, archivedAt: null, ...extra });
+    expect(lastSession([row('a', 1), row('b', 3), row('c', 2)])?.id).toBe('b');
+    expect(lastSession([row('a', 1), row('b', 3, { archivedAt: 5 }), row('c', 4, { remote: { computer: 'x' } })])?.id).toBe('a');
+    expect(lastSession([])).toBeNull();
+  });
+
+  it('lists the sessions of Working or To review, filtered by what was typed', () => {
+    const session = (id: string, title: string) => ({ ...waiting, id, title, section: 'working' as const });
+    const sessions = [session('a', 'Tidy the changelog'), session('b', 'Fix the smoke test')];
+    expect(quickListSection('working', sessions, '')[0]!.rows.map((r) => r.id)).toEqual(['session:a', 'session:b']);
+    expect(quickListSection('working', sessions, 'smoke')[0]!.rows.map((r) => r.id)).toEqual(['session:b']);
+    expect(quickListSection('review', sessions, 'zzqx')).toEqual([]);
+  });
+
+  it('offers another screenshot and Remove all images once images are attached', () => {
+    expect(quickActions({ canShoot: true, attached: 2 }).map((a) => [a.label, a.detail])).toEqual([
+      ['Take another screenshot', 'Add it to the others'],
+      ['Remove all images', '2 attached'],
+    ]);
+    expect(quickActions({ canShoot: false, attached: 1 }).map((a) => a.id)).toEqual(['clear-images']);
+    expect(quickActions({ canShoot: false, attached: 0 }).map((a) => a.id)).toEqual(['open-app']);
+  });
+
+  it('puts Actions first, and keeps only the ones that match what was typed', () => {
+    const QUICK_ACTIONS = quickActions({ canShoot: true, attached: 0 });
+    const all = quickStartSections({ actions: QUICK_ACTIONS, needsYou: [waiting], showNeedsYou: true, projects: projectsShown, filter: '', questions: true });
+    expect(all.map((s) => s.id)).toEqual(['actions', 'needs-you', 'projects', 'more']);
+    expect(quickStartSections({ actions: QUICK_ACTIONS, needsYou: [], showNeedsYou: true, projects: [], filter: 'screen', questions: false }).map((s) => s.id)).toEqual(['actions']);
+    expect(quickStartSections({ actions: QUICK_ACTIONS, needsYou: [], showNeedsYou: true, projects: [], filter: 'xyzq', questions: false })).toEqual([]);
+  });
+
+  it('starts on the first row, or on the first project while typing or once something is attached', () => {
+    const QUICK_ACTIONS = quickActions({ canShoot: true, attached: 0 });
+    const rows = quickStartSections({ actions: QUICK_ACTIONS, needsYou: [], showNeedsYou: true, projects: projectsShown, filter: '', questions: true }).flatMap((s) => s.rows);
+    expect(firstActive(rows, { typed: false, attached: false })).toBe(0);
+    expect(rows[firstActive(rows, { typed: false, attached: true })]!.kind).toBe('project');
+    expect(rows[firstActive(rows, { typed: true, attached: false })]!.kind).toBe('project');
+    expect(firstActive(rows.filter((r) => r.kind !== 'project'), { typed: true, attached: false })).toBe(0);
   });
 
   it('moves with ↑ and ↓, staying at the ends', () => {

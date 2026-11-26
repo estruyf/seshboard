@@ -53,6 +53,8 @@ export function menuBarRows(input: {
   catchUps: ReadonlyMap<string, CatchUp>;
   projectName: (root: string) => string;
   now: number;
+  /** How many finished, unread sessions to list: `FINISHED_SHOWN` for the panel, all of them for quick start's To review. */
+  finishedLimit?: number;
 }): MenuBarRow[] {
   const oldest = new Map<string, PermissionRequest>();
   for (const request of input.permissions) {
@@ -83,7 +85,7 @@ export function menuBarRows(input: {
   const finished = local
     .filter((row) => row.unread && !waiting.has(row.id) && row.live?.status !== 'running')
     .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, FINISHED_SHOWN)
+    .slice(0, input.finishedLimit ?? FINISHED_SHOWN)
     .map((row): MenuBarRow => {
       const card = input.catchUps.get(row.id);
       const age = shortAge(row.updatedAt, input.now);

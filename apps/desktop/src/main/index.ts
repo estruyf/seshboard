@@ -1,12 +1,13 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { readFile, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, webContents as electronWebContents, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { APP_ICONS, DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type StartFromPageRequest, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, webContents as electronWebContents, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { APP_ICONS, DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type StartFromPageRequest, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, type QuickStartScreenshot, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { fillSitePrompt, githubPage, isBuiltInSiteAction, previewKind, siteActionsFor, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -18,6 +19,7 @@ import { trackWindowActivity, windowIsActive, windowIsShown } from './windowActi
 import { MenuBar, PANEL_WIDTH, panelHeight, panelPosition, quitsWhenAllClosed, trayMenu, type MenuBarCounts } from './menuBar.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { QuickStart, quickStartBounds } from './quickStart.ts';
+import { SCREEN_RECORDING_SETTINGS, SCREENCAPTURE, screencaptureArgs, takeScreenshot } from './quickStartScreenshot.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.ts';
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
@@ -1075,7 +1077,7 @@ function showQuickStartPanel(keepDraft: boolean): BrowserWindow {
 }
 
 /** Keys the app menu would take while the panel has focus (⌘W would close it): the panel handles them itself. */
-const QUICK_START_KEYS = new Set(['enter', 'k', 'w', 'm', 'p', 'l', 'o', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+const QUICK_START_KEYS = new Set(['enter', 'k', 'w', 'm', 'p', 'l', 'o', 's', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
 
 function createQuickStartPanel(): BrowserWindow {
   const area = screen.getPrimaryDisplay().workArea;
@@ -1144,6 +1146,79 @@ ipcMain.on(IpcChannel.quickStartPassClicks, (event, pass: unknown) => {
   quickStartPanel.setIgnoreMouseEvents(pass, { forward: true });
 });
 ipcMain.handle(IpcChannel.getQuickStartStatus, () => quickStart.status);
+
+/** A picture the smoke test's picker "takes": a 2×2 PNG, so no real picker opens and nothing touches the clipboard. */
+const SMOKE_SCREENSHOT = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8Dwn4GBgYGBgQEAHfgD/WtBxrUAAAAASUVORK5CYII=';
+/** One picker at a time: a second press while it is open does nothing. */
+let screenshotOpen = false;
+
+/**
+ * The system's area picker (macOS), with Seshboard out of the way: `hide` runs before it opens and `show` after it
+ * closes, whether a picture was taken or the picker was left with Esc. One picker at a time.
+ */
+async function captureScreenshot(around: { hide(): void; show(): void }): Promise<QuickStartScreenshot> {
+  if (process.platform !== 'darwin') return { kind: 'failed', message: 'Screenshots work on macOS for now.' };
+  if (screenshotOpen) return { kind: 'cancelled' };
+  screenshotOpen = true;
+  around.hide();
+  try {
+    const result = await takeScreenshot({
+      tempFile: () => join(tmpdir(), `seshboard-screenshot-${randomUUID()}.png`),
+      pick: (file) =>
+        scripted
+          ? Promise.resolve((writeFileSync(file, Buffer.from(SMOKE_SCREENSHOT, 'base64')), ''))
+          : new Promise<string>((done, fail) =>
+              execFile(SCREENCAPTURE, screencaptureArgs(file), (error, _stdout, stderr) => (error && (error as NodeJS.ErrnoException).code === 'ENOENT' ? fail(error) : done(String(stderr)))),
+            ),
+      read: (file) => readFile(file).catch(() => null),
+      remove: (file) => rm(file, { force: true }),
+      toJpeg: (png) => nativeImage.createFromBuffer(png).toJPEG(85),
+      toClipboard: (png) => {
+        if (scripted) return;
+        void clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]).catch((error: Error) => console.warn(`[screenshot] it did not go on the clipboard: ${error.message}`));
+      },
+      screenAccess: () => scripted || systemPreferences.getMediaAccessStatus('screen') === 'granted',
+      now: () => new Date(),
+    });
+    if (result.kind !== 'image') console.warn(`[screenshot] ${result.kind}${result.kind === 'failed' ? `: ${result.message}` : ''}`);
+    return result;
+  } finally {
+    screenshotOpen = false;
+    around.show();
+  }
+}
+
+/**
+ * Take a screenshot in the quick start panel: the panel hides, the picker opens over the app in front, and the panel
+ * comes back with its draft (it was hidden a moment ago, so the draft is kept).
+ */
+ipcMain.handle(IpcChannel.quickStartScreenshot, (event): Promise<QuickStartScreenshot> | QuickStartScreenshot => {
+  if (!quickStartPanel || event.sender.id !== quickStartPanel.webContents.id) return { kind: 'failed', message: 'Only the quick start panel takes screenshots here.' };
+  return captureScreenshot({ hide: () => quickStart.hide(), show: () => quickStart.open() });
+});
+
+/**
+ * The screenshot button in a message box (New session, a session, a pop-out): Seshboard hides so the picker reaches
+ * the apps under it, and the window that asked comes back to the front. The smoke test keeps its windows where they are.
+ */
+ipcMain.handle(IpcChannel.takeScreenshot, (event): Promise<QuickStartScreenshot> => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return captureScreenshot({
+    hide: () => {
+      if (!scripted) app.hide();
+    },
+    show: () => {
+      if (scripted || !win || win.isDestroyed()) return;
+      app.show();
+      win.show();
+      win.focus();
+    },
+  });
+});
+ipcMain.on(IpcChannel.openScreenRecordingSettings, () => {
+  if (scripted || process.platform !== 'darwin') return;
+  void shell.openExternal(SCREEN_RECORDING_SETTINGS);
+});
 
 /** Settings › General › Menu bar › Hide from the Dock while no window is open (macOS): whether it is hidden now. */
 let dockHidden = false;
@@ -12029,7 +12104,9 @@ async function runQuickStartLaterStep(win: BrowserWindow): Promise<string> {
       if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start-actions] [data-quick-start-action=\"later\"]')", 3_000))) return 'failed: ⌘K did not open the actions';
       // The throwaway folder isn't a git repository, so there is no worktree to start in; Change profile… needs two profiles.
       const actions = JSON.parse((await js("JSON.stringify([...document.querySelectorAll('[data-quick-start-action]')].map((a) => a.dataset.quickStartAction))")) as string) as string[];
-      if (actions.join() !== ['start-open', 'model', 'mode', 'profile', 'paste', 'later'].filter((a) => a !== 'profile' || actions.includes('profile')).join()) return `failed: the actions are ${actions.join(', ')}`;
+      // Take a screenshot is macOS only.
+      const expected = ['start-open', 'model', 'mode', 'profile', 'paste', 'screenshot', 'later'].filter((a) => (a !== 'profile' || actions.includes('profile')) && (a !== 'screenshot' || process.platform === 'darwin'));
+      if (actions.join() !== expected.join()) return `failed: the actions are ${actions.join(', ')}`;
       await shot(panel, 'quick-start-actions.png');
       await js("document.querySelector('[data-quick-start-action=\"later\"]').click()");
       if (!(await waitInPage(panel, "document.querySelector('[data-quick-start-started]')?.dataset.quickStartStarted === 'later'", 5_000))) return `failed: it did not say Added to Later (${await js("document.querySelector('[data-quick-start]').innerText")})`;
@@ -12041,6 +12118,104 @@ async function runQuickStartLaterStep(win: BrowserWindow): Promise<string> {
       await win.webContents.executeJavaScript(`${row}.focus()`);
       pressKey(win, 'Backspace');
       await waitInPage(win, `!${row}`, 3_000);
+    }
+  }
+}
+
+/**
+ * The camera in the open session's message box (macOS) takes a screenshot (the smoke picker writes a small PNG) and
+ * attaches it; × takes it off again, so nothing is left in the box. Needs the session opened by the first steps; New
+ * session's box is the same one, though it stays off there until a project is picked.
+ */
+async function runComposerScreenshotStep(win: BrowserWindow): Promise<string> {
+  if (process.platform !== 'darwin') return 'ok: skipped, screenshots are macOS only';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const scope = '[data-current-session]';
+  const button = `document.querySelector('${scope} [data-screenshot]')`;
+  const thumbs = `document.querySelectorAll('${scope} [data-attachments] img').length`;
+  if (!(await waitInPage(win, `!!${button} && !${button}.disabled`, 5_000))) return `failed: the session's message box has no screenshot button that works (${await js(`${button}?.outerHTML.slice(0, 200) ?? 'none'`)})`;
+  if (!(await js(`${button}.getAttribute('aria-keyshortcuts')`))) return 'failed: the screenshot button does not name its shortcut';
+  if (((await js(thumbs)) as number) !== 0) return 'failed: the message box already had images attached';
+  await js(`${button}.click()`);
+  if (!(await waitInPage(win, `${thumbs} === 1`, 5_000))) return 'failed: no screenshot was attached';
+  await shot(win, 'composer-screenshot.png');
+  await js(`document.querySelector('${scope} [data-attachments] button').click()`);
+  if (!(await waitInPage(win, `${thumbs} === 0`, 3_000))) return 'failed: × did not take the screenshot off';
+  return 'ok: the camera in the message box attached a screenshot, and × took it off';
+}
+
+/**
+ * The first screen starts on Actions › Take a screenshot: ↩ hides the panel for the picker (a stand-in that writes a
+ * small PNG), the panel comes back with the picture attached and the first project selected, and picking it keeps it.
+ */
+function runQuickStartScreenshotStep(): Promise<string> {
+  if (process.platform !== 'darwin') return Promise.resolve('ok: skipped, screenshots are macOS only');
+  return withQuickStart(async (panel, js, project) => {
+    const thumbs = "document.querySelectorAll('[data-quick-start] [data-attachments] img').length";
+    const actions = "!!document.querySelector('[data-quick-start-section=\"actions\"]')";
+    const onShot = "document.querySelector('[data-quick-start-action-row=\"screenshot\"]')?.getAttribute('aria-selected') === 'true'";
+    const sections = "JSON.stringify([...document.querySelectorAll('[data-quick-start-section]')].map((s) => s.dataset.quickStartSection))";
+    if (!(await waitInPage(panel, "document.querySelector('[data-quick-start-section]')?.dataset.quickStartSection === 'actions'", 3_000))) return `failed: Actions is not the first section (${await js(sections)})`;
+    if (!(await waitInPage(panel, onShot, 3_000))) return 'failed: the list does not start on Take a screenshot';
+    // Typing filters Actions too.
+    await js("document.querySelector('[data-quick-start-field]').focus()");
+    panel.webContents.insertText('zzqx');
+    if (!(await waitInPage(panel, `!${actions}`, 3_000))) return 'failed: typing did not filter out Take a screenshot';
+    await js("document.querySelector('[data-quick-start-field]').select(); true");
+    pressKey(panel, 'Backspace');
+    if (!(await waitInPage(panel, onShot, 3_000))) return 'failed: clearing the field did not go back to Take a screenshot';
+    pressKey(panel, 'Enter');
+    if (!(await waitInPage(panel, `${thumbs} === 1`, 5_000))) return `failed: no screenshot was attached (${await js("document.querySelector('[data-quick-start]').innerText")})`;
+    if (!(await until(() => panel.isVisible(), 3_000))) return 'failed: the panel did not come back after the screenshot';
+    if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start-project][aria-selected=\"true\"]')", 3_000))) return 'failed: after the screenshot the list is not on a project';
+    if (!(await js("!!document.querySelector('[data-quick-start-action-row=\"clear-images\"]')"))) return `failed: Actions has no Remove all images with a screenshot attached (${await js(sections)})`;
+    // ⌘⇧S adds another to the bucket, and ⌘⇧⌫ empties it.
+    pressKey(panel, 'S', ['meta', 'shift']);
+    if (!(await waitInPage(panel, `${thumbs} === 2`, 5_000))) return 'failed: ⌘⇧S did not add a second screenshot';
+    pressKey(panel, 'Backspace', ['meta', 'shift']);
+    if (!(await waitInPage(panel, `${thumbs} === 0`, 3_000))) return 'failed: ⌘⇧⌫ did not remove the screenshots';
+    if (!(await waitInPage(panel, onShot, 3_000))) return 'failed: after Remove all the list is not back on Take a screenshot';
+    pressKey(panel, 'Enter');
+    if (!(await waitInPage(panel, `${thumbs} === 1`, 5_000))) return 'failed: no screenshot was attached the second time';
+    const picked = await pickQuickStartProject(panel, js, project);
+    if ('failed' in picked) return `failed: ${picked.failed}`;
+    if (!(await waitInPage(panel, `${thumbs} === 1`, 2_000))) return 'failed: picking a project dropped the screenshot';
+    await shot(panel, 'quick-start-screenshot.png');
+    return 'ok: the list starts on Take a screenshot, typing filters it, ↩ took it, the panel came back on the first project with it attached, ⌘⇧S added another, ⌘⇧⌫ removed them, and the project kept the next one';
+  });
+}
+
+/**
+ * Actions › Working sessions opens the list of sessions that work (a stand-in one here), typing filters it, and Esc
+ * goes back to the first screen, which also has Open Seshboard and Open the last session.
+ */
+async function runQuickStartListsStep(): Promise<string> {
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-quick-start-')));
+  const working = `smoke-quickstart-working-${randomUUID()}`;
+  engine.send({ type: 'smokeQueueHost', sessionId: working, cwd: folder, state: 'running' });
+  try {
+    return await withQuickStart(async (panel, js) => {
+      const row = (id: string) => `document.querySelector('[data-quick-start-action-row="${id}"]')`;
+      for (const id of ['open-app', 'last-session']) if (!(await waitInPage(panel, `!!${row(id)}`, 3_000))) return `failed: Actions has no ${id} row`;
+      if (!(await waitInPage(panel, `!!${row('working')}`, 5_000))) return 'failed: Actions has no Working sessions row with a session working';
+      await js(`${row('working')}.click()`);
+      const listed = `!!document.querySelector('[data-quick-start-section="working"] [data-quick-start-session="${working}"]')`;
+      if (!(await waitInPage(panel, listed, 3_000))) return `failed: the working session is not in the list (${await js("document.querySelector('[data-quick-start]').innerText")})`;
+      await shot(panel, 'quick-start-working.png');
+      await js("document.querySelector('[data-quick-start-field]').focus()");
+      panel.webContents.insertText('zzqx');
+      if (!(await waitInPage(panel, `!${listed}`, 3_000))) return 'failed: typing did not filter the list';
+      pressKey(panel, 'Escape');
+      if (!(await waitInPage(panel, `!!${row('working')} && !document.querySelector('[data-quick-start-back]')`, 3_000))) return 'failed: Esc did not go back to the first screen';
+      if (!panel.isVisible()) return 'failed: Esc in the list closed the panel';
+      return 'ok: Actions has Open Seshboard, Open the last session and Working sessions, which lists the working session, filters it, and Esc goes back';
+    });
+  } finally {
+    engine.send({ type: 'smokeQueueHost', sessionId: working, cwd: folder, state: 'closed' });
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
     }
   }
 }
@@ -16077,6 +16252,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('quick start: a project name and Enter make the token, Backspace goes back', () => runQuickStartTokenStep());
   await step('quick start: Enter starts a session in the background, the main window keeps focus off', () => runQuickStartStartStep(win));
   await step('quick start: Cmd+K Add to Later instead puts the task in the queue', () => runQuickStartLaterStep(win));
+  await step('quick start: Actions › Take a screenshot attaches it, then the list is on the projects', () => runQuickStartScreenshotStep());
+  await step('quick start: Actions › Working sessions lists them, Esc goes back', () => runQuickStartListsStep());
+  await step('message box: the camera takes a screenshot and attaches it', () => runComposerScreenshotStep(win));
   await step('keep awake until done: the ⋯ menu, the pill, and it goes once the session is done', () => runKeepAwakeSessionStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });

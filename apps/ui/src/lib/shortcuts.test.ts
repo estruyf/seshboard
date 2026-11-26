@@ -282,6 +282,7 @@ describe('the shortcut registry', () => {
       'composer.previous-blank': [at({ view: 'new-session' }), HOME],
       'composer.history': [SESSION, at({ view: 'new-session' })],
       'composer.add-context': [at({ view: 'new-session' }), HOME],
+      'composer.screenshot': [at({ view: 'new-session' }), HOME],
       'composer.github': [SESSION, HOME],
       'composer.github-new-session': [at({ view: 'new-session' }), HOME],
       'permission.allow': [{ ...SESSION, pending: 'permission' }, SESSION],

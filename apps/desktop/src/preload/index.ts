@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { BROWSER_POPOUT_QUERY, ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type BrowserMessageItem, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
+import { BROWSER_POPOUT_QUERY, ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartScreenshot, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type BrowserMessageItem, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -196,6 +196,9 @@ const bridge: SeshboardBridge = {
     ipcRenderer.on(IpcChannel.quickStartKey, handler);
     return () => ipcRenderer.off(IpcChannel.quickStartKey, handler);
   },
+  quickStartScreenshot: () => ipcRenderer.invoke(IpcChannel.quickStartScreenshot) as Promise<QuickStartScreenshot>,
+  openScreenRecordingSettings: () => ipcRenderer.send(IpcChannel.openScreenRecordingSettings),
+  takeScreenshot: () => ipcRenderer.invoke(IpcChannel.takeScreenshot) as Promise<QuickStartScreenshot>,
   quickStartStatus: () => ipcRenderer.invoke(IpcChannel.getQuickStartStatus) as Promise<QuickStartStatus>,
   onQuickStartStatus(listener) {
     const handler = (_event: unknown, status: QuickStartStatus) => listener(status);

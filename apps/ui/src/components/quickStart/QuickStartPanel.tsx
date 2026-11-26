@@ -1,4 +1,4 @@
-import { GitBranch, Search } from 'lucide-react';
+import { AppWindow, ArrowLeft, Camera, GitBranch, History, Inbox, LoaderCircle, Search, Trash2, type LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { PROVIDER_NAMES } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -18,6 +18,8 @@ import { useSignIn } from '../../state/signInStore.ts';
 import { useListedRows, useProjectName } from '../../state/useQueue.ts';
 import { AttachmentThumbs } from '../composer/Attachments.tsx';
 import { AutoWand, ComposerChipRow } from '../composer/ComposerChips.tsx';
+import { mergeAttachments } from '../composer/images.ts';
+import { screenshotOutcome } from '../composer/screenshot.ts';
 import { useAttachments } from '../composer/useAttachments.ts';
 import { useMinute } from '../focus/useMinute.ts';
 import { menuBarRows } from '../menuBar/menuBarModel.ts';
@@ -31,16 +33,23 @@ import {
   backspaceAtStart,
   changedOptions,
   EMPTY_FIELD,
+  firstActive,
+  lastSession,
+  LIST_TITLES,
+  quickListSection,
   firstLine,
   moveActive,
   optionsSource,
   pickProject,
   QUESTION_ROW,
+  quickActions,
   quickStartSections,
   startProblem,
   tokenLabel,
   whereLabel,
+  type QuickAction,
   type QuickField,
+  type QuickList,
   type QuickOptions,
   type QuickRow,
   type StartProblem,
@@ -77,6 +86,8 @@ const ACTIONS: { id: string; label: string; shortcut: ShortcutId }[] = [
   { id: 'mode', label: 'Change mode…', shortcut: 'quickstart.mode' },
   { id: 'profile', label: 'Change profile…', shortcut: 'quickstart.profile' },
   { id: 'paste', label: 'Attach the clipboard', shortcut: 'quickstart.paste' },
+  { id: 'screenshot', label: 'Take a screenshot', shortcut: 'quickstart.screenshot' },
+  { id: 'clear-images', label: 'Remove all images', shortcut: 'quickstart.clear-images' },
   { id: 'later', label: 'Add to Later instead', shortcut: 'quickstart.later' },
 ];
 
@@ -112,6 +123,13 @@ export function QuickStartPanel() {
   const [notice, setNotice] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [shooting, setShooting] = useState(false);
+  /** A list an action opened (Working, To review), in place of the first screen; Esc goes back. */
+  const [list, setList] = useState<QuickList | null>(null);
+  /** macOS hasn't given Seshboard Screen Recording: what the panel says about it, with Open Settings. */
+  const [noScreenAccess, setNoScreenAccess] = useState<string | null>(null);
+  // The system's area picker is macOS only for now.
+  const canShoot = currentPlatform() === 'darwin';
 
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -130,18 +148,31 @@ export function QuickStartPanel() {
 
   // The lists.
   const quickProjects = useQuickProjects(field.query);
-  const waiting = useMemo(() => menuBarRows({ rows: listed, permissions: permissions.values(), catchUps: new Map(), projectName, now }), [listed, permissions, projectName, now]);
+  const waiting = useMemo(() => menuBarRows({ rows: listed, permissions: permissions.values(), catchUps: new Map(), projectName, now, finishedLimit: Infinity }), [listed, permissions, projectName, now]);
+  const working = useMemo(() => waiting.filter((row) => row.section === 'working'), [waiting]);
+  const review = useMemo(() => waiting.filter((row) => row.section === 'finished'), [waiting]);
+  const last = useMemo(() => lastSession(listed), [listed]);
+  // Once images are attached, Actions offers another screenshot and Remove all images; the list starts on a project.
+  const attachedCount = attach.attachments.length;
+  const attached = attachedCount > 0;
+  const actions = useMemo(
+    () => quickActions({ canShoot, attached: attachedCount, last: last && { id: last.id, title: last.title, project: projectName(last.projectRoot) }, working: working.length, review: review.length }),
+    [canShoot, attachedCount, last, projectName, working.length, review.length],
+  );
   const sections = useMemo(
-    () => quickStartSections({ needsYou: waiting, showNeedsYou: prefs.quickStartNeedsYou, projects: quickProjects, filter: field.query, questions: !!questionsDir }),
-    [waiting, prefs.quickStartNeedsYou, quickProjects, field.query, questionsDir],
+    () =>
+      list
+        ? quickListSection(list, list === 'working' ? working : review, field.query)
+        : quickStartSections({ actions, needsYou: waiting, showNeedsYou: prefs.quickStartNeedsYou, projects: quickProjects, filter: field.query, questions: !!questionsDir }),
+    [list, working, review, actions, waiting, prefs.quickStartNeedsYou, quickProjects, field.query, questionsDir],
   );
   const rows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
   const activeIndex = Math.min(active, Math.max(0, rows.length - 1));
-  // Typing a name puts the best match first: it is the one ↩ picks.
+  // Typing a name puts the best match first: it is the one ↩ picks. After a screenshot, a project is what comes next.
   useEffect(() => {
-    const first = rows.findIndex((row) => row.kind === 'project');
-    setActive(field.query.trim() && first >= 0 ? first : 0);
-  }, [field.query]);
+    setActive(firstActive(rows, { typed: !!field.query.trim(), attached }));
+    // Each new screenshot goes back to the first project.
+  }, [field.query, attachedCount, list]);
 
   /** Back to an empty panel: after a start, or when it was closed long enough ago. */
   const reset = () => {
@@ -153,6 +184,8 @@ export function QuickStartPanel() {
     setNotice(null);
     setDone(null);
     setActionsOpen(false);
+    setNoScreenAccess(null);
+    setList(null);
     attach.setAttachments([]);
   };
   const focusField = () => requestAnimationFrame(() => (field.project ? taskRef.current : inputRef.current)?.focus());
@@ -226,7 +259,8 @@ export function QuickStartPanel() {
 
   const choose = (row: QuickRow | undefined) => {
     if (!row) return;
-    if (row.kind === 'needs-you') return openSession(row.session.id);
+    if (row.kind === 'action') return runQuickAction(row.action);
+    if (row.kind === 'needs-you' || row.kind === 'session') return openSession(row.session.id);
     const root = row.kind === 'project' ? row.project.root : questionsDir;
     if (!root) return;
     if (setup?.root !== root) {
@@ -234,6 +268,28 @@ export function QuickStartPanel() {
       setOptions(null);
     }
     setField((f) => pickProject(f, root));
+  };
+
+  /** An action on the first screen. */
+  const runQuickAction = (action: QuickAction) => {
+    if (action.id === 'screenshot') return void shoot();
+    if (action.id === 'clear-images') return clearImages();
+    if (action.id === 'last-session' && action.sessionId) return openSession(action.sessionId);
+    if (action.id === 'working' || action.id === 'review') {
+      setList(action.id);
+      setField((f) => ({ ...f, query: '' }));
+      return;
+    }
+    if (action.id === 'open-app') {
+      bridge()?.menuBarCommand('open');
+      close();
+    }
+  };
+
+  /** From a list back to the first screen. */
+  const leaveList = () => {
+    setList(null);
+    setField((f) => ({ ...f, query: '' }));
   };
 
   /** The draft as the queue keeps it. */
@@ -325,6 +381,32 @@ export function QuickStartPanel() {
     return () => clearTimeout(timer);
   }, [done]);
 
+  /** Take a screenshot: main hides the panel, the picker opens, and the panel comes back with the picture attached. */
+  const shoot = async () => {
+    if (!canShoot || shooting) return;
+    setShooting(true);
+    setNotice(null);
+    try {
+      const outcome = screenshotOutcome(await bridge()?.quickStartScreenshot());
+      // Missing Screen Recording shows with Open Settings; anything else under the field.
+      setNoScreenAccess(outcome.noScreenAccess ? outcome.notice : null);
+      if (!outcome.noScreenAccess) setNotice(outcome.notice);
+      if (!outcome.image) return;
+      const { next, notice: left } = mergeAttachments(attach.attachments, [outcome.image], 1);
+      attach.setAttachments(next);
+      if (left) setNotice(left);
+    } finally {
+      setShooting(false);
+    }
+  };
+
+  /** Remove all images: the bucket is empty again, and the list goes back to Take a screenshot. */
+  const clearImages = () => {
+    attach.setAttachments([]);
+    setNoScreenAccess(null);
+    setNotice(null);
+  };
+
   const clickChip = (name: string) => document.querySelector<HTMLElement>(`[data-${name}-select]`)?.click();
   const runAction = (id: string) => {
     setActionsOpen(false);
@@ -334,6 +416,8 @@ export function QuickStartPanel() {
     else if (id === 'mode') clickChip(CHIP_NAMES.mode);
     else if (id === 'profile') clickChip(CHIP_NAMES.profile);
     else if (id === 'later') void later();
+    else if (id === 'screenshot') void shoot();
+    else if (id === 'clear-images') clearImages();
     else if (id === 'paste') {
       taskRef.current?.focus();
       void bridge()?.pasteClipboard();
@@ -353,7 +437,10 @@ export function QuickStartPanel() {
       if (event.key === 'Escape') return handled(close);
       return false;
     }
-    if (event.key === 'Escape') return handled(close);
+    if (event.key === 'Escape') return handled(list ? leaveList : close);
+    if (list && event.key === 'Backspace' && !field.query) return handled(leaveList);
+    if (canShoot && matches(event, 'quickstart.screenshot')) return handled(() => void shoot());
+    if (attached && matches(event, 'quickstart.clear-images')) return handled(clearImages);
     if (!field.project) {
       if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && !(event.key === 'Home' || event.key === 'End' ? field.query : '')) return handled(() => setActive(moveActive(rows.length, activeIndex, event.key)));
       if (event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey) return handled(() => choose(rows[activeIndex]));
@@ -403,6 +490,15 @@ export function QuickStartPanel() {
   const mark = <img src={tileOf(appIcon)} alt="" width={18} height={18} draggable={false} className="size-4.5 shrink-0" />;
   const divider = <span aria-hidden className="h-4.5 w-px bg-edge" />;
   const activeRow = rows[activeIndex];
+  const thumbs = attach.attachments.length > 0 && <AttachmentThumbs attachments={attach.attachments} onRemove={(i) => attach.setAttachments((all) => all.filter((_, j) => j !== i))} className="px-4.5 pt-3" />;
+  const screenAccess = noScreenAccess && (
+    <div className="flex items-center gap-2 px-4.5 pt-2.5" role="alert" data-quick-start-screen-access>
+      <span className="min-w-0 flex-1 text-ui text-warn">{noScreenAccess}</span>
+      <Button size="sm" onClick={() => bridge()?.openScreenRecordingSettings()}>
+        Open Settings
+      </Button>
+    </div>
+  );
 
   return (
     <div className="h-full p-6" data-quick-start-root>
@@ -452,13 +548,19 @@ export function QuickStartPanel() {
                   </>
                 ) : (
                   <>
-                    <Search size={18} aria-hidden className="shrink-0 text-muted" />
+                    {list ? (
+                      <button type="button" onClick={leaveList} aria-label="Back" data-tooltip="Back (Esc)" className="shrink-0 rounded-md p-0.5 text-muted hover:bg-border/50 hover:text-text" data-quick-start-back>
+                        <ArrowLeft size={18} aria-hidden />
+                      </button>
+                    ) : (
+                      <Search size={18} aria-hidden className="shrink-0 text-muted" />
+                    )}
                     <input
                       ref={inputRef}
                       value={field.query}
                       onChange={(event) => setField((f) => ({ ...f, query: event.target.value }))}
-                      placeholder="Start a session in…"
-                      aria-label="Start a session in…"
+                      placeholder={list ? LIST_TITLES[list].placeholder : 'Start a session in…'}
+                      aria-label={list ? LIST_TITLES[list].placeholder : 'Start a session in…'}
                       role="combobox"
                       aria-expanded
                       aria-controls="quick-start-list"
@@ -471,7 +573,8 @@ export function QuickStartPanel() {
               </div>
               {field.project ? (
                 <div className="grid">
-                  {attach.attachments.length > 0 && <AttachmentThumbs attachments={attach.attachments} onRemove={(i) => attach.setAttachments((all) => all.filter((_, j) => j !== i))} className="px-4.5 pt-3" />}
+                  {thumbs}
+                  {screenAccess}
                   {ready ? (
                     <div className="flex min-w-0 items-center gap-1.5 px-3.5 pt-2.5" data-quick-start-options={changed ? 'changed' : 'defaults'}>
                       <div className="min-w-0 flex-1">
@@ -536,8 +639,16 @@ export function QuickStartPanel() {
                   <p className="px-4.5 pt-2.5 pb-3.5 text-meta text-faint">⌫ at the start goes back to the project list. Tab moves to the options.</p>
                 </div>
               ) : (
+                <>
+                {thumbs}
+                {screenAccess}
+                {notice && (
+                  <p className="px-4.5 pt-2.5 text-ui text-error" role="alert" data-quick-start-problem>
+                    {notice}
+                  </p>
+                )}
                 <div id="quick-start-list" role="listbox" aria-label="Start a session in" className="min-h-0 overflow-y-auto pb-2" data-quick-start-list>
-                  {sections.length === 0 && <p className="px-4.5 py-3 text-ui text-faint">No project matches.</p>}
+                  {sections.length === 0 && <p className="px-4.5 py-3 text-ui text-faint">{list ? 'No session matches.' : 'No project matches.'}</p>}
                   {sections.map((section) => (
                     <div key={section.id} role="group" aria-label={section.title} data-quick-start-section={section.id}>
                       <div aria-hidden className="px-4.5 pt-2.5 pb-1 text-meta font-semibold text-faint">
@@ -550,6 +661,7 @@ export function QuickStartPanel() {
                     </div>
                   ))}
                 </div>
+                </>
               )}
             </>
           )}
@@ -583,8 +695,8 @@ export function QuickStartPanel() {
             ) : (
               <>
                 <span className="flex-1" />
-                <Button variant="quiet" size="sm" shortcut="quickstart.start" onClick={() => choose(activeRow)} disabled={!activeRow}>
-                  {activeRow?.kind === 'needs-you' ? 'Open' : 'Pick project'}
+                <Button variant="quiet" size="sm" shortcut="quickstart.start" onClick={() => choose(activeRow)} disabled={!activeRow || (activeRow.kind === 'action' && shooting)} aria-busy={activeRow?.kind === 'action' && shooting}>
+                  {activeRow?.kind === 'action' ? actionVerb(activeRow.action, shooting) : activeRow?.kind === 'needs-you' || activeRow?.kind === 'session' ? 'Open' : 'Pick project'}
                 </Button>
               </>
             )}
@@ -599,7 +711,7 @@ export function QuickStartPanel() {
             busy={busy}
             canSend={canSend}
             worktree={!!setup?.data.isGitRepo}
-            hidden={[...(startableCount > 1 ? [] : ['profile']), ...(provider ? ['model', 'mode'] : [])]}
+            hidden={[...(startableCount > 1 ? [] : ['profile']), ...(provider ? ['model', 'mode'] : []), ...(canShoot ? [] : ['screenshot']), ...(attached ? [] : ['clear-images'])]}
             onRun={runAction}
             onClose={() => {
               setActionsOpen(false);
@@ -612,11 +724,47 @@ export function QuickStartPanel() {
   );
 }
 
-/** One row of the first screen: a session waiting on you, a project, or Quick question. */
+const ACTION_ICONS: Record<QuickAction['id'], LucideIcon> = { screenshot: Camera, 'clear-images': Trash2, 'open-app': AppWindow, 'last-session': History, working: LoaderCircle, review: Inbox };
+
+/** What the footer's button says for an action. */
+function actionVerb(action: QuickAction, shooting: boolean): string {
+  if (action.id === 'screenshot') return shooting ? 'Taking screenshot…' : 'Take screenshot';
+  if (action.id === 'clear-images') return 'Remove all';
+  if (action.id === 'working' || action.id === 'review') return 'Show';
+  return 'Open';
+}
+
+/** One row of the first screen (an action, a session waiting on you, a project, or Quick question), or of a list. */
 function Row({ row, index, active, onHover, onPick, questionsDir }: { row: QuickRow; index: number; active: boolean; onHover(): void; onPick(): void; questionsDir: string | null }) {
   const projects = useProjects((s) => s.projects);
   const base = `mx-2 flex h-10 cursor-default items-center gap-3 rounded-lg px-2.5 text-body ${active ? 'bg-selected' : ''}`;
   const common = { id: `quick-start-row-${index}`, role: 'option', 'aria-selected': active, onMouseMove: onHover, onMouseDown: (e: ReactMouseEvent) => e.preventDefault(), onClick: onPick, className: base };
+  if (row.kind === 'action') {
+    const Icon = ACTION_ICONS[row.action.id];
+    const shortcut = row.action.id === 'clear-images' ? 'quickstart.clear-images' : row.action.id === 'screenshot' ? 'quickstart.screenshot' : null;
+    return (
+      <div {...common} data-quick-start-action-row={row.action.id}>
+        <span className="flex size-5.5 shrink-0 items-center justify-center text-muted">
+          <Icon size={16} aria-hidden />
+        </span>
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="shrink-0">{row.action.label}</span>
+          <span className="truncate text-ui text-faint">{row.action.detail}</span>
+        </span>
+        {shortcut && <Kbd shortcut={shortcut} tone="cap" />}
+      </div>
+    );
+  }
+  if (row.kind === 'session') {
+    const { session } = row;
+    return (
+      <div {...common} data-quick-start-session={session.id}>
+        <ProjectIcon project={projects.get(session.projectRoot)} root={session.projectRoot} size={22} />
+        <span className="min-w-0 flex-1 truncate">{session.title}</span>
+        <span className={`shrink-0 truncate text-ui ${session.section === 'working' ? 'text-accent-ink' : 'text-faint'}`}>{session.detail}</span>
+      </div>
+    );
+  }
   if (row.kind === 'needs-you') {
     const { session } = row;
     return (

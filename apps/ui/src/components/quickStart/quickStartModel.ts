@@ -53,25 +53,106 @@ export function quickStartProjects(input: {
 /** What the quick question row is called, and what Find matches it by. */
 export const QUESTION_ROW = { label: 'Quick question', detail: 'Ask without a project' } as const;
 
+/** Something the first screen does before a project is picked. Its result waits in the draft for the project. */
+export interface QuickAction {
+  id: 'screenshot' | 'clear-images' | 'open-app' | 'last-session' | 'working' | 'review';
+  label: string;
+  detail: string;
+  /** Open the last session: the session it opens. */
+  sessionId?: string;
+}
+
+/** The sessions an action lists in the panel: the ones that work, or the finished ones not read yet. */
+export type QuickList = 'working' | 'review';
+
+/** A session as the sidebar lists it, as much as the last session needs. */
+export interface QuickSessionRow {
+  id: string;
+  title: string;
+  projectRoot: string;
+  updatedAt: number;
+  archivedAt: number | null;
+  remote?: unknown;
+}
+
+/** The last session: the one on this computer that changed most recently, not in Done. */
+export function lastSession<T extends QuickSessionRow>(rows: readonly T[]): T | null {
+  let last: T | null = null;
+  for (const row of rows) if (!row.remote && row.archivedAt === null && (!last || row.updatedAt > last.updatedAt)) last = row;
+  return last;
+}
+
+const sessionsLabel = (count: number, what: string) => `${count} ${what}`;
+
+/**
+ * The first screen's actions. With nothing attached: Take a screenshot (macOS only), Open Seshboard, Open the last
+ * session, and the Working and To review lists when they have sessions. Once images are attached, only what works on
+ * them: Take another screenshot and Remove all images, so several can go with one task and the draft can start again.
+ */
+export function quickActions(input: {
+  canShoot: boolean;
+  attached: number;
+  last?: { id: string; title: string; project: string } | null;
+  working?: number;
+  review?: number;
+}): QuickAction[] {
+  const actions: QuickAction[] = [];
+  if (input.attached) {
+    if (input.canShoot) actions.push({ id: 'screenshot', label: 'Take another screenshot', detail: 'Add it to the others' });
+    actions.push({ id: 'clear-images', label: 'Remove all images', detail: sessionsLabel(input.attached, 'attached') });
+    return actions;
+  }
+  if (input.canShoot) actions.push({ id: 'screenshot', label: 'Take a screenshot', detail: 'Attach it, then pick a project' });
+  actions.push({ id: 'open-app', label: 'Open Seshboard', detail: 'Bring its window to the front' });
+  if (input.last) actions.push({ id: 'last-session', label: 'Open the last session', detail: [input.last.title || 'Untitled session', input.last.project].filter(Boolean).join(' · '), sessionId: input.last.id });
+  if (input.working) actions.push({ id: 'working', label: 'Working sessions', detail: sessionsLabel(input.working, 'working') });
+  if (input.review) actions.push({ id: 'review', label: 'Sessions to review', detail: sessionsLabel(input.review, 'to review') });
+  return actions;
+}
+
+/** A list's heading, and what its field says. */
+export const LIST_TITLES: Record<QuickList, { title: string; placeholder: string }> = {
+  working: { title: 'Working', placeholder: 'Find a working session…' },
+  review: { title: 'To review', placeholder: 'Find a session to review…' },
+};
+
+/** The sessions of a list (Working, To review), filtered by what was typed, best matches first. */
+export function quickListSection(list: QuickList, sessions: readonly MenuBarRow[], filter: string): QuickSection[] {
+  const typed = filter.trim();
+  const shown = typed
+    ? sessions
+        .map((session) => ({ session, score: fuzzyScore(typed, session.title) }))
+        .filter((s): s is { session: MenuBarRow; score: number } => s.score !== null)
+        .sort((a, b) => b.score - a.score)
+        .map((s) => s.session)
+    : [...sessions];
+  return shown.length ? [{ id: list, title: LIST_TITLES[list].title, rows: shown.map((session) => ({ kind: 'session', id: `session:${session.id}`, session })) }] : [];
+}
+
 export type QuickRow =
+  | { kind: 'action'; id: string; action: QuickAction }
   | { kind: 'needs-you'; id: string; session: MenuBarRow }
+  /** A session in a list an action opened (Working, To review). */
+  | { kind: 'session'; id: string; session: MenuBarRow }
   | { kind: 'project'; id: string; project: QuickProject; /** 1–9: ⌘1–⌘9 picks it. */ number: number | null }
   | { kind: 'question'; id: string };
 
 export interface QuickSection {
-  id: 'needs-you' | 'projects' | 'more';
+  id: 'actions' | 'needs-you' | 'projects' | 'more' | QuickList;
   title: string;
   rows: QuickRow[];
 }
 
 /**
- * The first screen's sections: Needs you (when shown, and nothing is typed), Projects (⌘1–⌘9 on the first nine),
- * and More with Quick question (when there is a questions folder, and what was typed matches it). Empty sections
- * are left out.
+ * The first screen's sections: Actions (those that match what was typed), Needs you (when shown, and nothing is
+ * typed), Projects (⌘1–⌘9 on the first nine), and More with Quick question (when there is a questions folder, and
+ * what was typed matches it). Empty sections are left out.
  */
-export function quickStartSections(input: { needsYou: readonly MenuBarRow[]; showNeedsYou: boolean; projects: readonly QuickProject[]; filter: string; questions: boolean }): QuickSection[] {
+export function quickStartSections(input: { actions?: readonly QuickAction[]; needsYou: readonly MenuBarRow[]; showNeedsYou: boolean; projects: readonly QuickProject[]; filter: string; questions: boolean }): QuickSection[] {
   const typed = input.filter.trim();
   const sections: QuickSection[] = [];
+  const actions = (input.actions ?? []).filter((action) => !typed || fuzzyScore(typed, action.label) !== null);
+  if (actions.length) sections.push({ id: 'actions', title: 'Actions', rows: actions.map((action) => ({ kind: 'action', id: `action:${action.id}`, action })) });
   const waiting = input.showNeedsYou && !typed ? input.needsYou.filter((row) => row.section === 'needs-you') : [];
   if (waiting.length) sections.push({ id: 'needs-you', title: 'Needs you', rows: waiting.map((session) => ({ kind: 'needs-you', id: `session:${session.id}`, session })) });
   if (input.projects.length) {
@@ -79,6 +160,16 @@ export function quickStartSections(input: { needsYou: readonly MenuBarRow[]; sho
   }
   if (input.questions && (!typed || fuzzyScore(typed, QUESTION_ROW.label) !== null)) sections.push({ id: 'more', title: 'More', rows: [{ kind: 'question', id: 'question' }] });
   return sections;
+}
+
+/**
+ * The row the list starts on: the first one (an action, when there are actions). While typing, or once something is
+ * attached (a screenshot taken), the first project instead, since a project is what is wanted next.
+ */
+export function firstActive(rows: readonly QuickRow[], input: { typed: boolean; attached: boolean }): number {
+  if (!input.typed && !input.attached) return 0;
+  const project = rows.findIndex((row) => row.kind === 'project');
+  return project >= 0 ? project : 0;
 }
 
 /** The row ↑ and ↓ move to, staying at the ends; Home and End go to the first and last. */

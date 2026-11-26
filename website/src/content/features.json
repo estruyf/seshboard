@@ -1392,6 +1392,11 @@
       "page": "new-session/form"
     },
     {
+      "id": "shortcut:composer.screenshot",
+      "name": "composer.screenshot",
+      "page": "new-session/form"
+    },
+    {
       "id": "shortcut:composer.next-blank",
       "name": "Next blank",
       "page": "sessions/saved-prompts"
@@ -1717,8 +1722,18 @@
       "page": "new-session/form"
     },
     {
+      "id": "shortcut:quickstart.clear-images",
+      "name": "quickstart.clear-images",
+      "page": "new-session/form"
+    },
+    {
       "id": "shortcut:quickstart.later",
       "name": "quickstart.later",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.screenshot",
+      "name": "quickstart.screenshot",
       "page": "new-session/form"
     },
     {
@@ -2048,7 +2063,7 @@
     },
     {
       "id": "feature:quick-start",
-      "name": "Quick start: ⌃⌥Space (Ctrl+Alt+Space on Windows and Linux) in any app opens a panel over it: Needs you, your projects with ⌘1–⌘9, Quick question; a picked project becomes a token and the field takes the task, with its options (profile, model, effort, mode, this folder or a new worktree); ↩ starts it in the background, ⌘↩ starts it and opens Seshboard, ⌘K for Start in a new worktree, Change model, mode or profile, Attach the clipboard and Add to Later instead",
+      "name": "Quick start: ⌃⌥Space (Ctrl+Alt+Space on Windows and Linux) in any app opens a panel over it: Needs you, your projects with ⌘1–⌘9, Quick question; a picked project becomes a token and the field takes the task, with its options (profile, model, effort, mode, this folder or a new worktree); ↩ starts it in the background, ⌘↩ starts it and opens Seshboard, ⌘K for Start in a new worktree, Change model, mode or profile, Attach the clipboard, Take a screenshot (⌘⇧S, macOS) and Add to Later instead; the first screen lists Actions (Take a screenshot: pick an area as with ⌃⇧⌘4, the panel comes back with it attached and on the first project; then Take another screenshot and Remove all images, ⌘⇧⌫), Open Seshboard, Open the last session, Working sessions and Sessions to review (a list in the panel, filtered by what you type, Esc goes back), Needs you, Projects and More, all filtered by what you type",
       "page": "new-session/form"
     },
     {
