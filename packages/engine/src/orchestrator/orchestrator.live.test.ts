@@ -86,7 +86,7 @@ describe.skipIf(!copilotCwd || !existsSync(built))('live orchestrator with GitHu
     let orchestratorId = '';
     const bridge = new OrchestratorBridge({
       run: async (sessionId, tool, args) => (calls.push({ sessionId, tool, args }), { text: `Started "${String(args.title)}" as session test-1.` }),
-      startChild: async () => ({ text: 'Not in this test.', error: true }),
+      tool: async () => ({ text: 'Not in this test.', error: true }),
       isOrchestrator: (id) => id === orchestratorId,
       log: () => {},
     });

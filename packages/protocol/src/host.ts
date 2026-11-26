@@ -178,6 +178,65 @@ export const SessionHostInfo = z.object({
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 
+/**
+ * Seshboard's approval card (docs/seshboard-tools.md): a tool on a session's `seshboard` server wants to save or start
+ * something. The card shows what matters for its kind, in full, and you allow, deny or open it in the editor.
+ */
+export const APPROVAL_KINDS = ['pipeline', 'trigger', 'schedule', 'action', 'pause', 'delete', 'run', 'later', 'worktrees', 'handOff', 'clone'] as const;
+export const APPROVAL_EDITORS = ['pipeline', 'trigger', 'schedule', 'action'] as const;
+export type ApprovalEditor = (typeof APPROVAL_EDITORS)[number];
+export const ApprovalCard = z.object({
+  kind: z.enum(APPROVAL_KINDS),
+  /** The main button: "Save", "Run", "Delete". */
+  allowLabel: z.string().max(40),
+  /** The preview, one line each; `depth` indents a line under the one before (a pipeline's steps). */
+  lines: z.array(z.object({ text: z.string().max(300), detail: z.string().max(300).nullable(), depth: z.number().int().min(0).max(3) })).max(60),
+  /** Text shown in full, never cut: a prompt, a command, a filter written by the agent. */
+  blocks: z.array(z.object({ label: z.string().max(80), text: z.string().max(40_000) })).max(12),
+  /** Choices that change what is saved, each unticked unless `checked`: what goes without you, or watches at once. */
+  options: z.array(z.object({ key: z.string().max(60), label: z.string().max(200), detail: z.string().max(300).nullable(), checked: z.boolean() })).max(12),
+  /** Open in editor: the editor it opens, filled in with `draft`. Null: none. */
+  editor: z.enum(APPROVAL_EDITORS).nullable(),
+  /** What the editor opens with: the draft as the save RPC takes it, plus its project. */
+  draft: z.json().nullable(),
+});
+export type ApprovalCard = z.infer<typeof ApprovalCard>;
+
+/** How you answered an approval card: the options you ticked, or what the editor saved (`saved`). Sent as `updatedInput`. */
+export interface ApprovalReply {
+  options?: Record<string, boolean>;
+  /** Open in editor: you saved it there; its id and name. */
+  saved?: { id: string; name: string };
+}
+
+/**
+ * A tool asks on an approval card: its full name (`mcp__seshboard__save_pipeline`), its input, and the card. `title`
+ * goes after the agent's name, which the host that runs the session puts first ("wants to save a pipeline: …").
+ */
+export interface ApprovalAsk {
+  tool: string;
+  input: Record<string, unknown>;
+  title: string;
+  description: string;
+  card: ApprovalCard;
+}
+
+/** Your answer: allowed with what you ticked or saved, or denied with what you typed instead (`message`). */
+export interface ApprovalAnswer {
+  allowed: boolean;
+  message: string | null;
+  reply: ApprovalReply;
+}
+
+/** Reads an approval card's answer from the decision's `updatedInput`, whatever came. */
+export function approvalReplyOf(input: unknown): ApprovalReply {
+  const record = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  const options: Record<string, boolean> = {};
+  if (record.options && typeof record.options === 'object') for (const [key, value] of Object.entries(record.options)) if (typeof value === 'boolean') options[key] = value;
+  const saved = record.saved && typeof record.saved === 'object' ? (record.saved as Record<string, unknown>) : null;
+  return { options, ...(saved && typeof saved.id === 'string' ? { saved: { id: saved.id, name: typeof saved.name === 'string' ? saved.name : saved.id } } : {}) };
+}
+
 export const PermissionRequest = z.object({
   requestId: z.string(),
   sessionId: z.string(),
@@ -198,6 +257,8 @@ export const PermissionRequest = z.object({
   /** Set when a subagent asked. */
   agentId: z.string().nullable(),
   createdAt: z.number(),
+  /** Seshboard's approval card for one of its own tools: the card shows this instead of the tool's input. */
+  approval: ApprovalCard.optional(),
 });
 export type PermissionRequest = z.infer<typeof PermissionRequest>;
 

@@ -31,8 +31,9 @@ export interface PushPayload {
  * there is room to read it. So does a tool prompt whose line doesn't show all of what it asks (a command over more
  * than one line, or too long for it): Allow would approve what the notification left out.
  */
-export function promptAnswers(request: Pick<PermissionRequest, 'requestId' | 'toolName' | 'input' | 'truncated'>): { requestId: string; answers: boolean } {
-  if (request.toolName === 'AskUserQuestion' || request.toolName === 'ExitPlanMode' || request.truncated) return { requestId: request.requestId, answers: false };
+export function promptAnswers(request: Pick<PermissionRequest, 'requestId' | 'toolName' | 'input' | 'truncated' | 'approval'>): { requestId: string; answers: boolean } {
+  // An approval card is answered on the computer only, for now (docs/seshboard-tools.md).
+  if (request.toolName === 'AskUserQuestion' || request.toolName === 'ExitPlanMode' || request.truncated || request.approval) return { requestId: request.requestId, answers: false };
   const line = toolLine(request);
   return { requestId: request.requestId, answers: short(line) === line.trim() };
 }

@@ -40,7 +40,7 @@ export function wantsLabel(request: PermissionRequest | null): string {
 }
 
 /** Only a plain permission can be allowed from the panel: questions and plans need their answers in the session. */
-export const canAllow = (request: PermissionRequest | null): boolean => !!request && request.toolName !== 'AskUserQuestion' && request.toolName !== 'ExitPlanMode';
+export const canAllow = (request: PermissionRequest | null): boolean => !!request && request.toolName !== 'AskUserQuestion' && request.toolName !== 'ExitPlanMode' && !request.approval;
 
 /**
  * The panel's rows from the sidebar's rows (this computer's sessions, as the sidebar lists them), the open prompts and

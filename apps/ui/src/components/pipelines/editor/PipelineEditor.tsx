@@ -28,10 +28,12 @@ export interface PipelineEditorProps {
   onSave(form: PipelineForm): Promise<void>;
   onDuplicate(): Promise<void>;
   onDelete(): Promise<void>;
+  /** Only Save: the editor opened from an approval card, where Duplicate and Delete have no place. */
+  saveOnly?: boolean;
 }
 
 /** The editor on the right of Settings › Pipelines: the name, where it shows, the steps and the tree they make. */
-export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, onDuplicate, onDelete }: PipelineEditorProps) {
+export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, onDuplicate, onDelete, saveOnly = false }: PipelineEditorProps) {
   const id = useId();
   const [form, setForm] = useState(initial);
   const [openKey, setOpenKey] = useState<number | null>(initial.keys[0] ?? null);
@@ -251,12 +253,12 @@ export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, o
             {flashed}
           </Notice>
         )}
-        {!readOnly && form.id && (
+        {!readOnly && form.id && !saveOnly && (
           <Button variant="danger" icon={<Trash2 size={13} aria-hidden />} onClick={() => void run('delete', onDelete, 'Couldn’t delete')} disabled={busy !== null} aria-busy={busy === 'delete'} data-pipeline-delete className={error || flashed ? '' : 'mr-auto'}>
             {busy === 'delete' ? 'Deleting…' : 'Delete'}
           </Button>
         )}
-        {form.id && (
+        {form.id && !saveOnly && (
           <Button icon={<Copy size={13} aria-hidden />} onClick={() => void run('duplicate', onDuplicate, 'Couldn’t duplicate')} disabled={busy !== null} aria-busy={busy === 'duplicate'} data-pipeline-duplicate>
             {busy === 'duplicate' ? 'Duplicating…' : 'Duplicate'}
           </Button>

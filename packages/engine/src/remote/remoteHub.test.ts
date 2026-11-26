@@ -131,7 +131,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
   /** Each watched session's listener, to send it updates as the transcript hub would. */
   const transcriptListeners = new Map<string, (update: TranscriptUpdate) => void>();
   const answered: string[] = [];
-  const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[]; orchestrator?: boolean }> = [];
+  const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[]; orchestrator?: boolean; title?: string }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
   const calls: string[] = [];
   /** How each session stands with its usage limit. */
@@ -212,7 +212,9 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     commands: async (sessionId) => [{ name: 'review', description: `Review ${sessionId}`, argumentHint: '[pr]' }],
     respond: (requestId) => void answered.push(requestId),
-    create: async (root, prompt, choice, images, orchestrator) => (created.push({ root, prompt, model: choice.model, choice, images, orchestrator: orchestrator ?? false }), { sessionId: 'new' }),
+    create: async (root, prompt, choice, images, orchestrator, title) => (created.push({ root, prompt, model: choice.model, choice, images, orchestrator: orchestrator ?? false, ...(title ? { title } : {}) }), { sessionId: 'new' }),
+    // Another computer finds a project by its GitHub repository; this one has none.
+    repoOf: async (root) => (root === ROOT ? 'me/web' : null),
     // The Copilot profile is GitHub Copilot's, with its own modes.
     providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }], supports: [] } : null),
     providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
@@ -449,13 +451,16 @@ describe('Remote hub', () => {
     expect(answered).toEqual(['r1']);
     await expect(remote.call('session.respond', { requestId: 'r-unknown', decision: { behavior: 'allow' } })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
-    expect(await remote.call('projects.list', {})).toEqual({ projects: [{ id: projectIdOf(FIRST), name: 'Api' }, { id: projectIdOf(ROOT), name: 'Web' }] });
+    expect(await remote.call('projects.list', {})).toEqual({ projects: [{ id: projectIdOf(FIRST), name: 'Api', repo: null }, { id: projectIdOf(ROOT), name: 'Web', repo: 'me/web' }] });
     await expect(remote.call('session.create', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test' });
     expect(created).toMatchObject([{ root: ROOT, prompt: 'add a test', model: 'opus', images: [], orchestrator: false }]);
     // Run as › Orchestrator on the phone: the engine starts it as the project's orchestrator.
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'ship the backlog', orchestrator: true });
     expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'ship the backlog', orchestrator: true });
+    // A session on another computer asked for it (start_session with computer): it gets the title it gave.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'run the smoke', title: 'Windows smoke' });
+    expect(created.at(-1)).toMatchObject({ prompt: 'run the smoke', title: 'Windows smoke' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'match this', images: [image], files: [{ name: 'spec.pdf', data: 'aGVsbG8=' }] });
     expect(created.at(-1)).toMatchObject({ images: [image], prompt: expect.stringMatching(/^match this\n\n@\S+spec\.pdf$/) });
     await expect(remote.call('session.create', { projectId: projectIdOf('/elsewhere'), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

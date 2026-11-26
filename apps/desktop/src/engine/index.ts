@@ -176,6 +176,12 @@ process.parentPort.on('message', (event) => {
     }
     return;
   }
+  // The smoke run's seshboard tools step: a stand-in session calls one of its tools; the answer goes to a file.
+  if (data?.type === 'smokeSessionTool') {
+    const { sessionId, tool, args } = data as { sessionId?: unknown; tool?: unknown; args?: unknown };
+    if (typeof sessionId === 'string' && typeof tool === 'string') void engine.smokeSessionTool({ sessionId, tool, args: args && typeof args === 'object' ? (args as Record<string, unknown>) : {} });
+    return;
+  }
   // The smoke run's pipeline step: a step's turn ends, with the reply its verdict is read from.
   if (data?.type === 'smokePipelineTurn') {
     const { sessionId, outcome, reply } = data as { sessionId?: unknown; outcome?: unknown; reply?: unknown };

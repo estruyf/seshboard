@@ -200,7 +200,12 @@ export const RemoteArchivedSession = z.object({
 });
 export type RemoteArchivedSession = z.infer<typeof RemoteArchivedSession>;
 
-export const RemoteProject = z.object({ id: ProjectId, name: z.string() });
+/**
+ * A project you added. `repo` is the GitHub repository its folder's remote points at (`owner/name`, lowercased), so
+ * another computer can find the same project when its folder there has another path; null without one, and left out
+ * by an older Seshboard.
+ */
+export const RemoteProject = z.object({ id: ProjectId, name: z.string(), repo: z.string().max(200).nullable().optional() });
 export type RemoteProject = z.infer<typeof RemoteProject>;
 
 /** A transcript block for the phone: images are only a placeholder, tool output is plain text. */
@@ -537,6 +542,11 @@ export const remoteContract = {
            * With `REMOTE_FEATURE_ORCHESTRATOR`.
            */
           orchestrator: z.boolean().optional(),
+          /**
+           * Its title in the sidebar, as a session another one started there gets (start_session with `computer`,
+           * docs/orchestrator.md). An older Seshboard leaves it out and names it from the prompt.
+           */
+          title: z.string().trim().min(1).max(80).optional(),
         })
         .extend(RemoteSessionOptions.shape),
       result: z.object({ sessionId: z.string() }),

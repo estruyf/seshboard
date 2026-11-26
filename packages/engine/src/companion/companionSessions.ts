@@ -213,5 +213,7 @@ export function sessionsFor(all: readonly CompanionSession[], folders: readonly 
 /** The prompts of these sessions, oldest first. */
 export function promptsFor(permissions: readonly PermissionRequest[], sessions: readonly Pick<CompanionSession, 'id'>[]): PermissionRequest[] {
   const ids = new Set(sessions.map((s) => s.id));
-  return permissions.filter((p) => ids.has(p.sessionId)).sort((a, b) => a.createdAt - b.createdAt);
+  // An approval card (docs/seshboard-tools.md) is answered in the session's own card on the computer only, for now:
+  // elsewhere there is no room for every prompt in full, Open in editor or the ticks.
+  return permissions.filter((p) => ids.has(p.sessionId) && !p.approval).sort((a, b) => a.createdAt - b.createdAt);
 }

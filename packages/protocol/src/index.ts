@@ -42,6 +42,7 @@ export * from './activity.ts';
 export * from './catchUp.ts';
 export * from './catchUpRules.ts';
 export * from './remote.ts';
+export * from './seshboardTools.ts';
 export * from './appUpdate.ts';
 export * from './computers.ts';
 export * from './clone.ts';

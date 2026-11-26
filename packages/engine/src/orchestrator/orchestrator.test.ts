@@ -290,13 +290,137 @@ describe('Orchestrator: a session that asks to start another', () => {
   });
 });
 
+describe('Orchestrator: a session that asks to start one on another computer', () => {
+  const PROJECTS = { projects: [{ id: '0000000000000a01', name: 'site', repo: 'me/site' }, { id: '0000000000000a02', name: 'Work app', repo: 'me/app' }] };
+  function remote(overrides: { connected?: boolean; projects?: unknown; created?: unknown; fail?: string; clonePlan?: unknown; cloned?: unknown } = {}) {
+    const calls: Array<{ computerId: string; method: string; params: unknown }> = [];
+    const computers = {
+      list: () => [
+        { id: 'c1', name: 'mystic', connected: overrides.connected ?? true, features: ['projects.clone'] },
+        { id: 'c2', name: 'Windows box', connected: false },
+      ],
+      // The clone's last progress, as that computer sends it once the clone is done.
+      next: async (_id: string, _name: string, match: (payload: unknown) => boolean) => {
+        // The engine listens before it asks for the clone, so the progress can't come first.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const jobId = (calls.find((c) => c.method === 'projects.clone')?.params as { jobId?: string } | undefined)?.jobId ?? 'none';
+        const payload = { jobId, state: 'done', projectId: '0000000000000a09', brings: null, error: null, ...((overrides.cloned as object) ?? {}) };
+        return match(payload) ? payload : null;
+      },
+      call: async (computerId: string, method: string, params: unknown) => {
+        calls.push({ computerId, method, params });
+        if (overrides.fail && method === overrides.fail) throw new Error('UNAVAILABLE');
+        if (method === 'projects.list') return overrides.projects ?? PROJECTS;
+        if (method === 'options.get') return { profiles: [{ id: 'prof-work', name: 'Work' }, { id: 'prof-cop', name: 'Copilot', provider: { id: 'copilot' } }] };
+        if (method === 'session.create') return overrides.created ?? { sessionId: 'remote-1' };
+        if (method === 'projects.clonePlan') return overrides.clonePlan ?? { state: 'free', repo: { owner: 'me', name: 'app' }, name: 'app', where: '~/Developer/app' };
+        if (method === 'projects.clone') return {};
+        throw new Error(`unexpected ${method}`);
+      },
+    };
+    return { computers, calls, localProject: async () => ({ name: 'app', repos: ['me/app'] }) };
+  }
+
+  it('finds the project by its repository, asks on a card that names the computer, then starts it there', async () => {
+    const { computers, calls, localProject } = remote();
+    const { orchestrator, asks, started, parents } = setup({ computers, localProject });
+    const result = await orchestrator.startChild('plain', { title: 'Windows smoke', prompt: 'Run the smoke.', computer: 'MYSTIC', agent: 'copilot', workspace: 'current', model: 'sonnet' });
+    expect(asks).toEqual([{ sessionId: 'plain', ask: { title: 'Windows smoke', prompt: 'Run the smoke.', agent: 'Copilot', workspace: 'current', computer: 'mystic', project: 'Work app' } }]);
+    expect(calls.at(-1)).toEqual({ computerId: 'c1', method: 'session.create', params: { projectId: '0000000000000a02', prompt: 'Run the smoke.', title: 'Windows smoke', profileId: 'prof-cop', model: 'sonnet', worktree: false } });
+    expect(result).toEqual({ text: expect.stringContaining('Started "Windows smoke" on mystic as session remote-1, in its project "Work app".') });
+    // Nothing starts here, and nothing nests: a parent works within one computer.
+    expect(started).toEqual([]);
+    expect(parents.size).toBe(0);
+  });
+
+  it('leaves the workspace and the agent to the project there when the call leaves them out', async () => {
+    const { computers, calls, localProject } = remote();
+    const { orchestrator, asks } = setup({ computers, localProject });
+    await orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'mystic' });
+    expect(asks[0]!.ask).toMatchObject({ agent: null, workspace: null });
+    expect(calls.map((c) => c.method)).toEqual(['projects.list', 'session.create']);
+    expect(calls[1]!.params).toEqual({ projectId: '0000000000000a02', prompt: 'a', title: 'A' });
+  });
+
+  it('refuses before the card: an unknown or offline computer, no such project there, an unknown agent', async () => {
+    const { computers, localProject } = remote();
+    const { orchestrator, asks } = setup({ computers, localProject });
+    expect(await orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'nowhere' })).toMatchObject({ error: true, text: expect.stringContaining('Pick one of: mystic, Windows box') });
+    expect(await orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'windows box' })).toMatchObject({ error: true, text: expect.stringContaining('Windows box is not connected now') });
+    expect(await orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'mystic', agent: 'Gemini' })).toMatchObject({ error: true, text: expect.stringContaining('Pick one of: Work, Copilot') });
+    const other = remote({ projects: { projects: [{ id: '0000000000000a03', name: 'app', repo: 'someone/app' }] }, clonePlan: { state: 'off', name: 'app', where: '' } });
+    const second = setup({ computers: other.computers, localProject: other.localProject });
+    expect(await second.orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'mystic' })).toMatchObject({ error: true, text: expect.stringContaining('Clone from GitHub is off there') });
+    expect(asks).toEqual([]);
+    expect(second.asks).toEqual([]);
+    const none = setup({ localProject });
+    expect(await none.orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'mystic' })).toMatchObject({ error: true, text: expect.stringContaining('No other computers are paired') });
+  });
+
+  it('starts nothing when you deny it, and says so when the start fails there', async () => {
+    const { computers, calls, localProject } = remote({ fail: 'session.create' });
+    const { orchestrator, answer } = setup({ computers, localProject });
+    answer(false);
+    expect(await orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'mystic' })).toEqual({ text: expect.stringContaining('The user did not start "A" on mystic') });
+    expect(calls.map((c) => c.method)).toEqual(['projects.list']);
+    answer(true);
+    expect(await orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'mystic' })).toMatchObject({ error: true, text: expect.stringContaining('could not start on mystic: UNAVAILABLE') });
+  });
+
+  it('nests the new session under the asking one here, by its row id', async () => {
+    const { computers, localProject } = remote();
+    const { orchestrator } = setup({ computers, localProject });
+    await orchestrator.startChild('plain', { title: 'Windows smoke', prompt: 'Run it.', computer: 'mystic' });
+    expect(orchestrator.startedChildren()).toEqual([{ sessionId: 'remote:c1:remote-1', parentId: 'plain', title: 'Windows smoke' }]);
+  });
+
+  it('offers to clone the project there when it has none, on the same card, then starts in the clone', async () => {
+    const { computers, calls, localProject } = remote({ projects: { projects: [] } });
+    const { orchestrator, asks } = setup({ computers, localProject });
+    const result = await orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'mystic' });
+    expect(asks[0]!.ask).toMatchObject({ computer: 'mystic', project: 'app, cloned there first into ~/Developer/app' });
+    expect(calls.map((c) => c.method)).toEqual(['projects.list', 'projects.clonePlan', 'projects.clone', 'session.create']);
+    expect(calls[2]!.params).toMatchObject({ url: 'https://github.com/me/app', name: 'app' });
+    expect(calls[3]!.params).toMatchObject({ projectId: '0000000000000a09' });
+    expect(result.text).toContain('in its project "app"');
+  });
+
+  it('asks again when the clone brings hooks, and starts nothing when you say no', async () => {
+    const brings = { hooks: [{ event: 'PreToolUse', command: './check.sh' }], mcpServers: [], allow: [], plugins: [], settings: [] };
+    const { computers, calls, localProject } = remote({ projects: { projects: [] }, cloned: { brings } });
+    const seen: unknown[] = [];
+    const { orchestrator } = setup({ computers, localProject, askBrings: async (_id, _computer, _repo, lines) => (seen.push(lines), false) });
+    expect(await orchestrator.startChild('plain', { title: 'A', prompt: 'a', computer: 'mystic' })).toMatchObject({ error: true, text: expect.stringContaining('did not start a session in it') });
+    expect(seen).toEqual([[['Hook (PreToolUse)', './check.sh']]]);
+    expect(calls.map((c) => c.method)).not.toContain('session.create');
+  });
+
+  it('lets an orchestrator start on another computer without a card, as one of its sessions', async () => {
+    const { computers, calls, localProject } = remote();
+    const { orchestrator, asks, store } = setup({ computers, localProject });
+    const result = await orchestrator.run('orc', 'start_session', { title: 'Windows smoke', prompt: 'Run it.', computer: 'mystic' });
+    expect(result.text).toContain('Started "Windows smoke" on mystic as session remote:c1:remote-1');
+    expect(asks).toEqual([]);
+    expect(calls.at(-1)!.method).toBe('session.create');
+    expect(store.workersOf('orc')).toMatchObject([{ sessionId: 'remote:c1:remote-1', title: 'Windows smoke' }]);
+  });
+
+  it('lists the computers, and which have this project', async () => {
+    const { computers, localProject } = remote();
+    const { orchestrator } = setup({ computers, localProject });
+    const { text } = await orchestrator.listComputers('plain');
+    expect(text.split('\n').slice(0, 2)).toEqual(['- mystic: connected, has this project as "Work app"', '- Windows box: not connected now']);
+    expect((await setup().orchestrator.listComputers('plain')).text).toContain('No other computers are paired');
+  });
+});
+
 describe('OrchestratorBridge', () => {
   const BASE = { command: '/app/Seshboard', args: ['orchestrator-mcp.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
   const token = (server: { env: Record<string, string> }) => server.env.SESHBOARD_ORCHESTRATOR_TOKEN!;
 
   it('runs a tool for the orchestrator its token belongs to, and for no other session', async () => {
     const runs: unknown[] = [];
-    const bridge = new OrchestratorBridge({ run: async (sessionId, tool, args) => (runs.push({ sessionId, tool, args }), { text: 'ok' }), startChild: async () => ({ text: 'child' }), isOrchestrator: (id) => id === 'orc', log: () => {} });
+    const bridge = new OrchestratorBridge({ run: async (sessionId, tool, args) => (runs.push({ sessionId, tool, args }), { text: 'ok' }), tool: async (_id, tool) => ({ text: `tool ${tool}` }), isOrchestrator: (id) => id === 'orc', log: () => {} });
     cleanups.push(() => bridge.close());
     const server = await bridge.serverFor(BASE, () => 'orc');
     expect(server.env).toMatchObject({ ELECTRON_RUN_AS_NODE: '1', SESHBOARD_ORCHESTRATOR_SOCKET: expect.any(String) });
@@ -309,15 +433,31 @@ describe('OrchestratorBridge', () => {
     expect(runs).toHaveLength(1);
   });
 
-  it('gives any other session only start_session, which goes to startChild', async () => {
+  it('gives any other session the seshboard tools, and an orchestrator its own and run_pipeline', async () => {
     const children: unknown[] = [];
-    const bridge = new OrchestratorBridge({ run: async () => ({ text: 'orchestrator' }), startChild: async (sessionId, args) => (children.push({ sessionId, args }), { text: 'asked' }), isOrchestrator: () => false, log: () => {} });
+    const bridge = new OrchestratorBridge({
+      run: async () => ({ text: 'orchestrator' }),
+      tool: async (sessionId, tool, args) => (tool === 'start_session' ? (children.push({ sessionId, args }), { text: 'asked' }) : { text: `${tool} for ${sessionId}` }),
+      isOrchestrator: () => false,
+      log: () => {},
+    });
     cleanups.push(() => bridge.close());
     const server = await bridge.serverFor(BASE, () => 'plain', 'session');
     expect(server.env.SESHBOARD_ORCHESTRATOR_ROLE).toBe('session');
     await expect(bridge.handle({ id: 1, token: token(server), tool: 'start_session', args: { title: 'A', prompt: 'a' } })).resolves.toEqual({ text: 'asked' });
     expect(children).toEqual([{ sessionId: 'plain', args: { title: 'A', prompt: 'a' } }]);
     await expect(bridge.handle({ id: 2, token: token(server), tool: 'message_session', args: {} })).resolves.toMatchObject({ error: true });
+    await expect(bridge.handle({ id: 3, token: token(server), tool: 'list_computers', args: {} })).resolves.toEqual({ text: 'list_computers for plain' });
+    await expect(bridge.handle({ id: 4, token: token(server), tool: 'save_pipeline', args: {} })).resolves.toEqual({ text: 'save_pipeline for plain' });
+    expect(children).toHaveLength(1);
+    // A project that gives its sessions only the start tools: the automation is refused, and its server says so.
+    const few = await bridge.serverFor(BASE, () => 'plain', 'session', 'sessions');
+    expect(few.env.SESHBOARD_SESSION_TOOLS).toBe('sessions');
+    await expect(bridge.handle({ id: 5, token: token(few), tool: 'save_pipeline', args: {} })).resolves.toMatchObject({ error: true });
+    await expect(bridge.handle({ id: 6, token: token(few), tool: 'usage', args: {} })).resolves.toEqual({ text: 'usage for plain' });
+    // An orchestrator's token can't list computers, but runs a pipeline as a task.
+    const orchestratorServer = await bridge.serverFor(BASE, () => 'orc');
+    await expect(bridge.handle({ id: 7, token: token(orchestratorServer), tool: 'list_computers', args: {} })).resolves.toMatchObject({ error: true });
     expect((await bridge.serverFor(BASE, () => 'orc')).env.SESHBOARD_ORCHESTRATOR_ROLE).toBeUndefined();
   });
 });

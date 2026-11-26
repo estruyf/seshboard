@@ -38,6 +38,7 @@ import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
@@ -564,6 +565,27 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
             await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, orchestratorInstructions } });
             reload();
           }}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Seshboard tools in sessions"
+        hint="What the seshboard tools let this project's sessions do. Start sessions: start one here or on another computer, start later, read other sessions and notify you. With automation: also set up pipelines, triggers, schedules and project actions, and run them. Each save or start asks you first. Fewer tools leave more context for agents without tool search. Applies to sessions started from now on."
+        data-project-session-tools
+      >
+        <SegmentedControl
+          mode="radio"
+          label="Seshboard tools in sessions"
+          value={project.defaults.sessionTools ?? 'all'}
+          segments={[
+            { value: 'sessions', label: 'Start sessions' },
+            { value: 'all', label: 'With automation' },
+          ]}
+          onChange={async (sessionTools) => {
+            if (!client) return;
+            await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, sessionTools } });
+            reload();
+          }}
+          data-project-session-tools-choice
         />
       </SettingRow>
       <SettingRow

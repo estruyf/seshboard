@@ -1,5 +1,5 @@
 import { connect } from 'node:net';
-import { ORCHESTRATOR_ROLE_ENV, ORCHESTRATOR_SOCKET_ENV, ORCHESTRATOR_TOKEN_ENV, type OrchestratorBridgeReply, type OrchestratorBridgeRequest, type OrchestratorToolResult } from '@seshboard/protocol/bridge';
+import { ORCHESTRATOR_ROLE_ENV, ORCHESTRATOR_SOCKET_ENV, ORCHESTRATOR_TOKEN_ENV, SESSION_TOOL_SET_ENV, toolSetOf, type OrchestratorBridgeReply, type OrchestratorBridgeRequest, type OrchestratorToolResult } from '@seshboard/protocol';
 import { lineReader } from '../browserMcp/server.ts';
 import { orchestratorMcpServer } from './server.ts';
 
@@ -8,8 +8,9 @@ import { orchestratorMcpServer } from './server.ts';
 // agent closes its input.
 const socketPath = process.env[ORCHESTRATOR_SOCKET_ENV] ?? '';
 const token = process.env[ORCHESTRATOR_TOKEN_ENV] ?? '';
-// A session that is not an orchestrator lists only start_session, which asks you first.
+// A session that is not an orchestrator lists the `seshboard` server's tools, the set its project gives it.
 const role = process.env[ORCHESTRATOR_ROLE_ENV] === 'session' ? 'session' : 'orchestrator';
+const set = toolSetOf(process.env[SESSION_TOOL_SET_ENV]);
 
 let nextId = 1;
 const pending = new Map<number, (result: OrchestratorToolResult) => void>();
@@ -46,6 +47,7 @@ const take = orchestratorMcpServer(
       socket.write(`${JSON.stringify(request)}\n`);
     }),
   role,
+  set,
 );
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk: string) => take(chunk));

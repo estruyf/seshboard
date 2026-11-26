@@ -2188,7 +2188,7 @@ describe('buildOptions', () => {
     const orchestrator = { command: '/Apps/Seshboard', args: ['/Apps/orchestrator-mcp.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
     const options = buildOptions({ ...config, orchestrator, appendSystem: 'You are the orchestrator.', skimMarks: true }, () => {});
     expect(options.mcpServers).toEqual({ orchestrator: { type: 'stdio', ...orchestrator } });
-    expect(options.allowedTools).toEqual(['mcp__orchestrator__start_session', 'mcp__orchestrator__list_sessions', 'mcp__orchestrator__read_session', 'mcp__orchestrator__message_session']);
+    expect(options.allowedTools).toEqual(['mcp__orchestrator__start_session', 'mcp__orchestrator__list_sessions', 'mcp__orchestrator__read_session', 'mcp__orchestrator__message_session', 'mcp__orchestrator__run_pipeline', 'mcp__orchestrator__get_run', 'mcp__orchestrator__list_computers']);
     expect(options.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: `${SKIM_MARKS_PROMPT}\n\nYou are the orchestrator.` });
     expect(buildOptions({ ...config, appendSystem: 'Branch from dev.' }, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: 'Branch from dev.' });
     expect(buildOptions({ ...config, orchestrator, readOnly: true }, () => {}).mcpServers).toBeUndefined();

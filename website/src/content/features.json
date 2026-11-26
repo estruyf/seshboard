@@ -5667,6 +5667,26 @@
       "page": "sessions/orchestrator"
     },
     {
+      "id": "feature:start-session-on-computer",
+      "name": "Ask a session to start a session on another computer: a session lists the paired computers and which have its project, and asks on a card that names the computer (\"start a session on mystic: seshboard\"); the project there is found by its GitHub repository, or cloned there first; that computer's own limits apply, and the session shows under the one that asked; an orchestrator spreads its tasks across computers the same way",
+      "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:agent-automation",
+      "name": "Agents set up automation: a session saves a pipeline, trigger, schedule or project action you describe, after a card that shows every prompt and command in full, with Save, Open in editor and Deny; risky choices (open the pull request without me, run without stopping, state labels, issues from anyone) stay unticked unless you tick them; a new trigger is saved paused unless you tick Start watching now; it can also run pipelines and project actions, pause, resume and delete, check a trigger now and run a schedule now",
+      "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:agent-helpers",
+      "name": "Help from sessions: a session sees the usage left, starts a task after the limit resets or at a time, finds and reads this project's earlier sessions, notifies your phone, hands off to a fresh session with a brief, and cleans up merged worktrees; starts and clean-ups ask you first",
+      "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:project-session-tools",
+      "name": "Seshboard tools in sessions: a project's Settings tab picks whether its sessions get only the tools that start sessions, or the automation tools too",
+      "page": "projects/settings"
+    },
+    {
       "id": "feature:remote-orchestrator",
       "name": "Remote: Run as › Orchestrator in New session on the phone and for another computer starts that computer's project orchestrator there, with any agent; the sessions it starts show under it; its overview (Waiting on you, Working, Queued, Ready for review, Idle) opens from a bar under its title on the phone and shows above its conversation for another computer, with Open on each session and the way back from one",
       "page": "sessions/orchestrator"

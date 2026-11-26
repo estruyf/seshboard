@@ -237,9 +237,12 @@ export interface RemoteHubOptions {
   commands?(sessionId: string): Promise<SlashCommand[]>;
   /**
    * A new session in `root`, with what the phone chose and the project's defaults for the rest. `orchestrator`: it
-   * starts as the project's orchestrator (docs/orchestrator.md).
+   * starts as the project's orchestrator (docs/orchestrator.md). `title`: its title in the sidebar, from a session on
+   * another computer that asked for it (start_session with `computer`).
    */
-  create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[], orchestrator?: boolean): Promise<{ sessionId: string }>;
+  create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[], orchestrator?: boolean, title?: string): Promise<{ sessionId: string }>;
+  /** The GitHub repository a project's folder is (`owner/name`, lowercased), so another computer finds the same project; null without one. */
+  repoOf?(root: string): Promise<string | null>;
   /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
   providerOfProfile?(profileId: string): RemoteProfile['provider'] | null;
   /** Providers whose sessions are read-only here (Codex), with the command that continues one in its own CLI. */
@@ -829,6 +832,17 @@ export class RemoteHub {
     this.options.appState.set(PUSH_KEY, entry ? [...rest, { deviceId, ...entry }] : rest);
   }
 
+  /**
+   * A session's agent tells you something (notify_me on its `seshboard` server): a push as a finished turn's, or as a
+   * needs-you one. False when no paired device gets pushes from this computer.
+   */
+  pushNote(sessionId: string, text: string, needsYou: boolean): boolean {
+    if (!this.settings.enabled || !this.pushEntries().length) return false;
+    const session = this.list().sessions.find((s) => s.id === sessionId);
+    this.push({ kind: needsYou ? 'needs-you' : 'finished', sessionId, title: session?.title ?? 'A session', project: session?.projectName ?? '', ...(session ? profileOf(session) : {}), line: text });
+    return true;
+  }
+
   /** Reminders that came due (Remind me later): one push each, to the devices that want them. */
   pushReminders(reminders: readonly { id: string; title: string; note: string | null }[]): void {
     for (const reminder of reminders) {
@@ -1022,7 +1036,9 @@ export class RemoteHub {
     return {
       'sessions.list': () => this.list(),
       'sessions.archived': () => ({ sessions: this.archived() }),
-      'projects.list': () => ({ projects: this.yourProjects().map((p) => ({ id: projectIdOf(p.root), name: p.name })) }),
+      'projects.list': async () => ({
+        projects: await Promise.all(this.yourProjects().map(async (p) => ({ id: projectIdOf(p.root), name: p.name, repo: (await this.options.repoOf?.(p.root).catch(() => null)) ?? null }))),
+      }),
       'projects.branches': ({ projectId }) => this.options.branches(this.project(projectId).root),
       'transcript.get': async ({ sessionId, before, after, limit }) => {
         this.checkSession(sessionId);
@@ -1105,14 +1121,15 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId: prompt.sessionId, messageUuid: null, requestId, device: device.name, deviceId: device.id, answer: { toolName: prompt.toolName, allowed: decision.behavior === 'allow' } });
         return {};
       },
-      'session.create': async ({ projectId, prompt, images, files, orchestrator, ...options }) => {
+      'session.create': async ({ projectId, prompt, images, files, orchestrator, title, ...options }) => {
         const project = this.project(projectId);
         checkAttachments(images, files);
         // A provider profile (GitHub Copilot) runs in its own modes: one it doesn't have is refused, not passed on.
         const provider = options.profileId ? this.options.providerOfProfile?.(options.profileId) : null;
         if (provider && options.permissionMode && !provider.modes.some((m) => m.value === options.permissionMode)) throw new RpcError('INVALID_PARAMS', `${provider.name} has no such mode`);
         const choice = await this.choiceFor(project, options);
-        const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images, orchestrator === true);
+        const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images, orchestrator === true, title);
+        if (title) this.log('info', `Remote: ${device.name} started "${title}" in ${project.name} for one of its sessions`);
         if (orchestrator) this.log('info', `Remote: ${device.name} started an orchestrator in ${project.name}`);
         this.origins.add(created.sessionId, device);
         // Its first prompt: the sidebar's last action for the device.

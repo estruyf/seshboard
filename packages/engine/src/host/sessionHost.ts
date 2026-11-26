@@ -1,6 +1,6 @@
 import { randomUUID, type UUID } from 'node:crypto';
 import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { BROWSER_SERVER, BROWSER_TOOL_NAMES, cacheTtlOf, ORCHESTRATOR_SERVER, ORCHESTRATOR_TOOL_NAMES, SESSION_TOOL_NAMES, SESSIONS_SERVER, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
+import { BROWSER_SERVER, BROWSER_TOOL_NAMES, cacheTtlOf, ORCHESTRATOR_SERVER, ORCHESTRATOR_TOOL_NAMES, SESHBOARD_TOOL_NAMES, SESSIONS_SERVER, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -258,7 +258,7 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   // Allowed up front too: the engine asks you on its own card before a session starts, in every mode.
   if (config.sessions && !config.orchestrator && !config.readOnly) {
     options.mcpServers = { ...options.mcpServers, [SESSIONS_SERVER]: { type: 'stdio', ...config.sessions } };
-    options.allowedTools = [...(options.allowedTools ?? []), ...SESSION_TOOL_NAMES];
+    options.allowedTools = [...(options.allowedTools ?? []), ...SESHBOARD_TOOL_NAMES];
   }
   return options;
 }

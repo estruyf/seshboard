@@ -221,6 +221,11 @@ describe('prompts', () => {
     expect(promptsFor(prompts, [{ id: 's1' }]).map((p) => p.requestId)).toEqual(['a', 'b']);
   });
 
+  it('leaves out approval cards: they are answered in the session on the computer', () => {
+    const card = { ...prompt('card', 's1', 3), approval: { kind: 'pipeline' as const, allowLabel: 'Save', lines: [], blocks: [], options: [], editor: null, draft: null } };
+    expect(promptsFor([prompt('a', 's1', 1), card], [{ id: 's1' }]).map((p) => p.requestId)).toEqual(['a']);
+  });
+
   it('hands an editor the prompts of its folders, and its answers to the engine', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-companion-'));
     const answers: Array<[string, PermissionDecision, boolean]> = [];

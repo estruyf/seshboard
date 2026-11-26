@@ -31,6 +31,11 @@ import {
   type Contract,
   type HookableComponent,
   type HandlerContext,
+  type ComputerEvent,
+  SESSION_TOOL_PREFIX,
+  type MethodName,
+  type ParamsOf,
+  type ResultOf,
   type LiveSession,
   type Handlers,
   type LogEntry,
@@ -109,7 +114,7 @@ import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
 import { TranscriptCache } from './claude/transcriptCache.ts';
-import { findCheckout, githubPage } from './git/remotes.ts';
+import { findCheckout, githubPage, githubRepo, githubRepos } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSeshboard } from './git/githubStar.ts';
@@ -219,6 +224,7 @@ import { RemoteHub } from './remote/remoteHub.ts';
 import { NO_GLOBAL_MODEL, type GlobalModel } from './remote/remoteView.ts';
 import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
+import { SessionTools } from './sessionTools/sessionTools.ts';
 import { FileIndex } from './system/files.ts';
 import { readPreview, readPreviewImage } from './system/filePreview.ts';
 import { writeFileContent } from './system/fileWrite.ts';
@@ -481,6 +487,11 @@ export interface Engine {
    * tools as its agent would. Starts are stand-ins too, so no prompt reaches an agent.
    */
   smokeOrchestrator(call: { sessionId: string; projectRoot: string; tool?: string; args?: Record<string, unknown> }): Promise<{ text: string; error?: boolean } | null>;
+  /**
+   * The smoke test (`stubQueueStarts` only): a stand-in session calls one of its `seshboard` tools, as its MCP server
+   * would (docs/seshboard-tools.md). The answer goes to `smoke-session-tools.jsonl` in the data folder.
+   */
+  smokeSessionTool(call: { sessionId: string; tool: string; args: Record<string, unknown> }): Promise<void>;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
   /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
@@ -542,6 +553,8 @@ export function createEngine(options: EngineOptions): Engine {
   let presentNow = false;
   /** Other computers this app paired with, when this engine can keep a key for them. */
   let computers: ComputerHub | null = null;
+  /** The tools wait for another computer's events (a clone's progress) here. */
+  const computerEventWaiters = new Set<(event: ComputerEvent) => void>();
   /** The sidebar's scope in the window that reported focus last, so a phone lists what the sidebar lists. */
   let sidebarScope: 'switchboard' | 'all' = 'switchboard';
   /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
@@ -1500,12 +1513,121 @@ export function createEngine(options: EngineOptions): Engine {
     },
     changed: orchestratorsChanged,
     log,
+    // `computers` is set up later on; until then, and without Remote, there are none.
+    computers: {
+      list: () => (computers?.status().computers ?? []).map((c) => ({ id: c.id, name: c.name, connected: c.state === 'connected', features: c.features ?? [] })),
+      call: (computerId, method, params) => requireComputers().call(computerId, method, params),
+      next: (computerId, name, match, timeoutMs) =>
+        new Promise((resolve) => {
+          const waiter = (event: ComputerEvent) => {
+            if (event.computerId !== computerId || event.name !== name || !match(event.payload)) return;
+            clearTimeout(timer);
+            computerEventWaiters.delete(waiter);
+            resolve(event.payload);
+          };
+          const timer = setTimeout(() => {
+            computerEventWaiters.delete(waiter);
+            resolve(null);
+          }, timeoutMs);
+          computerEventWaiters.add(waiter);
+        }),
+    },
+    askBrings: async (sessionId, computer, repo, lines) =>
+      (
+        await hosts.askApproval(sessionId, {
+          tool: `${SESSION_TOOL_PREFIX}start_session`,
+          input: { computer, repo },
+          title: `wants to start a session in ${repo} on ${computer}, which brings its own settings`,
+          description: 'The clone is done. These run in its sessions without asking, as New session there would warn.',
+          card: { kind: 'clone', allowLabel: 'Start session', lines: lines.map(([text, detail]) => ({ text, detail, depth: 0 })), blocks: [], options: [], editor: null, draft: null },
+        })
+      ).allowed,
+    localProject: async (root) => ({ name: listProjects().find((p) => p.root === root)?.name ?? root.split(/[\\/]/).filter(Boolean).pop() ?? root, repos: await githubRepos(root) }),
   });
   let orchestratorBase: McpStdioServer | null = null;
-  const orchestratorBridge = new OrchestratorBridge({ run: (sessionId, tool, args) => orchestrator.run(sessionId, tool, args), startChild: (sessionId, args) => orchestrator.startChild(sessionId, args), isOrchestrator: (id) => orchestrator.isOrchestrator(id), log });
+  /** Terminals a tool waits on (run_action): told when the run ends, with its output. */
+  const terminalWaiters = new Map<string, (info: TerminalInfo, run: { output: string; stopped: boolean }) => void>();
+  /**
+   * The `seshboard` server's tools (docs/seshboard-tools.md): each wraps one of the engine's own RPCs (`callRpc`, set
+   * once the handlers exist), and what saves or starts asks you on an approval card in the session first.
+   */
+  const sessionTools = new SessionTools({
+    session: (id) => {
+      const summary = sessions.get(id) ?? null;
+      // A session started a moment ago has no summary yet (nor the smoke test's stand-ins): its folder, from its host.
+      const host = [...hosts.list().hosts, ...smokeHosts.values()].find((h) => h.sessionId === id);
+      const projectRoot = summary?.projectRoot ?? (host?.cwd ? resolver.resolve(host.cwd).root : null);
+      if (!projectRoot) return null;
+      return { projectRoot, cwd: summary?.cwd ?? host?.cwd ?? null, profileId: summary?.profileId ?? null, title: summary?.title ?? 'This session' };
+    },
+    projects: () => listProjects().map((p) => ({ root: p.root, name: p.name })),
+    call: (method, params) => {
+      if (!callRpc) throw new Error('Seshboard is still starting. Try again in a moment.');
+      return callRpc(method, params);
+    },
+    ask: (sessionId, ask) => hosts.askApproval(sessionId, ask),
+    startChild: (sessionId, args) => orchestrator.startChild(sessionId, args),
+    listComputers: (sessionId) => orchestrator.listComputers(sessionId),
+    draftFor: (sessionId, args) => orchestrator.draftFor(sessionId, args),
+    queueChild: (parentId, draft, title) => orchestrator.queueChild(parentId, draft, title),
+    findSessions: async (root, query, limit) => {
+      const inProject = sessions
+        .snapshot()
+        .sessions.filter((s) => s.projectRoot === root)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+      if (!query) return inProject.slice(0, limit).map((s) => ({ id: s.id, title: s.title, updatedAt: s.updatedAt }));
+      const byId = new Map(inProject.map((s) => [s.id, s]));
+      const found: string[] = [];
+      for (const hit of search.search(query, 300, [...byId.keys()])) if (!found.includes(hit.sessionId)) found.push(hit.sessionId);
+      return found.slice(0, limit).map((id) => ({ id, title: byId.get(id)!.title, updatedAt: byId.get(id)!.updatedAt }));
+    },
+    catchUp: (id) => catchUpStore.get(id),
+    brief: async (from, id, label) => {
+      await links.warm(id);
+      return links.expand(from, writeStub(label, id));
+    },
+    notify: (sessionId, text, needsYou) => remote?.pushNote(sessionId, text, needsYou) ?? false,
+    runAction: async (sessionId, projectRoot, cwd, id) => {
+      const result = await callRpc!('actions.run', { sessionId, projectRoot, cwd, id });
+      if (result.kind !== 'terminal') return { exitCode: 0, stopped: false, output: 'Sent to the session as a prompt.' };
+      return new Promise((resolve) => terminalWaiters.set(result.terminalId, (info, run) => resolve({ exitCode: info.exitCode ?? null, stopped: run.stopped, output: run.output.slice(-8_000) })));
+    },
+    handOff: async (parentId, cwd, prompt, title, profileId) => {
+      const mode = hosts.list().hosts.find((h) => h.sessionId === parentId)?.permissionMode ?? 'default';
+      const { sessionId } = await createSession({ cwd, prompt, attachments: [], model: null, permissionMode: mode === 'bypassPermissions' ? 'default' : mode, effort: null, worktree: null, profileId: profileId && profiles.has(profileId) ? profileId : null, checkoutBranch: null });
+      pendingTitles.set(sessionId, title);
+      applyTitles([sessionId]);
+      orchestrator.child(sessionId, parentId, title);
+      return sessionId;
+    },
+    mergedWorktrees: async (root) => {
+      if (!resolver.resolve(root).gitDir) return [];
+      const listing = await readWorktrees(root, { sessions: sessionPlaces() });
+      await worktreeFacts.fill(root, listing);
+      const list = mergeFacts(listing.list, worktreeFacts.known(listing.list.worktrees));
+      const working = new Set(hosts.list().hosts.filter((h) => h.state === 'running' || h.state === 'starting' || h.state === 'needs-you').map((h) => h.sessionId));
+      return list.worktrees.filter((w) => !w.isMain && !w.isLocked && !w.missing && w.merged && w.uncommitted === 0 && !w.sessions.some((id) => working.has(id))).map((w) => ({ path: w.path, branch: w.branch }));
+    },
+    labels: async (root) => {
+      const out = await ghIn(['label', 'list', '--json', 'name', '--limit', '200'], root);
+      if (out.code !== 0) return [];
+      return (JSON.parse(out.stdout) as Array<{ name: string }>).map((l) => l.name);
+    },
+    now: () => Date.now(),
+    log,
+  });
+  /** One of the engine's own RPCs, called from inside it as a window would: the params are checked by the contract. */
+  let callRpc: (<M extends MethodName<Contract>>(method: M, params: ParamsOf<Contract, M>) => Promise<ResultOf<Contract, M>>) | null = null;
+  const orchestratorBridge = new OrchestratorBridge({
+    run: (sessionId, tool, args) => orchestrator.run(sessionId, tool, args),
+    tool: (sessionId, tool, args, asOrchestrator) => sessionTools.run(sessionId, tool, args, asOrchestrator),
+    isOrchestrator: (id) => orchestrator.isOrchestrator(id),
+    log,
+  });
   const orchestratorServer = (sessionId: () => string | null) => (orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId) : Promise.resolve(null));
-  /** Every other session's `seshboard` server: the same script, with only start_session, which asks you first. */
-  const sessionsServer = (sessionId: () => string | null) => (orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId, 'session') : Promise.resolve(null));
+  /** Every other session's `seshboard` server: the same script, with only start_session (which asks you first) and list_computers. */
+  const sessionsServer = (sessionId: () => string | null, cwd: string | null) =>
+    orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId, 'session', cwd ? (projects.defaultsOf(addedProjectOfCwd(cwd) ?? resolver.resolve(cwd).root).sessionTools ?? 'all') : 'all') : Promise.resolve(null);
   const hostSession = (id: string) => {
     const cwd = hosts.list().hosts.find((h) => h.sessionId === id)?.cwd;
     if (!cwd) return null;
@@ -1858,6 +1980,8 @@ export function createEngine(options: EngineOptions): Engine {
     onChange: (list) => broadcast('terminals.changed', { terminals: list }),
     onExit: (info, run) => {
       reportRun(info, run);
+      terminalWaiters.get(info.id)?.(info, run);
+      terminalWaiters.delete(info.id);
       signInEnded(info);
       // A command run there (a commit, a pull, a switch) may have changed the checkout.
       gitStatus.touch(info.cwd);
@@ -3145,8 +3269,8 @@ export function createEngine(options: EngineOptions): Engine {
         const models = await driver.models().catch(() => []);
         return { problem: null, models: models.map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })) };
       },
-      create: (root, prompt, choice, images, orchestrator) =>
-        createSession({
+      create: async (root, prompt, choice, images, orchestrator, title) => {
+        const created = await createSession({
           cwd: root,
           prompt,
           attachments: images,
@@ -3157,7 +3281,15 @@ export function createEngine(options: EngineOptions): Engine {
           profileId: choice.profileId,
           checkoutBranch: choice.checkoutBranch,
           ...(orchestrator ? { orchestrator: true } : {}),
-        }),
+        });
+        // A session on another computer asked for it, with a title: set the way an orchestrator's starts get theirs.
+        if (title) {
+          pendingTitles.set(created.sessionId, title);
+          applyTitles([created.sessionId]);
+        }
+        return created;
+      },
+      repoOf: (root) => githubRepo(root),
       // The remote branches and what `fresh` starts from go with them, for a new worktree's Branch from.
       branches: async (root) => {
         if (!resolver.resolve(root).gitDir) return { current: null, branches: [], checkedOutElsewhere: [], remoteBranches: [], remote: null, baseBranch: null };
@@ -3264,7 +3396,10 @@ export function createEngine(options: EngineOptions): Engine {
       db: cache.db,
       deviceKey: options.remote.deviceKey,
       onStatus: (status) => broadcast('computers.changed', status),
-      onEvent: (event) => broadcast('computers.event', event),
+      onEvent: (event) => {
+        broadcast('computers.event', event);
+        for (const waiter of [...computerEventWaiters]) waiter(event);
+      },
       log,
     });
     void computers.start().catch((error: Error) => log('warn', `Other computers: ${error.message}`));
@@ -3826,11 +3961,13 @@ export function createEngine(options: EngineOptions): Engine {
       questions.assertNotProject(root);
       // The orchestrator's and plan mode's instructions have their own editors: a save that doesn't name them (the
       // defaults editor, Save as project default) keeps them, and an empty text takes them away.
-      const { orchestratorInstructions: named, planModeInstructions: namedPlan, ...rest } = defaults;
+      const { orchestratorInstructions: named, planModeInstructions: namedPlan, sessionTools: namedTools, ...rest } = defaults;
       const saved = projects.defaultsOf(root);
       const instructions = (named === undefined ? saved.orchestratorInstructions : named)?.trim();
       const planInstructions = (namedPlan === undefined ? saved.planModeInstructions : namedPlan)?.trim();
-      projects.setDefaults(root, { ...rest, ...(instructions ? { orchestratorInstructions: instructions } : {}), ...(planInstructions ? { planModeInstructions: planInstructions } : {}) });
+      // The same for which tools its sessions get: only the setting's own control names it.
+      const toolSet = namedTools ?? saved.sessionTools;
+      projects.setDefaults(root, { ...rest, ...(instructions ? { orchestratorInstructions: instructions } : {}), ...(planInstructions ? { planModeInstructions: planInstructions } : {}), ...(toolSet === 'sessions' ? { sessionTools: 'sessions' as const } : {}) });
       // Its default branch is the base branch git status compares with.
       gitStatus.settingsChanged();
       return {};
@@ -5281,6 +5418,15 @@ export function createEngine(options: EngineOptions): Engine {
     },
   };
 
+  // The tools call the handlers as a window would, with no window to send events to.
+  const ownContext: HandlerContext<Contract> = { emit: () => {}, onDispose: () => {} };
+  callRpc = async (method, params) => {
+    const parsed = contract.requests[method].params.safeParse(params);
+    if (!parsed.success) throw new RpcError('INVALID_PARAMS', parsed.error.issues.map((i) => `${i.path.join('.') || 'params'}: ${i.message}`).join('; '));
+    const handler = (handlers as unknown as Record<string, (p: unknown, c: HandlerContext<Contract>) => unknown>)[method]!;
+    return (await handler(parsed.data, ownContext)) as ResultOf<Contract, typeof method>;
+  };
+
   return {
     attach(transport) {
       const server = serveRpc(contract, transport, handlers, {
@@ -5364,6 +5510,12 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setOrchestratorServer: (server) => {
       orchestratorBase = server;
+    },
+    smokeSessionTool: async ({ sessionId, tool, args }) => {
+      if (!options.stubQueueStarts) return;
+      const server = await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId, 'session');
+      const result = await orchestratorBridge.handle({ id: 0, token: server.env[ORCHESTRATOR_TOKEN_ENV] ?? '', tool, args });
+      appendFileSync(join(options.dataDir, 'smoke-session-tools.jsonl'), `${JSON.stringify({ sessionId, tool, result })}\n`);
     },
     smokeOrchestrator: async ({ sessionId, projectRoot, tool, args }) => {
       if (!options.stubQueueStarts) return null;

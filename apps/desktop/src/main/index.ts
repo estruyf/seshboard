@@ -11107,6 +11107,90 @@ async function runRunAsStep(win: BrowserWindow): Promise<string> {
  * session, whose header leads back. The project's Orchestrator instructions, saved on its Settings tab first, reach
  * every session it starts. No prompt reaches an agent: starts and messages are recorded, not sent.
  */
+/**
+ * The `seshboard` tools (docs/seshboard-tools.md): a stand-in session asks to save a demo pipeline, as its MCP server
+ * would (the engine's `smokeSessionTool`). The approval card shows the steps and the risky choice unticked; Save saves
+ * it. Then it asks to delete it, and Deny keeps it. The answers come back in `smoke-session-tools.jsonl`.
+ */
+async function runSeshboardToolsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-tools-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  const standIn = `smoke-tools-${randomUUID()}`;
+  const host = (state: 'running' | 'closed') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state });
+  const logFile = join(app.getPath('userData'), 'smoke-session-tools.jsonl');
+  const answers = (): Array<{ sessionId: string; tool: string; result: { text: string; error?: boolean } }> => {
+    try {
+      return readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as { sessionId: string; tool: string; result: { text: string } }).filter((a) => a.sessionId === standIn);
+    } catch {
+      return [];
+    }
+  };
+  const card = (kind: string) => `document.querySelector('[data-current-session="${standIn}"] [data-approval-card="${kind}"]')`;
+  const pipeline = {
+    name: 'Smoke: plan, build, review',
+    autoPush: true,
+    steps: [
+      { kind: 'claude', name: 'Plan', model: 'opus', permissionMode: 'plan', prompt: 'Plan {{task}}' },
+      { kind: 'claude', name: 'Build', model: 'sonnet', start: { fork: 'Plan' }, permissionMode: 'acceptEdits', prompt: 'Build the plan.' },
+      { kind: 'claude', name: 'Review', model: 'opus', readOnly: true, verdict: { sendTo: 'Build', rounds: 2 }, prompt: 'Review the changes.' },
+      { kind: 'push', name: 'Push', draft: true },
+    ],
+  };
+  try {
+    if (!smokeSessionId) return 'no session to switch to';
+    host('running');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${standIn}"]')`, 5_000))) return 'the stand-in session did not open';
+    engine.send({ type: 'smokeSessionTool', sessionId: standIn, tool: 'save_pipeline', args: { pipeline } });
+    if (!(await waitInPage(win, `!!${card('pipeline')}`, 8_000))) return 'save_pipeline raised no approval card';
+    const look = (await js(`(() => { const c = ${card('pipeline')}; return { lines: c.querySelector('[data-approval-lines]')?.innerText ?? '', prompts: c.querySelectorAll('[data-approval-block]').length, autoPush: c.querySelector('[data-approval-option="autoPush"]')?.getAttribute('aria-checked'), editor: !!c.querySelector('[data-approval-editor]') }; })()`)) as { lines: string; prompts: number; autoPush: string | null; editor: boolean };
+    if (!look.lines.includes('forked from Plan') || !look.lines.includes('verdict → Build, 2 rounds')) return `the card's preview missed the steps: ${JSON.stringify(look.lines)}`;
+    if (look.prompts !== 3) return `the card showed ${look.prompts} prompts, not the 3 steps'`;
+    if (look.autoPush !== 'false') return `Open the pull request without me was ${look.autoPush}, not unticked`;
+    if (!look.editor) return 'the card had no Open in editor';
+    await js(`${card('pipeline')}.scrollIntoView({ block: 'center' })`);
+    await shot(win, 'seshboard-tools-pipeline-card.png');
+    await js(`${card('pipeline')}.querySelector('[data-permission-allow]').click()`);
+    if (!(await until(() => answers().some((a) => a.tool === 'save_pipeline'), 8_000))) return 'save_pipeline did not answer after Save';
+    const saved = answers().find((a) => a.tool === 'save_pipeline')!.result;
+    const id = /\(([^()]+)\)\. run_pipeline/.exec(saved.text)?.[1];
+    if (saved.error || !id) return `save_pipeline said: ${saved.text}`;
+    // Open in editor: the pipeline editor opens filled in, and its Save answers the card with what it saved.
+    engine.send({ type: 'smokeSessionTool', sessionId: standIn, tool: 'save_pipeline', args: { pipeline: { ...pipeline, name: 'Smoke: edited first' } } });
+    if (!(await waitInPage(win, `!!${card('pipeline')}`, 8_000))) return 'the second save_pipeline raised no approval card';
+    await js(`${card('pipeline')}.querySelector('[data-approval-editor]').click()`);
+    const dialog = "document.querySelector('[data-approval-editor-dialog=\"pipeline\"]')";
+    if (!(await waitInPage(win, `!!${dialog}?.querySelector('[data-pipeline-save]')`, 5_000))) return 'Open in editor did not open the pipeline editor';
+    if (!(await waitInPage(win, `!${dialog}.querySelector('[data-pipeline-save]').disabled`, 3_000))) return 'the editor’s Save stayed disabled for the drafted pipeline';
+    await shot(win, 'seshboard-tools-pipeline-editor.png');
+    await js(`${dialog}.querySelector('[data-pipeline-save]').click()`);
+    if (!(await until(() => answers().filter((a) => a.tool === 'save_pipeline').length === 2, 8_000))) return 'the editor’s Save did not answer the card';
+    const edited = answers().filter((a) => a.tool === 'save_pipeline')[1]!.result.text;
+    if (!edited.includes('saved it as "Smoke: edited first"')) return `save_pipeline after the editor said: ${edited}`;
+    if (!(await waitInPage(win, `!${dialog} && !${card('pipeline')}`, 3_000))) return 'the editor or its card stayed after Save';
+    // Deny keeps it: the delete card goes, and the agent hears no.
+    engine.send({ type: 'smokeSessionTool', sessionId: standIn, tool: 'delete', args: { kind: 'pipeline', id } });
+    if (!(await waitInPage(win, `!!${card('delete')}`, 8_000))) return 'delete raised no approval card';
+    await js(`${card('delete')}.querySelector('[data-permission-deny]').click()`);
+    if (!(await until(() => answers().some((a) => a.tool === 'delete'), 8_000))) return 'delete did not answer after Deny';
+    const denied = answers().find((a) => a.tool === 'delete')!.result.text;
+    if (!denied.includes('did not delete it')) return `delete after Deny said: ${denied}`;
+    if (!(await waitInPage(win, `!${card('delete')}`, 3_000))) return 'the delete card stayed after Deny';
+    return 'ok: save_pipeline showed its steps, three prompts and Open the pull request without me unticked, and Save saved it; Open in editor saved one from the editor; delete asked too, and Deny kept it';
+  } finally {
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
 async function runOrchestratorStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-orchestrator-')));
@@ -15976,6 +16060,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));
   await step('pipelines: Stop the run, archive the run with its steps, then delete it', () => runArchiveRunStep(win));
   await step('orchestrator: instructions saved in a project, Run as › Orchestrator, three sessions in the overview and under its row, the groups follow, the way back', () => runOrchestratorStep(win), { timeoutMs: 60_000 });
+  await step('seshboard tools: an approval card for a pipeline a session drafted, Save saves it, Open in editor saves it from there, Deny keeps it', () => runSeshboardToolsStep(win));
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));

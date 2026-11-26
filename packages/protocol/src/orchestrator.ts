@@ -7,11 +7,17 @@
 
 /** The tools, as Claude Code names them: `mcp__orchestrator__<tool>`. */
 export const ORCHESTRATOR_TOOLS = ['start_session', 'list_sessions', 'read_session', 'message_session'] as const;
-export type OrchestratorTool = (typeof ORCHESTRATOR_TOOLS)[number];
+/** An orchestrator's own tools. */
+export type OrchestratorOwnTool = (typeof ORCHESTRATOR_TOOLS)[number];
+/** A tool name either server answers (`seshboardTools.ts` has the full list). */
+export type OrchestratorTool = string;
 export const ORCHESTRATOR_SERVER = 'orchestrator';
 export const ORCHESTRATOR_TOOL_PREFIX = `mcp__${ORCHESTRATOR_SERVER}__`;
-/** Claude Code's names for the tools, allowed up front: the engine holds every start behind the focus and usage limits. */
-export const ORCHESTRATOR_TOOL_NAMES: readonly string[] = ORCHESTRATOR_TOOLS.map((tool) => `${ORCHESTRATOR_TOOL_PREFIX}${tool}`);
+/**
+ * Claude Code's names for the tools, allowed up front: the engine holds every start behind the focus and usage limits.
+ * With run_pipeline, get_run and list_computers, which it gets too (`ORCHESTRATOR_EXTRA_TOOLS` in `seshboardTools.ts`).
+ */
+export const ORCHESTRATOR_TOOL_NAMES: readonly string[] = [...ORCHESTRATOR_TOOLS, 'run_pipeline', 'get_run', 'list_computers'].map((tool) => `${ORCHESTRATOR_TOOL_PREFIX}${tool}`);
 
 /** Where the `orchestrator` MCP server finds the engine, and which session it speaks for: env variables it starts with. */
 export const ORCHESTRATOR_SOCKET_ENV = 'SESHBOARD_ORCHESTRATOR_SOCKET';
@@ -50,11 +56,14 @@ export const ORCHESTRATOR_PROMPT = [
   "- Use your best judgment. Make any call that's reversible yourself, and check in later with the calls you made. The sessions you start are told the same.",
 ].join('\n');
 
+/** A tool as an MCP server lists it. */
+export type OrchestratorToolSpec = { name: string; title: string; description: string; inputSchema: Record<string, unknown>; annotations: Record<string, unknown> };
+
 const text = (description: string, maxLength?: number) => ({ type: 'string', description, ...(maxLength ? { maxLength } : {}) });
 const SESSION_ARG = text('The session’s id, from start_session or list_sessions');
 
 /** The tools as an MCP server lists them: name, description, input schema (JSON Schema) and hints. */
-export const ORCHESTRATOR_TOOL_SPECS: ReadonlyArray<{ name: OrchestratorTool; title: string; description: string; inputSchema: Record<string, unknown>; annotations: Record<string, unknown> }> = [
+export const ORCHESTRATOR_TOOL_SPECS: readonly OrchestratorToolSpec[] = [
   {
     name: 'start_session',
     title: 'Start a session',
@@ -68,6 +77,7 @@ export const ORCHESTRATOR_TOOL_SPECS: ReadonlyArray<{ name: OrchestratorTool; ti
         agent: text('Which agent runs it, by its profile’s name from list_sessions. Leave out for this orchestrator’s own.'),
         model: text('A model for this task. Leave out for the project’s default.'),
         workspace: { type: 'string', enum: ['worktree', 'current'], description: 'Its own worktree (the default in a git repository), or the project’s folder as it is' },
+        computer: text('Another computer paired with Seshboard, by its name from list_computers, to spread tasks across machines. Leave out for this computer.'),
       },
       required: ['title', 'prompt'],
       additionalProperties: false,
@@ -109,45 +119,46 @@ export type OrchestratorRole = 'orchestrator' | 'session';
 export const ORCHESTRATOR_ROLE_ENV = 'SESHBOARD_ORCHESTRATOR_ROLE';
 /** The server's name for every session that is not an orchestrator: its tool is `mcp__seshboard__start_session`. */
 export const SESSIONS_SERVER = 'seshboard';
-export const SESSION_TOOLS = ['start_session'] as const satisfies readonly OrchestratorTool[];
-export type SessionTool = (typeof SESSION_TOOLS)[number];
 export const SESSION_TOOL_PREFIX = `mcp__${SESSIONS_SERVER}__`;
-/** Claude Code's names for them, allowed up front: the engine asks you on its own card before a session starts. */
-export const SESSION_TOOL_NAMES: readonly string[] = SESSION_TOOLS.map((tool) => `${SESSION_TOOL_PREFIX}${tool}`);
 
 /** What an agent reads about the tool once, as the server's instructions. */
 export const SESSION_INSTRUCTIONS = [
   'start_session asks the user to start a new session in Seshboard for a separate task. It goes under this session in the sidebar.',
   'Use it when the user asks for a new or sub-session, or for a task outside your own, such as a fix you noticed on the way.',
   'The new session knows nothing of this conversation: give it everything it needs in the prompt.',
+  'To start it on another computer paired with Seshboard (such as "run the Windows smoke on the Windows box"), call list_computers, then start_session with its computer.',
 ].join(' ');
 
-export const SESSION_TOOL_SPECS: ReadonlyArray<(typeof ORCHESTRATOR_TOOL_SPECS)[number]> = [
+export const SESSION_TOOL_SPECS: readonly OrchestratorToolSpec[] = [
   {
     name: 'start_session',
     title: 'Start a session',
     description:
-      'Asks the user to start a new agent session in this project for one separate task, under this session in the sidebar. The user allows or denies it on a card, and the call waits for that answer. In a git repository the session works in its own worktree. It runs on its own and does not report back to you.',
+      'Asks the user to start a new agent session in this project for one separate task, under this session in the sidebar. The user allows or denies it on a card, and the call waits for that answer. In a git repository the session works in its own worktree. It runs on its own and does not report back to you. With computer, it starts on that paired computer instead, in the same project there.',
     inputSchema: {
       type: 'object',
       properties: {
         title: text('A short name for the task, shown on the card and in the sidebar, such as "Fix login redirect"', MAX_WORKER_TITLE),
         prompt: text('Everything the session needs to do the task: what, where, how to check it, and what to report'),
-        agent: text('Which agent runs it, by its profile’s name. Leave out for this session’s own.'),
+        agent: text('Which agent runs it, by its profile’s name. Leave out for this session’s own (on another computer: that project’s own there).'),
         model: text('A model for this task. Leave out for the project’s default.'),
         workspace: { type: 'string', enum: ['worktree', 'current'], description: 'Its own worktree (the default in a git repository), or the project’s folder as it is' },
+        computer: text('Another computer paired with Seshboard, by its name from list_computers. Leave out for this computer.'),
       },
       required: ['title', 'prompt'],
       additionalProperties: false,
     },
     annotations: { title: 'Start a session' },
   },
+  {
+    name: 'list_computers',
+    title: 'List the computers',
+    description: 'Lists the other computers paired with Seshboard: each with its name, whether it is connected, and whether it has this project. start_session takes one of these names as its computer.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { title: 'List the computers', readOnlyHint: true },
+  },
 ];
 
-/** The tools, their specs and the instructions the server lists for a role. */
-export function toolsForRole(role: OrchestratorRole): { tools: readonly OrchestratorTool[]; specs: typeof ORCHESTRATOR_TOOL_SPECS; instructions: string } {
-  return role === 'session' ? { tools: SESSION_TOOLS, specs: SESSION_TOOL_SPECS, instructions: SESSION_INSTRUCTIONS } : { tools: ORCHESTRATOR_TOOLS, specs: ORCHESTRATOR_TOOL_SPECS, instructions: ORCHESTRATOR_INSTRUCTIONS };
-}
 
 /** A session asks to start another: what its card shows. */
 export interface SessionStartAsk {
@@ -155,16 +166,28 @@ export interface SessionStartAsk {
   prompt: string;
   /** The profile that runs it, by name; null when there is only the session's own. */
   agent: string | null;
-  workspace: 'worktree' | 'current';
+  /** Null on another computer when the call left it out: the project's default there. */
+  workspace: 'worktree' | 'current' | null;
+  /** Another computer it starts on, by name; null for this one. */
+  computer?: string | null;
+  /** The project there, by name, with `computer`. */
+  project?: string | null;
 }
 
 /** The card's title and description; `agent` names who asks ("Claude Code", "GitHub Copilot"). */
 export function sessionStartPromptText(agent: string, ask: SessionStartAsk): { title: string; description: string; alwaysLabel: null } {
-  const where = ask.workspace === 'worktree' ? 'in its own worktree' : 'in the project’s folder';
+  const where = ask.workspace === 'worktree' ? ' in its own worktree' : ask.workspace === 'current' ? ' in the project’s folder' : '';
   const who = ask.agent ? ` with ${ask.agent}` : '';
+  if (ask.computer) {
+    return {
+      title: `${agent} wants to start a session on ${ask.computer}: ${ask.project ?? ask.title}`,
+      description: `"${ask.title}" runs there${who}${where}, with that computer’s limits. It does not show under this session. Its prompt is in the details.`,
+      alwaysLabel: null,
+    };
+  }
   return {
     title: `${agent} wants to start a session: ${ask.title}`,
-    description: `It runs${who} ${where}, under this session in the sidebar. Its prompt is in the details.`,
+    description: `It runs${who}${where}, under this session in the sidebar. Its prompt is in the details.`,
     alwaysLabel: null,
   };
 }
@@ -263,6 +286,8 @@ export interface StartSessionArgs {
   agent: string | null;
   model: string | null;
   workspace: 'worktree' | 'current' | null;
+  /** Another paired computer, by name (start_session on a session's `seshboard` server); null for this one. */
+  computer: string | null;
 }
 export function readStartArgs(args: Record<string, unknown>): StartSessionArgs | { error: string } {
   const str = (key: string) => (typeof args[key] === 'string' ? (args[key] as string).trim() : '');
@@ -272,7 +297,7 @@ export function readStartArgs(args: Record<string, unknown>): StartSessionArgs |
   if (!prompt) return { error: 'start_session needs a prompt: everything the session needs to do the task.' };
   const workspace = str('workspace');
   if (workspace && workspace !== 'worktree' && workspace !== 'current') return { error: 'workspace is "worktree" or "current".' };
-  return { title, prompt, agent: str('agent') || null, model: str('model') || null, workspace: (workspace || null) as StartSessionArgs['workspace'] };
+  return { title, prompt, agent: str('agent') || null, model: str('model') || null, workspace: (workspace || null) as StartSessionArgs['workspace'], computer: str('computer') || null };
 }
 
 /** The project's own instructions for its orchestrator and the sessions it starts; null when it has none. */

@@ -1,11 +1,12 @@
-import { toolsForRole, type OrchestratorRole, type OrchestratorTool, type OrchestratorToolResult } from '@seshboard/protocol/bridge';
+import { toolsFor, type OrchestratorRole, type OrchestratorToolResult, type SessionToolSet } from '@seshboard/protocol';
 import { lineReader } from '../browserMcp/server.ts';
 
 /**
  * Seshboard's `orchestrator` MCP server, as any agent starts it (Claude Code, Copilot, Codex): the tools that start and
  * track other sessions (docs/orchestrator.md). Like the `browser` server it holds no state of its own: each call goes
  * to the engine's bridge (`call`), which knows which session is an orchestrator. `index.ts` runs it over stdio.
- * Every other session starts it too, as its `seshboard` server, with only start_session (`role` 'session').
+ * Every other session starts it too, as its `seshboard` server (`role` 'session'), with the tools its project gives
+ * its sessions (`set`, docs/seshboard-tools.md).
  */
 
 const SERVER_INFO = { name: 'seshboard-orchestrator', title: 'Orchestrator', version: '1.0.0' };
@@ -14,14 +15,14 @@ const SESSION_SERVER_INFO = { name: 'seshboard-sessions', title: 'Seshboard', ve
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 type Message = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown };
-type Call = (tool: OrchestratorTool, args: Record<string, unknown>) => Promise<OrchestratorToolResult>;
+type Call = (tool: string, args: Record<string, unknown>) => Promise<OrchestratorToolResult>;
 const isId = (v: unknown): v is string | number => typeof v === 'string' || typeof v === 'number';
 const record = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const toCallToolResult = (result: OrchestratorToolResult) => ({ content: [{ type: 'text', text: result.text }], ...(result.error ? { isError: true } : {}) });
 
 /** Answers one message; null when it needs no answer (a notification, or a response). */
-export async function handleOrchestratorMessage(message: Message, call: Call, role: OrchestratorRole = 'orchestrator'): Promise<object | null> {
-  const { tools, specs, instructions } = toolsForRole(role);
+export async function handleOrchestratorMessage(message: Message, call: Call, role: OrchestratorRole = 'orchestrator', set: SessionToolSet = 'all'): Promise<object | null> {
+  const { tools, specs, instructions } = toolsFor(role, set);
   if (!isId(message.id) || typeof message.method !== 'string') return null;
   const id = message.id;
   const params = record(message.params);
@@ -40,9 +41,9 @@ export async function handleOrchestratorMessage(message: Message, call: Call, ro
       const name = params.name;
       if (typeof name !== 'string' || !(tools as readonly string[]).includes(name)) return fail(-32602, `No tool called ${String(name)}`);
       try {
-        return ok(toCallToolResult(await call(name as OrchestratorTool, record(params.arguments))));
+        return ok(toCallToolResult(await call(name, record(params.arguments))));
       } catch (error) {
-        return ok(toCallToolResult({ text: `The orchestrator could not do that: ${(error as Error).message}`, error: true }));
+        return ok(toCallToolResult({ text: `Seshboard could not do that: ${(error as Error).message}`, error: true }));
       }
     }
     case 'resources/list':
@@ -57,7 +58,7 @@ export async function handleOrchestratorMessage(message: Message, call: Call, ro
 }
 
 /** The server over MCP's stdio transport: `write` gets each answer as a line. Calls can overlap; each answers when done. */
-export function orchestratorMcpServer(write: (line: string) => void, call: Call, role: OrchestratorRole = 'orchestrator'): (chunk: string) => void {
+export function orchestratorMcpServer(write: (line: string) => void, call: Call, role: OrchestratorRole = 'orchestrator', set: SessionToolSet = 'all'): (chunk: string) => void {
   return lineReader((line) => {
     let message: Message;
     try {
@@ -66,6 +67,6 @@ export function orchestratorMcpServer(write: (line: string) => void, call: Call,
       write(`${JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })}\n`);
       return;
     }
-    void handleOrchestratorMessage(message, call, role).then((answer) => answer && write(`${JSON.stringify(answer)}\n`));
+    void handleOrchestratorMessage(message, call, role, set).then((answer) => answer && write(`${JSON.stringify(answer)}\n`));
   });
 }

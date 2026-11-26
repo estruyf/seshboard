@@ -36,6 +36,8 @@ describe('push wording', () => {
 
   it('lets a tool prompt be answered from the notification, but not a question or a plan', () => {
     expect(promptAnswers({ requestId: 'r1', toolName: 'Bash', input: { command: 'npm test' } })).toEqual({ requestId: 'r1', answers: true });
+    // An approval card is answered on the computer only.
+    expect(promptAnswers({ requestId: 'r9', toolName: 'mcp__seshboard__save_pipeline', input: {}, approval: { kind: 'pipeline', allowLabel: 'Save', lines: [], blocks: [], options: [], editor: null, draft: null } })).toEqual({ requestId: 'r9', answers: false });
     expect(promptAnswers({ requestId: 'r2', toolName: 'AskUserQuestion', input: {} })).toEqual({ requestId: 'r2', answers: false });
     expect(promptAnswers({ requestId: 'r3', toolName: 'ExitPlanMode', input: {} })).toEqual({ requestId: 'r3', answers: false });
     // Allow approves the whole command: one the line cuts short (or that was clipped) is answered in the app.

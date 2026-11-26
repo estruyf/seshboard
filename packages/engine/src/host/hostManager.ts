@@ -31,6 +31,10 @@ import {
   type BrowserAsk,
   SESSION_TOOL_PREFIX,
   sessionStartPromptText,
+  approvalReplyOf,
+  type ApprovalAnswer,
+  type ApprovalAsk,
+  type ApprovalCard,
   type SessionStartAsk,
 } from '@seshboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
@@ -172,7 +176,8 @@ export interface HostManagerDeps {
    */
   orchestratorServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
   /** Every other session's `seshboard` MCP server (start_session, which asks you first), tied the same way. */
-  sessionsServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
+  /** Every other session's `seshboard` server; `cwd` picks the tools its project gives its sessions. */
+  sessionsServer?: (sessionId: () => string | null, cwd: string | null) => Promise<McpStdioServer | null>;
   isOrchestrator?: (sessionId: string) => boolean;
   appendSystemFor?: (sessionId: string) => string | null;
   /** The project's own plan mode instructions for a session in `cwd`; null for none. Read when a process starts. */
@@ -199,6 +204,8 @@ interface OwnCard {
   alwaysLabel: string | null;
   sessionAllow: boolean;
   answer?: (picked: BrowserAnswer) => void;
+  /** An approval card of one of Seshboard's own tools: what it shows instead of the input. */
+  approval?: ApprovalCard;
 }
 
 interface Pending {
@@ -1106,7 +1113,7 @@ export class HostManager {
     this.deps.ephemeral?.add(sessionId);
     const route: Warm['route'] = { canUseTool: null, sessionId: null };
     const browser = (await this.deps.browserServer?.(() => route.sessionId?.() ?? null)) ?? null;
-    const sessions = (await this.deps.sessionsServer?.(() => route.sessionId?.() ?? null)) ?? null;
+    const sessions = (await this.deps.sessionsServer?.(() => route.sessionId?.() ?? null, cwd)) ?? null;
     // Settings changed while the server started: this process would start with the old ones.
     if (generation !== this.warmGeneration) return;
     const options = buildOptions(
@@ -1235,7 +1242,7 @@ export class HostManager {
         browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
         orchestrator: orchestrate ? ((await this.deps.orchestratorServer?.(() => hostRef?.sessionId ?? null)) ?? null) : null,
         // Any other session asks before it starts one; a pre-warmed process has the server already, a read-only one gets none.
-        sessions: warm || orchestrate || config.readOnly ? null : ((await this.deps.sessionsServer?.(() => hostRef?.sessionId ?? null)) ?? null),
+        sessions: warm || orchestrate || config.readOnly ? null : ((await this.deps.sessionsServer?.(() => hostRef?.sessionId ?? null, config.cwd)) ?? null),
         skimMarks: this.skimMarks,
         planModeInstructions: this.deps.planModeInstructionsFor?.(config.cwd) ?? null,
       },
@@ -1322,13 +1329,25 @@ export class HostManager {
     return this.askOwn(sessionId, `${SESSION_TOOL_PREFIX}start_session`, { ...ask }, { ...sessionStartPromptText('Claude Code', ask), sessionAllow: false });
   }
 
+  /**
+   * A tool on the session's `seshboard` server wants to save or start something (docs/seshboard-tools.md): asks on an
+   * approval card, in every permission mode. Your answer, with what you ticked or saved in the editor.
+   */
+  async askApproval(sessionId: string, ask: ApprovalAsk): Promise<ApprovalAnswer> {
+    const result = await this.askOwnResult(sessionId, ask.tool, ask.input, { title: `Claude Code ${ask.title}`, description: ask.description, alwaysLabel: null, sessionAllow: false, approval: ask.card });
+    return result.behavior === 'allow' ? { allowed: true, message: null, reply: approvalReplyOf(result.updatedInput) } : { allowed: false, message: result.message || null, reply: {} };
+  }
+
   /** A card Seshboard raises itself, not Claude Code: the session waits on you while it is open. */
   private async askOwn(sessionId: string, toolName: string, input: Record<string, unknown>, own: OwnCard): Promise<boolean> {
+    return (await this.askOwnResult(sessionId, toolName, input, own)).behavior === 'allow';
+  }
+
+  private async askOwnResult(sessionId: string, toolName: string, input: Record<string, unknown>, own: OwnCard): Promise<PermissionResult> {
     const host = this.hosts.get(sessionId);
     host?.waitingOnYou(true);
     try {
-      const result = await this.prompt(sessionId, toolName, input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], own);
-      return result.behavior === 'allow';
+      return await this.prompt(sessionId, toolName, input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], own);
     } finally {
       host?.waitingOnYou(false);
     }
@@ -1359,7 +1378,7 @@ export class HostManager {
         agentId: str(options.agentID),
         createdAt: Date.now(),
         // Seshboard's own card (a browser site, a session to start): its words, and Allow for this session when it has one.
-        ...(own ? { title: own.title, description: own.description, alwaysLabel: own.alwaysLabel, ...(own.sessionAllow ? { sessionAllow: true } : {}) } : {}),
+        ...(own ? { title: own.title, description: own.description, alwaysLabel: own.alwaysLabel, ...(own.sessionAllow ? { sessionAllow: true } : {}), ...(own.approval ? { approval: own.approval } : {}) } : {}),
       };
       this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), ...(own ? { own: own.answer ?? (() => {}) } : {}), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });

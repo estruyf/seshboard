@@ -46,11 +46,14 @@ function Row({ label, htmlFor, children, labelId }: { label: string; htmlFor?: s
  * run starts with. With the mode on Default it says Claude will stop at its first permission; it doesn't change the
  * mode. Editing a schedule (`schedule`) keeps its other values.
  */
-export function ScheduleDialog({ draft, schedule, onClose, onSaved }: { draft: LaterDraft; schedule: Schedule | null; onClose(): void; onSaved(schedule: Schedule): void }) {
+export function ScheduleDialog({ draft, schedule, prefill = null, onClose, onSaved }: { draft: LaterDraft; schedule: Schedule | null; /** A new schedule's name and rule to start from (an agent's draft, Open in editor). */ prefill?: Schedule | null; onClose(): void; onSaved(schedule: Schedule): void }) {
   const id = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const [now] = useState(() => Date.now());
-  const [form, setForm] = useState<ScheduleForm>(() => (schedule ? { ...formOf(schedule, now), name: schedule.name } : newForm(nameFromPrompt(draft.typed || draft.prompt), now)));
+  const [form, setForm] = useState<ScheduleForm>(() => {
+    const from = schedule ?? prefill;
+    return from ? { ...formOf(from, now), name: from.name } : newForm(nameFromPrompt(draft.typed || draft.prompt), now);
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);

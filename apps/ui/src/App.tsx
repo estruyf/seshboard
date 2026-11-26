@@ -56,6 +56,7 @@ import { useTriggersSync } from './state/triggersStore.ts';
 import { usePipelinesSync } from './state/pipelinesStore.ts';
 import { useOrchestratorSync } from './state/orchestratorStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
+import { ApprovalEditorHost } from './components/approval/ApprovalEditorHost.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useLooseEndsSync } from './state/looseEndsStore.ts';
 import { useReminderClear } from './state/useReminderClear.ts';
@@ -347,6 +348,7 @@ export function App() {
       <RunTreeDialogs />
       <FilePreviewDialog />
       <TriggerEditorHost />
+      <ApprovalEditorHost />
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />

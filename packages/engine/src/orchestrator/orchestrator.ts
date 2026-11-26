@@ -8,10 +8,12 @@ import {
   workerState,
   writeSessionUpdate,
   writeWorkerList,
+  REMOTE_FEATURE_CLONE,
   type CatchUp,
+  type ComputerMethod,
   type LaterDraft,
   type OrchestratorInfo,
-  type OrchestratorTool,
+  type OrchestratorOwnTool,
   type OrchestratorToolResult,
   type OrchestratorWorker,
   type ProfileDefaults,
@@ -26,6 +28,7 @@ import {
   type WorktreePullRequest,
 } from '@seshboard/protocol';
 import type { OrchestratorStore, StoredWorker } from './orchestratorStore.ts';
+import { bringsLines, findComputer, matchProject, NO_COMPUTERS, readProfiles, readProjects, remoteSessionKey, writeComputerList, type ComputerLine, type LocalProject, type PairedComputer } from './remoteStart.ts';
 
 /** A profile a started session can run with: Claude Code's or another provider's (Copilot, Codex). */
 export interface OrchestratorAgent {
@@ -72,9 +75,25 @@ export interface OrchestratorDeps {
   /** Something the windows show changed. */
   changed(): void;
   log(level: 'info' | 'warn' | 'error', message: string): void;
+  /**
+   * The other computers paired with this one (docs/remote-access.md), for start_session's `computer`: each with its
+   * state, and a request in the remote contract. Left out where there are none (tests).
+   */
+  computers?: {
+    list(): PairedComputer[];
+    call(computerId: string, method: ComputerMethod, params: unknown): Promise<unknown>;
+    /** The next event of a computer that `match` takes, or null after `timeoutMs`. */
+    next(computerId: string, name: string, match: (payload: unknown) => boolean, timeoutMs: number): Promise<unknown>;
+  };
+  /** Asks on a card in the session whether to start in a clone that brings these (hooks, MCP servers): true when allowed. */
+  askBrings?(sessionId: string, computer: string, repo: string, lines: Array<[string, string]>): Promise<boolean>;
+  /** The project's name and the GitHub repositories its folder's remotes point at, to find it on another computer. */
+  localProject?(projectRoot: string): Promise<LocalProject>;
 }
 
 const fail = (text: string): OrchestratorToolResult => ({ text, error: true });
+/** A session on another computer, as `remoteSessionKey` writes it. */
+const isRemoteKey = (sessionId: string) => sessionId.startsWith('remote:');
 const prWord = (pr: Pick<WorktreePullRequest, 'number' | 'state' | 'url'>) => `#${pr.number} ${pr.state}, ${pr.url}`;
 
 /**
@@ -150,7 +169,7 @@ export class Orchestrator {
   }
 
   /** One tool call of an orchestrator session. */
-  async run(orchestratorId: string, tool: OrchestratorTool, args: Record<string, unknown>): Promise<OrchestratorToolResult> {
+  async run(orchestratorId: string, tool: OrchestratorOwnTool, args: Record<string, unknown>): Promise<OrchestratorToolResult> {
     const orchestrator = this.deps.store.get(orchestratorId);
     if (!orchestrator) return fail('This session is not an orchestrator in Seshboard.');
     switch (tool) {
@@ -161,6 +180,7 @@ export class Orchestrator {
       case 'read_session': {
         const worker = this.workerOf(orchestratorId, args.session);
         if (!worker) return fail('No such session of this orchestrator. list_sessions has their ids.');
+        if (isRemoteKey(worker.sessionId!)) return fail(`"${worker.title}" runs on another computer: Seshboard can’t read it from here. Ask the user how it went.`);
         return { text: await this.deps.brief(orchestratorId, worker.sessionId!, worker.title) };
       }
       case 'message_session': {
@@ -189,7 +209,7 @@ export class Orchestrator {
    * What a start runs with, as New session would: the agent asked for, else `ownProfile`'s; the project's model,
    * effort and mode, else the profile's, else the global ones; its own worktree in a git repository.
    */
-  private plan(ownProfile: string | null, projectRoot: string, args: StartSessionArgs): { draft: LaterDraft; agent: OrchestratorAgent | null; workspace: 'worktree' | 'current' } | { error: string } {
+  plan(ownProfile: string | null, projectRoot: string, args: StartSessionArgs): { draft: LaterDraft; agent: OrchestratorAgent | null; workspace: 'worktree' | 'current' } | { error: string } {
     const agents = this.deps.agents(projectRoot);
     // Without an agent asked for, the session runs with the asking session's own profile, not the project's.
     let agent = agents.find((a) => a.profileId === ownProfile) ?? agents[0] ?? null;
@@ -229,6 +249,7 @@ export class Orchestrator {
   private async startSession(orchestratorId: string, projectRoot: string, raw: Record<string, unknown>): Promise<OrchestratorToolResult> {
     const args = readStartArgs(raw);
     if ('error' in args) return fail(args.error);
+    if (args.computer) return this.startOn(orchestratorId, projectRoot, { ...args, computer: args.computer }, true);
     const working = this.deps.store.workersOf(orchestratorId).filter((w) => w.sessionId && this.deps.status(w.sessionId) === 'working').length;
     if (working >= ORCHESTRATOR_MAX_WORKING) return fail(`${working} sessions of this orchestrator work already, which is the most at once. Start "${args.title}" when one finishes.`);
     const plan = this.plan(this.deps.session(orchestratorId)?.profileId ?? null, projectRoot, args);
@@ -262,6 +283,7 @@ export class Orchestrator {
     if ('error' in args) return fail(args.error);
     const parent = this.deps.session(parentId);
     if (!parent?.projectRoot) return fail('Seshboard does not know this session’s project yet. Try again in a moment.');
+    if (args.computer) return this.startOn(parentId, parent.projectRoot, { ...args, computer: args.computer }, false);
     const plan = this.plan(parent.profileId ?? null, parent.projectRoot, args);
     if ('error' in plan) return fail(plan.error);
     const { draft, agent, workspace } = plan;
@@ -284,8 +306,148 @@ export class Orchestrator {
     return { text: `The user allowed it. ${this.startedText(args.title, sessionId, args, workspace, agent)} It runs on its own, under this session in the sidebar.` };
   }
 
+  /** list_computers: the paired computers, and which of them has the asking session's project. */
+  async listComputers(sessionId: string): Promise<OrchestratorToolResult> {
+    const computers = this.deps.computers?.list() ?? [];
+    if (!computers.length) return { text: NO_COMPUTERS };
+    const root = this.deps.session(sessionId)?.projectRoot;
+    const local = root && this.deps.localProject ? await this.deps.localProject(root) : null;
+    const rows = await Promise.all(
+      computers.map(async (computer): Promise<ComputerLine> => {
+        if (!computer.connected) return { name: computer.name, connected: false };
+        const found = local ? await this.projectOn(computer, local).catch(() => null) : null;
+        return { name: computer.name, connected: true, project: found?.project.name ?? null };
+      }),
+    );
+    return { text: writeComputerList(rows) };
+  }
+
+  /** This project on another computer, from its `projects.list`. */
+  private async projectOn(computer: PairedComputer, local: LocalProject) {
+    return matchProject(readProjects(await this.deps.computers!.call(computer.id, 'projects.list', {})), local);
+  }
+
+  /**
+   * start_session with `computer`: the same card, naming the computer, then `session.create` there, as New session's
+   * Run on does. That computer applies its own focus and usage limits. A computer without the project can clone it
+   * first, from GitHub, on the same card. The new session nests under the asking one here (`started`, keyed by its row
+   * id), since a parent only works within one computer. An orchestrator (`asOrchestrator`) starts without a card.
+   */
+  private async startOn(parentId: string, projectRoot: string, args: StartSessionArgs & { computer: string }, asOrchestrator: boolean): Promise<OrchestratorToolResult> {
+    const computers = this.deps.computers?.list() ?? [];
+    if (!computers.length) return fail(NO_COMPUTERS);
+    const computer = findComputer(computers, args.computer);
+    if (!computer) return fail(`No paired computer called "${args.computer}". Pick one of: ${computers.map((c) => c.name).join(', ')}, or leave computer out.`);
+    if (!computer.connected) return fail(`${computer.name} is not connected now. Try again when it is back, or leave computer out to start the session here.`);
+    const local = this.deps.localProject ? await this.deps.localProject(projectRoot) : null;
+    if (!local) return fail('Seshboard can’t tell which project this is on another computer.');
+    let match: Awaited<ReturnType<Orchestrator['projectOn']>>;
+    try {
+      match = await this.projectOn(computer, local);
+    } catch (error) {
+      return fail(`Could not read ${computer.name}’s projects: ${(error as Error).message}`);
+    }
+    // Not there: offer to clone it from GitHub first, where that computer can.
+    let clone: { url: string; name: string; where: string; repo: string } | null = null;
+    if (!match) {
+      const repo = local.repos[0];
+      if (!repo || !computer.features?.includes(REMOTE_FEATURE_CLONE)) return fail(`${computer.name} does not have this project (${repo ?? local.name}). The user adds it there first; or leave computer out.`);
+      const url = `https://github.com/${repo}`;
+      const plan = (await this.deps.computers!.call(computer.id, 'projects.clonePlan', { url }).catch(() => null)) as { state?: string; name?: string; where?: string } | null;
+      if (!plan?.state || plan.state === 'off') return fail(`${computer.name} does not have this project, and Clone from GitHub is off there. The user adds it there first; or leave computer out.`);
+      if (plan.state === 'taken') return fail(`${computer.name} does not have this project, and its clone folder has something else called ${plan.name}. The user clones it there first.`);
+      clone = { url, name: plan.name ?? repo.split('/')[1]!, where: plan.where ?? '', repo };
+    }
+    // An agent by its profile's name there; left out, the project's own there.
+    let profile: { id: string; name: string } | null = null;
+    if (args.agent) {
+      const profiles = readProfiles(await this.deps.computers!.call(computer.id, 'options.get', {}).catch(() => null));
+      if (!profiles) return fail(`${computer.name} can’t say its agents. Leave agent out to start with the project’s own there.`);
+      const wanted = args.agent.toLowerCase();
+      profile = profiles.find((p) => p.name.toLowerCase() === wanted) ?? null;
+      if (!profile) return fail(`${computer.name} has no agent called "${args.agent}". Pick one of: ${profiles.map((p) => p.name).join(', ')}, or leave it out.`);
+    }
+    if (!asOrchestrator) {
+      const project = match ? match.project.name : `${clone!.name}, cloned there first${clone!.where ? ` into ${clone!.where}` : ''}`;
+      const allowed = await this.deps.askStart(parentId, { title: args.title, prompt: args.prompt, agent: profile?.name ?? null, workspace: args.workspace, computer: computer.name, project });
+      if (!allowed) return { text: `The user did not start "${args.title}" on ${computer.name}. Do not ask again for it; go on with your own task.` };
+    }
+    let projectId = match?.project.id ?? null;
+    let projectName = match?.project.name ?? clone?.name ?? '';
+    if (clone) {
+      const cloned = await this.cloneOn(parentId, computer, clone, asOrchestrator);
+      if ('error' in cloned) return fail(cloned.error);
+      projectId = cloned.projectId;
+      projectName = clone.name;
+    }
+    const params = {
+      projectId,
+      prompt: args.prompt,
+      title: args.title,
+      ...(profile ? { profileId: profile.id } : {}),
+      ...(args.model ? { model: args.model } : {}),
+      ...(args.workspace ? { worktree: args.workspace === 'worktree' } : {}),
+    };
+    let sessionId: string;
+    try {
+      const created = (await this.deps.computers!.call(computer.id, 'session.create', params)) as { sessionId?: unknown } | null;
+      if (typeof created?.sessionId !== 'string') throw new Error('it did not say which session');
+      sessionId = created.sessionId;
+    } catch (error) {
+      return fail(`${asOrchestrator ? '' : 'The user allowed it, but '}"${args.title}" could not start on ${computer.name}: ${(error as Error).message}`);
+    }
+    this.deps.log('info', `Orchestrator: ${parentId} started "${args.title}" on ${computer.name} as ${sessionId}`);
+    const key = remoteSessionKey(computer.id, sessionId);
+    const byName = match?.by === 'name' ? ', found by its name' : '';
+    if (asOrchestrator) {
+      // One of its sessions, listed with the rest; it nests under it here. Its turns end on that computer, so no update comes.
+      this.deps.store.addWorker(parentId, { sessionId: key, itemId: null, title: args.title });
+      this.deps.changed();
+      return { text: `Started "${args.title}" on ${computer.name} as session ${key}, in its project "${projectName}"${byName}. It runs with that computer’s limits. Seshboard does not report its turns from another computer: check on it with read_session or ask the user.` };
+    }
+    this.started.set(key, { parentId, title: args.title });
+    this.deps.changed();
+    return { text: `The user allowed it. Started "${args.title}" on ${computer.name} as session ${sessionId}, in its project "${projectName}"${byName}. It runs on its own there, with that computer’s limits, under this session in the sidebar here, and does not report back to you.` };
+  }
+
+  /** Clones a project on another computer and waits for it; asks again when the repository brings hooks or servers. */
+  private async cloneOn(parentId: string, computer: PairedComputer, clone: { url: string; name: string; repo: string }, asOrchestrator: boolean): Promise<{ projectId: string } | { error: string }> {
+    const jobId = `tool-${Math.random().toString(36).slice(2, 10)}`;
+    const done = this.deps.computers!.next(computer.id, 'projects.cloneProgress', (p) => (p as { jobId?: string; state?: string }).jobId === jobId && (p as { state?: string }).state !== 'running', 15 * 60_000);
+    try {
+      await this.deps.computers!.call(computer.id, 'projects.clone', { jobId, url: clone.url, name: clone.name });
+    } catch (error) {
+      return { error: `Could not clone ${clone.repo} on ${computer.name}: ${(error as Error).message}` };
+    }
+    const progress = (await done) as { state?: string; projectId?: string | null; error?: string | null; brings?: Parameters<typeof bringsLines>[0] } | null;
+    if (!progress) return { error: `The clone of ${clone.repo} on ${computer.name} takes too long. The user starts the session there once it is done.` };
+    if (progress.state !== 'done' || !progress.projectId) return { error: `The clone of ${clone.repo} on ${computer.name} ${progress.state === 'cancelled' ? 'was cancelled' : `failed: ${progress.error ?? 'no reason given'}`}.` };
+    // As New session on that computer asks before Start: what the repository brings runs without asking.
+    const lines = bringsLines(progress.brings ?? null);
+    if (lines.length) {
+      if (asOrchestrator || !this.deps.askBrings) return { error: `${clone.repo} is cloned on ${computer.name}, but it brings hooks or servers that run without asking. The user starts the first session there.` };
+      if (!(await this.deps.askBrings(parentId, computer.name, clone.repo, lines))) return { error: `${clone.repo} is cloned on ${computer.name}, but the user did not start a session in it. Do not ask again.` };
+    }
+    return { projectId: progress.projectId };
+  }
+
+  /** What a start asked for by a session (start_later) runs with: as start_session plans it, in its project. */
+  draftFor(sessionId: string, args: StartSessionArgs): { draft: LaterDraft } | { error: string } {
+    const session = this.deps.session(sessionId);
+    if (!session?.projectRoot) return { error: 'Seshboard does not know this session’s project yet. Try again in a moment.' };
+    const plan = this.plan(session.profileId ?? null, session.projectRoot, args);
+    return 'error' in plan ? plan : { draft: plan.draft };
+  }
+
+  /** Queues a start for when the usage limit lets it (start_later): it goes under the session that asked once it starts. */
+  queueChild(parentId: string, draft: LaterDraft, title: string): string {
+    const itemId = this.deps.queue(draft);
+    this.childItems.set(itemId, { parentId, title });
+    return itemId;
+  }
+
   /** A session another one started: under it in the sidebar, and in what the windows hear, so it shows there now. */
-  private child(sessionId: string, parentId: string, title: string): void {
+  child(sessionId: string, parentId: string, title: string): void {
     this.started.set(sessionId, { parentId, title });
     this.deps.setParent(sessionId, parentId);
     this.deps.changed();
@@ -333,6 +495,7 @@ export class Orchestrator {
     const lines = await Promise.all(
       workers.map(async (worker): Promise<WorkerLine> => {
         if (!worker.sessionId) return { sessionId: null, title: worker.title, state: 'queued', agent: null, branch: null, pr: null, note: 'waits in the queue for a free slot or the usage limit' };
+        if (isRemoteKey(worker.sessionId)) return { sessionId: worker.sessionId, title: worker.title, state: 'idle', agent: null, branch: null, pr: null, note: 'runs on another computer; Seshboard does not follow it from here' };
         const [info, card] = [await this.deps.info(worker.sessionId).catch(() => ({ gone: false, branch: null, pr: null })), this.deps.catchUp(worker.sessionId)];
         const status = this.deps.status(worker.sessionId);
         const state = workerState({ sessionId: worker.sessionId, pr: info.pr ? { number: info.pr.number, url: info.pr.url, state: info.pr.state } : null }, status);

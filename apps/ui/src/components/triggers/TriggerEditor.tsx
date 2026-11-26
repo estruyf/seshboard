@@ -173,7 +173,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
     return { effort: null, workspace: null, baseRef: null, branch: null, defaultBranch: null, ...layered, model, permissionMode };
   }, [project?.defaults, profileDefaults, globalSetting, globalModel]);
   const models = useHosts((s) => s.models);
-  const [form, setForm] = useState<TriggerForm>(() => (request.trigger ? triggerForm(request.trigger) : newTriggerForm(request.root, defaults, request.from)));
+  const [form, setForm] = useState<TriggerForm>(() => (request.draft ? { ...triggerForm(request.draft), id: request.trigger?.id ?? null } : request.trigger ? triggerForm(request.trigger) : newTriggerForm(request.root, defaults, request.from)));
   // A profile of another provider (GitHub Copilot) starts it: its models and modes, and none of what it can't do yet.
   const providerOf = (profile: string) => profiles.find((p) => p.id === profile)?.provider ?? 'claude';
   const runsWith = providerOf(form.profileId ?? project?.profileId ?? defaultProfile);
