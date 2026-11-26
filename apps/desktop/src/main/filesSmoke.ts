@@ -1,8 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, type Dirent } from 'node:fs';
 import { join } from 'node:path';
 import type { BrowserWindow } from 'electron';
-import { isAbsolutePath } from '@seshboard/protocol/paths';
-import { setFieldValue, settle, waitInPage } from './pageDriver.ts';
+import { isAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
+import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { platformModifiers } from './smokeKeys.ts';
 
 // The smoke steps of the Files panel: the tree, Quick open, Search in files, lines to the message, and a file link
@@ -294,5 +294,170 @@ export async function runFilesIconsStep(win: BrowserWindow, deps: { fileIconThem
     return 'ok: README.md, package.json and src drawn with the demo icon theme, and none with None';
   } finally {
     deps.update({ fileIconTheme: was });
+  }
+}
+
+/** A TypeScript file of the folder with an import (the editor must not mark it), or a JSON file; null when there is none. */
+function editableFile(cwd: string): string | null {
+  let json: string | null = null;
+  const skip = (name: string) => name.startsWith('.') || name === 'node_modules';
+  const walk = (dir: string, depth: number): string | null => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+    for (const entry of entries) {
+      if (skip(entry.name) || !entry.isFile()) continue;
+      const path = join(dir, entry.name);
+      if (/\.tsx?$/.test(entry.name) && /^import /m.test(readFileSync(path, 'utf8'))) return path;
+      if (entry.name.endsWith('.json')) json ??= path;
+    }
+    if (depth === 0) return null;
+    for (const entry of entries) {
+      if (skip(entry.name) || !entry.isDirectory()) continue;
+      const found = walk(join(dir, entry.name), depth - 1);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(cwd, 3) ?? json;
+}
+
+/**
+ * Edit in the Files viewer: Edit loads Monaco, which shows the file coloured by Shiki on the code background; a typed
+ * character marks it unsaved and ⌘S writes it to disk; ⌘F opens the viewer's find bar; another tab in front keeps the
+ * edits and their undo; closing a tab with edits asks first; a change on disk while there are edits shows a notice. It
+ * writes a file, so it runs only in the demo home, and puts the file back after.
+ */
+export async function runFilesEditStep(win: BrowserWindow, pics?: FilesPictures): Promise<string> {
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: skipped, only in the demo home (it writes a file)';
+  const cwd = await sessionCwd(win);
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
+  if (!cwd || !home || !isSameOrInside(cwd, home)) return 'ok: skipped, the session folder is not in the demo home';
+  const path = editableFile(cwd);
+  if (!path) return 'ok: no TypeScript or JSON file in the session folder';
+  const before = readFileSync(path, 'utf8');
+  const name = path.slice(cwd.length + 1);
+  const v = `(${viewer(path)})`;
+  try {
+    if (!(await openFiles(win))) return 'Files did not open';
+    await js(win, `window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(path)}, sessionId: document.querySelector('${S}').dataset.currentSession } }))`);
+    if (!(await waitInPage(win, `${v}?.querySelector('[data-files-edit]')`, 5_000))) return `${name} opened without Edit`;
+    const started = Date.now();
+    await js(win, `${v}.querySelector('[data-files-edit]').click()`);
+    if (!(await waitInPage(win, `${v}?.querySelector('[data-file-editor="ready"] .monaco-editor .view-lines')?.innerText.trim().length > 0`, 15_000)))
+      return `Monaco did not show ${name} (${await js(win, `${v}?.querySelector('[data-file-editor]')?.innerText ?? 'no editor'`)})`;
+    const loadMs = Date.now() - started;
+    // Shiki's colours: the tokens of the first lines in more than two colours.
+    const coloured = `new Set([...${v}.querySelectorAll('.view-line span span')].map((s) => getComputedStyle(s).color)).size`;
+    if (!(await waitInPage(win, `${coloured} > 2`, 5_000))) return `the editor is not highlighted (${await js(win, coloured)} colours)`;
+    const colours = (await js(win, coloured)) as number;
+    // The editor's surface is the app's code background, in both modes.
+    const sameSurface = `getComputedStyle(${v}.querySelector('.monaco-editor-background')).backgroundColor === getComputedStyle(${v}.querySelector('[data-file-editor]')).backgroundColor`;
+    if (!(await waitInPage(win, sameSurface, 3_000))) return `the editor's background (${await js(win, `getComputedStyle(${v}.querySelector('.monaco-editor-background')).backgroundColor`)}) is not the code background (${await js(win, `getComputedStyle(${v}.querySelector('[data-file-editor]')).backgroundColor`)})`;
+    let schemes = 'no pictures';
+    if (pics) {
+      const was = pics.scheme();
+      try {
+        for (const scheme of ['dark', 'light'] as const) {
+          await pics.setScheme(scheme);
+          if (!(await waitInPage(win, sameSurface, 3_000))) return `in ${scheme} mode the editor's background (${await js(win, `getComputedStyle(${v}.querySelector('.monaco-editor-background')).backgroundColor`)}) is not the code background (${await js(win, `getComputedStyle(${v}.querySelector('[data-file-editor]')).backgroundColor`)})`;
+          await pics.shot(`files-edit-${scheme}.png`);
+        }
+        schemes = 'the surface follows dark and light';
+      } finally {
+        pics.restoreScheme(was);
+      }
+    }
+    const freed = (await js(win, `window.__seshboardEditor?.clashes() ?? []`)) as Array<{ command: string; label: string }>;
+    console.log(`[smoke] Monaco keys that the app's shortcuts take over in the editor (${freed.length}): ${freed.map((k) => `${k.label} ${k.command}`).join(', ')}`);
+
+    // A character typed at the start of the file marks it unsaved; ⌘S writes it.
+    // A real click in the text, then ⌘↑ to the start of the file.
+    await clickAt(win, `${v}.querySelector('.monaco-editor .view-line')`);
+    if (!(await waitInPage(win, `${v}.querySelector('.monaco-editor')?.classList.contains('focused')`, 3_000))) return 'a click in the text did not focus the editor';
+    // The app's single-letter keys (the catch-up's Space, C, S…) skip a focused textarea: Monaco must type through one.
+    if (!(await js(win, `document.activeElement?.tagName === 'TEXTAREA' && !!document.activeElement.closest('[data-file-editor]')`)))
+      return `the editor types through a ${String(await js(win, 'document.activeElement?.tagName'))}, not a textarea: the app's single-letter keys would fire while you type`;
+    press(win, 'Up', ['meta']);
+    await settle(win);
+    await win.webContents.insertText('/* smoke */ ');
+    if (!(await waitInPage(win, `!!${v}.querySelector('[data-files-dirty]')`, 3_000))) return 'typing did not mark the file unsaved';
+    press(win, 'S', ['meta']);
+    if (!(await until(() => readFileSync(path, 'utf8').startsWith('/* smoke */ '), 5_000))) return `⌘S did not write ${name} (it starts "${readFileSync(path, 'utf8').slice(0, 30)}")`;
+    if (!(await waitInPage(win, `!${v}.querySelector('[data-files-dirty]')`, 3_000))) return 'the file still shows unsaved after ⌘S';
+    const lineEndings = readFileSync(path, 'utf8').includes('\r\n') === before.includes('\r\n');
+
+    // ⌘K in the editor is the app's: the command palette opens (the key never reaches Monaco's ⌘K chords), and Esc closes it.
+    press(win, 'K', ['meta']);
+    if (!(await waitInPage(win, "!!document.querySelector('[data-command-palette]')", 3_000)))
+      return '⌘K in the editor did not open the command palette';
+    press(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-command-palette]')", 3_000))) return 'Esc did not close the command palette';
+    await clickAt(win, `${v}.querySelector('.monaco-editor .view-line')`);
+
+    // ⌘F in the editor opens the viewer's find bar (as in the read-only view): it marks the matches in the editor, Enter
+    // steps to the next, and its close button (a real click) closes it and gives the editor its focus back.
+    press(win, 'F', ['meta']);
+    if (!(await waitInPage(win, `document.activeElement?.matches('${S} [data-files-find-input]')`, 3_000))) return '⌘F in the editor did not open the find bar';
+    await win.webContents.insertText('import');
+    const findCount = `${v}.querySelector('[data-files-find-count]')?.textContent ?? ''`;
+    if (!(await waitInPage(win, `/^1 of \\d+$/.test(${findCount}) && !!${v}.querySelector('.monaco-editor .sb-find-current')`, 3_000)))
+      return `find in the editor marked no match ("${await js(win, findCount)}")`;
+    press(win, 'Enter');
+    if (!(await waitInPage(win, `/^2 of /.test(${findCount})`, 3_000))) return `Enter in the find bar did not step to the next match ("${await js(win, findCount)}")`;
+    await clickAt(win, `${v}.querySelector('[data-files-find] [aria-label="Close find"]')`);
+    if (!(await waitInPage(win, `!${v}.querySelector('[data-files-find]') && !${v}.querySelector('.monaco-editor .sb-find-match, .monaco-editor .sb-find-current') && ${v}.querySelector('.monaco-editor')?.classList.contains('focused')`, 3_000)))
+      return 'the find bar did not close on its close button, or left marks, or the editor did not get its focus back';
+
+    // Another tab in front keeps the edits: the editor stays, hidden, and comes back as it was. A tab with unsaved
+    // edits asks before it closes, and Cancel keeps it.
+    const tabOf = (p: string) => `[...${PANEL}.querySelectorAll('[data-files-tab]')].find((t) => t.dataset.filesTab === ${JSON.stringify(p)})`;
+    const other = join(cwd, 'package.json');
+    if (other !== path && existsSync(other)) {
+      press(win, 'Up', ['meta']);
+      await settle(win);
+      await win.webContents.insertText('y');
+      if (!(await waitInPage(win, `!!${v}.querySelector('[data-files-dirty]')`, 3_000))) return 'typing did not mark the file unsaved before another tab came in front';
+      await js(win, `window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(other)}, sessionId: document.querySelector('${S}').dataset.currentSession } }))`);
+      if (!(await waitInPage(win, `${PANEL}.querySelector('[data-files-tab-front]')?.dataset.filesTab === ${JSON.stringify(other)}`, 5_000))) return "package.json did not come in front";
+      if (!(await js(win, `!!${tabOf(path)}?.querySelector('[data-files-dirty]')`))) return 'the edited tab lost its unsaved dot behind another tab';
+      await js(win, `${tabOf(path)}.click()`);
+      // Its undo history came back too: ⌘Z below takes the y back.
+      if (!(await waitInPage(win, `!!${v}?.querySelector('[data-file-editor="ready"] .view-line')?.innerText.startsWith('y/*')`, 3_000)))
+        return `back on ${name}, its edits were gone ("${String(await js(win, `${v}?.querySelector('[data-file-editor] .view-line')?.innerText.slice(0, 20)`))}")`;
+      await js(win, `${tabOf(path)}.querySelector('[aria-label^="Close"]').click()`);
+      if (!(await waitInPage(win, "!!document.querySelector('[data-files-close-unsaved]')", 3_000))) return 'closing a tab with unsaved edits did not ask first';
+      press(win, 'Escape');
+      if (!(await waitInPage(win, `!document.querySelector('[data-files-close-unsaved]') && !!${v}?.querySelector('[data-files-dirty]')`, 3_000))) return 'Cancel on the close question did not keep the tab with its edits';
+      // ⌘Z takes the y back: the file is as saved again.
+      await clickAt(win, `${v}.querySelector('.monaco-editor .view-line')`);
+      press(win, 'Z', ['meta']);
+      if (!(await waitInPage(win, `!${v}.querySelector('[data-files-dirty]')`, 3_000))) return 'undo back to the saved text still shows the file unsaved';
+    }
+
+    press(win, 'Up', ['meta']);
+    await settle(win);
+
+    // Changed on disk while there are edits: a notice says so, and a save doesn't overwrite it.
+    writeFileSync(path, `${readFileSync(path, 'utf8')}\n// written by someone else\n`);
+    await win.webContents.insertText('x');
+    if (!(await waitInPage(win, `!!${v}.querySelector('[data-files-dirty]')`, 3_000))) return 'a second edit did not mark the file unsaved';
+    // The window coming to the front reads the file again, as Claude's write does through reloadKey.
+    await js(win, "window.dispatchEvent(new Event('focus'))");
+    let notice = 'on reading it again';
+    if (!(await waitInPage(win, `!!${v}.querySelector('[data-files-changed-on-disk]')`, 5_000))) {
+      press(win, 'S', ['meta']);
+      notice = 'when ⌘S was refused';
+      if (!(await waitInPage(win, `!!${v}.querySelector('[data-files-changed-on-disk]')`, 5_000))) return 'a change on disk while editing showed no notice, and ⌘S did not refuse';
+    }
+    if (!readFileSync(path, 'utf8').includes('written by someone else')) return 'the save overwrote a change made on disk';
+    await js(win, `${v}.querySelector('[data-files-edit-done]').click()`);
+    if (!(await waitInPage(win, `!${v}.querySelector('[data-file-editor]') && !!${v}.querySelector('[data-file-preview-source]')`, 3_000))) return 'Discard did not go back to the viewer';
+    return `ok: Monaco loaded in ${loadMs}ms with ${name} in ${colours} colours on the code background (${schemes}), ⌘S wrote the typed text${lineEndings ? ' with its line endings' : ' but changed its line endings'}, a change on disk showed a notice ${notice} and was kept; ${freed.length} Monaco keys taken over by the app's shortcuts, ⌘K in the editor opened the palette, ⌘F the find bar, which closed on its button, edits kept behind another tab and asked before closing`;
+  } finally {
+    writeFileSync(path, before);
   }
 }

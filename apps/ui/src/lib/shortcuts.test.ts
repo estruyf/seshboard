@@ -225,6 +225,7 @@ describe('the shortcut registry', () => {
       'files.add-lines': [SESSION, at({ view: 'session' })],
       'files.go-to-line': [SESSION, at({ view: 'session' })],
       'files.find': [SESSION, at({ view: 'session' })],
+      'files.save': [SESSION, at({ view: 'session' })],
       'changes.comment': [SESSION, at({ view: 'session' })],
       'agents.toggle': [SESSION, at({ view: 'session' })],
       'commands.toggle': [SESSION, at({ view: 'session' })],

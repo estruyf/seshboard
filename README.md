@@ -319,6 +319,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⌥M | Add the selected lines, or the file, to the message (in the Files viewer) |
 | ⌘⌥L | Go to line (in the Files viewer) |
 | ⌘F | Find in the file (in the Files viewer) |
+| ⌘S | Save the file you are editing (in the Files viewer, while editing) |
 | ⌘⇧D | Show or hide Changes |
 | ⌘⇧M | Comment on the selected lines (in a diff in Changes; Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box) |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |

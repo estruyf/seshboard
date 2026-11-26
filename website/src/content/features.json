@@ -252,6 +252,11 @@
       "page": "sessions/files"
     },
     {
+      "id": "shortcut:files.save",
+      "name": "Save the file you are editing",
+      "page": "sessions/files"
+    },
+    {
       "id": "palette:copy-session-id",
       "name": "Copy session id",
       "page": "sessions/conversation"

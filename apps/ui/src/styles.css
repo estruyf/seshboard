@@ -1029,6 +1029,14 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
   background-color: var(--sb-accent);
   color: var(--sb-on-accent);
 }
+/* The same marks in the file editor (Monaco), where the find bar draws them as decorations. */
+.monaco-editor .sb-find-match {
+  background-color: color-mix(in srgb, var(--sb-accent) 35%, transparent);
+}
+.monaco-editor .sb-find-current {
+  background-color: var(--sb-accent);
+  color: var(--sb-on-accent) !important;
+}
 
 /* A narrow pop-out: a panel on the right fills the session view (its own width is a wider window's). */
 [data-narrow-panel] > aside {

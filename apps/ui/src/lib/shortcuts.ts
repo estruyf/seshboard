@@ -1054,6 +1054,15 @@ export const SHORTCUTS = [
     where: "files",
   },
   {
+    id: "files.save",
+    keys: ["mod+s"],
+    action: "Save the file you are editing",
+    section: "session",
+    context: "In the Files viewer, while editing",
+    when: inSession,
+    where: "files",
+  },
+  {
     id: "changes.toggle",
     keys: ["mod+shift+d"],
     action: "Show or hide Changes",

@@ -221,6 +221,7 @@ import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { readPreview, readPreviewImage } from './system/filePreview.ts';
+import { writeFileContent } from './system/fileWrite.ts';
 import { IconThemes } from './system/iconThemes.ts';
 import { grep } from './system/grep.ts';
 import { listFolders } from './system/folders.ts';
@@ -1040,6 +1041,18 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.list().hosts.some((h) => h.cwd === cwd) ||
       listProjects().some((p) => p.root === cwd);
     if (!known) throw new RpcError('NOT_FOUND', `Not a session's folder or a project: ${cwd}`);
+  }
+  /** Every folder Seshboard knows (as `assertKnownFolder` checks), for a save to be inside one of. */
+  function knownFolders(): string[] {
+    const folders = new Set<string>();
+    for (const s of sessions.snapshot().sessions) {
+      if (s.cwd) folders.add(s.cwd);
+      if (s.projectRoot) folders.add(s.projectRoot);
+    }
+    for (const l of liveList()) if (l.cwd) folders.add(l.cwd);
+    for (const h of hosts.list().hosts) folders.add(h.cwd);
+    for (const p of listProjects()) folders.add(p.root);
+    return [...folders];
   }
 
   const sdk = options.sdk ?? (() => import('@anthropic-ai/claude-agent-sdk'));
@@ -4206,6 +4219,7 @@ export function createEngine(options: EngineOptions): Engine {
       }
     },
     'files.image': ({ path }) => readPreviewImage(path),
+    'files.write': (request) => writeFileContent(request, knownFolders()),
     'fileIcons.themes': () => ({ themes: iconThemes.list() }),
     'fileIcons.theme': ({ id }) => ({ theme: iconThemes.load(id) }),
     'fileIcons.icons': async ({ id, icons }) => ({ icons: await iconThemes.icons(id, icons) }),

@@ -27,7 +27,7 @@ import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runChangesReloadStep } from './changesReloadSmoke.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
 import { runFieldsEdgeStep, runMinimalCodeHighlightingStep, runMinimalFieldsStep, runMinimalLayoutStep, runMinimalPreferenceStep, runMinimalSettingsStep, runMinimalThemeStep, type MinimalSmoke } from './minimalSmoke.ts';
-import { runFilesFromLinkStep, runFilesIconsStep, runFilesQuickOpenStep, runFilesSearchStep, runFilesToMessageStep, runFilesTreeStep } from './filesSmoke.ts';
+import { runFilesEditStep, runFilesFromLinkStep, runFilesIconsStep, runFilesQuickOpenStep, runFilesSearchStep, runFilesToMessageStep, runFilesTreeStep } from './filesSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
 import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneFileStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep, runPhoneOrchestratorStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
@@ -15905,6 +15905,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('files search', () => runFilesSearchStep(win, filesPictures));
   await step('files to message', () => runFilesToMessageStep(win, filesPictures));
   await step('files from a link', () => runFilesFromLinkStep(win));
+  await step('files edit: Monaco opens, highlights, saves with ⌘S, and refuses a file changed on disk', () => runFilesEditStep(win, filesPictures), { timeoutMs: 60_000 });
   await step('files icons', () => runFilesIconsStep(win, { fileIconTheme: () => preferences.get().fileIconTheme, update: (patch) => updatePreferences(patch) }, filesPictures));
   await step('long prompts', () => runLongPromptStep(win));
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });

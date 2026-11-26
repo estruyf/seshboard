@@ -224,18 +224,21 @@ const loaded = new Set<string>();
 const cache = new SizedCache(4_000_000);
 const MAX_CODE = 50_000;
 
+/** A Shiki highlighter with Demo Time's syntax themes and no grammar yet. */
+async function newHighlighter(): Promise<HighlighterCore> {
+  const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, light, dark] = await Promise.all([
+    import('shiki/core'),
+    import('shiki/engine/javascript'),
+    // The Demo Time theme's syntax colours (github.com/estruyf/vscode-demo-time-theme), to match the app.
+    import('./themes/demotime-light.json'),
+    import('./themes/demotime-dark.json'),
+  ]);
+  const themes = [light.default, dark.default].map((t) => plainColors(t as unknown as ThemeRegistration));
+  return createHighlighterCore({ themes, langs: [], engine: createJavaScriptRegexEngine() });
+}
+
 function getHighlighter(): Promise<HighlighterCore> {
-  highlighter ??= (async () => {
-    const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, light, dark] = await Promise.all([
-      import('shiki/core'),
-      import('shiki/engine/javascript'),
-      // The Demo Time theme's syntax colours (github.com/estruyf/vscode-demo-time-theme), to match the app.
-      import('./themes/demotime-light.json'),
-      import('./themes/demotime-dark.json'),
-    ]);
-    const themes = [light.default, dark.default].map((t) => plainColors(t as unknown as ThemeRegistration));
-    return createHighlighterCore({ themes, langs: [], engine: createJavaScriptRegexEngine() });
-  })();
+  highlighter ??= newHighlighter();
   // A failed load (a chunk that didn't arrive) is tried again next time instead of failing forever.
   highlighter.catch(() => (highlighter = undefined));
   return highlighter;
@@ -248,6 +251,27 @@ async function ensureTheme(shiki: HighlighterCore, syntax: ThemeSyntax | null, m
     const module = await SYNTAX_THEMES[syntax as ShikiThemeName]();
     await shiki.loadTheme(module.default as ThemeRegistration);
   } else await shiki.loadTheme(inlineRegistration(syntax, id, mode));
+}
+
+/**
+ * A highlighter of its own for the file editor (Monaco), with the syntax themes in use loaded. Not the shared one:
+ * Monaco tokenizes line by line against the highlighter's current theme (`setTheme`), and every `codeToHtml` of a
+ * code block switches that theme, so sharing one would colour the editor's lines with the wrong theme. The grammar and
+ * theme modules are the same, so nothing more is downloaded. `ensure` loads a grammar; `themes` names the theme of each mode.
+ */
+export async function editorHighlighter(): Promise<{ shiki: HighlighterCore; ensure(grammar?: string): Promise<void>; themes(): { light: string; dark: string } }> {
+  const shiki = await newHighlighter();
+  const loadedHere = new Set<string>();
+  const ensure = async (grammar?: string) => {
+    if (grammar && !loadedHere.has(grammar)) {
+      const module = (await GRAMMARS[grammar]!()) as { default: Parameters<HighlighterCore['loadLanguage']>[0] };
+      await shiki.loadLanguage(module.default);
+      loadedHere.add(grammar);
+    }
+    await ensureTheme(shiki, choice.light, 'light', current.light);
+    await ensureTheme(shiki, choice.dark, 'dark', current.dark);
+  };
+  return { shiki, ensure, themes: () => ({ ...current }) };
 }
 
 /** Shiki, the grammar and both modes' syntax themes, loaded; then the HTML. */

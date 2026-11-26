@@ -873,6 +873,16 @@ export const contract = {
       result: z.object({ kind: z.enum(['markdown', 'html', 'code', 'text']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
     },
     /**
+     * Saves text the user edited in the Files panel over a file that is already there, inside a folder Seshboard knows
+     * (a session's folder or a project's root; its real path, so a link can't lead out). CONFLICT when the file's mtime
+     * is not `expectedModified` (what `files.read` returned) any more. Keeps the file's line endings, byte order mark and
+     * permissions, and writes a temporary file renamed over it. Never offered to a paired phone.
+     */
+    'files.write': {
+      params: z.object({ path: AbsolutePath, content: z.string(), expectedModified: z.number() }),
+      result: z.object({ modified: z.number(), size: z.number() }),
+    },
+    /**
      * Every file of a folder Seshboard knows (a session's folder or a project's root), relative to `cwd` with `/`,
      * sorted: git's tracked and untracked-but-not-ignored files, or a walk outside git. At most 50,000 (`truncated`).
      * NOT_FOUND for a folder Seshboard doesn't know.

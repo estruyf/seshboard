@@ -66,6 +66,10 @@ export interface FilePreviewContent {
   text: string | null;
   /** Whether the source shows (rather than the rendered page). */
   showsSource: boolean;
+  /** The mtime (ms) of the text read, for a save to check the file did not change since; null while there is none. */
+  modified: number | null;
+  /** Reads the file again. */
+  reload(): void;
   /** Opens the file in the editor at the line it was opened at. */
   openEditor(): void;
 }
@@ -287,6 +291,9 @@ export function useFilePreviewContent(target: PreviewTarget, options: FilePrevie
     tools,
     text: file && !tooLarge ? file.content : null,
     showsSource,
+    // Only for this file's own read: the one before can still show while the next file loads.
+    modified: file && !tooLarge && read.path === path ? file.modified : null,
+    reload: () => void load(),
     openEditor: () => void openEditor(),
     body: (
       <div className="flex min-h-0 flex-1 flex-col bg-code" data-file-preview-body="">
