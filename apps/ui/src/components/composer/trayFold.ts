@@ -6,6 +6,23 @@ export interface TrayWidths {
   chips: number;
   info: number;
   ring: number;
+  /** The part of `info` that is estimated cost (each window's, extra usage, the session's), which goes first. */
+  costs?: number;
+}
+
+/**
+ * How the tray fits on one line: everything (`full`), without the costs (`lean`), or with model, effort and mode as
+ * one chip and Tools and usage in its menu (`folded`). The costs go before the chips do, so a long cost line never
+ * hides the effort and mode.
+ */
+export type TrayLevel = 'full' | 'lean' | 'folded';
+
+/** The level the tray shows at this width. Measures the chip row at its smallest level, like `trayFolds`. */
+export function trayLevel(available: number, widths: TrayWidths): TrayLevel {
+  if (!trayFolds(available, widths)) return 'full';
+  const costs = widths.costs ?? 0;
+  if (costs > 0 && !trayFolds(available, { ...widths, info: Math.max(0, widths.info - costs) })) return 'lean';
+  return 'folded';
 }
 
 /** Room the tray keeps between and around its two sides (their gap and the chips' own margins). */

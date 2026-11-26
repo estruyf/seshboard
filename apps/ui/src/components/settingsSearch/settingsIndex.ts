@@ -478,7 +478,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'show-bar-cost',
       page: 'usage',
       label: 'Show it on the usage bars',
-      detail: 'The estimated cost after the 5-hour and weekly bars, under the message box and in New session.',
+      detail: 'The estimated cost of the 5-hour and weekly windows, in the usage tooltip under the message box and in New session.',
       keywords: 'cost price money dollars euro estimate usage bar footer stats 5h week',
       target: '[data-show-bar-cost]',
     },

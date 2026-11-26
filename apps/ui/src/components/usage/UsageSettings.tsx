@@ -29,14 +29,14 @@ export function UsageSettings() {
       </div>
       <Toggle
         label="Show estimated cost"
-        detail="What your tokens would cost at API prices: after the 5-hour and weekly bars, next to Context under a session's message box, and in the Usage view. Your plan is not billed per token, so this is never a charge."
+        detail="What your tokens would cost at API prices: with the 5-hour and weekly limits, next to Context under a session's message box, and in the Usage view. Your plan is not billed per token, so this is never a charge."
         checked={prefs.showCost}
         attr="data-show-cost"
         onChange={(showCost) => update({ showCost })}
       />
       <Toggle
         label="Show it on the usage bars"
-        detail="The estimate after the 5-hour and weekly bars under the message box and in New session. Turn it off to keep the estimate in the Usage view and next to Context."
+        detail="The estimate for the 5-hour and weekly windows, when you point at the usage under the message box and in New session. Turn it off to keep the estimate in the Usage view and next to Context."
         checked={prefs.showBarCost}
         disabled={!prefs.showCost}
         attr="data-show-bar-cost"
