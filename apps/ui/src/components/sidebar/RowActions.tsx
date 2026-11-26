@@ -27,8 +27,8 @@ export interface RowActionsTree {
 /**
  * The buttons a session row shows under the pointer, or once Tab moves into them from the row (`group/row` on the row's
  * wrapper). Never on touch: Tailwind's hover only applies where there is a pointer that hovers. Esc goes back to the row.
- * A pipeline's parent gets its steps toggle first: the row's own chevron moves aside for the toolbar, so it would be
- * hard to hit.
+ * A row with sub-sessions gets its steps toggle last, where its own chevron sits at rest: the pointer that goes for the
+ * chevron lands on the toggle, never on Done.
  */
 export function RowActions({ id, title, actions, tree, tabbable, onAction }: { id: string; title: string; actions: readonly QuickAction[]; tree?: RowActionsTree; tabbable: boolean; onAction(action: QuickAction): void }) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -54,25 +54,6 @@ export function RowActions({ id, title, actions, tree, tabbable, onAction }: { i
       className="pointer-events-none absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-edge bg-popover p-0.5 opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-[:focus-visible]/row:pointer-events-auto group-has-[:focus-visible]/row:opacity-100"
       data-row-actions={id}
     >
-      {tree && (
-        <button
-          type="button"
-          tabIndex={tabbable ? 0 : -1}
-          aria-label={`${tree.open ? 'Hide steps of' : 'Show steps of'} ${title}`}
-          aria-expanded={tree.open}
-          data-tooltip={tree.open ? 'Hide steps' : `Show ${tree.count} ${tree.count === 1 ? 'step' : 'steps'}`}
-          data-row-tree-toggle={tree.open}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            tree.onToggle();
-          }}
-          className="flex size-6 items-center justify-center rounded text-muted hover:bg-border/50 hover:text-text"
-        >
-          <ChevronRight size={13} aria-hidden className={`transition-transform duration-100 motion-reduce:transition-none ${tree.open ? 'rotate-90' : ''}`} />
-        </button>
-      )}
       {actions.map((action) => (
         <button
           key={action.kind}
@@ -93,6 +74,25 @@ export function RowActions({ id, title, actions, tree, tabbable, onAction }: { i
           {ICON[action.method]}
         </button>
       ))}
+      {tree && (
+        <button
+          type="button"
+          tabIndex={tabbable ? 0 : -1}
+          aria-label={`${tree.open ? 'Hide steps of' : 'Show steps of'} ${title}`}
+          aria-expanded={tree.open}
+          data-tooltip={tree.open ? 'Hide steps' : `Show ${tree.count} ${tree.count === 1 ? 'step' : 'steps'}`}
+          data-row-tree-toggle={tree.open}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            tree.onToggle();
+          }}
+          className="flex size-6 items-center justify-center rounded text-muted hover:bg-border/50 hover:text-text"
+        >
+          <ChevronRight size={13} aria-hidden className={`transition-transform duration-100 motion-reduce:transition-none ${tree.open ? 'rotate-90' : ''}`} />
+        </button>
+      )}
     </div>
   );
 }

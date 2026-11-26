@@ -27,6 +27,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **Show and hide sub-sessions from the same spot.** When you point at a session with sub-sessions or steps, the open and close arrow now sits on the right, where the row's own arrow was. **Done** moves one place to the left, so you no longer mark a session done by accident.
 - **New session sits in the middle of the window.** With three columns, the project list, the message box and the project details are centred in the window, not at the top.
 - **Usage and reading mode close with ×, like Settings.** The **Back** button in Usage and the back arrow in reading mode are now a close button. Esc still closes them. Close buttons no longer repeat Esc in their tooltip.
 - **A slash command stands out in the message box.** When a message starts with a command the session knows, like `/design`, the command shows in the accent colour, so you can tell it from the prompt that goes with it. A path such as `/tmp` stays as it is.

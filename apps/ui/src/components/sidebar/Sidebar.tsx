@@ -436,8 +436,8 @@ export const SessionRow = memo(function SessionRow({
     />
   );
   const pin = data.pinned && <Pin size={11} className="shrink-0 text-faint" aria-hidden />;
-  // With quick actions the steps toggle is the toolbar's first button, where the pointer already is; the chevron
-  // only shows while the pointer is elsewhere.
+  // With quick actions the steps toggle is the toolbar's last button, in the chevron's place, so a click aimed at the
+  // chevron never lands on Done. The chevron only shows while the pointer is elsewhere.
   const tree = expanded !== undefined && onToggleTree ? { open: expanded, count: childCount, onToggle: () => onToggleTree(data.id) } : undefined;
   const treeInActions = actions.length > 0 && tree !== undefined;
   const buttons = actions.length + (treeInActions ? 1 : 0);
