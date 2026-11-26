@@ -1,6 +1,5 @@
 import type { ButtonHTMLAttributes, KeyboardEvent, ReactNode } from 'react';
 import { ariaShortcut, shortcutGlyphs, storedShortcut } from '../../lib/shortcuts.ts';
-import { Kbd } from '../ui/Kbd.tsx';
 import { useMiddleEllipsis } from '../ui/useMiddleEllipsis.ts';
 import { gridMove, type TileTone } from './projectTiles.ts';
 
@@ -49,6 +48,9 @@ export function ProjectRow({ icon, name, tone, label, branch, shortcut, selected
       type="button"
       aria-label={`${name}, ${label}`}
       aria-keyshortcuts={keys ? ariaShortcut(storedShortcut(keys)) : undefined}
+      // The ⌘ key is in the tooltip, never on the row.
+      data-tooltip={keys ? name : undefined}
+      data-tooltip-kbd={keys ? shortcutGlyphs(keys) : undefined}
       data-project-row
       {...rest}
       // The picked row wears its project's colour, lifted a pixel.
@@ -71,7 +73,6 @@ export function ProjectRow({ icon, name, tone, label, branch, shortcut, selected
           </span>
         </span>
       </span>
-      {keys && <Kbd keys={keys} tone="plain" aria-hidden />}
     </button>
   );
 }

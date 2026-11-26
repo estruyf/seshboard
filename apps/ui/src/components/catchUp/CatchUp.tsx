@@ -12,8 +12,8 @@ import { toast } from '../../state/toastStore.ts';
 import { closeChanges } from '../../state/changesPanelStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { OVERLAY_SELECTOR } from '../session/permissionKeys.ts';
+import { shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { Button } from '../ui/Button.tsx';
-import { Kbd } from '../ui/Kbd.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import {
@@ -69,7 +69,7 @@ function PassPosition({ position }: { position: Shared['position'] }) {
 function SkipButton({ skip, size = 'md' }: { skip: Shared['skip']; size?: 'sm' | 'md' }) {
   if (!skip) return null;
   return (
-    <Button variant="secondary" size={size} shortcut="catchup.skip" kbdHideNarrow="small" onClick={skip} data-tooltip="Go to the next session to review, and leave this one as it is" data-catchup-skip>
+    <Button variant="secondary" size={size} shortcut="catchup.skip" onClick={skip} data-tooltip="Go to the next session to review, and leave this one as it is" data-catchup-skip>
       Skip
     </Button>
   );
@@ -93,14 +93,13 @@ function ActionButton({ id, primary, actions, changesOpen, size = 'md' }: { id: 
       variant={primary ? 'primary' : 'secondary'}
       size={size}
       kbd={letter}
-      kbdHideNarrow="small"
+      data-tooltip-kbd={primary ? `${shortcutGlyphs('enter')} or ${letter.toUpperCase()}` : undefined}
       onClick={() => actions.run(id)}
       aria-keyshortcuts={primary ? `Enter ${letter.toUpperCase()}` : letter.toUpperCase()}
       data-catchup-action={id}
       data-catchup-primary={primary || undefined}
     >
       {actionLabel(id, { changesOpen })}
-      {primary && <Kbd keys="enter" tone="on-accent" hideNarrow="small" aria-hidden />}
     </Button>
   );
 }
@@ -151,7 +150,7 @@ function CatchUpStrip({ card, actions, committed, changesOpen, position, skip }:
           <ActionButton id={primary} primary actions={actions} changesOpen={changesOpen} size="sm" />
           <SkipButton skip={skip} size="sm" />
           {/* In a narrow card the keys go and Show catch-up says Show. */}
-          <Button variant="quiet" size="sm" kbd="space" kbdHideNarrow="small" onClick={() => actions.fold(false)} aria-label="Show catch-up" data-catchup-show>
+          <Button variant="quiet" size="sm" kbd="space" onClick={() => actions.fold(false)} aria-label="Show catch-up" data-catchup-show>
             Show<span className="@max-[640px]:hidden"> catch-up</span>
           </Button>
         </span>
@@ -186,7 +185,7 @@ function CatchUpBanner({ card, actions, committed, changesOpen, details, positio
           <span className="ml-auto flex shrink-0 items-center gap-2.5" data-catchup-buttons>
             <ActionButton id={primary} primary actions={actions} changesOpen={changesOpen} />
             <SkipButton skip={skip} />
-            <Button variant="secondary" size="md" kbd="space" kbdHideNarrow="small" selected={details} aria-expanded={details} onClick={() => useCatchUp.getState().setDetails(card, !details)} data-catchup-details-toggle>
+            <Button variant="secondary" size="md" kbd="space" selected={details} aria-expanded={details} onClick={() => useCatchUp.getState().setDetails(card, !details)} data-catchup-details-toggle>
               Details
             </Button>
             <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} kbd="Esc" aria-label="Collapse the catch-up" data-tooltip="Collapse" onClick={() => actions.fold(true)} data-catchup-collapse />

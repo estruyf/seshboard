@@ -952,7 +952,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
             {working && (
-              <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow disabled={!connected} onClick={onStop} data-tooltip={`Stop Claude on ${name} (${formatKeys(keysFor('claude.stop'))})`} data-computer-stop>
+              <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" disabled={!connected} onClick={onStop} data-tooltip={`Stop Claude on ${name} (${formatKeys(keysFor('claude.stop'))})`} data-computer-stop>
                 Stop
               </Button>
             )}

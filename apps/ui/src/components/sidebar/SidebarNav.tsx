@@ -7,10 +7,9 @@ import { openUpcoming } from '../../state/upcomingStore.ts';
 import { useSessionsToday } from '../../state/useSessionsToday.ts';
 import { useUpcomingSummary } from '../../state/useUpcomingSummary.ts';
 import { useTabCount } from '../../state/webPreviewStore.ts';
-import type { ShortcutId } from '../../lib/shortcuts.ts';
+import { ariaKeysFor, formatKeys, keysFor, type ShortcutId } from '../../lib/shortcuts.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { Badged } from '../ui/Badged.tsx';
-import { Kbd } from '../ui/Kbd.tsx';
 import { Button } from '../ui/Button.tsx';
 import { BROWSER_OWNER } from '../webPreview/browserTabs.ts';
 
@@ -107,16 +106,14 @@ export function MinimalNav({ now, needsYou, onNewSession, newSessionLabel }: { n
   const sessions = () => useSidebarList.getState().setList('sessions');
   const item = 'no-drag flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-ui hover:bg-border/45 hover:text-text';
   const entry = (key: string, label: string, tip: string, current: boolean, onClick: () => void, shortcut?: ShortcutId) => (
-    <button key={key} type="button" className={`${item} ${current ? 'bg-selected text-text' : 'text-muted'}`} aria-current={current ? 'page' : undefined} data-tooltip={tip !== label ? tip : undefined} data-nav={key} onClick={onClick}>
+    <button key={key} type="button" className={`${item} ${current ? 'bg-selected text-text' : 'text-muted'}`} aria-current={current ? 'page' : undefined} data-tooltip={tip !== label || shortcut ? tip : undefined} data-tooltip-kbd={shortcut ? formatKeys(keysFor(shortcut)) : undefined} aria-keyshortcuts={shortcut ? ariaKeysFor(shortcut) : undefined} data-nav={key} onClick={onClick}>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {shortcut && <Kbd shortcut={shortcut} tone="plain" />}
     </button>
   );
   return (
     <nav aria-label="Views" className="mx-3 mb-2 grid gap-px" data-nav-text>
-      <button type="button" className={`${item} text-text`} aria-label={newSessionLabel} data-new-session onClick={onNewSession}>
+      <button type="button" className={`${item} text-text`} aria-label={newSessionLabel} data-tooltip="New session" data-tooltip-kbd={formatKeys(keysFor('session.new'))} aria-keyshortcuts={ariaKeysFor('session.new')} data-new-session onClick={onNewSession}>
         <span className="min-w-0 flex-1 truncate">New session</span>
-        <Kbd shortcut="session.new" tone="plain" />
       </button>
       {entry('search', 'Search', 'Search all conversations', false, () => useOverlay.getState().show('search'), 'search')}
       {entry('home', 'Home', needsYou > 0 ? `Home · ${needsYou} need${needsYou === 1 ? 's' : ''} you` : 'Home', atHome, () => (sessions(), useSessions.getState().goHome()))}

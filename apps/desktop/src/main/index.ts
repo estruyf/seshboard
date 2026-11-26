@@ -9809,8 +9809,10 @@ async function runNewSessionLayoutStep(win: BrowserWindow): Promise<string> {
     await setFieldValue(win, box, 'for the queue, not sent');
     const start = '[data-start-main]';
     if (!(await waitInPage(win, `${one(start)}?.dataset.startMain === 'queue' && ${one(start)}.innerText.includes('Add to queue')`, 3_000))) return `at the limit, Start reads ${JSON.stringify(await js(`${one(start)}?.innerText`))}`;
-    const startKey = (await js(`${one(start)}.innerText`)) as string;
-    if (!/↵|↩|Enter/.test(startKey)) return `Add to queue shows no key: ${JSON.stringify(startKey)}`;
+    // A button never shows its shortcut: the tooltip names it and aria-keyshortcuts announces it.
+    const startKey = (await js(`({ text: ${one(start)}.innerText, tip: ${one(start)}.dataset.tooltipKbd ?? '', aria: ${one(start)}.getAttribute('aria-keyshortcuts') ?? '' })`)) as { text: string; tip: string; aria: string };
+    if (/↵|↩|⌘|⌃/.test(startKey.text)) return `Add to queue shows its key on the button: ${JSON.stringify(startKey.text)}`;
+    if (!/↵|↩|Enter/.test(startKey.tip) || !/Enter/.test(startKey.aria)) return `Add to queue names no key in its tooltip (${JSON.stringify(startKey.tip)}) or to a screen reader (${JSON.stringify(startKey.aria)})`;
     await js(`${one('[data-start-menu]')}.click()`);
     if (!(await waitInPage(win, one('[data-start-anyway]'), 2_000))) return 'Nudge has no Start anyway in the menu';
     pressKey(win, 'Escape');

@@ -1,5 +1,5 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { ariaShortcut, storedShortcut } from '../../lib/shortcuts.ts';
+import { ariaShortcut, shortcutGlyphs, storedShortcut } from '../../lib/shortcuts.ts';
 import { stepSegment } from './segments.ts';
 
 export interface Segment<T extends string> {
@@ -16,7 +16,7 @@ export interface Segment<T extends string> {
   tooltip?: string;
   /** An accessible name that says more than the label ("Hide changed files, 42 changed"). */
   ariaLabel?: string;
-  /** The shortcut that does the same, announced through `aria-keyshortcuts`. */
+  /** The shortcut that does the same, announced through `aria-keyshortcuts` and named in the tooltip. */
   kbd?: string;
   disabled?: boolean;
   /** Toggle mode only: the segment opens a panel, so it says `aria-expanded` instead of `aria-pressed`. */
@@ -122,7 +122,8 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
             }}
             aria-label={segment.ariaLabel ?? (segment.iconOnly ? segment.label : undefined)}
             aria-keyshortcuts={segment.kbd ? ariaShortcut(storedShortcut(segment.kbd)) : undefined}
-            data-tooltip={segment.tooltip ?? (segment.iconOnly ? segment.label : undefined)}
+            data-tooltip={segment.tooltip ?? (segment.iconOnly || segment.kbd ? segment.label : undefined)}
+            data-tooltip-kbd={segment.kbd && !segment.tooltip?.includes(shortcutGlyphs(segment.kbd)) ? shortcutGlyphs(segment.kbd) : undefined}
             className={`relative flex h-full ${fill ? 'min-w-0 flex-auto' : 'shrink-0'} items-center justify-center gap-1 rounded-md ${quiet ? 'min-w-7 px-1.5' : 'px-1.5'} whitespace-nowrap disabled:opacity-50 aria-disabled:cursor-default aria-disabled:opacity-50 ${behind ? 'bg-selected/40 text-muted hover:text-text' : on ? 'bg-selected text-text' : 'text-muted enabled:not-aria-disabled:hover:bg-border/50 enabled:not-aria-disabled:hover:text-text'}`}
             data-segment-front={on && segment.front !== undefined ? segment.front : undefined}
             {...aria}

@@ -248,7 +248,7 @@ export function ProjectPage({ list, narrow = false, onShowList }: { list: readon
                 />
               </>
             )}
-            <Button variant="primary" icon={<Plus size={13} aria-hidden />} shortcut="session.new" kbdHideNarrow disabled={!project.exists} onClick={startHere} data-project-new-session>
+            <Button variant="primary" icon={<Plus size={13} aria-hidden />} shortcut="session.new" disabled={!project.exists} onClick={startHere} data-project-new-session>
               New session
             </Button>
             <Button

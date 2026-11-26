@@ -2,7 +2,7 @@ import { Check, GitPullRequest, Globe, ListEnd, Monitor, Puzzle, Smartphone, X, 
 import { TOAST_MS, useToasts, type Toast } from '../../state/toastStore.ts';
 import { UpdateToasts } from '../updates/UpdateToasts.tsx';
 import { Button } from './Button.tsx';
-import { Kbd } from './Kbd.tsx';
+import { ariaKeysFor, formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { ToastFrame, ToastText, useToastCountdown } from './ToastFrame.tsx';
 
 /** One toast: it counts down while visible, pauses while the pointer is on it or the window is in the background. */
@@ -88,12 +88,14 @@ function ToastCard({ toast }: { toast: Toast }) {
             dismiss();
           }}
           className="shrink-0 rounded px-1.5 text-ui font-semibold text-link hover:underline"
+          data-tooltip={toast.undoShortcut ? 'Undo' : undefined}
+          data-tooltip-kbd={toast.undoShortcut ? formatKeys(keysFor(toast.undoShortcut)) : undefined}
+          aria-keyshortcuts={toast.undoShortcut ? ariaKeysFor(toast.undoShortcut) : undefined}
           data-toast-undo
         >
           Undo
         </button>
       )}
-      {toast.undo && toast.undoShortcut && <Kbd shortcut={toast.undoShortcut} tone="plain" className="-ml-1 pr-1" aria-hidden />}
       <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Dismiss" onClick={dismiss} className="shrink-0" />
     </div>
   );

@@ -1,7 +1,6 @@
 import type { HTMLAttributes, MouseEventHandler, ReactNode, Ref } from 'react';
 import { ariaShortcut, storedShortcut } from '../../lib/shortcuts.ts';
 import { pillClass, type PillTone } from './buttonStyles.ts';
-import { Kbd } from './Kbd.tsx';
 
 interface PillProps extends Omit<HTMLAttributes<HTMLElement>, 'onClick'> {
   /** `default`, `muted` (quiet, on a card), `accent` (at a limit), `ok` (background work, clean), `warn` (needs you or over a limit), `caution` (look before it goes), `error` (something failed), `link` (an open pull request), `count` (the number next to a group heading). */
@@ -17,7 +16,7 @@ interface PillProps extends Omit<HTMLAttributes<HTMLElement>, 'onClick'> {
   /** Let it shrink and truncate its label rather than keep its width. */
   shrink?: boolean;
   icon?: ReactNode;
-  /** Its shortcut, shown after the label (hidden in a narrow pane) and announced through `aria-keyshortcuts`. */
+  /** Its shortcut, announced through `aria-keyshortcuts`; never shown on the pill (its tooltip names it). */
   kbd?: string;
   disabled?: boolean;
   'data-tooltip'?: string;
@@ -31,7 +30,6 @@ export function Pill({ tone = 'default', onClick, dashed = false, ghost = false,
     <>
       {icon}
       {children}
-      {kbd && <Kbd keys={kbd} tone="plain" hideNarrow aria-hidden />}
     </>
   );
   if (!onClick) {

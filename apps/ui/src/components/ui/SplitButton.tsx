@@ -13,7 +13,7 @@ interface SplitButtonProps {
   /** An icon before the main part's label. */
   icon?: ReactNode;
   onClick(): void;
-  /** The main part's shortcut, shown after its label. */
+  /** The main part's shortcut, named in its tooltip. */
   kbd?: string;
   shortcut?: ShortcutId;
   /** The main part only; the ▾ follows `menuDisabled`. */
