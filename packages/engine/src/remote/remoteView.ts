@@ -243,6 +243,7 @@ export const remotePrompt = (p: PermissionRequest): RemotePrompt => ({
   title: p.title,
   description: p.description,
   alwaysLabel: p.alwaysLabel,
+  ...(p.detail ? { detail: p.detail } : {}),
   createdAt: p.createdAt,
 });
 

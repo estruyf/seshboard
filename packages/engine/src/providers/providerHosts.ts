@@ -379,11 +379,11 @@ export class ProviderHosts {
   }
 
   /** A card Seshboard raises itself, not the provider: the session needs you while it is open. */
-  private async askOwn(host: Host, sessionId: string, toolName: string, input: PermissionRequest['input'], text: { title: string; description: string; alwaysLabel: string | null; sessionAllow: boolean }): Promise<BrowserAnswer> {
+  private async askOwn(host: Host, sessionId: string, toolName: string, input: PermissionRequest['input'], text: { title: string; description: string; alwaysLabel: string | null; sessionAllow: boolean; detail?: string }): Promise<BrowserAnswer> {
     return browserAnswerOf(await this.askOwnDecision(host, sessionId, toolName, input, text));
   }
 
-  private askOwnDecision(host: Host, sessionId: string, toolName: string, input: PermissionRequest['input'], text: { title: string; description: string; alwaysLabel: string | null; sessionAllow: boolean; approval?: ApprovalCard }): Promise<PermissionDecision> {
+  private askOwnDecision(host: Host, sessionId: string, toolName: string, input: PermissionRequest['input'], text: { title: string; description: string; alwaysLabel: string | null; sessionAllow: boolean; detail?: string; approval?: ApprovalCard }): Promise<PermissionDecision> {
     return new Promise((resolve) => {
       const requestId = randomUUID();
       const request: PermissionRequest = {
@@ -396,6 +396,7 @@ export class ProviderHosts {
         description: text.description,
         alwaysLabel: text.alwaysLabel,
         ...(text.sessionAllow ? { sessionAllow: true } : {}),
+        ...(text.detail ? { detail: text.detail } : {}),
         decisionReason: null,
         blockedPath: null,
         agentId: null,

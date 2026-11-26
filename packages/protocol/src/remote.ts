@@ -140,6 +140,8 @@ export const RemotePrompt = z.object({
   description: z.string().nullable(),
   /** What "Always allow" would do; null when not offered. */
   alwaysLabel: z.string().nullable(),
+  /** What the call does, in words (a browser card's "Click “Sign in”"), when Seshboard knows better than the input. */
+  detail: z.string().optional(),
   createdAt: z.number(),
 });
 export type RemotePrompt = z.infer<typeof RemotePrompt>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { browserAccess, browserAnswerOf, browserInstructions, browserPromptText, browserToolOf, browserToolsFor, isLocalSite, normaliseSite, siteAllowed, siteLabel, siteOf, toCallToolResult, withSite } from './browserSites.ts';
+import { browserAccess, browserAnswerOf, browserCallDetail, browserInstructions, browserPromptText, browserToolOf, browserToolsFor, isLocalSite, normaliseSite, siteAllowed, siteLabel, siteOf, toCallToolResult, withSite } from './browserSites.ts';
 
 describe('browser sites', () => {
   it('reads a page’s site as its origin', () => {
@@ -125,9 +125,23 @@ describe('the browser tools’ guard', () => {
       title: 'Claude Code wants to run scripts on contoso.sharepoint.com as you',
       description: expect.stringContaining('with your login on that site.'),
       alwaysLabel: 'scripts on contoso.sharepoint.com in this project',
+      detail: 'Run a script in the page',
     });
     expect(browserPromptText('Copilot', { ...ask, profile: 'Admin', project: false })).toMatchObject({ description: expect.stringContaining('in the browser profile Admin'), alwaysLabel: null });
     expect(browserPromptText('Codex', { ...ask, kind: 'site' })).toMatchObject({ title: 'Codex wants to use contoso.sharepoint.com in the browser', alwaysLabel: 'contoso.sharepoint.com in this project' });
+  });
+
+  it('says what a call does in words, naming the element rather than its ref', () => {
+    expect(browserCallDetail('click', { ref: 'e105' }, 'Sign  in')).toBe('Click “Sign in”');
+    expect(browserCallDetail('click', { ref: 'e105' }, null)).toBe('Click an element on the page');
+    expect(browserCallDetail('type', { ref: 'e7', text: 'octocat', submit: true }, 'Search')).toBe('Type “octocat” into “Search” and press Enter');
+    expect(browserCallDetail('type', { ref: 'e7', text: 'x' })).toBe('Type “x” into a field');
+    expect(browserCallDetail('open', { url: 'https://github.com/' })).toBe('Open https://github.com/');
+    expect(browserCallDetail('press', { key: 'Enter' })).toBe('Press Enter');
+    expect(browserCallDetail('network', { id: 'r12' })).toBe('Read the response of request r12');
+    expect(browserCallDetail('click', {}, 'x'.repeat(100))).toHaveLength('Click “”'.length + 60);
+    const ask = { kind: 'site' as const, site: 'https://github.com', tool: 'click' as const, input: { ref: 'e105' }, profile: null, target: 'New issue', project: false };
+    expect(browserPromptText('Claude Code', ask).detail).toBe('Click “New issue”');
   });
 
   it('reads the card’s choice', () => {

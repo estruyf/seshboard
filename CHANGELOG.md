@@ -58,6 +58,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Browser permission cards say what the agent wants to do.** A click or a typed text names the element in the page's own words, such as Click “New issue”, instead of a code like `e105`. Opening a page, pressing a key and running a script say so too.
 - **The app icon you pick stays in the Dock after you quit (macOS).** Before, the Dock went back to the Graphite icon once Seshboard closed. If you keep Seshboard in the Dock and it still shows the old icon after the update, quit and open Seshboard once.
 - **Checking for updates no longer fails while a release is being built.** For the first minutes after a release or a beta comes out, its download isn't ready yet. Seshboard now offers the release before it, if that one is newer than yours, and the new release on a later check.
 - **Panels at half width is remembered.** The setting now stays on after you quit and open Seshboard again. Before, the panels went back to their side width on every start.

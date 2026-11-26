@@ -1419,8 +1419,9 @@ export function createEngine(options: EngineOptions): Engine {
     // A call works on the address it opens, or the session's page: with no page yet, the call itself says so.
     where: async (sessionId, tool, args) => {
       if (tool === 'open') return { url: String(args.url ?? ''), profile: typeof args.profileName === 'string' ? args.profileName : null };
-      const where = await options.browser?.({ sessionId, tool: 'where', args: {} });
-      return { url: where?.url ?? null, profile: browserProfileName(where?.profileId) };
+      // With a ref, main also names the element, so a card can say what the call clicks or types into.
+      const where = await options.browser?.({ sessionId, tool: 'where', args: typeof args.ref === 'string' ? { ref: args.ref } : {} });
+      return { url: where?.url ?? null, profile: browserProfileName(where?.profileId), target: where?.target ?? null };
     },
     sites: browserSitesOf,
     // Main starts the server with the scripts flag while Settings › Browser › Allow scripts in pages is on.

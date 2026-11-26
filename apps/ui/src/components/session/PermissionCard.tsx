@@ -250,7 +250,8 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
   const [feedback, setFeedback] = useFeedbackDraft(request.requestId);
   const allowRef = useFocusIfIdle();
   const inputId = useId();
-  const { detail } = toolSummary(request.toolName, request.input, cwd);
+  // Seshboard's own cards say what the call does (a browser click names its element, not its ref).
+  const detail = request.detail ?? toolSummary(request.toolName, request.input, cwd).detail;
   const command = request.toolName === 'Bash' ? (request.input as { command?: string }).command : undefined;
   const allow = () => void respond({ behavior: 'allow' });
   const deny = () => void respond({ behavior: 'deny', message: feedback.trim() || DECLINED });
