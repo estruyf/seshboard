@@ -2813,7 +2813,7 @@
     },
     {
       "id": "feature:usage-cost-estimate",
-      "name": "Estimated API cost after the 5-hour and weekly usage bars, in a currency you pick",
+      "name": "Estimated API cost of the 5-hour and weekly usage windows, in a currency you pick",
       "page": "usage"
     },
     {

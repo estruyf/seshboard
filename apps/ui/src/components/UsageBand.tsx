@@ -118,10 +118,10 @@ const resetTitle = (limit: UsageLimit, now: number) =>
  * Plan usage, like the claude-stats mod: one pill per window with a ring and a reset countdown.
  * Shows the limits of the given Claude profile (the default one when omitted).
  * `compact` drops the pills for a single line (`6% 5h · 4h44m`), for the new session's route tray.
- * `footer`: small rings (`5h ◔ 9%   Week ◔ 18%`) for the tray under the message box, reset times in the tooltips;
- * the profile is a chip on the same tray.
+ * `footer`: small rings (`5h ◔ 9%   Week ◔ 18%`) for the tray under the message box, reset times and each window's
+ * cost in the tooltip; the profile is a chip on the same tray.
  */
-export function UsageBand({ profileId, compact = false, footer = false, cost = true }: { profileId?: string | null; compact?: boolean; footer?: boolean; /** The windows' cost after the bars (Settings › Usage), when `footer`. */ cost?: boolean }) {
+export function UsageBand({ profileId, compact = false, footer = false, cost = true }: { profileId?: string | null; compact?: boolean; footer?: boolean; /** The windows' cost in the tooltip (Settings › Usage), when `footer`. */ cost?: boolean }) {
   const defaultId = useProfiles((s) => s.defaultId);
   const id = profileId ?? defaultId;
   const usage = useUsageFor(id)?.usage;
@@ -132,7 +132,7 @@ export function UsageBand({ profileId, compact = false, footer = false, cost = t
   }, []);
   const limits = usage ? visibleLimits(usage.limits) : [];
   const extra = usage?.extraUsage;
-  // The estimated API cost of each window, after its bar (Settings › Usage), in the footer and New session's tray.
+  // The estimated API cost of each window (Settings › Usage), in the tooltip of the footer and New session's tray.
   const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && footer && cost;
   const currency = usePreferences((s) => s.prefs.costCurrency);
   const priced = useWindowCosts(id, showCost && limits.length > 0);
@@ -160,16 +160,13 @@ export function UsageBand({ profileId, compact = false, footer = false, cost = t
         data-usage-profile={id}
       >
         {limits.map((limit, i) => (
-          <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap">
+          // Each window's cost is in the tooltip, not on the line: the line also holds the chips, the session's cost and
+          // the context ring, and a cost per window pushed the chips into one. `data-usage-cost` says the window has one.
+          <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap" data-usage-cost={costs[i] ? limit.kind : undefined}>
             {/* Rings rather than bars: the line also holds the cost and the context window, so it runs out of room fast. */}
             <Meter kind="ring" percent={limit.percent} showValue hideTrackNarrow>
               <span>{footerLabel(limit)}</span>
             </Meter>
-            {costs[i] && (
-              <span className="tabular-nums text-faint @max-[400px]/meters:hidden" data-usage-cost={limit.kind} data-tray-cost>
-                {costs[i]}
-              </span>
-            )}
           </span>
         ))}
         {extra?.enabled && extra.usedCredits !== null && extra.usedCredits > 0 && (

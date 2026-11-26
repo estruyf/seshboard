@@ -4013,7 +4013,7 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 10_000))) return 'the Codex session has no message box';
     if (await js(`!!${view}.querySelector('[data-read-only-session]')`)) return 'the Codex session still says it is read-only';
     if (!(await waitInPage(win, `(${view}.querySelector('[data-session-elsewhere]')?.textContent ?? '').includes('OpenAI Codex')`, 5_000))) return "the Codex session doesn't say a message continues it here with Codex";
-    // Its usage: Codex's rate limits as plan windows (the demo's 23% of 5 hours and 41% of the week), with their cost.
+    // Its usage: Codex's rate limits as plan windows (the demo's 23% of 5 hours and 41% of the week), with their cost (in the tooltip).
     const band = `(${view}.querySelector('[data-usage-band]')?.getAttribute('aria-label') ?? '')`;
     if (!(await waitInPage(win, `${band}.includes('5-hour limit: 23% used') && ${band}.includes('Weekly limit: 41% used') && !!${view}.querySelector('[data-usage-cost]')`, 10_000))) {
       return `the Codex session's tray doesn't show its windows (${JSON.stringify(await js(band))})`;
