@@ -36,7 +36,7 @@ export function QuickStartApp() {
       <QuickStartPanel />
       <FocusGateDialog />
       <RepoTrustDialog />
-      <ToastLayer />
+      <ToastLayer updates={false} />
       <TooltipLayer />
     </>
   );

@@ -36,7 +36,7 @@ export function MenuBarApp() {
       <MenuBarPanel />
       <FocusGateDialog />
       <RepoTrustDialog />
-      <ToastLayer />
+      <ToastLayer updates={false} />
       <TooltipLayer />
     </>
   );

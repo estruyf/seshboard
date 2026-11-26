@@ -101,12 +101,16 @@ function ToastCard({ toast }: { toast: Toast }) {
   );
 }
 
-/** The toasts, bottom right, newest at the bottom; news about updates sits above them until it's dealt with. */
-export function ToastLayer() {
+/**
+ * The toasts, bottom right, newest at the bottom; news about updates sits above them until it's dealt with.
+ * `updates={false}` leaves that news out: the menu bar's and quick start's panels are small windows over other apps,
+ * and seeing (or dismissing) "Updated to …" there would mark it seen before the main window ever shows it.
+ */
+export function ToastLayer({ updates = true }: { updates?: boolean } = {}) {
   const toasts = useToasts((s) => s.toasts);
   return (
     <div className="no-drag pointer-events-none fixed right-4 bottom-4 z-[70] flex flex-col items-end gap-2" data-toasts>
-      <UpdateToasts />
+      {updates && <UpdateToasts />}
       {toasts.map((t) => (
         <ToastCard key={t.id} toast={t} />
       ))}
