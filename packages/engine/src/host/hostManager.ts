@@ -203,6 +203,8 @@ interface OwnCard {
   description: string;
   alwaysLabel: string | null;
   sessionAllow: boolean;
+  /** What the call does, in words, shown instead of its input's first value. */
+  detail?: string;
   answer?: (picked: BrowserAnswer) => void;
   /** An approval card of one of Seshboard's own tools: what it shows instead of the input. */
   approval?: ApprovalCard;
@@ -1378,7 +1380,7 @@ export class HostManager {
         agentId: str(options.agentID),
         createdAt: Date.now(),
         // Seshboard's own card (a browser site, a session to start): its words, and Allow for this session when it has one.
-        ...(own ? { title: own.title, description: own.description, alwaysLabel: own.alwaysLabel, ...(own.sessionAllow ? { sessionAllow: true } : {}), ...(own.approval ? { approval: own.approval } : {}) } : {}),
+        ...(own ? { title: own.title, description: own.description, alwaysLabel: own.alwaysLabel, ...(own.sessionAllow ? { sessionAllow: true } : {}), ...(own.detail ? { detail: own.detail } : {}), ...(own.approval ? { approval: own.approval } : {}) } : {}),
       };
       this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), ...(own ? { own: own.answer ?? (() => {}) } : {}), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });

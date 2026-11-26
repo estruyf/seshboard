@@ -254,6 +254,8 @@ export const PermissionRequest = z.object({
   alwaysLabel: z.string().nullable(),
   /** The card also offers "Allow for this session" (the browser tools' cards): kept in memory until the engine restarts. */
   sessionAllow: z.boolean().optional(),
+  /** What the call does, in words, for the line under the title (a browser card's "Click “Sign in”"); the input otherwise. */
+  detail: z.string().optional(),
   /** Set when a subagent asked. */
   agentId: z.string().nullable(),
   createdAt: z.number(),

@@ -134,6 +134,7 @@ function ToolPrompt({ prompt, disabled, respond, hints, compact, agent }: Props)
   return (
     <div className="flex flex-col gap-2">
       {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt, agent)}</h2>}
+      {prompt.detail && <p className="text-ui font-medium break-words">{prompt.detail}</p>}
       {prompt.description && <p className="text-ui text-muted">{prompt.description}</p>}
       {/* All of it, every line: Allow approves all of it. */}
       <pre className="max-h-48 overflow-auto rounded-lg bg-code p-2 font-mono text-meta break-words whitespace-pre-wrap" data-remote-prompt-text>
