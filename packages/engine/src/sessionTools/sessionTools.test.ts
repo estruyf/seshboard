@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { ApprovalAnswer, ApprovalAsk, Pipeline, Schedule, Trigger } from '@seshboard/protocol';
 import { NOTIFY_PER_HOUR, SessionTools, type SessionToolsDeps } from './sessionTools.ts';
 
-const ROOT = '/work/app';
-const OTHER = '/work/site';
+// The tools check paths with this platform's AbsolutePath, which takes only a drive path on Windows.
+const BASE = process.platform === 'win32' ? 'C:/work' : '/work';
+const ROOT = `${BASE}/app`;
+const OTHER = `${BASE}/site`;
 
 const builtIn: Pipeline = { id: 'builtin-review', name: 'Review', builtIn: true, scope: { kind: 'all' }, autoPush: false, createdAt: 1, updatedAt: 1, steps: [{ kind: 'claude', name: 'Review', start: 'fresh', model: null, effort: null, permissionMode: 'plan', readOnly: true, prompt: 'Review {{task}}', actionsFirst: [], verdict: null, confirmBefore: false, approvePlan: false }] };
 
