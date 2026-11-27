@@ -1217,6 +1217,21 @@
       "page": "browser/tabs-and-pages"
     },
     {
+      "id": "shortcut:browser.reload",
+      "name": "Reload the page",
+      "page": "browser/tabs-and-pages"
+    },
+    {
+      "id": "shortcut:browser.hard-reload",
+      "name": "Hard reload the page",
+      "page": "browser/tabs-and-pages"
+    },
+    {
+      "id": "palette:browser-hard-reload",
+      "name": "Hard reload page",
+      "page": "browser/tabs-and-pages"
+    },
+    {
       "id": "shortcut:browser.back",
       "name": "Back in the page",
       "page": "browser/tabs-and-pages"

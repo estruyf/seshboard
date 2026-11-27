@@ -1221,6 +1221,22 @@ export const SHORTCUTS = [
     context: "While a page or its address bar has focus",
   },
   {
+    id: "browser.reload",
+    keys: ["mod+r"],
+    action: "Reload the page",
+    section: "general",
+    context: "With a browser page on screen",
+    note: "The page on screen, wherever the focus is",
+  },
+  {
+    id: "browser.hard-reload",
+    keys: ["mod+shift+r"],
+    action: "Hard reload the page",
+    section: "general",
+    context: "With a browser page on screen",
+    note: "Skips the cache, so changed scripts, styles and pictures load fresh",
+  },
+  {
     id: "browser.back",
     keys: ["mod+["],
     action: "Back in the page",

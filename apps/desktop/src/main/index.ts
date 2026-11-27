@@ -1401,6 +1401,20 @@ function selectAllInFocused(from?: unknown): void {
     .then((handled: boolean) => !handled && focused.selectAll(), () => focused.selectAll());
 }
 
+/**
+ * View › Reload (⌘R) and Force Reload (⌘⇧R, `hard`: without the cache). The window's page decides (`pageToReload`: the
+ * browser page with the focus, else the one on screen), and with none the window reloads, as the roles did. Not
+ * `getFocusedWebContents()`: with the focus back in the window it can still name a browser page, even one parked off screen.
+ */
+function reloadInFocused(from: unknown, hard: boolean): void {
+  const win = from instanceof BrowserWindow ? from : BrowserWindow.getFocusedWindow();
+  if (!win) return;
+  const reloadWindow = () => (hard ? win.webContents.reloadIgnoringCache() : win.webContents.reload());
+  win.webContents
+    .executeJavaScript(`(() => { const detail = { hard: ${hard}, handled: false }; window.dispatchEvent(new CustomEvent('seshboard:reload-page', { detail })); return detail.handled; })()`)
+    .then((handled: boolean) => !handled && reloadWindow(), reloadWindow);
+}
+
 /** Seshboard → Check for Updates…: checks, and opens Settings → About where the result shows. */
 function checkForUpdates(): void {
   updater.run('check');
@@ -1458,8 +1472,9 @@ function installMenu(): void {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
+        // ⌘R and ⌘⇧R reload the browser page on screen, and the window only when there is none.
+        { id: 'reload', label: 'Reload', accelerator: 'CmdOrCtrl+R', click: (_item, window) => reloadInFocused(window, false) },
+        { id: 'force-reload', label: 'Force Reload', accelerator: 'Shift+CmdOrCtrl+R', click: (_item, window) => reloadInFocused(window, true) },
         { role: 'toggleDevTools' },
         { type: 'separator' },
         { role: 'resetZoom' },

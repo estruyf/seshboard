@@ -173,6 +173,7 @@ const PLANS: Record<string, Plan> = {
   'browser-back': 'here',
   'browser-forward': 'here',
   'browser-stop': 'here',
+  'browser-hard-reload': 'here',
   'browser-close-tab': 'here',
   'browser-reopen-tab': 'here',
   'browser-pin-tab': 'here',

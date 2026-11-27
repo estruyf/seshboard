@@ -248,6 +248,8 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌥↑ or ⌥↓ or ⌥← or ⌥→ | Move the tab up or down, or left or right (on a tab, in the Browser view's list or a session's tab strip; Or drag it. Pinned tabs stay before the others) |
 | ⌘W | Close the tab (while a page or its address bar has focus) |
 | ⌘D | Bookmark the page, or edit its bookmark (while a page or its address bar has focus) |
+| ⌘R | Reload the page (with a browser page on screen; The page on screen, wherever the focus is) |
+| ⌘⇧R | Hard reload the page (with a browser page on screen; Skips the cache, so changed scripts, styles and pictures load fresh) |
 | ⌘[ | Back in the page (while a page has focus) |
 | ⌘] | Forward in the page (while a page has focus) |
 | ⌘J or ⌃` | Show or hide the terminal |

@@ -23,6 +23,7 @@ interface WebviewElement extends HTMLElement {
   goBack(): void;
   goForward(): void;
   reload(): void;
+  reloadIgnoringCache(): void;
   stop(): void;
   getWebContentsId(): number;
   getURL(): string;
@@ -266,9 +267,10 @@ class PreviewPage {
     else void this.element.loadURL(url).catch(() => {}); // A failure shows through did-fail-load.
   }
 
-  reload(url: string | null) {
+  /** Loads the page again; `hard` skips the cache, so changed scripts, styles and pictures come back fresh. */
+  reload(url: string | null, hard = false) {
     setState(this.sessionId, { failure: null, crashed: false });
-    if (this.ready) this.call((e) => e.reload());
+    if (this.ready) this.call((e) => (hard ? e.reloadIgnoringCache() : e.reload()));
     else if (url) this.load(url);
   }
 

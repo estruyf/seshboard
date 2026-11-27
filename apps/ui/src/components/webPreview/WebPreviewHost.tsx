@@ -13,7 +13,7 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { BROWSER_OWNER, LIVE_PAGES, livePages } from './browserTabs.ts';
 import { shrinkIcon } from './shrinkIcon.ts';
 import { listenForBrowserAgent } from './browserAgentTarget.ts';
-import { addElementToMessage, quoteInMessage } from '../../state/browserActions.ts';
+import { addElementToMessage, pageToReload, quoteInMessage, RELOAD_PAGE_EVENT, reloadPage } from '../../state/browserActions.ts';
 import { keepPages, placePages, previewPage, tabOfContents } from './webPreviewPages.ts';
 
 /** A browser change that can move or cover a page: a panel shown, hidden or resized, another tab in front, a tab opened or closed, a new tab getting its first address, phone width. */
@@ -148,6 +148,19 @@ export function WebPreviewHost() {
       document.removeEventListener('focusin', onFocus, true);
       off?.();
     };
+  }, []);
+
+  // View › Reload (⌘R) and Force Reload (⌘⇧R) reload the page on screen; main reloads the window when none takes it.
+  useEffect(() => {
+    const onReload = (event: Event) => {
+      const detail = (event as CustomEvent<{ hard: boolean; handled: boolean }>).detail;
+      const tab = pageToReload();
+      if (!tab) return;
+      reloadPage(tab, detail.hard);
+      detail.handled = true;
+    };
+    window.addEventListener(RELOAD_PAGE_EVENT, onReload);
+    return () => window.removeEventListener(RELOAD_PAGE_EVENT, onReload);
   }, []);
 
   // The browser tools ask this window for a session's page (main/browserAgent.ts).

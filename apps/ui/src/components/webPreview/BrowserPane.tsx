@@ -2,7 +2,7 @@ import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Code, Copy, E
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type RefObject, type MouseEvent, type ReactNode } from 'react';
 import { addressBarUrl, browserNavigation, copiedAddress, siteActionsFor, type BrowserHistoryEntry, loadErrorText, shortUrl, type SiteAction, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
-import { askClearData, askRename, copyAddress, findInPage, pickElement, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
+import { askClearData, askRename, copyAddress, findInPage, pickElement, reloadPage, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
 import { popOutBrowser } from '../../state/browserWindow.ts';
 import { browserPopoutSession } from '../../state/popoutsStore.ts';
 import { bookmarkPage, useBookmarkOf } from '../../state/browserBookmarksStore.ts';
@@ -194,7 +194,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
     setDraft(field.value.slice(0, start) + field.value.slice(end));
     setRefused(null);
   };
-  const reload = () => tab && previewPage(tab.id)?.reload(tab.url);
+  /** Loads the page again; `hard` (Shift-click, ⌘⇧R) skips the cache. */
+  const reload = (hard = false) => tab && reloadPage(tab, hard);
   const failure = tab?.url ? page.failure : null;
   const covered = !tab?.url || !!failure || page.crashed;
   const typed = draft ?? '';
@@ -212,7 +213,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
         {page.loading ? (
           <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Stop loading" onClick={() => tab && previewPage(tab.id)?.stop()} data-web-preview-stop="" />
         ) : (
-          <Button variant="quiet" size="sm" iconOnly icon={<RotateCw size={12} aria-hidden />} aria-label="Reload" disabled={!tab?.url} onClick={reload} data-web-preview-reload="" />
+          <Button variant="quiet" size="sm" iconOnly icon={<RotateCw size={12} aria-hidden />} aria-label="Reload" shortcut="browser.reload" disabled={!tab?.url} onClick={(event) => reload(event.shiftKey)} data-web-preview-reload="" />
         )}
         {/* The address keeps room to type in a narrow panel: Pin, the star and Open in browser go to ⋯ (`NARROW_HIDDEN`), the sizes to one button, and Forward (in the palette and on the mouse) goes. */}
         <form onSubmit={go} className="relative mx-1 min-w-20 flex-1">
@@ -431,7 +432,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
                   <p className="text-body text-text">Couldn't open this page</p>
                   <p className="text-meta text-muted">{loadErrorText(failure.description)}</p>
                   <div className="flex gap-2">
-                    <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={reload} data-web-preview-retry="">
+                    <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={() => reload()} data-web-preview-retry="">
                       Try again
                     </Button>
                     <Button size="sm" icon={<ExternalLink size={11} aria-hidden />} onClick={() => window.open(failure.url || tab!.url!, '_blank')}>
@@ -443,7 +444,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
                 <>
                   <p className="text-body text-text">Nothing is running at {shortUrl(failure.url || tab!.url!)}</p>
                   <p className="text-meta text-muted">{loadErrorText(failure.description)}</p>
-                  <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={reload} data-web-preview-retry="">
+                  <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={() => reload()} data-web-preview-retry="">
                     Retry
                   </Button>
                 </>
@@ -453,7 +454,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           {page.crashed && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-sidebar px-6 text-center" data-web-preview-crashed="">
               <p className="text-body text-text">This page stopped</p>
-              <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={reload}>
+              <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={() => reload()}>
                 Reload
               </Button>
             </div>
@@ -667,6 +668,7 @@ function pageMenu(tab: BrowserTab, bookmarked: boolean): MenuEntry[] {
     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-page-rename': true } },
     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: blank, onSelect: () => copyAddress(tab) },
     'separator',
+    { label: 'Hard reload', icon: <RotateCw size={13} aria-hidden />, hint: formatKeys(keysFor('browser.hard-reload')), disabled: blank, onSelect: () => reloadPage(tab, true), data: { 'data-page-hard-reload': true } },
     { label: 'Find in page', icon: <Search size={13} aria-hidden />, disabled: blank, onSelect: () => findInPage(tab), data: { 'data-page-find': true } },
     { label: 'Zoom in', icon: <ZoomIn size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, 1) },
     { label: 'Zoom out', icon: <ZoomOut size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, -1) },

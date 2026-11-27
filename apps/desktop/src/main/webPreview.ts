@@ -330,6 +330,8 @@ export function runPageMenuEntry(host: WebContents, guest: WebContents, params: 
       return guest.navigationHistory.goForward();
     case 'reload':
       return guest.reload();
+    case 'hard-reload':
+      return guest.reloadIgnoringCache();
     case 'quote':
       return send(host, { kind: 'quote', contentsId: guest.id, text: params.selectionText, url: webPageUrl(guest.getURL()) ?? guest.getURL() });
     case 'add-element':
@@ -480,6 +482,7 @@ function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardD
     event.preventDefault();
     if (action === 'swallow') return;
     if (action === 'reload') return guest.reload();
+    if (action === 'hard-reload') return guest.reloadIgnoringCache();
     if (action === 'back') return guest.navigationHistory.canGoBack() && guest.navigationHistory.goBack();
     if (action === 'ahead') return guest.navigationHistory.canGoForward() && guest.navigationHistory.goForward();
     if (host.isDestroyed()) return;
