@@ -81,13 +81,16 @@ export function cleanTabName(text: string): string | null {
   return name || null;
 }
 
-/** The same page for Open: same origin and path, whatever the `#` (and the query) says. */
+/**
+ * The same page for Open: same origin, path and query, whatever the `#` says. The query counts: on many sites it is
+ * the page (`news.ycombinator.com/item?id=…`).
+ */
 export function sameAddress(a: string | null, b: string | null): boolean {
   if (!a || !b) return false;
   try {
     const x = new URL(a);
     const y = new URL(b);
-    return x.origin === y.origin && x.pathname === y.pathname;
+    return x.origin === y.origin && x.pathname === y.pathname && x.search === y.search;
   } catch {
     return a === b;
   }
