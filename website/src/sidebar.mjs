@@ -93,7 +93,7 @@ export const sidebar = [
   {
     label: 'Work from anywhere',
     collapsed: true,
-    items: ['remote-access', 'other-computers', 'vscode-companion'],
+    items: ['remote-access', 'other-computers', 'vscode-companion', 'browser-extension'],
   },
   {
     label: 'Make it yours',
