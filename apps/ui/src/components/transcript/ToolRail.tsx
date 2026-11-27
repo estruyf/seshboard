@@ -191,7 +191,8 @@ export const ToolRail = memo(function ToolRail({ items }: { items: readonly Rail
       aria-orientation="vertical"
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
-      className="flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-l border-border/40 bg-bg py-2.5"
+      // The window's chrome, as the rail at its left edge: the conversation and its header keep the lighter surface.
+      className="flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-l border-border bg-chrome py-2.5"
       data-tool-rail
     >
       {items.map((item, i) => {
@@ -204,7 +205,7 @@ export const ToolRail = memo(function ToolRail({ items }: { items: readonly Rail
           // An app opens elsewhere: a plain button, not a toggle.
           pressed: item.id.startsWith('app:') ? undefined : item.state === 'front',
           state: item.state,
-          icon: <Badged icon={item.icon} count={item.count} dot={item.dot ? 'link' : false} ring="bg" minimal={minimal} data={{ 'data-rail-badge': true }} />,
+          icon: <Badged icon={item.icon} count={item.count} dot={item.dot ? 'link' : false} ring="chrome" minimal={minimal} data={{ 'data-rail-badge': true }} />,
           data: { ...item.data, 'data-rail-tool': item.id },
           onClick: item.onClick,
           movable: railGroup(item.id) !== null,

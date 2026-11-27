@@ -91,7 +91,7 @@ export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, fi
 
   return (
     <div
-      className={`group/queue relative flex w-full items-center gap-2 rounded-lg pr-2 ${compact ? 'h-8 pl-2.5' : `pl-3 ${style === 'large' ? 'h-12' : 'h-11'}`} ${monochrome ? 'hover:bg-border/45' : QUEUE_SURFACE[state]}`}
+      className={`group/queue relative flex w-full items-center gap-2 rounded-lg pr-2 ${leading === 'empty' ? 'h-8 pl-1.5' : compact ? 'h-8 pl-2.5' : `pl-3 ${style === 'large' ? 'h-12' : 'h-11'}`} ${monochrome ? 'hover:bg-border/45' : QUEUE_SURFACE[state]}`}
       data-queue-state={state}
       data-queue-autostart={entry.autoStart || undefined}
       {...drag}
@@ -111,7 +111,7 @@ export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, fi
           onMenu(e.clientX === 0 && e.clientY === 0 ? menuAt(e.currentTarget) : { x: e.clientX, y: e.clientY }, entry);
         }}
         onKeyDown={(e) => void onKeyDown(e, entry)}
-        className={`flex min-w-0 flex-1 items-center self-stretch rounded-md text-left ${leading === 'empty' ? 'gap-2' : 'gap-2.5'}`}
+        className={`flex min-w-0 flex-1 items-center self-stretch rounded-md text-left ${leading === 'empty' ? 'gap-1.5' : 'gap-2.5'}`}
         data-row-leading={leading}
       >
         {/* Minimal mode: an empty slot where session rows have their state mark; the project is in the tooltip. */}

@@ -18,9 +18,9 @@ describe('rowLeading', () => {
 });
 
 describe('a queued row in Minimal mode', () => {
-  it('has an empty 12px slot and no project tile', () => {
+  it('has an empty 10px slot and no project tile', () => {
     const html = renderToStaticMarkup(createElement(EmptyRowSlot));
-    expect(html).toContain('size-3');
+    expect(html).toContain('w-2.5');
     expect(html).toContain('data-row-leading="empty"');
     expect(html).not.toContain('data-project-icon');
   });

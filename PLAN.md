@@ -220,7 +220,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 
 - **Added by hand.** The sidebar filter, the New session folder list and the palette only offer projects you added. *Add project* lists the folders Claude Code has sessions for (most recent first, filterable), or opens the folder dialog. A session started in another folder offers to add it. Upgrading keeps every folder with a session started or continued in Seshboard (migration v8); a new install starts empty, with a prompt to add a project.
 - **Defaults per project** (`project_settings.defaults_json`): model, effort, permission mode, workspace (current folder or worktree, and its base), and a branch to check out for current-folder sessions. Unset fields use the choices last made in the New session view. Changing a decided field there applies to that session only, until *Save as project default*.
-- **Projects view** (sidebar footer, palette, a project's menu): add, remove (from Seshboard only), reorder, defaults, actions, icon, and a warning when the folder is gone.
+- **Projects view** (the rail's Projects, palette, a project's menu): add, remove (from Seshboard only), reorder, defaults, actions, icon, and a warning when the folder is gone.
 - ✅ The Claude profile per project (#11, see 5.5). Later: Remote Control (#9), environment variables, additional directories.
 
 ### 5.5 Claude profiles ✅ ([#11](https://github.com/estruyf/seshboard/issues/11))

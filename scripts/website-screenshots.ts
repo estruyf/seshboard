@@ -366,7 +366,15 @@ class Tour {
     );
   }
 
+  /** On a page with a list of its own (Projects, Upcoming), the panel shows that: Sessions on the rail brings the sessions. */
+  async showSessions(): Promise<void> {
+    if (await this.page.locator('[data-sidebar-sessions=shown]').count()) return;
+    await this.click('[data-nav-rail] [data-nav="sessions"]');
+    await this.need('[data-sidebar-sessions=shown] [data-session-id]', 'Sessions on the rail did not show the sessions');
+  }
+
   async sessionId(title: string): Promise<string> {
+    await this.showSessions();
     const id = await this.page.evaluate((t) => [...document.querySelectorAll<HTMLElement>('[data-session-id]')].find((el) => el.innerText.includes(t))?.dataset.sessionId ?? null, title);
     if (!id) throw new Error(`no session "${title}" in the sidebar`);
     return id;
@@ -441,10 +449,10 @@ class Tour {
   }
 
   /** Saves the window (or one element of it) as <name>-<scheme>.png. */
-  async shot(name: string, options: { clip?: string; keepFocus?: boolean; pad?: number } = {}): Promise<void> {
+  async shot(name: string, options: { clip?: string; keepFocus?: boolean; pad?: number; keepPointer?: boolean } = {}): Promise<void> {
     if (!options.keepFocus) await this.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
-    // No tooltips or hover states left over from the clicks that got here.
-    await this.page.mouse.move(SIZE.width - 2, SIZE.height - 2);
+    // No tooltips or hover states left over from the clicks that got here; `keepPointer` for what shows under it (the peek).
+    if (!options.keepPointer) await this.page.mouse.move(SIZE.width - 2, SIZE.height - 2);
     await this.settle();
     await new Promise((resolve) => setTimeout(resolve, 350));
     await dismissToasts(this);
@@ -499,11 +507,17 @@ async function withComputer(t: Tour, take: (computerId: string) => Promise<void>
     await t.need('[data-computer][data-computer-state="connected"]', 'the demo computer did not connect', 20_000);
     const computerId = (await t.page.getAttribute('[data-computer]', 'data-computer'))!;
     await t.click('[data-close-settings]');
-    // A paired computer starts on Mine, and nothing there is mine yet: its chip's menu switches to All.
+    // A paired computer starts on Mine, and nothing there is mine yet: its chip's menu, in the rail's Computers menu,
+    // switches to All.
+    await t.click('[data-nav-rail] [data-nav-computers]', 'no Computers on the rail with a paired computer');
     await t.page.locator(`[data-computers-strip] [data-computer-filter=${JSON.stringify(computerId)}]`).hover();
     await t.click('[data-computers-strip] [data-computer-menu-button]');
     await t.click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
     await t.page.keyboard.press('Escape');
+    await t.gone('[data-computer-scope-menu]', "the chip's menu did not close");
+    await t.page.keyboard.press('Escape');
+    await t.gone('[data-nav-computers-popover]', 'the Computers menu did not close');
+    await t.showSessions();
     await t.need('[data-session-list] [data-remote-row]', 'no remote session in the sidebar');
     await take(computerId);
   } finally {
@@ -1244,9 +1258,9 @@ const screens: Screen[] = [
       await t.until(`document.querySelector('[data-clone-enabled]')?.getAttribute('aria-checked') === 'false'`, 'Clone from GitHub did not turn off');
       await t.click('[data-close-settings]');
       const clone = JSON.stringify(join(folder, 'design-tokens'));
-      await t.click('[data-open-projects]');
-      // A narrow window folds the list away behind the header's ‹. The row's menu opens with a right-click.
-      if (await t.page.locator('[data-projects-view][data-narrow]').count()) await t.click('[data-project-show-list]');
+      // Projects on the rail lists them in the panel (a second click would close it). The row's menu opens with a right-click.
+      if (!(await t.page.locator('[data-panel-projects] [data-project-list]').count())) await t.click('[data-open-projects]');
+      await t.need('[data-panel-projects] [data-project-list] [data-project-row]', 'Projects listed nothing in the panel');
       await t.q(`[data-project-row=${clone}]`).click({ button: 'right' });
       await t.click('[role=menu] [data-remove-project]');
       await t.click('[data-confirm]');
@@ -1328,7 +1342,7 @@ const screens: Screen[] = [
       // the next 7 days by day, and the schedules on the right.
       writeFileSync(demoSchedulesFile(t.world), JSON.stringify(demoSchedules(t.world, Date.now())));
       await t.home();
-      await t.click('[data-sidebar-open] [data-upcoming-nav]', 'the sidebar has no Upcoming');
+      await t.click('[data-nav-rail] [data-upcoming-nav]', 'the rail has no Upcoming');
       await t.need('[data-upcoming] [data-upcoming-queue] [data-queue-item]', 'Upcoming shows no queue');
       await t.until("document.querySelectorAll('[data-upcoming] [data-upcoming-schedule]').length === 4", 'Upcoming shows no schedules');
       await t.need('[data-upcoming] [data-upcoming-run]', 'Upcoming shows no scheduled runs');
@@ -1427,44 +1441,69 @@ const screens: Screen[] = [
     },
   },
   {
-    name: 'sidebar-rail',
+    name: 'title-bar',
     async take(t) {
-      await t.home();
-      await t.command('sidebar-minimize', 'Minimize sidebar');
-      await t.need('[data-sidebar-rail]', 'the rail did not show');
-      await t.settle();
+      await t.openSession(HERO);
+      await t.shot('title-bar', { clip: '[data-title-bar]' });
+    },
+  },
+  {
+    name: 'nav-rail',
+    async take(t) {
+      // The rail with the panel open on the sessions, beside a session: Sessions is the selected item.
+      await t.openSession(HERO);
       await hideUsageStatus(t);
-      await t.shot('sidebar-rail');
-      await t.command('sidebar-open', 'Open sidebar');
-      await t.gone('[data-sidebar-rail]', 'the sidebar did not open again');
+      await t.shot('nav-rail');
+    },
+  },
+  {
+    name: 'nav-rail-peek',
+    async take(t) {
+      await t.openSession(HERO);
+      await t.command('sidebar-close', 'Close the panel');
+      await t.until(`document.querySelector('[data-sidebar]')?.dataset.sidebarState === 'closed'`, 'the panel did not close');
+      await t.q('[data-nav-rail] [data-nav="sessions"]').hover();
+      await t.need('[data-nav-peek]', 'resting on Sessions showed no peek');
+      // The peek closes when the pointer leaves it: the pointer stays on Sessions.
+      await t.shot('nav-rail-peek', { keepPointer: true });
+      await t.page.mouse.move(900, 500);
+      await t.gone('[data-nav-peek]', 'the peek did not close');
+      await t.command('sidebar-open', 'Open the panel');
+    },
+  },
+  {
+    name: 'nav-rail-customize',
+    async take(t) {
+      await t.openSession(HERO);
+      await t.click('[data-title-bar] [data-title-more]');
+      await t.click('[role=menu] [data-title-customize-rail]', 'More has no Customize the rail');
+      await t.need('[role=menu] [data-nav-menu-reset]', 'Customize the rail did not open');
+      await t.shot('nav-rail-customize', { keepFocus: true });
+      await t.escape();
+      await t.gone('[role=menu]', 'the menu did not close');
     },
   },
   {
     name: 'focus',
     async take(t) {
       await t.home();
-      await t.click('[data-focus-counter]', 'no focus counter (is the focus limit on?)');
-      await t.need('[data-focus-popover]', 'the focus popover did not open');
-      await t.shot('focus', { keepFocus: true });
-      await t.escape();
+      await t.click('[data-nav-rail] [data-focus-counter]', 'no Running on the rail (is the focus limit on?)');
+      await t.need('[data-panel-running] [data-focus-list]', 'Running did not show its list in the panel');
+      await t.shot('focus');
+      await t.click('[data-nav-rail] [data-nav="sessions"]');
+      await t.need('[data-sidebar-sessions=shown]', 'Sessions did not come back');
     },
   },
   {
     name: 'projects-view',
     async take(t) {
-      await t.click('[data-open-projects]');
+      // Projects on the nav rail: the list in the panel, the project's page in the main area.
+      if (!(await t.page.locator('[data-panel-projects] [data-project-list]').count())) await t.click('[data-open-projects]');
       await t.need('[data-projects-view]', 'Projects did not open');
-      // A narrow view folds the list away: close the sidebar to show the list next to the project, as on a wider window.
-      const madeRoom = (await t.page.locator('[data-projects-view][data-narrow]').count()) > 0 && (await t.page.locator('[data-sidebar-open]').count()) > 0;
-      if (madeRoom) await t.click('[data-projects-view] [data-sidebar-toggle]');
-      await t.need('[data-project-list] [data-project-row]', 'Projects listed nothing');
+      await t.need('[data-panel-projects] [data-project-list] [data-project-row]', 'Projects listed nothing in the panel');
       await t.need('[data-project-page]', 'no project open next to the list');
       await t.settle();
       await t.shot('projects-view');
-      if (madeRoom) {
-        await t.click('[data-sidebar-toggle]');
-        await t.need('[data-sidebar-open]', 'the sidebar did not open again');
-      }
       await t.home();
     },
   },
@@ -1822,7 +1861,9 @@ const screens: Screen[] = [
           phones.on('exit', (code) => reject(new Error(`the demo devices did not connect (exit ${code})`)));
         });
         await t.click('[data-close-settings]');
-        await t.need('[data-connected-devices="devices"] [data-connected-device="demo-connected-browser"]', 'the connected devices did not show in the sidebar');
+        // Connected to this Mac is in the nav rail's Computers menu.
+        await t.click('[data-nav-rail] [data-nav-computers]', 'no Computers on the rail with Remote on');
+        await t.need('[data-connected-devices="devices"] [data-connected-device="demo-connected-browser"]', 'the connected devices did not show in the Computers menu');
         // The toasts for the new connections are not part of this picture.
         const toasts = t.page.locator('[data-device-toast] [data-toast-close]');
         for (let i = 0; i < 5 && (await toasts.count()); i++) await toasts.first().click({ force: true }).catch(() => {});
@@ -1978,7 +2019,8 @@ async function openModelMenu(t: Tour): Promise<string> {
     await t.need('[data-menu="folded"][data-folded-view="model"] [data-choice]', 'the folded chip did not show the models');
     return '[data-menu="folded"]';
   }
-  await t.click(`${view} [data-model-select]`);
+  // Still open from the picture before (a click on the chip would close it).
+  if (!(await t.page.locator('[data-menu="model"] [data-choice]').count())) await t.click(`${view} [data-model-select]`);
   await t.need('[data-menu="model"] [data-choice]', 'the model menu did not open');
   return '[data-menu="model"]';
 }
@@ -2140,6 +2182,7 @@ async function withPipelineRun(t: Tour, take: (demo: PipelineDemo) => Promise<vo
   const now = Date.now();
   const demo = writePipelineDemo(t.world.home, tree, branch, now);
   try {
+    await t.showSessions();
     await t.until(`!!document.querySelector('[data-sidebar-state] [data-session-id="${demo.sessions.parent}"]')`, 'the demo run’s parent did not show in the sidebar', 30_000);
     writeFileSync(demoQueueHostFile(t.world), JSON.stringify({ sessionId: demo.sessions.validate2, cwd: tree }));
     writeFileSync(demoPipelinesFile(t.world), JSON.stringify([demoRun(t.world, demo, tree, now)]));

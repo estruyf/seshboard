@@ -215,11 +215,11 @@ export async function runNavRailPanelStep(win: BrowserWindow, deps: NavRailSmoke
   await js(win, `${item('sessions')}.click()`);
   if (!(await waitInPage(win, `${STATE} === 'open' && ${item('sessions')}.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'Sessions with the panel closed did not open it';
 
-  // Projects shows its list in the panel and a project's page beside it; Sessions switches back, the page staying.
+  // Projects shows its list in the panel and a project's page beside it; Sessions goes back to the session view and its list.
   await js(win, `${item('projects')}.click()`);
   if (!(await waitInPage(win, `document.querySelector('[data-sidebar-open] [data-panel-projects] [data-project-list]') && document.querySelector('[data-projects-view]') && !document.querySelector('[data-projects-view] [data-project-list]') && ${item('projects')}.hasAttribute('data-selected') && ${item('projects')}.querySelector('[data-nav-current]')`, 3_000))) return 'Projects did not show its list in the panel beside the project page';
   await js(win, `${item('sessions')}.click()`);
-  if (!(await waitInPage(win, `document.querySelector('${header} h2')?.textContent === 'Sessions' && document.querySelector('[data-projects-view]') && ${item('sessions')}.querySelector('[data-nav-current]') && !${item('projects')}.querySelector('[data-nav-current]')`, 3_000))) return 'Sessions did not switch the panel back from the projects';
+  if (!(await waitInPage(win, `document.querySelector('${header} h2')?.textContent === 'Sessions' && !document.querySelector('[data-projects-view]') && document.querySelector('[data-current-session], [data-home]') && ${item('sessions')}.querySelector('[data-nav-current]') && !${item('projects')}.querySelector('[data-nav-current]')`, 3_000))) return 'Sessions did not go back to the session view with its list';
   // Home is an action: never the selected item.
   await js(win, `${item('home')}.click()`);
   if (!(await waitInPage(win, `!document.querySelector('[data-projects-view]') && !${item('home')}.hasAttribute('data-selected') && ${item('sessions')}.querySelector('[data-nav-current]')`, 3_000))) return 'Home looks selected, or Sessions does not';
@@ -244,7 +244,7 @@ export async function runNavRailPanelStep(win: BrowserWindow, deps: NavRailSmoke
     if (!browserWas) deps.update({ browserEnabled: false });
     await home(win, deps);
   }
-  return `ok: the header has Sessions, the project, View and the filter; the filter narrowed ${before} rows to none and Escape cleared it; Sessions closed and opened the panel; Projects put its list in the panel; Home stayed unselected; Browser switched the list and back`;
+  return `ok: the header has Sessions, the project, View and the filter; the filter narrowed ${before} rows to none and Escape cleared it; Sessions closed and opened the panel; Projects put its list in the panel and Sessions went back to the session view; Home stayed unselected; Browser switched the list and back`;
 }
 
 /** nav rail: headers. No sidebar toggle in any view's header, the title bar's Tools panel button works the side panel, no hide button on the rail of tools. */

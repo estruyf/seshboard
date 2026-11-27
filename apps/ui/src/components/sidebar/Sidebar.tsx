@@ -593,7 +593,8 @@ export const SessionRow = memo(function SessionRow({
     });
     const tone = status === 'needs-you' ? 'font-semibold text-text' : selected ? 'text-text' : archived ? 'text-muted' : 'text-text/85';
     return withActions(
-      <button {...common} data-tooltip={tooltip} data-row-minimal style={roomStyle} className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-meta ${surface} ${dim} ${room}`}>
+      // Tight on the left: the mark sits near the row's edge and the title right after it.
+      <button {...common} data-tooltip={tooltip} data-row-minimal style={roomStyle} className={`relative flex h-8 w-full items-center gap-1.5 rounded-md pr-2.5 pl-1.5 text-left text-meta ${surface} ${dim} ${room}`}>
         {picking ? icon(14) : rowLeading(runRow ? 'run' : 'session', { minimal }) === 'state' ? <StatusIcon status={status} agent={agent} variant="minimal" /> : icon(14)}
         <span className={`min-w-0 flex-1 truncate text-body ${tone}`} data-row-title>
           {data.title}

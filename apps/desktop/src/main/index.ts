@@ -6973,7 +6973,7 @@ async function runChangesStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Read-only: fewer lines in a session. The header's hairline shows only while the conversation scrolls under it;
+ * Read-only: fewer lines in a session. The header always has its line (it marks where the page starts under the title bar);
  * Changes sits on the sidebar's surface without an edge, its file rows have no lines between them, and the composer
  * area has a fade instead of a line over it. The sidebar has no edge and its bottom is one block. Takes the window in
  * light and dark for the pull request (fewer-lines-light.png, fewer-lines-dark.png).
@@ -6991,7 +6991,6 @@ async function runFewerLinesStep(win: BrowserWindow): Promise<string> {
     const borders = (await js(`(() => {
       const width = (el, side) => (el ? getComputedStyle(el)['border' + side + 'Width'] : 'none');
       return {
-        header: width(${header}, 'Bottom'),
         composer: width(document.querySelector('${view} [data-composer-area]'), 'Top'),
         tray: width(document.querySelector('${view} [data-composer-tray]'), 'Bottom'),
         sidebar: width(document.querySelector('[data-sidebar-open]'), 'Right'),
@@ -7000,21 +6999,16 @@ async function runFewerLinesStep(win: BrowserWindow): Promise<string> {
     })()`)) as Record<string, string>;
     const lined = Object.entries(borders).filter(([, w]) => w !== '0px' && w !== 'none');
     if (lined.length) return `still a line on ${lined.map(([k, w]) => `${k} (${w})`).join(', ')}`;
+    if ((await js(`getComputedStyle(${header}).borderBottomWidth`)) !== '1px') return 'the session header has no line under it';
     if (!(await js("!!document.querySelector('[data-sidebar-bottom]')"))) return 'the sidebar has no bottom block';
     const fade = (await js(`(() => { const f = document.querySelector('${view} [data-composer-fade]'); if (!f) return null; const s = getComputedStyle(f); return { height: Math.round(f.getBoundingClientRect().height), events: s.pointerEvents, image: s.backgroundImage }; })()`)) as { height: number; events: string; image: string } | null;
     if (!fade) return 'no fade above the composer';
     if (fade.height !== 32 || fade.events !== 'none' || !fade.image.includes('gradient')) return `the fade is ${fade.height}px, pointer-events ${fade.events}, ${fade.image}`;
 
-    // The header's line: none at the top of the conversation, there once it scrolls under the header. A wheel first,
-    // so the view counts it as your scroll and stops following the end.
+    notes.push('a line under the header');
     const room = (await js(`${scroller}.scrollHeight - ${scroller}.clientHeight`)) as number;
     if (room < 40) notes.push('conversation too short to scroll');
     else {
-      await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })); el.scrollTop = 0; })()`);
-      if (!(await waitInPage(win, `${scroller}.scrollTop === 0 && !${header}.hasAttribute('data-scrolled')`, 3_000))) return 'the header has data-scrolled at the top of the conversation';
-      await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true })); el.scrollTop = 200; })()`);
-      if (!(await waitInPage(win, `${header}.hasAttribute('data-scrolled')`, 3_000))) return 'the header has no data-scrolled while the conversation scrolls under it';
-      notes.push('header line only while scrolled');
       // At the end, the conversation's last line (or the working line) ends above the fade, not under it.
       await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true })); el.scrollTop = el.scrollHeight; })()`);
       const clear = `(() => {
@@ -16209,7 +16203,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('changes panel', () => runChangesStep(win));
   await step('changes reload: an open diff shows an edit that keeps its counts', () => runChangesReloadStep(win));
   await step('diff comments: comment on lines in Changes, edit, keep after closing, submit to the message box', () => runDiffCommentsStep(win, (name) => shot(win, name)));
-  await step('fewer lines: the header line only while scrolled, Changes on the sidebar surface, a fade over the composer', () => runFewerLinesStep(win));
+  await step('fewer lines: a line under the header, Changes on the sidebar surface, a fade over the composer', () => runFewerLinesStep(win));
   await step('branch button', () => runBranchStep(win));
   await step('open in menu', () => runOpenInStep(win));
   await step('check transcript', () => runCheckTranscriptStep(win));

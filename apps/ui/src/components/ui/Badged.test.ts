@@ -26,4 +26,8 @@ describe('Badged', () => {
   it('keeps a dot as a neutral dot in Minimal mode', () => {
     expect(html({ dot: 'link', minimal: true })).toContain('bg-text');
   });
+
+  it('draws a ready count in the accent, with its own text colour', () => {
+    expect(html({ count: 2, tone: 'accent' })).toContain('bg-accent text-on-accent');
+  });
 });

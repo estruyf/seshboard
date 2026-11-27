@@ -82,7 +82,7 @@ interface ItemLook {
   shortcut?: ShortcutId;
   /** Its page is in the main area (Upcoming, Activity, a project, Settings): the text colour while the panel shows another list. */
   current?: boolean;
-  badge?: { count?: number; tone?: 'default' | 'ok' | 'warn'; data?: Record<`data-${string}`, boolean | string | number> };
+  badge?: { count?: number; tone?: 'default' | 'ok' | 'warn' | 'accent'; data?: Record<`data-${string}`, boolean | string | number> };
   /** In place of the icon (Running's count under its target). */
   icon?: ReactNode;
   /** The text colour when it is not selected (Running's level). */
@@ -147,6 +147,8 @@ export function NavRail({ inert = false }: { inert?: boolean }) {
     else if (item === 'upcoming' && view !== 'upcoming') openUpcoming();
     else if (item === 'activity' && view !== 'activity') openActivity();
     else if (item === 'settings' && view !== 'settings') useSessions.getState().openSettings();
+    // Sessions goes with the session view: the session open last, or Home without one (Settings closes too).
+    else if (item === 'sessions' && view !== 'session') useSessions.getState().setView('session');
     useSidebarList.getState().setList(item);
     if (step === 'open') useSidebar.getState().setState('open');
   };
@@ -177,7 +179,8 @@ export function NavRail({ inert = false }: { inert?: boolean }) {
       tip: `Upcoming · ${summary.hint?.text ?? (summary.count > 0 ? `${summary.count} planned` : 'nothing planned')}`,
       shortcut: 'upcoming',
       current: behind === 'upcoming',
-      badge: { count: summary.count, tone: summary.ready > 0 ? 'ok' : 'default', data: { 'data-nav-upcoming-count': true } },
+      // Ready to start: the yellow of New session, so the rail keeps to two colours (that and the pink of Needs you).
+      badge: { count: summary.count, tone: summary.ready > 0 ? 'accent' : 'default', data: { 'data-nav-upcoming-count': true } },
       data: { 'data-upcoming-nav': true, 'data-nav': 'upcoming' },
       onClick: () => select('upcoming'),
     },

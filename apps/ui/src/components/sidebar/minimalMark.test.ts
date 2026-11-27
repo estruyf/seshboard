@@ -37,7 +37,7 @@ describe('StatusIcon, minimal', () => {
   });
 
   it('keeps an empty slot when open, so titles line up', () => {
-    expect(html('idle')).toBe('<span class="flex size-3 shrink-0 items-center justify-center" aria-hidden="true" data-minimal-mark="none"></span>');
+    expect(html('idle')).toBe('<span class="flex h-3 w-2.5 shrink-0 items-center justify-center" aria-hidden="true" data-minimal-mark="none"></span>');
   });
 
   it('keeps the standard icons without the variant', () => {

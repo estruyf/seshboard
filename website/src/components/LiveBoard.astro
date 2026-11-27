@@ -1,6 +1,8 @@
 ---
 /**
- * The homepage's moving picture: a small, scripted Seshboard window. Sessions of Claude Code, GitHub Copilot and
+ * The homepage's moving picture: a small, scripted Seshboard window, laid out as the app is: the title bar across the
+ * top, the rail at the left edge with Sessions picked, the sessions in the panel beside it, and the session with its rail
+ * of tools at the right edge. Sessions of Claude Code, GitHub Copilot and
  * Codex go from Working to Needs you and back, a permission gets allowed, a queued prompt turns ready and starts,
  * and a finished session gets its catch-up, in the app's status colours. The session's ticket sits in a browser
  * beside the conversation, and the pull request opens there when Claude is done. Behind the window, patch cables carry a pulse in the colour of each
@@ -90,24 +92,37 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
   {jacks.map((jack) => <span class="lb-jack" data-jack={jack.id} style={`top: ${jack.y}px; ${jack.side}: -6px`} />)}
 
   <div class="lb-window" aria-hidden="true">
+    {/* The title bar across the window: the traffic lights, Back and Forward, the search field that opens Go to, and the
+        layout's buttons, as in the app. */}
+    <div class="lb-titlebar">
+      <span class="lb-lights"><i></i><i></i><i></i></span>
+      <span class="lb-tb-icons"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" /></svg><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg></span>
+      <span class="lb-tb-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg><span>Search sessions and projects</span><kbd>⌘P</kbd></span>
+      <span class="lb-tb-icons lb-tb-right"><span class="on"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /></svg></span><span><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M15 3v18" /></svg></span><span><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg></span></span>
+    </div>
+    <div class="lb-frame">
+    {/* The rail at the window's left edge: New session, Home, the views (Sessions selected), Projects, Computers,
+        Running and Settings. */}
+    <nav class="lb-navrail">
+      <span class="lb-plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span>
+      <span><svg viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /></svg></span>
+      <i class="lb-rail-line"></i>
+      <span class="on"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" /></svg></span>
+      <span><svg viewBox="0 0 24 24"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5M16 2v4M8 2v4M3 10h5M17.5 17.5 16 16.3V14" /><circle cx="16" cy="16" r="6" /></svg></span>
+      <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg></span>
+      <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20" /></svg></span>
+      <i class="lb-rail-space"></i>
+      <span><svg viewBox="0 0 24 24"><path d="M10.5 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.7.9l.8 1.2a2 2 0 0 0 1.7.9H20a2 2 0 0 1 2 2v3" /><circle cx="18" cy="18" r="3" /></svg></span>
+      <span class="lb-rail-dot"><svg viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><path d="M8 21h8M12 17v4" /></svg></span>
+      <span class="lb-running"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="0.5" /></svg><b data-focus>3/3</b></span>
+      <span><svg viewBox="0 0 24 24"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2Z" /><circle cx="12" cy="12" r="3" /></svg></span>
+    </nav>
     <aside class="lb-side">
-      <div class="lb-titlebar">
-        <span class="lb-lights"><i></i><i></i><i></i></span>
-        <span class="lb-appname">Seshboard</span>
-      </div>
-      {/* The views (Home, Upcoming, Activity, Browser), then search and New session, as in the app's sidebar. */}
-      <div class="lb-nav">
-        <span><svg viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /></svg></span>
-        <span><svg viewBox="0 0 24 24"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5M16 2v4M8 2v4M3 10h5M17.5 17.5 16 16.3V14" /><circle cx="16" cy="16" r="6" /></svg></span>
-        <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg></span>
-        <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20" /></svg></span>
-      </div>
-      <div class="lb-tools">
-        <span class="lb-search">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-          Search sessions
-        </span>
-        <span class="lb-plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span>
+      {/* The panel's header: the list's name, the project filter, the order and the filter's magnifier. */}
+      <div class="lb-panel-head">
+        <span class="lb-panel-title">Sessions</span>
+        <span class="lb-filter"><svg viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7Z" /><path d="m2 17 10 5 10-5M2 12l10 5 10-5" /></svg>All projects<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg></span>
+        <span class="lb-panel-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg></span>
       </div>
       <div class="lb-list">
         {
@@ -190,7 +205,6 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
         }
       </div>
       <div class="lb-foot">
-        <span class="lb-focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></svg><span data-focus>3 / 3</span></span>
         <span>6 sessions · 3 agents</span>
       </div>
     </aside>
@@ -203,9 +217,6 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
         <span class="lb-header-text">
           <span class="lb-header-title">Upgrade Stripe SDK to v18</span>
           <span class="lb-header-status"><span class="lb-dot"></span><span data-status>Claude is working</span> · payments-api · chore/stripe-18</span>
-        </span>
-        <span class="lb-header-actions">
-          <span class="lb-seg"><span>Changes</span><span>Terminal</span><span class="on">Browser</span></span>
         </span>
       </header>
 
@@ -302,8 +313,16 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
           <div class="lb-diffstat"><span class="lb-add">+57</span> <span class="lb-del">−12</span> in 4 files</div>
         </div>
       </section>
+      {/* The session's rail of tools at its right edge, the Browser in front. */}
+      <nav class="lb-toolrail">
+        <span><svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v5h5" /></svg></span>
+        <span><svg viewBox="0 0 24 24"><path d="M12 3v14M5 10h14M5 21h14" /></svg></span>
+        <span><svg viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8" /></svg></span>
+        <span class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20" /></svg></span>
+      </nav>
       </div>
     </main>
+    </div>
 
     <div class="lb-toast" data-toast>
       <img src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/favicon.svg`} alt="" width="28" height="28" />
@@ -368,7 +387,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
       const note = root.querySelector('[data-queue-note]');
       if (note) note.textContent = ready ? `${ready} ready` : '';
       const focus = root.querySelectorAll('.lb-row:is([data-state="working"], [data-state="needs"], [data-state="unread"])').length;
-      root.querySelector('[data-focus]')!.textContent = `${Math.min(focus, 3)} / 3`;
+      root.querySelector('[data-focus]')!.textContent = `${Math.min(focus, 3)}/3`;
     }
 
     /** Moves rows to where `change` puts them, sliding each from its old place (FLIP). */
@@ -674,8 +693,8 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
 
   .lb-window {
     position: relative;
-    display: grid;
-    grid-template-columns: 300px 1fr;
+    display: flex;
+    flex-direction: column;
     height: 580px;
     overflow: hidden;
     border: 1px solid var(--sb-overlay-border);
@@ -687,20 +706,17 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     user-select: none;
   }
 
-  /* Sidebar */
-  .lb-side {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    background: var(--sb-sidebar);
-    border-inline-end: 1px solid var(--sb-border);
-  }
+  /* The window's chrome: the title bar and the rail, a shade off the panel, as in the app (--sb-chrome). */
   .lb-titlebar {
     display: flex;
+    flex: none;
     align-items: center;
-    gap: 0.75rem;
-    height: 40px;
-    padding: 0 14px;
+    gap: 10px;
+    height: 36px;
+    padding: 0 10px 0 12px;
+    border-bottom: 1px solid var(--sb-border);
+    background: color-mix(in srgb, var(--sb-text) 4%, var(--sb-sidebar));
+    color: var(--sb-muted);
   }
   .lb-lights {
     display: flex;
@@ -718,45 +734,185 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
   .lb-lights i:nth-child(3) {
     background: #28c840;
   }
-  .lb-appname {
-    font-weight: 600;
-    color: var(--sb-muted);
-  }
-  .lb-nav {
-    display: grid;
-    grid-auto-columns: 1fr;
-    grid-auto-flow: column;
+  .lb-tb-icons {
+    display: flex;
     gap: 4px;
-    margin: 0 10px 8px;
-    padding: 4px;
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--sb-bg) 50%, transparent);
-    color: var(--sb-muted);
   }
-  .lb-nav span {
+  .lb-tb-icons svg {
+    width: 14px;
+    height: 14px;
+  }
+  .lb-tb-icons span {
     display: grid;
     place-items: center;
-    height: 30px;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
   }
-  .lb-nav svg {
+  .lb-tb-icons span.on {
+    background: var(--sb-selected);
+    color: var(--sb-text);
+  }
+  .lb-tb-right {
+    width: 110px;
+    justify-content: flex-end;
+  }
+  .lb-tb-search {
+    display: flex;
+    flex: 0 1 380px;
+    align-items: center;
+    gap: 7px;
+    height: 24px;
+    margin-inline: auto;
+    padding: 0 9px;
+    border: 1px solid var(--sb-overlay-border);
+    border-radius: 6px;
+    background: var(--sb-bg);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .lb-tb-search svg {
+    width: 12px;
+    height: 12px;
+  }
+  .lb-tb-search span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lb-tb-search kbd {
+    font: inherit;
+    color: var(--sb-faint);
+  }
+  .lb-frame {
+    display: grid;
+    flex: 1;
+    grid-template-columns: 46px 260px 1fr;
+    min-height: 0;
+  }
+  .lb-navrail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 0;
+    border-inline-end: 1px solid var(--sb-border);
+    background: color-mix(in srgb, var(--sb-text) 4%, var(--sb-sidebar));
+    color: var(--sb-muted);
+  }
+  .lb-navrail > span {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+  .lb-navrail svg {
     width: 16px;
     height: 16px;
   }
-  .lb-tools {
-    display: flex;
-    gap: 6px;
-    padding: 0 10px 8px;
+  /* The list open in the panel: a fill and a bar at the rail's edge. */
+  .lb-navrail > span.on {
+    background: var(--sb-selected);
+    color: var(--sb-text);
   }
-  .lb-search {
-    display: flex;
+  .lb-navrail > span.on::before {
+    content: '';
+    position: absolute;
+    inset: 8px auto 8px -7px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--sb-text);
+  }
+  .lb-rail-line {
+    width: 20px;
+    height: 1px;
+    margin: 2px 0;
+    background: var(--sb-border);
+  }
+  .lb-rail-space {
     flex: 1;
+  }
+  /* Remote is on: a green dot on Computers. */
+  .lb-rail-dot::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--sb-text) 4%, var(--sb-sidebar));
+  }
+  .lb-navrail > span.lb-running {
+    height: 36px;
+    align-content: center;
+    gap: 1px;
+  }
+  .lb-running svg {
+    width: 14px;
+    height: 14px;
+  }
+  .lb-running b {
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  /* New session: the window's one primary action, in the accent colour. */
+  .lb-plus {
+    margin-bottom: 4px;
+    background: var(--sb-accent);
+    color: var(--sb-on-accent);
+  }
+  .lb-navrail > span.lb-plus svg {
+    width: 17px;
+    height: 17px;
+    stroke-width: 2.4;
+  }
+
+  /* The panel: the sessions list beside the rail. */
+  .lb-side {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--sb-sidebar);
+  }
+  .lb-panel-head {
+    display: flex;
     align-items: center;
-    gap: 8px;
-    height: 32px;
-    padding: 0 10px;
-    border-radius: 8px;
-    background: var(--sb-bg);
+    gap: 6px;
+    height: 38px;
+    padding: 0 8px 0 12px;
     color: var(--sb-muted);
+  }
+  .lb-panel-title {
+    flex: 1;
+    font-weight: 600;
+    color: var(--sb-text);
+  }
+  .lb-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .lb-filter svg {
+    width: 12px;
+    height: 12px;
+  }
+  .lb-panel-icon {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+  }
+  .lb-panel-icon svg {
+    width: 13px;
+    height: 13px;
   }
   .lb svg {
     flex: none;
@@ -765,26 +921,6 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
-  }
-  .lb-search svg {
-    width: 14px;
-    height: 14px;
-  }
-  /* New session: the sidebar's one primary action, in the accent colour. */
-  .lb-plus {
-    display: grid;
-    flex: none;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: var(--sb-accent);
-    color: var(--sb-on-accent);
-  }
-  .lb-plus svg {
-    width: 17px;
-    height: 17px;
-    stroke-width: 2.4;
   }
   .lb-list {
     flex: 1;
@@ -1028,20 +1164,6 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     font-size: 11px;
     color: var(--sb-faint);
   }
-  .lb-focus {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    height: 22px;
-    padding: 0 7px;
-    border: 1px solid var(--sb-border);
-    border-radius: 999px;
-  }
-  .lb-focus svg {
-    width: 12px;
-    height: 12px;
-  }
-
   /* The open session */
   .lb-main {
     position: relative;
@@ -1104,19 +1226,31 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
   .lb-main[data-main-state='finished'] .lb-header-status .lb-dot {
     background: var(--ok);
   }
-  .lb-seg {
-    display: inline-flex;
-    padding: 2px;
-    border: 1px solid var(--sb-border);
-    border-radius: 7px;
-    font-size: 11px;
+  /* The session's rail of tools at its right edge. */
+  .lb-toolrail {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    width: 40px;
+    padding: 8px 0;
+    border-inline-start: 1px solid color-mix(in srgb, var(--sb-border) 40%, transparent);
     color: var(--sb-muted);
   }
-  .lb-seg span {
-    padding: 3px 9px;
-    border-radius: 5px;
+  .lb-toolrail span {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
   }
-  .lb-seg span.on {
+  .lb-toolrail svg {
+    width: 14px;
+    height: 14px;
+  }
+  .lb-toolrail span.on {
     background: var(--sb-selected);
     color: var(--sb-text);
   }
@@ -1678,8 +1812,8 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
 
   /* A tablet: both panes fit with a narrower list; there is no room beside the window for the cables. */
   @media (max-width: 64rem) {
-    .lb-window {
-      grid-template-columns: 250px 1fr;
+    .lb-frame {
+      grid-template-columns: 46px 220px 1fr;
     }
     .lb-browser {
       width: 40%;
@@ -1698,14 +1832,17 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     .lb-browser {
       display: none;
     }
-    .lb-seg span.on {
+    .lb-toolrail {
       display: none;
     }
   }
   @media (max-width: 46rem) {
-    .lb-window {
-      grid-template-columns: 1fr;
-      height: 580px;
+    .lb-frame {
+      grid-template-columns: 46px 1fr;
+    }
+    .lb-tb-search,
+    .lb-tb-right {
+      display: none;
     }
     /* The sheets sit against the whole window, not the conversation column. */
     .lb-body,

@@ -3639,7 +3639,7 @@
     {
       "id": "feature:mouse-back-forward",
       "name": "Back and forward with the mouse buttons, the title bar's arrows or the palette",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "feature:multi-select",
@@ -4364,7 +4364,7 @@
     {
       "id": "feature:sidebar-hidden",
       "name": "The panel closed: ⌘B, the title bar's Panel button or a click on Sessions in the nav rail, with what needs you as a count on Sessions",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "feature:sidebar-minimal-rail",
@@ -5358,7 +5358,7 @@
     },
     {
       "id": "feature:upcoming-rail",
-      "name": "The nav rail: the Upcoming button with its count, green when an item is ready",
+      "name": "The nav rail: the Upcoming button with its count, yellow when an item is ready",
       "page": "sessions/upcoming"
     },
     {
@@ -5724,22 +5724,22 @@
     {
       "id": "feature:nav-rail",
       "name": "The nav rail at the window's left edge: New session, Home, Sessions (with what needs you), Upcoming, Activity, Browser, Projects, Computers, Running and Settings, each with its list in the panel",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "feature:title-bar",
       "name": "The title bar: Back and Forward, a search field that opens Go to, and the Panel, Tools panel and More buttons",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "feature:nav-rail-customize",
       "name": "Customize the rail: right-click it (or More › Customize the rail…) to show or hide items, drag them or press ⌥↑ ⌥↓ to reorder, Reset to default",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "feature:nav-rail-peek",
       "name": "With the panel closed, rest on Sessions in the nav rail (or press →) to peek at the sessions; a click opens one",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "feature:panel-filter",
@@ -5749,27 +5749,27 @@
     {
       "id": "palette:nav-back",
       "name": "Go back",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "palette:nav-forward",
       "name": "Go forward",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "palette:customize-nav-rail",
       "name": "Customize the rail…",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "shortcut:nav.back",
       "name": "nav.back",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "shortcut:nav.forward",
       "name": "nav.forward",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     },
     {
       "id": "feature:nav-rail-projects",
@@ -5779,7 +5779,7 @@
     {
       "id": "feature:nav-rail-panels",
       "name": "Every nav rail item but Home and Computers has its list in the panel: Upcoming and Activity filter by project there, Settings shows its sections, Running what counts; Computers is a menu on hover or click",
-      "page": "sessions/sidebar"
+      "page": "sessions/rail"
     }
   ]
 }

@@ -70,7 +70,8 @@ const ARC = 'M21 12a9 9 0 1 1-6.2-8.56';
  */
 function MinimalStatusIcon({ status }: { status: RowStatus }) {
   const { mark, label } = minimalMark(status);
-  const slot = 'flex size-3 shrink-0 items-center justify-center';
+  // 10px wide: the marks are 7 to 10px, and the title stays close to the row's edge.
+  const slot = 'flex h-3 w-2.5 shrink-0 items-center justify-center';
   if (mark === 'none' || !label) return <span className={slot} aria-hidden data-minimal-mark="none" />;
   const own = { role: 'img', 'aria-label': label, 'data-tooltip': label, 'data-minimal-mark': mark } as const;
   switch (mark) {
@@ -83,7 +84,7 @@ function MinimalStatusIcon({ status }: { status: RowStatus }) {
     case 'spinner':
       return (
         <span className={`${slot} text-muted`} {...own}>
-          <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="motion-safe:animate-spin" aria-hidden>
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="motion-safe:animate-spin" aria-hidden>
             <path d={ARC} />
           </svg>
         </span>
@@ -96,8 +97,8 @@ function MinimalStatusIcon({ status }: { status: RowStatus }) {
       );
     case 'error':
       return (
-        <span className={`${slot} rounded-full bg-error text-[8px] font-bold text-white`} {...own}>
-          !
+        <span className={slot} {...own}>
+          <span className="flex size-2.5 items-center justify-center rounded-full bg-error text-[8px] font-bold text-white">!</span>
         </span>
       );
   }

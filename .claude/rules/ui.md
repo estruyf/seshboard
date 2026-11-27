@@ -73,7 +73,7 @@ With more than one Claude profile, the rail on a session row shows the profile's
 **Surfaces and lines.** Split the screen by surface, not by line ([detail](../../docs/ui-patterns.md#surfaces-and-lines)):
 
 1. **Surfaces, not lines.** Two tones split the window. The sidebar and the side panels (Changes, Why, the Agents panel and the rest of the right side) use the darker `bg-sidebar`; the conversation uses the lighter `bg-bg`. Don't put a border where two surfaces meet.
-2. **A line only when content scrolls under.** A fixed header or footer gets a hairline only while content scrolls beneath it: `edge-b` / `edge-t` with `data-scrolled` from `useScrollEdge`. At the top or bottom of the scroll, it's gone. Pane headers use `PANE_HEADER`.
+2. **A line only when content scrolls under.** A fixed header or footer gets a hairline only while content scrolls beneath it: `edge-b` / `edge-t` with `data-scrolled` from `useScrollEdge`. At the top or bottom of the scroll, it's gone. The one exception is the pane header (`PANE_HEADER`): it always has a line under it, as the browser's toolbar does, to mark where the page starts under the title bar.
 3. **Lists use hover, not dividers.** Rows get a hover and a selected background, like the sidebar rows.
 4. **Cards are tinted, not outlined.** Notices, the catch-up card and the tray use a tint (a tone, or `bg-text/6` where `bg-card` would be white on white) without a border. The message box keeps its border, since it's where you type.
 5. **Buttons without boxes,** except the main action on screen (Commit, Send, Queue).

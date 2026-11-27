@@ -12,6 +12,7 @@ import { GROUP_LABEL, inScope, rowStatus } from '../../state/sidebarRows.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { openRow, useRemoteRows, useRemoteTreeRuns, useShownRowId } from '../../state/useRemoteRows.ts';
 import { Popover } from '../ui/Popover.tsx';
+import { hideTooltip } from '../ui/Tooltip.tsx';
 import { StatusIcon } from './StatusIcon.tsx';
 
 /** How long the pointer rests on Sessions before the peek opens, and how long it may be away before it closes. */
@@ -54,6 +55,8 @@ export function usePeek(enabled: boolean): Peek {
   const show = useCallback((button: HTMLElement, keyboard: boolean) => {
     window.clearTimeout(timer.current);
     anchor.current = button;
+    // The button's tooltip would sit over the list.
+    hideTooltip();
     const rect = button.getBoundingClientRect();
     setState({ at: { x: rect.right + 8, y: rect.top - 4 }, keyboard });
   }, []);
