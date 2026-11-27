@@ -26,7 +26,7 @@ describe('browser targets', () => {
   });
 
   it('lets only the extension in', () => {
-    expect(hostManifest('chromium', '/x/seshboard-host.sh')).toEqual({ name: BROWSER_HOST_NAME, description: 'Seshboard browser extension', path: '/x/seshboard-host.sh', type: 'stdio', allowed_origins: [`chrome-extension://${BROWSER_EXTENSION_IDS.chromium[0]}/`] });
+    expect(hostManifest('chromium', '/x/seshboard-host.sh')).toEqual({ name: BROWSER_HOST_NAME, description: 'Seshboard browser extension', path: '/x/seshboard-host.sh', type: 'stdio', allowed_origins: BROWSER_EXTENSION_IDS.chromium.map((id) => `chrome-extension://${id}/`) });
     expect(hostManifest('firefox', '/x/seshboard-host.sh')).toMatchObject({ allowed_extensions: [BROWSER_EXTENSION_IDS.firefox] });
   });
 

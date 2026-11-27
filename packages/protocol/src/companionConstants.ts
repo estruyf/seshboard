@@ -55,7 +55,8 @@ export const BROWSER_HOST_NAME = 'app.seshboard.companion';
  * `browser_specific_settings.gecko.id`.
  */
 export const BROWSER_EXTENSION_IDS = {
-  chromium: ['bgffnbmaoadkminaadlghmhpicbloplk'],
+  // The Chrome Web Store's, then the one the manifest's `key` gives a build loaded unpacked.
+  chromium: ['mggojongcaoeaagcldllnaklknokaago', 'bgffnbmaoadkminaadlghmhpicbloplk'],
   firefox: 'seshboard@eliostruyf.com',
 } as const;
 
