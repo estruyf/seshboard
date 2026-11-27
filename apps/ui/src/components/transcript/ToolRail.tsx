@@ -77,6 +77,7 @@ export const ToolRail = memo(function ToolRail({ items }: { items: readonly Rail
   const apps = usePreferences((s) => s.prefs.railApps);
   const editors = useHosts((s) => s.editors);
   const sizing = useRightPanel((s) => s.sizing);
+  const onNewSession = usePreferences((s) => s.prefs.sidePanelOnNewSession);
   const update = usePreferences((s) => s.update);
   const order = usePreferences((s) => s.prefs.railOrder);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -153,6 +154,8 @@ export const ToolRail = memo(function ToolRail({ items }: { items: readonly Rail
     'separator',
     // Every panel on the right at half the session area, kept as the window resizes; dragging its edge is Side again.
     { label: 'Panels at half width', checkbox: true, checked: sizing === 'half', data: { 'data-rail-menu-half': true }, onSelect: () => useRightPanel.getState().setSizing(sizing === 'half' ? 'side' : 'half') },
+    // Settings › Conversation has both too: a session you start opens with the empty side panel beside it.
+    { label: 'Open panel in new sessions', checkbox: true, checked: onNewSession, data: { 'data-rail-menu-on-new': true }, onSelect: () => update({ sidePanelOnNewSession: !onNewSession }) },
     'separator',
     { label: 'Reset', data: { 'data-rail-menu-reset': true }, onSelect: () => update({ railHidden: [], railApps: [], railOrder: [...RAIL_ORDER] }) },
   ];

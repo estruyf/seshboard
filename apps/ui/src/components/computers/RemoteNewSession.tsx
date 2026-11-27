@@ -1,4 +1,6 @@
 import { ViewHeader } from '../ViewHeader.tsx';
+import { openSidePanelOnStart } from '../../state/sidePanelOnStart.ts';
+import { remoteRowId } from '../../state/remoteSelection.ts';
 import { Folder, FolderDown, FolderGit2, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AUTO_MODEL, bringsAnything, keptRunAs, modelWord, remoteBaseChoices, remoteBaseName, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_ORCHESTRATOR, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_WORKTREE_BASE, runAsSteps, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
@@ -321,6 +323,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       // The next session is one session again, as here.
       setOrchestrate(false);
       attachments.clear();
+      // Settings › Conversation › Open the side panel in new sessions, as for a session started here.
+      openSidePanelOnStart(remoteRowId({ computerId: computer.id, sessionId }));
       useComputers.getState().openSession({ computerId: computer.id, sessionId }, { starting: true });
     } catch (e) {
       toast((e as Error).message, { body: runAs ? `The pipeline didn’t start on ${name}.` : asOrchestrator ? `The orchestrator didn’t start on ${name}.` : `It didn’t start on ${name}.` });

@@ -2212,6 +2212,11 @@
       "page": "other-computers"
     },
     {
+      "id": "feature:computers-rail",
+      "name": "Other computers: the rail of tools with Changes, Browser and Ask; links in the conversation open in the session's browser here",
+      "page": "other-computers"
+    },
+    {
       "id": "feature:computers-ask-catchup",
       "name": "Other computers: Ask about this session, and the catch-up of a finished turn",
       "page": "other-computers"

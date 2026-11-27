@@ -6322,10 +6322,12 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await js("Boolean(document.querySelector('[data-remote-composer] [data-composer-card] [data-computer-composer]') && document.querySelector('[data-remote-composer] [data-composer-tray] [data-computer-chip]'))"))) return 'the remote message box has no box and tray, or no computer chip on the tray';
   if (preferences.get().showCost && !(await waitInPage(win, "document.querySelector('[data-remote-composer] [data-composer-tray] [data-session-cost]')?.innerText.includes('≈')", 5_000))) return 'the remote session shows no cost on the tray under its message box';
 
-  // 3. The terminal is on that computer: its button stays, disabled, with the reason.
-  if (!(await js("document.querySelector('[data-remote-terminal]')?.disabled === true"))) return 'the terminal button of a remote session is not disabled';
-  const why = (await js("document.querySelector('[data-remote-terminal]').parentElement.dataset.tooltip")) as string;
-  if (why !== 'Terminal is on Smoke Mac. Not available from here.') return `the disabled terminal says "${why}"`;
+  // 3. The rail of tools: Changes and Ask, and the browser while it is on. The terminal and Files need the folder,
+  // which is on that computer, so the rail leaves them out.
+  const rail = "[data-remote-session] [data-tool-rail]";
+  if (!(await js(`Boolean(document.querySelector('${rail} [data-toggle-changes]') && document.querySelector('${rail} [data-toggle-ask]'))`))) return 'the remote session has no rail with Changes and Ask';
+  if (preferences.get().browserEnabled && !(await js(`Boolean(document.querySelector('${rail} [data-toggle-web]'))`))) return 'the remote session’s rail has no Browser';
+  if (await js(`Boolean(document.querySelector('${rail} [data-toggle-terminal], ${rail} [data-toggle-files]'))`)) return 'the remote session’s rail offers the terminal or Files, which need its folder';
   await shot(win, 'computers-session.png');
 
   // 3a. A path in the reply to a file Claude wrote there opens in the preview, read by that computer (`files.read`),
@@ -6338,6 +6340,23 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (await js("Boolean(document.querySelector('[data-file-preview] button[aria-label=\"Open in editor\"], [data-file-preview] [data-file-preview-dock]'))")) return 'the preview of a file on the other computer offers Open in editor or Dock to the side';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-file-preview]')", 3_000))) return 'Esc did not close the preview of the other computer’s file';
+
+  // 3a'. With the browser on, a web link in the reply opens in the session's browser, on this computer, beside the
+  // conversation; its × closes it again. The page itself may not load (no network needed): the address bar shows where
+  // it goes. The smoke's profile has the browser off, so it is on for this check only.
+  const browserWas = preferences.get().browserEnabled;
+  updatePreferences({ browserEnabled: true });
+  try {
+    if (!(await waitInPage(win, "Boolean(document.querySelector('[data-remote-session] [data-tool-rail] [data-toggle-web]'))", 3_000))) return 'the remote session’s rail has no Browser with the browser on';
+    const link = '[data-remote-session] [data-transcript] a[href^="https://www.rfc-editor.org/"]';
+    if (!(await waitInPage(win, `document.querySelector('${link}')`, 5_000))) return 'the reply of the remote session has no web link';
+    await click(link);
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-web-preview] [data-browser-address]')?.value.includes('rfc-editor.org')", 5_000))) return 'a web link in a remote session did not open in its browser';
+    await click('[data-remote-session] [data-web-preview-close]');
+    if (!(await waitInPage(win, "!document.querySelector('[data-remote-session] [data-web-preview]')", 3_000))) return 'the browser of a remote session did not close';
+  } finally {
+    updatePreferences({ browserEnabled: browserWas });
+  }
 
   // 3b. What a remote session runs in the background: its pill opens the list, and Stop stops the task there.
   const busy = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Move the login form'))`;
@@ -6475,7 +6494,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const removed = await waitInPage(win, "!document.querySelector('[data-computer]') && !document.querySelector('[data-remote-row]')", 5_000);
   pressKey(win, 'Escape');
   if (!removed) return 'the other computer and its rows did not go after Remove';
-  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, a file Claude wrote there previewed, its run row opened and a pipeline run there, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
+  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", its rail with Changes and Ask, a web link opened in its browser, a file Claude wrote there previewed, its run row opened and a pipeline run there, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
 }
 
 /**
@@ -16482,7 +16501,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
-  await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", its page from Open, the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
+  await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", its page from Open, its rail of tools, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('other computers: Settings › Remote updates an older computer, asks with sessions working, waits for idle, checks for updates', () => runComputerUpdateStep(win), { timeoutMs: 45_000 });
   await step('other computers: Done on a remote session shows it under this Done, Reopen in its menu, a click reopens and opens it', () => runRemoteDoneStep(win), { timeoutMs: 60_000 });
   await step('computers strip: one line, neutral chips, Mine as a person, the menu from a right-click, "+N" lists the rest', () => runComputersStripStep(win), { timeoutMs: 75_000 });

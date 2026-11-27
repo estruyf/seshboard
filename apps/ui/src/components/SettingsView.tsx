@@ -4,7 +4,8 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as Reac
 import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
-import { SIDE_PANEL_DETAIL } from './transcript/sidePanelCopy.ts';
+import { SIDE_PANEL_DETAIL, SIDE_PANEL_HALF_DETAIL } from './transcript/sidePanelCopy.ts';
+import { useRightPanel } from '../state/rightPanelStore.ts';
 import { ESCAPE_TWICE_DETAIL } from './composer/escapeStop.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
@@ -251,6 +252,7 @@ function useEscapeToClose(sheet: RefObject<HTMLElement | null>) {
 function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollRef: RefObject<HTMLDivElement | null> }) {
   const prefs = usePreferences((s) => s.prefs);
   const update = usePreferences((s) => s.update);
+  const panelSizing = useRightPanel((s) => s.sizing);
 
   switch (section) {
     case 'theme':
@@ -361,6 +363,14 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               checked={prefs.sidePanelOnNewSession}
               attr="data-side-panel-on-new-setting"
               onChange={(sidePanelOnNewSession) => update({ sidePanelOnNewSession })}
+            />
+            {/* The same choice as the rail's menu: kept per computer (localStorage), not with the preferences. */}
+            <Toggle
+              label="Panels at half width"
+              detail={SIDE_PANEL_HALF_DETAIL}
+              checked={panelSizing === 'half'}
+              attr="data-side-panel-half-setting"
+              onChange={(half) => useRightPanel.getState().setSizing(half ? 'half' : 'side')}
             />
           </Section>
           <Section title="File links">

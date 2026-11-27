@@ -8,6 +8,10 @@ import { fileUrl } from '../transcript/fileRefs.ts';
 import { RemoteFileContext } from '../filePreview/remotePreview.ts';
 import { useFilePreview } from '../../state/filePreviewStore.ts';
 import { remarkSessionFiles, SESSION_FILE_ATTRIBUTE } from './remarkSessionFiles.ts';
+import { localPreviewUrl } from '@seshboard/protocol/client';
+
+/** A localhost link in another computer's conversation: the page runs there, not on this computer. */
+const LOCAL_LINK_TOOLTIP = 'This address is on the computer the session runs on. It doesn’t load from here.';
 
 /**
  * Text from another computer's conversation, formatted as Markdown. Unlike this computer's transcript, nothing in it
@@ -27,7 +31,15 @@ function componentsFor(variant: MarkdownVariant, previews: boolean): Components 
   return {
     a: ({ href, children }) =>
       href && /^https?:\/\//i.test(href) ? (
-        <a href={href} target="_blank" rel="noreferrer" className="text-link underline decoration-link/40 underline-offset-2">
+        // A page on localhost runs on that computer: here the address opens this computer's, so the tooltip says so.
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-link underline decoration-link/40 underline-offset-2"
+          data-tooltip={localPreviewUrl(href) ? LOCAL_LINK_TOOLTIP : undefined}
+          data-remote-local-link={localPreviewUrl(href) ? '' : undefined}
+        >
           {children}
         </a>
       ) : (

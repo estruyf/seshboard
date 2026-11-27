@@ -2,9 +2,9 @@ import { releaseUnread } from '../../state/keptUnread.ts';
 import { openSidePanelOnStart } from '../../state/sidePanelOnStart.ts';
 import { minimalAlert } from '../composer/minimalComposer.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, FileDiff, Folder, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, NotebookPen, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
-import { lazy, memo, Suspense, useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
-import { apiRetryLine, isAbsolutePath, joinPath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
+import { AppWindow, ArrowDown, ChevronDown, CircleAlert, Coffee, GitBranch, ListTodo, LoaderCircle, NotebookPen, SquareArrowDownLeft, X } from 'lucide-react';
+import { lazy, memo, Suspense, useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { apiRetryLine, isAbsolutePath, joinPath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
@@ -154,6 +154,8 @@ import { AppIcon } from '../AppIcon.tsx';
 import { GitHubIcon } from '../GitHubIcon.tsx';
 import { useGithubPage, useOpenIn } from '../OpenInButton.tsx';
 import { RAIL_GITHUB, railEntries, railLabel, railToolState, type RailAppId, type RailAvailable, type RailToolId } from './toolRail.ts';
+import { openLinkInBrowser } from './openLinkInBrowser.ts';
+import { RAIL_ICONS } from './railIcons.tsx';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
@@ -171,7 +173,7 @@ import { currentPrompt, isPrompt, LAND_OFFSET, MIN_PROMPTS, MIN_WIDTH, nextPromp
 import { startNewSession } from '../newSession/startSession.ts';
 import { sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
-import { formatKeys, keysFor, matches as isShortcut, modKey } from '../../lib/shortcuts.ts';
+import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
 import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
 import { BackToRunButton, ParentRunRows, ParentStepTree, StepCrumb, StepStopNotice, StepTopLines, StepVerdictCard, useRunPlaceholder } from '../pipelines/RunParts.tsx';
 import { OrchestratorCrumb, OrchestratorOverview } from '../orchestrator/OrchestratorOverview.tsx';
@@ -191,18 +193,6 @@ const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', s
  * pink when it needs you, green only while background tasks run. Idle is quiet, like the rest of the line.
  */
 const STATUS_TONE = { running: 'text-accent-ink', 'needs-you': 'text-warn', idle: 'text-muted' } as const;
-
-/** The rail's icons for Seshboard's own tools. */
-const RAIL_ICONS = {
-  files: <Folder size={17} aria-hidden />,
-  changes: <FileDiff size={17} aria-hidden />,
-  terminal: <SquareTerminal size={17} aria-hidden />,
-  web: <Globe size={17} aria-hidden />,
-  ask: <MessageCircleQuestion size={17} aria-hidden />,
-  agents: <Bot size={17} aria-hidden />,
-  commands: <ScrollText size={17} aria-hidden />,
-  note: <NotebookPen size={17} aria-hidden />,
-};
 
 /** A session view narrower than this (without its rail) gives a panel on the right the whole view, as a sheet. */
 const NARROW_PANEL = 760;
@@ -436,18 +426,6 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
  * panes, so its header has the handle to drag it by and a close for the pane, and an inactive one dims.
  * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
  */
-/**
- * A web link in a reply, with the browser on: it opens in the session's browser (a tab already on that address
- * comes to the front). ⌘-click (Ctrl-click) leaves it to the system browser. File links keep their own setting.
- */
-function openLinkInBrowser(event: ReactMouseEvent<HTMLElement>, sessionId: string): void {
-  if (event.defaultPrevented || event.button !== 0 || modKey(event) || event.shiftKey || event.altKey) return;
-  const link = (event.target as HTMLElement).closest('a[href]');
-  const url = link ? webPageUrl(link.getAttribute('href') ?? '') : null;
-  if (!url) return;
-  event.preventDefault();
-  useWebPreview.getState().open(sessionId, url);
-}
 
 /** One empty list, so a session without a provider keeps the same one between renders. */
 const NO_FEATURES: readonly ProviderFeature[] = [];

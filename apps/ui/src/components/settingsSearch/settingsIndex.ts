@@ -8,7 +8,7 @@ import { shellCommandDetail } from '../general/shellCommand.ts';
 import { CODE_HIGHLIGHTING_DETAIL, FILE_ICONS_DETAIL, MINIMAL_MODE_DETAIL, PROJECT_COLORS_DETAIL } from '../theme/minimalCopy.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
-import { SIDE_PANEL_DETAIL } from '../transcript/sidePanelCopy.ts';
+import { SIDE_PANEL_DETAIL, SIDE_PANEL_HALF_DETAIL } from '../transcript/sidePanelCopy.ts';
 import { ESCAPE_TWICE_DETAIL } from '../composer/escapeStop.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
@@ -316,6 +316,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: SIDE_PANEL_DETAIL,
       keywords: 'side panel right panel open default new session start launcher tools layout',
       target: '[data-side-panel-on-new-setting]',
+    },
+    {
+      id: 'side-panel-half',
+      page: 'conversation',
+      label: 'Panels at half width',
+      detail: SIDE_PANEL_HALF_DETAIL,
+      keywords: 'side panel right panel width half split 50 resize size wide layout changes browser ask',
+      target: '[data-side-panel-half-setting]',
     },
     {
       id: 'turn-details',
