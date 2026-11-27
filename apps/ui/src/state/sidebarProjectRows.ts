@@ -47,7 +47,8 @@ export function sortInProject(rows: readonly SessionRowData[], sort: SidebarSort
 interface ProjectGroup {
   key: string;
   name: string;
-  remote: { computerId: string; computerName: string; offline: boolean } | null;
+  /** A project on another computer: which computer, and the project's id there (New session in it). */
+  remote: { computerId: string; computerName: string; projectId: string; offline: boolean } | null;
   rows: SessionRowData[];
   queued: QueueEntry[];
 }
@@ -126,7 +127,7 @@ export function buildProjectRows(active: readonly SessionRowData[], archived: re
     groupOf(row.projectRoot, () => ({
       key: row.projectRoot,
       name: remote ? remote.projectName : options.nameOf(row.projectRoot),
-      remote: remote ? { computerId: remote.computerId, computerName: remote.computerName, offline: remote.offline ?? false } : null,
+      remote: remote ? { computerId: remote.computerId, computerName: remote.computerName, projectId: remote.projectId, offline: remote.offline ?? false } : null,
     })).rows.push(row);
   }
   for (const entry of options.queue ?? []) groupOf(entry.item.cwd, () => ({ key: entry.item.cwd, name: options.nameOf(entry.item.cwd), remote: null })).queued.push(entry);
