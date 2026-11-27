@@ -272,8 +272,21 @@ export interface RemoteProjectSummary {
 /**
  * The sidebar's project filter: which project's sessions the list shows (and, with a paired computer, which computers'),
  * with Manage, Add and Clone at the end of its menu. `trail` sits on its right in the same row (the sort order).
+ * `header` is the quiet button in the panel's header: the icon, the name and a chevron, as wide as they need.
  */
-export function ProjectFilter({ counts, sources = [], remoteProjects = [], trail }: { counts: Map<string, { total: number; active: number }>; sources?: readonly SourceSummary[]; remoteProjects?: readonly RemoteProjectSummary[]; trail?: ReactNode }) {
+export function ProjectFilter({
+  counts,
+  sources = [],
+  remoteProjects = [],
+  trail,
+  variant = 'row',
+}: {
+  counts: Map<string, { total: number; active: number }>;
+  sources?: readonly SourceSummary[];
+  remoteProjects?: readonly RemoteProjectSummary[];
+  trail?: ReactNode;
+  variant?: 'row' | 'header';
+}) {
   const hidden = useComputers((s) => s.hidden);
   const projects = useProjects((s) => s.projects);
   const filter = useProjects((s) => s.filter);
@@ -328,11 +341,11 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [], trail
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 pb-2">
+    <div className={variant === 'header' ? 'flex min-w-0 shrink items-center' : 'flex items-center gap-2 px-3 pb-2'}>
       <button
         ref={buttonRef}
         type="button"
-        data-project-filter
+        data-project-filter={variant}
         aria-haspopup="menu"
         aria-expanded={open !== null}
         aria-controls={open ? menuId : undefined}
@@ -348,7 +361,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [], trail
             e.currentTarget.click();
           }
         }}
-        className="no-drag flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left text-ui text-muted hover:bg-border/50 hover:text-text"
+        className={`no-drag flex h-7 min-w-0 items-center rounded-md px-1.5 text-left text-ui text-muted hover:bg-border/50 hover:text-text ${variant === 'header' ? 'gap-1.5' : 'flex-1 gap-2'}`}
       >
         {filter ? <ProjectIcon project={current} root={filter} name={remoteCurrent?.name} remote={remoteCurrent?.computerId ?? false} /> : <Layers size={14} className="shrink-0" aria-hidden />}
         <span className="min-w-0 flex-1 truncate">{currentName}</span>

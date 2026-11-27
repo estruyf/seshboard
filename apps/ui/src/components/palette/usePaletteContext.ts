@@ -28,6 +28,7 @@ import { useRows } from '../../state/rowsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { isActive } from '../../state/sidebarRows.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
+import { useCanGoInHistory } from '../../state/navHistoryStore.ts';
 import { parentSplit } from '../../state/tiling.ts';
 import { neighbour, type Way } from '../../state/tilingGeometry.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
@@ -132,6 +133,8 @@ export function usePaletteContext(): PaletteContext {
   const terminals = useTerminals((s) => s.terminals);
   const activeTerminals = useTerminals((s) => s.active);
   const sidebar = useSidebar((s) => s.state);
+  const canGoBack = useCanGoInHistory(-1);
+  const canGoForward = useCanGoInHistory(1);
   const boxes = useComposerTargets((s) => s.boxes);
   const editors = useHosts((s) => s.editors);
   const computers = useComputers((s) => s.status?.computers);
@@ -258,6 +261,8 @@ export function usePaletteContext(): PaletteContext {
     sidebarGroup: prefs.sidebarGroup,
     conversationView: prefs.conversationView,
     sidebar,
+    canGoBack,
+    canGoForward,
     settingsSection,
     newSession: view === 'new-session' ? newSessionInfo : null,
     questionsDir,

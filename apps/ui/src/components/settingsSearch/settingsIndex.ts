@@ -159,14 +159,6 @@ export function settingsIndex(): SettingEntry[] {
     // Sidebar
     { id: 'sidebar-style', page: 'sidebar', label: 'Sidebar style', detail: 'Large icons, Standard or Compact. Large icons makes each session’s project easy to spot.', keywords: 'density rows size', target: '[data-sidebar-style]' },
     {
-      id: 'sidebar-collapsed',
-      page: 'sidebar',
-      label: 'When collapsed',
-      detail: `What ${formatKeys(keysFor('sidebar.toggle'))} and the sidebar button do: a narrow rail of project icons, or hide the sidebar.`,
-      keywords: 'minimal rail hidden hide collapse',
-      target: '[data-sidebar-collapsed]',
-    },
-    {
       id: 'session-scope',
       page: 'sidebar',
       label: 'Show sessions from other apps',

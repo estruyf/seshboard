@@ -1,7 +1,7 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
+import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
 import { SIDE_PANEL_DETAIL } from './transcript/sidePanelCopy.ts';
@@ -13,7 +13,9 @@ import { NotificationsSettings } from './notifications/NotificationsSettings.tsx
 import { PipelinesSettings } from './pipelines/editor/PipelinesSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
-import { useSidebar } from '../state/sidebarStore.ts';
+import { usePanelView } from '../state/panelSlotStore.ts';
+import { listForView, useSidebarList } from '../state/browserViewStore.ts';
+import { createPortal } from 'react-dom';
 import { BackupSettings } from './backup/BackupSettings.tsx';
 import { CompanionSettings } from './companion/CompanionSettings.tsx';
 import { RemoteSettings } from './remote/RemoteSettings.tsx';
@@ -262,23 +264,6 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               </Choice>
             ))}
           </RadioGroup>
-          <div className="flex items-center justify-between gap-4" data-setting-row>
-            <span>
-              <span className="block text-ui">When collapsed</span>
-              <span className="block text-meta text-muted">What {formatKeys(keysFor('sidebar.toggle'))} and the sidebar button do: a narrow rail of project icons, or hide the sidebar.</span>
-            </span>
-            <SegmentedControl<SidebarCollapsed>
-              mode="radio"
-              label="When collapsed"
-              value={prefs.sidebarCollapsed}
-              onChange={(sidebarCollapsed) => update({ sidebarCollapsed })}
-              segments={[
-                { value: 'minimal', label: 'Minimal rail', data: { 'data-sidebar-collapsed': 'minimal' } },
-                { value: 'closed', label: 'Hidden', data: { 'data-sidebar-collapsed': 'closed' } },
-              ]}
-              className="shrink-0"
-            />
-          </div>
           <Toggle
             label="Show sessions from other apps"
             detail="Also list sessions from Terminal, Claude desktop, your editor, GitHub Copilot, OpenAI Codex and Google Antigravity. Off shows only sessions you started or continued in Seshboard."
@@ -692,13 +677,14 @@ interface SearchState {
   field: ReactNode;
 }
 
-/** Settings' sections, on the left of the Settings sheet, under the search field. */
-export function SettingsNav({ search }: { search: SearchState }) {
+/**
+ * Settings' sections under the search field: in the panel beside the nav rail while it shows Settings (`inPanel`), else
+ * on the left of the Settings sheet.
+ */
+export function SettingsNav({ search, inPanel = false }: { search: SearchState; inPanel?: boolean }) {
   const section = useSessions((s) => s.settingsSection);
   const openSettings = useSessions((s) => s.openSettings);
   const searching = search.query.trim() !== '';
-  // With the sidebar closed, the traffic lights sit above this list (macOS; elsewhere they're in the title bar).
-  const sidebarClosed = useSidebar((s) => s.state === 'closed') && currentPlatform() === 'darwin';
   const row = ({ id, label, icon: Icon }: SettingsPage) => {
     // While searching, no page is the one on screen: each says how many results it has.
     const current = !searching && section === id;
@@ -730,8 +716,14 @@ export function SettingsNav({ search }: { search: SearchState }) {
   const groups = navGroups(SETTINGS_SECTIONS.filter((page) => settingsPageShown(page.id, { browser })));
   const bottom = groups.find((g) => g.group === 'bottom');
   return (
-    <nav aria-label="Settings sections" onKeyDown={moveBetweenPages} className={`flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 ${sidebarClosed ? 'pt-12' : 'pt-3'}`} data-settings-nav>
-      <h2 id="settings-title" className="px-2.5 pt-2 pb-3 text-title font-semibold">
+    <nav
+      aria-label="Settings sections"
+      onKeyDown={moveBetweenPages}
+      className={inPanel ? 'flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2' : 'flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 pt-3'}
+      data-settings-nav={inPanel ? 'panel' : 'sheet'}
+    >
+      {/* In the panel, its header as the other lists': the name, at the panel header's height. */}
+      <h2 id="settings-title" className={inPanel ? 'flex h-10 shrink-0 items-center px-1.5 text-ui font-semibold text-text' : 'px-2.5 pt-2 pb-3 text-title font-semibold'}>
         Settings
       </h2>
       {search.field}
@@ -770,10 +762,19 @@ function moveBetweenPages(event: ReactKeyboardEvent<HTMLElement>) {
 }
 
 /**
- * Settings fills the main area, with its sections on the left and the page on the right. The app
- * sidebar keeps its session list next to it, so what needs you stays in sight.
+ * Settings fills the main area with its page. Its sections are in the panel beside the nav rail while the panel shows
+ * Settings, else on the sheet's left.
  */
 export function SettingsView() {
+  const slot = usePanelView('settings');
+  // However Settings closes (its ✕, Escape, the rail, the menu), the panel gives its list back to the view underneath.
+  useEffect(
+    () => () => {
+      const { list, setList } = useSidebarList.getState();
+      if (list === 'settings') setList(listForView(useSessions.getState().view));
+    },
+    [],
+  );
   const section = useSessions((s) => s.settingsSection);
   const openSettings = useSessions((s) => s.openSettings);
   const sheet = useRef<HTMLDivElement>(null);
@@ -877,8 +878,10 @@ export function SettingsView() {
       className="absolute inset-0 z-30 flex min-h-0 flex-col bg-bg"
       data-settings
     >
+      {/* Its sections are in the panel while it shows them (a portal), else on the sheet's left. */}
+      {slot && createPortal(<SettingsNav search={search} inPanel />, slot)}
       <div className="flex min-h-0 flex-1">
-        <SettingsNav search={search} />
+        {!slot && <SettingsNav search={search} />}
         <div className="relative flex min-w-0 flex-1 flex-col">
           {/* The top strip keeps the window draggable, like every other view's header. */}
           {/* Same padding as the session header, so the close button stays put when Settings opens over it. */}

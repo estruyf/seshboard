@@ -71,7 +71,7 @@ import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
 import { useNavHistorySync } from './state/navHistoryStore.ts';
-import { useSessions, type MainView } from './state/sessionsStore.ts';
+import { useSessions } from './state/sessionsStore.ts';
 import { useReadMode } from './state/readModeStore.ts';
 import { useOverlay } from './state/overlayStore.ts';
 import { usePreferences, usePreferencesSync } from './state/preferencesStore.ts';
@@ -84,7 +84,9 @@ import { goToAdjacentSession, goToNextNeedsYou } from './state/sessionNav.ts';
 import { useSidebar, useSidebarSync } from './state/sidebarStore.ts';
 import { useTerminalsSync } from './state/terminalsStore.ts';
 import { AppTerminalFrame } from './components/terminal/AppTerminalFrame.tsx';
-import { terminalOwner, type TerminalView } from './components/terminal/appTerminal.ts';
+import { currentTerminalOwner, openGoTo, terminalView } from './components/titlebar/windowActions.ts';
+import { TitleBar } from './components/titlebar/TitleBar.tsx';
+import { NavRail } from './components/sidebar/NavRail.tsx';
 import { useUpdatesSync } from './state/updatesStore.ts';
 import { useClaudeUpdateSync } from './state/claudeUpdateStore.ts';
 import { useProviderUpdatesSync } from './state/providerUpdateStore.ts';
@@ -106,20 +108,6 @@ import { ActivityView } from './components/activity/ActivityView.tsx';
 import { SelectionMenu } from './components/SelectionMenu.tsx';
 import { openUpcoming } from './state/upcomingStore.ts';
 import { openActivity } from './state/activityStore.ts';
-
-/** What the main area shows, as the terminal sees it: Home is the session view without a session. */
-function terminalView(view: MainView, sessionId: string | null): TerminalView {
-  return view === 'new' ? 'new-session' : view === 'session' ? (sessionId ? 'session' : 'home') : view;
-}
-
-/**
- * The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere (Settings too). None
- * for a session on another computer: its terminal is there.
- */
-function currentTerminalOwner(): string | null {
-  const { view, selectedId } = useSessions.getState();
-  return terminalOwner(terminalView(view, selectedId), localSessionId(selectedId));
-}
 
 /** What each key of the panes does (keys in `lib/shortcuts.ts`). */
 const PANE_KEYS: ReadonlyArray<readonly [ShortcutId, (sessions: ReturnType<typeof useSessions.getState>) => void]> = [
@@ -178,7 +166,7 @@ function useShortcuts() {
       } else if (matches(event, 'palette.goto')) {
         if (otherModalOpen()) return;
         event.preventDefault();
-        useOverlay.getState().togglePalette('goto');
+        openGoTo();
       } else if (PANE_KEYS.some(([id]) => matches(event, id))) {
         // The panes' keys work with more than one pane open, and in the session view (Settings sits over it, inert).
         const sessions = useSessions.getState();
@@ -304,7 +292,11 @@ export function App() {
   const cloning = useClone((s) => s.dialog);
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col">
+      {/* The title bar spans the window; under it, the nav rail, the panel and the view. */}
+      <TitleBar inert={reading} />
+      <div className="flex min-h-0 flex-1">
+      <NavRail inert={reading} />
       <SidebarShell inert={reading} />
       {/* New session has its own main (the message box, beside its projects and context): only one on a page. */}
       <div role={view === 'new' ? undefined : 'main'} className="relative flex min-w-0 flex-1 flex-col overflow-hidden" inert={reading}>
@@ -335,6 +327,7 @@ export function App() {
         </div>
         {view === 'settings' && <SettingsView />}
         </AppTerminalFrame>
+      </div>
       </div>
       <QuitPrompt />
       <WebPreviewHost />

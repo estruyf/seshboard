@@ -387,53 +387,6 @@ function DevicesPopover({
   );
 }
 
-/**
- * The rail's device icon, above its other buttons: shows while devices are connected, with the count in a green
- * badge. Hover lists their names; a click opens the details of each, with Revoke per device.
- */
-export function RailDevices() {
-  const { footer, devices, address } = useConnectedDevices();
-  const button = useRef<HTMLButtonElement>(null);
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
-  // Everyone left while it was open.
-  useEffect(() => {
-    if (!devices.length) setAt(null);
-  }, [devices.length]);
-  if (footer !== 'devices' || !devices.length) return null;
-  const title = sectionTitle(currentPlatform());
-  const names = devices.map((d) => d.name).join(', ');
-  return (
-    <>
-      <button
-        ref={button}
-        type="button"
-        onClick={() => {
-          const rect = button.current?.getBoundingClientRect();
-          if (rect) setAt((open) => (open ? null : { x: rect.right + 8, y: rect.top - 8 }));
-        }}
-        aria-haspopup="dialog"
-        aria-expanded={at !== null}
-        aria-label={`${title}, ${countLabel(devices.length)}: ${names}`}
-        data-tooltip={names}
-        data-tooltip-placement="right"
-        data-tooltip-title={title}
-        data-tooltip-meta={names}
-        data-tooltip-status={countLabel(devices.length)}
-        data-tooltip-tone="ok"
-        data-tooltip-hint="Click to see what they did"
-        className="relative flex size-8 items-center justify-center rounded-lg text-muted hover:bg-border/50 hover:text-text"
-        data-rail-devices={devices.length}
-      >
-        <Smartphone size={16} aria-hidden />
-        <span aria-hidden className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-ok px-1 text-[10px] leading-none font-semibold text-bg tabular-nums ring-2 ring-sidebar">
-          {devices.length}
-        </span>
-      </button>
-      {at && <DevicesPopover devices={devices} address={address} at={at} anchor={button} onClose={() => (setAt(null), button.current?.focus())} />}
-    </>
-  );
-}
-
 /** The sidebar's polite live region: a device connecting or leaving. */
 export function useDeviceAnnouncement(): string {
   return useRemote((s) => s.announcement);

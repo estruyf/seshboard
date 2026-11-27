@@ -773,7 +773,7 @@
     },
     {
       "id": "palette:sidebar-close",
-      "name": "Close sidebar",
+      "name": "Close the panel",
       "page": "sessions/sidebar"
     },
     {
@@ -797,13 +797,8 @@
       "page": "settings"
     },
     {
-      "id": "palette:sidebar-minimize",
-      "name": "Minimize sidebar",
-      "page": "sessions/sidebar"
-    },
-    {
       "id": "palette:sidebar-open",
-      "name": "Open sidebar",
+      "name": "Open the panel",
       "page": "sessions/sidebar"
     },
     {
@@ -3638,7 +3633,7 @@
     },
     {
       "id": "feature:mouse-back-forward",
-      "name": "Back and forward with the mouse buttons",
+      "name": "Back and forward with the mouse buttons, the title bar's arrows or the palette",
       "page": "sessions/sidebar"
     },
     {
@@ -4363,12 +4358,12 @@
     },
     {
       "id": "feature:sidebar-hidden",
-      "name": "Hidden sidebar and needs-you pill",
+      "name": "The panel closed: ⌘B, the title bar's Panel button or a click on Sessions in the nav rail, with what needs you as a count on Sessions",
       "page": "sessions/sidebar"
     },
     {
       "id": "feature:sidebar-minimal-rail",
-      "name": "Minimal rail",
+      "name": "The 80px minimal rail is gone: the nav rail at the window's left edge takes its place, and a sidebar saved as minimal opens closed",
       "page": "sessions/sidebar"
     },
     {
@@ -4518,7 +4513,7 @@
     },
     {
       "id": "feature:side-panel-launcher",
-      "name": "Show panel at the bottom of the rail opens the side panel empty, with a list of the tools to open there and their shortcuts (hidden ones too)",
+      "name": "Show panel in the title bar opens the side panel empty, with a list of the tools to open there and their shortcuts (hidden ones too)",
       "page": "sessions/tool-rail"
     },
     {
@@ -4560,11 +4555,6 @@
       "id": "feature:star-on-github",
       "name": "Star on GitHub",
       "page": "sessions/sidebar"
-    },
-    {
-      "id": "feature:sidebar-when-collapsed",
-      "name": "When collapsed: Minimal rail or Hidden",
-      "page": "settings"
     },
     {
       "id": "feature:slash-commands",
@@ -5363,7 +5353,7 @@
     },
     {
       "id": "feature:upcoming-rail",
-      "name": "Minimal sidebar: the Upcoming button with its count, green when an item is ready",
+      "name": "The nav rail: the Upcoming button with its count, green when an item is ready",
       "page": "sessions/upcoming"
     },
     {
@@ -5725,6 +5715,66 @@
       "id": "palette:go-to-orchestrator",
       "name": "Go to orchestrator",
       "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:nav-rail",
+      "name": "The nav rail at the window's left edge: New session, Home, Sessions (with what needs you), Upcoming, Activity, Browser, Projects, Computers, Running and Settings, each with its list in the panel",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:title-bar",
+      "name": "The title bar: Back and Forward, a search field that opens Go to, and the Panel, Tools panel and More buttons",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:nav-rail-customize",
+      "name": "Customize the rail: right-click it (or More › Customize the rail…) to show or hide items, drag them or press ⌥↑ ⌥↓ to reorder, Reset to default",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:nav-rail-peek",
+      "name": "With the panel closed, rest on Sessions in the nav rail (or press →) to peek at the sessions; a click opens one",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:panel-filter",
+      "name": "The panel's header: Sessions, the project, View and a search button that shows the filter (Escape clears it)",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:nav-back",
+      "name": "Go back",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:nav-forward",
+      "name": "Go forward",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:customize-nav-rail",
+      "name": "Customize the rail…",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:nav.back",
+      "name": "nav.back",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:nav.forward",
+      "name": "nav.forward",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:nav-rail-projects",
+      "name": "Projects on the nav rail lists your projects in the panel, beside the project's page; Sessions switches the panel back",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:nav-rail-panels",
+      "name": "Every nav rail item but Home and Computers has its list in the panel: Upcoming and Activity filter by project there, Settings shows its sections, Running what counts; Computers is a menu on hover or click",
+      "page": "sessions/sidebar"
     }
   ]
 }

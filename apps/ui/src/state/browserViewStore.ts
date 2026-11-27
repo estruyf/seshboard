@@ -4,10 +4,10 @@ import { useBrowserFavorites } from './browserFavoritesStore.ts';
 import { BROWSER_OWNER, favoriteTab, frontTab, type BrowserTab } from '../components/webPreview/browserTabs.ts';
 import { showInMain } from './popoutsStore.ts';
 import { useSessions } from './sessionsStore.ts';
+import { listAfterMove, type SidebarList } from './panelList.ts';
 import { browserOn, useWebPreview } from './webPreviewStore.ts';
 
-/** What the sidebar lists under its views: the sessions, or the Browser view's tabs. */
-export type SidebarList = 'sessions' | 'browser';
+export { listForView, VIEW_LISTS, type SidebarList } from './panelList.ts';
 
 const LIST_KEY = 'ui.sidebarList';
 
@@ -103,11 +103,15 @@ export function currentPageTab(): BrowserTab | null {
   return owner ? (frontTab(state, owner) ?? null) : null;
 }
 
-/** Leaving the Browser view for another (Home, a session, Upcoming): the sidebar shows the sessions again. */
+/**
+ * The panel follows the main area: each view shows its own list (Projects, Upcoming, Activity, Settings, the Browser's
+ * tabs), the others the sessions. Moving between the list of projects and a project's page keeps what the panel shows.
+ */
 export function followView(): () => void {
   return useSessions.subscribe((state, previous) => {
-    if (state.view === previous.view || state.view === 'browser' || state.view === 'settings') return;
-    if (useSidebarList.getState().list !== 'sessions') useSidebarList.getState().setList('sessions');
+    const next = listAfterMove(previous.view, state.view);
+    const { list, setList } = useSidebarList.getState();
+    if (next && list !== next) setList(next);
   });
 }
 

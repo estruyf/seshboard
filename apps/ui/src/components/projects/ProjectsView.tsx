@@ -1,5 +1,6 @@
 import { FolderPlus } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { overlayOpen, otherModalOpen } from '../../lib/modalGuards.ts';
 import { matches } from '../../lib/shortcuts.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
@@ -8,7 +9,9 @@ import { openProject, PROJECT_TABS, switchProject, useProjectPage } from '../../
 import { canReorder, filterProjects, initialProject, isNarrowProjects, keyboardMove, moveAnnouncement, neighbourProject } from '../../state/projectsNav.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
+import { useSidebarList } from '../../state/browserViewStore.ts';
+import { usePanelView } from '../../state/panelSlotStore.ts';
+import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { useWidth } from '../ui/useWidth.ts';
@@ -16,23 +19,25 @@ import { ProjectList } from './ProjectList.tsx';
 import { ProjectPage } from './ProjectPage.tsx';
 import { useProjectOrder } from './useProjectOrder.ts';
 
-/** The list's width beside the project. */
-const LIST_WIDTH = 270;
-
 const inTerminal = (target: EventTarget | null) => target instanceof HTMLElement && target.closest('[data-terminal-panel]') !== null;
 /** A multi-line field or rich text: ⌥↑ ⌥↓ move the caret there. One-line fields (the search, a name) don't use them. */
 const inTextArea = (target: EventTarget | null) => target instanceof HTMLElement && target.closest('textarea, [contenteditable="true"]') !== null;
 
 /**
- * Projects: the list of projects on the left (like the Settings nav) and the open project on the right, so switching
- * projects, a project's Overview and its Settings are each one click or one key away. Both the `projects` view (the
- * project last open, or the first) and the `project` view (a given one) show it. In a narrow view the list folds
- * away: the project header's ‹ shows it over the project, and the name's switcher changes project.
+ * Projects: the list of projects in the panel beside the nav rail (a portal into `usePanelSlot`, like the Browser's
+ * tabs) and the open project in the main area, so switching projects, a project's Overview and its Settings are each one
+ * click or one key away. Both the `projects` view (the project last open, or the first) and the `project` view (a given
+ * one) show it. With the panel closed or on another list, the project header's ‹ shows the list there again.
  */
+/** Opens the panel on the projects list. */
+function showProjectsList(): void {
+  useSidebarList.getState().setList('projects');
+  useSidebar.getState().setState('open');
+}
+
 export function ProjectsView() {
   const ref = useRef<HTMLDivElement>(null);
   const narrow = isNarrowProjects(useWidth(ref));
-  const [listOpen, setListOpen] = useState(false);
   const { list, current, save } = useProjectOrder();
   const [query, setQuery] = useState('');
   const home = useHomeFolder();
@@ -42,6 +47,8 @@ export function ProjectsView() {
   const loaded = useProjects((s) => s.loaded);
   const showAdd = useProjects((s) => s.showAdd);
   const searchRef = useRef<HTMLInputElement>(null);
+  const slot = usePanelView('projects');
+  const panelShowsList = useShownSidebar().state === 'open' && slot !== null;
   const [announcement, setAnnouncement] = useState('');
 
   // The `projects` view settles on a project at once (before it paints), so everything that asks which project is
@@ -65,20 +72,6 @@ export function ProjectsView() {
     else useSessions.getState().setView('projects');
   }, [list, root]);
 
-  useEffect(() => {
-    if (!narrow) setListOpen(false);
-  }, [narrow]);
-
-  // The list over a narrow view takes focus on the open project's row (Esc or a pick hands it back to the page).
-  useEffect(() => {
-    if (!listOpen) return;
-    const frame = requestAnimationFrame(() => {
-      const overlay = document.querySelector<HTMLElement>('[data-project-list-overlay]');
-      (overlay?.querySelector<HTMLElement>('[role=option][aria-selected=true]') ?? overlay?.querySelector<HTMLElement>('[data-project-search]'))?.focus();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [listOpen]);
-
   const keyMove = (target: string, delta: -1 | 1) => {
     const moved = keyboardMove(current(), target, delta);
     if (!moved) return;
@@ -87,11 +80,14 @@ export function ProjectsView() {
   };
 
   const findProject = () => {
-    if (narrow) setListOpen(true);
-    requestAnimationFrame(() => {
-      searchRef.current?.focus();
-      searchRef.current?.select();
-    });
+    showProjectsList();
+    // The panel may only now open on the list: its field is there two frames on.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }),
+    );
   };
 
   // The view's keys: ⌘F finds a project, ⌥↑ ⌥↓ switch (same tab), ⌥⇧↑ ⌥⇧↓ move the open project, ⌘1 to ⌘8 pick a tab.
@@ -104,7 +100,8 @@ export function ProjectsView() {
       const { view: now } = useSessions.getState();
       if (now !== 'project' && now !== 'projects') return;
       const target = event.target;
-      if (inTerminal(target) || (target instanceof HTMLElement && target.closest('[data-sidebar]'))) return;
+      // The projects list is in the panel too: its keys count, the sessions' don't.
+      if (inTerminal(target) || (target instanceof HTMLElement && target.closest('[data-sidebar]') && !target.closest('[data-project-list]'))) return;
       if (otherModalOpen() || overlayOpen()) return;
       const { shown, root, query, keyMove, findProject } = keys.current;
       if (matches(event, 'projects.find')) {
@@ -137,7 +134,6 @@ export function ProjectsView() {
       query={query}
       onQuery={setQuery}
       searchRef={searchRef}
-      onPicked={narrow ? () => setListOpen(false) : undefined}
       onSave={(order) => void save(order)}
       onKeyMove={keyMove}
       announcement={announcement}
@@ -147,15 +143,11 @@ export function ProjectsView() {
 
   return (
     <div ref={ref} className="relative flex h-full min-h-0" data-projects-view data-narrow={narrow || undefined}>
-      {!narrow && (
-        <div className="shrink-0 border-r border-border" style={{ width: LIST_WIDTH }}>
-          {listPane}
-        </div>
-      )}
+      {slot && createPortal(listPane, slot)}
       <div className="flex min-w-0 flex-1 flex-col">
         {empty ? (
           <div className="flex h-full min-h-0 flex-col" data-project-page>
-            <header className={PANE_HEADER}>{narrow && <SidebarToggle />}</header>
+            <header className={PANE_HEADER} />
             <div className="mx-auto grid max-w-md justify-items-center gap-2 px-6 py-16 text-center" data-no-projects>
               <p className="text-title font-semibold">No projects yet</p>
               <p className="text-ui text-muted">Add the folders you want to start Claude Code sessions in. Folders you have used Claude Code in are suggested.</p>
@@ -165,30 +157,9 @@ export function ProjectsView() {
             </div>
           </div>
         ) : (
-          <ProjectPage list={shown} narrow={narrow} onShowList={() => setListOpen(true)} />
+          <ProjectPage list={shown} narrow={narrow} onShowList={panelShowsList ? undefined : showProjectsList} />
         )}
       </div>
-      {/* A narrow view shows the list over the project, from the header's ‹; a click outside or Esc closes it. */}
-      {narrow && listOpen && (
-        <>
-          <div className="absolute inset-0 z-30" aria-hidden onClick={() => setListOpen(false)} />
-          <div
-            role="dialog"
-            aria-label="Projects"
-            className="overlay absolute inset-y-0 left-0 z-40 rounded-none border-y-0 border-l-0"
-            style={{ width: LIST_WIDTH }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape' && !e.defaultPrevented) {
-                e.preventDefault();
-                setListOpen(false);
-              }
-            }}
-            data-project-list-overlay
-          >
-            {listPane}
-          </div>
-        </>
-      )}
     </div>
   );
 }

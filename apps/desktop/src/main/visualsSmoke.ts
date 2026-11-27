@@ -145,8 +145,8 @@ export async function runVisualizeServerStep(
 
     // The switch, on by default, saved when turned off.
     await win.webContents.executeJavaScript("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
-    if (!(await waitInPage(win, "document.querySelector('[data-settings] [data-settings-section=\"general\"]')", 3_000))) return 'no General page in Settings';
-    await win.webContents.executeJavaScript("document.querySelector('[data-settings] [data-settings-section=\"general\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings-nav] [data-settings-section=\"general\"]')", 3_000))) return 'no General page in Settings';
+    await win.webContents.executeJavaScript("document.querySelector('[data-settings-nav] [data-settings-section=\"general\"]').click()");
     const toggle = "document.querySelector('[data-agent-visuals-setting] [role=switch]') ?? document.querySelector('[data-agent-visuals-setting]')";
     if (!(await waitInPage(win, `!!(${toggle})`, 3_000))) return 'no Visuals in replies switch in Settings › General';
     if (!was) return 'Visuals in replies is off by default';

@@ -233,7 +233,7 @@ function CatchUpBanner({ card, actions, committed, changesOpen, details, positio
 function keyTarget(el: Element | null, view: HTMLElement | null): KeyTarget {
   if (!el || el === document.body || el === document.documentElement) return 'view';
   // The session's row in the sidebar or the rail, just clicked: its letters are the catch-up's (Enter and Space press the row).
-  if (el.closest('[data-session-list] [data-session-id], [data-sidebar-rail-row]')) return 'control';
+  if (el.closest('[data-session-list] [data-session-id], [data-peek-row]')) return 'control';
   if (!view?.contains(el)) return 'elsewhere';
   if (el.closest('[data-composer], .xterm, [data-changes-panel], [data-permission-request], [data-why-panel]')) return 'elsewhere';
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)) return 'elsewhere';

@@ -110,7 +110,7 @@ const q = (selector: string) => `document.querySelector(${JSON.stringify(selecto
  * "browser view": Browser in the sidebar's views shows the Browser view with its tabs listed, without the search row and
  * without an address bar until a tab is open; Open tab gives one; the local page loads there, and its title and favicon
  * show in the list. Dragging a tab moves it, and so does ⌥↓. A middle click closes the tab and ⌘⇧T brings it back. Under
- * the tabs, Projects, Browser profiles and Settings; Browser profiles opens Settings › Browser at the profiles.
+ * the tabs, Browser profiles, which opens Settings › Browser at the profiles.
  */
 export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -121,14 +121,16 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   // "browser intro" may have opened it already.
   if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'Browser did not show the Browser view and its tab list';
-  // A second click keeps it: Browser in the views never toggles back to the sessions (Home does that).
+  // A second click on the nav rail's Browser closes the panel and keeps the Browser view; a third opens it on the tabs.
   await js(`${q('[data-nav="browser"]')}.click()`);
-  if (await waitInPage(win, `!${q('[data-browser-tab-list]')}`, 500)) return 'a second click on Browser went back to the sessions';
+  if (!(await waitInPage(win, `${q('[data-sidebar]')}?.dataset.sidebarState === 'closed' && ${q('[data-browser-view]')}`, 3_000))) return 'a second click on Browser did not close the panel and keep the Browser view';
+  await js(`${q('[data-nav="browser"]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-sidebar]')}?.dataset.sidebarState === 'open' && ${q('[data-browser-tab-list]')}`, 3_000))) return 'a third click on Browser did not open the panel on its tabs';
   if (!(await js(`!!${q('[data-browser-view] [data-browser-empty]')} || !!${q('[data-browser-view] [data-web-preview-slot]')}`))) return 'the Browser view shows neither a page nor its empty state';
   if (await js(`!!${q('[data-browser-view] [data-browser-empty]')} && !!${q('[data-browser-view] [data-browser-address]')}`)) return 'the empty Browser view shows an address bar';
-  if (await js(`!!${q('[data-new-session]')}?.checkVisibility()`)) return 'the Browser tab list still shows New session and the search';
-  // Under the tabs only Projects, Browser profiles and Settings: no Done, no session count.
-  for (const hook of ['data-open-projects', 'data-open-browser-profiles', 'data-open-settings']) if (!(await js(`!!${q(`[${hook}]`)}?.checkVisibility()`))) return `the Browser tab list has no ${hook} button`;
+  if (await js(`!!${q('[data-sidebar-open] [data-filter-toggle]')}?.checkVisibility()`)) return 'the Browser tab list still shows the session filter';
+  // Under the tabs only Browser profiles (Projects and Settings are on the nav rail): no Done, no session count.
+  for (const hook of ['data-open-browser-profiles']) if (!(await js(`!!${q(`[${hook}]`)}?.checkVisibility()`))) return `the Browser tab list has no ${hook} button`;
   for (const hook of ['data-footer-sessions', 'data-archived-dock']) if (await js(`!!${q(`[${hook}]`)}?.checkVisibility()`)) return `the Browser tab list still shows ${hook}`;
   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view] [data-browser-address]')} && !${q('[data-browser-view] [data-browser-address]')}.disabled`, 3_000))) return 'Open tab gave no address bar';
@@ -1000,6 +1002,8 @@ export async function runBrowserLinkStep(win: BrowserWindow, deps: BrowserSmokeD
   await dismiss();
   deps.openLink(link);
   if (!(await until(() => pageWithTitle('Smoke from a link') !== undefined, 10_000))) return 'the link did not load its page';
+  // The panel may show another list beside the Browser view (Sessions picked there): Browser on the nav rail shows its tabs.
+  if (!(await waitInPage(win, q('[data-browser-tab-list]'), 1_000))) await js(`${q('[data-nav="browser"]')}?.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${rows}.length === 1`, 3_000))) return `the page is not a tab of the Browser view (${String(await js(`${rows}.length`))} tabs)`;
   deps.openLink(link);
   await new Promise((resolve) => setTimeout(resolve, 500));

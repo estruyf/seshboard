@@ -79,7 +79,6 @@ const bridge: SeshboardBridge = {
   update: (command) => ipcRenderer.send(IpcChannel.updateCommand, command),
   // The channel is a preference; main checks again as soon as it changes.
   setUpdateChannel: (channel) => ipcRenderer.send(IpcChannel.setPreferences, { updateChannel: channel }),
-  setWindowButtons: (position) => ipcRenderer.send(IpcChannel.windowButtons, position),
   onDeepLink(listener) {
     const handler = (_event: unknown, message: DeepLinkMessage) => listener(message);
     ipcRenderer.on(IpcChannel.deepLink, handler);

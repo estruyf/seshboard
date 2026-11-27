@@ -31,7 +31,6 @@ import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { OVERLAY_SELECTOR } from '../session/permissionKeys.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { ClampedPrompt } from '../transcript/ClampedPrompt.tsx';
 import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { BackgroundTaskList } from '../transcript/BackgroundTaskList.tsx';
@@ -383,8 +382,6 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
     <RemoteFileContext.Provider value={fileSession}>
       <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
         <header className={`${PANE_HEADER} ${remoteLine(pane)}`} data-scrolled={!edge.atTop || undefined} data-remote-header {...paneHeader(pane)}>
-          {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
-          {pane.leading && <SidebarToggle />}
           <span className="flex shrink-0 @max-[400px]:hidden">
             <ProjectIcon project={undefined} root={session.projectId} name={session.projectName} size={22} remote />
           </span>

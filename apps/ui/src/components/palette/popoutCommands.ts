@@ -43,6 +43,9 @@ const PLANS: Record<string, Plan> = {
 
   // The main window's own: the sidebar, Home, the window's terminal outside a session, its dialogs and its queue.
   'toggle-sidebar': 'hide',
+  'nav-back': 'hide',
+  'nav-forward': 'hide',
+  'customize-nav-rail': 'hide',
   home: 'hide',
   'toggle-app-terminal': 'hide',
   'new-app-terminal-tab': 'hide',

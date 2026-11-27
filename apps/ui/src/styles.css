@@ -98,6 +98,14 @@
   color-scheme: light;
 }
 
+/*
+ * The window's chrome: the title bar and the nav rail, a shade off the sidebar. Not a theme token: it follows the
+ * theme's text and sidebar, so every theme (and light and dark) gets it without saying so.
+ */
+:root {
+  --sb-chrome: color-mix(in srgb, var(--sb-text) 4%, var(--sb-sidebar));
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     /* Demo Time Dark */
@@ -297,7 +305,8 @@
 }
 /*
  * Black and white, light: every surface is near white, so the edges come back as lines, wherever Windows high
- * contrast would draw them (`forced-colors:border-*`, a surface that meets another): the sidebar's right edge, the side
+ * contrast would draw them (`forced-colors:border-*`, a surface that meets another): the title bar's bottom edge, the
+ * nav rail's and the sidebar's right edges, the side
  * panels' left edge, the rail of tools, and pane headers always (not only while content scrolls under). The message
  * box and the catch-up bar get their border and a light shadow. With Code highlighting off, a changed line also gets a
  * 2px bar in its gutter: strong for added, light for removed.
@@ -308,6 +317,9 @@
   }
   :root[data-monochrome] [class~='forced-colors:border-r'] {
     border-right: 1px solid var(--sb-border);
+  }
+  :root[data-monochrome] [class~='forced-colors:border-b'] {
+    border-bottom: 1px solid var(--sb-border);
   }
   :root[data-monochrome] [data-tool-rail] {
     border-left-color: var(--sb-border);
@@ -336,6 +348,7 @@
 @theme inline {
   --color-bg: var(--sb-bg);
   --color-sidebar: var(--sb-sidebar);
+  --color-chrome: var(--sb-chrome);
   --color-card: var(--sb-card);
   --color-border: var(--sb-border);
   /* A border that stays visible on dialogs and popovers (fields, chips, cards inside an overlay); plain `border` vanishes there. */

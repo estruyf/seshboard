@@ -1,4 +1,3 @@
-import { ViewHeader } from '../ViewHeader.tsx';
 import { AlertTriangle, GripVertical, Plus, Search, Settings, X } from 'lucide-react';
 import { memo, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import type { ProjectInfo } from '@seshboard/protocol/client';
@@ -223,10 +222,12 @@ export function ProjectList({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar" data-project-list>
-      <ViewHeader title="Projects">
+      {/* The panel's header, as the sessions' one: the list's name, its count and Add. */}
+      <div className="flex h-10 shrink-0 items-center gap-1.5 px-2" data-panel-header>
+        <h2 className="min-w-0 truncate pl-1.5 text-ui font-semibold text-text">Projects</h2>
         <CountBadge count={list.length} />
-        <Button variant="quiet" iconOnly icon={<Plus size={15} aria-hidden />} aria-label="Add a project folder" onClick={() => showAdd(true)} className="no-drag ml-auto" data-manager-add />
-      </ViewHeader>
+        <Button variant="quiet" iconOnly icon={<Plus size={15} aria-hidden />} aria-label="Add a project folder" onClick={() => showAdd(true)} className="ml-auto" data-manager-add />
+      </div>
       <div className="px-3 pb-2">
         <label className="flex h-8 items-center gap-2 rounded-md border border-border bg-bg px-2.5 text-ui focus-within:border-accent-ink/60">
           <Search size={13} className="shrink-0 text-faint" aria-hidden />

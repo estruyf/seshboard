@@ -95,7 +95,7 @@ Focus rings and lines that show selection stay. In Windows high contrast (`force
 - [Ask about this session](../../docs/ui-patterns.md#ask-about-this-session): the Ask panel and `/btw`, never part of the conversation.
 - [Catch-up](../../docs/ui-patterns.md#catch-up): the briefing banner and strip on a finished turn.
 - [Reading mode](../../docs/ui-patterns.md#reading-mode): one reply full window, with its outline; the one place outside the type scale.
-- [Sidebar states](../../docs/ui-patterns.md#sidebar-states): open, minimal and closed sidebar, its widths and keys.
+- [Sidebar states](../../docs/ui-patterns.md#sidebar-states): the title bar, the nav rail and the panel beside it (open or closed), its widths and keys.
 - [Split view](../../docs/ui-patterns.md#split-view): the tiling pane tree, drag and drop, dividers, pane keys.
 - [Collapsible sections and the queue](../../docs/ui-patterns.md#collapsible-sections-and-the-queue): sidebar section headers, Up next.
 - [Sessions by project](../../docs/ui-patterns.md#sessions-by-project): the View button, project headers, folding.

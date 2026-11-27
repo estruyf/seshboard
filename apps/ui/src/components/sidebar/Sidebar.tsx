@@ -1,12 +1,10 @@
-import { currentPlatform } from '../../lib/platform.ts';
-import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, UserRound, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, UserRound, Zap } from 'lucide-react';
 import type { SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, runOfParent as protocolRunOfParent, type CatchUp, type RunView } from '@seshboard/protocol/client';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
-import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
-import { openDraft, useDraftPreview, useNewSessionDraft, useRemoteNewSessionDraft, useUnsentCount } from '../drafts/useUnsent.ts';
+import { useDraftPreview, useUnsentCount } from '../drafts/useUnsent.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
@@ -14,9 +12,10 @@ import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
-import { MinimalNav, SidebarNav } from './SidebarNav.tsx';
 import { BrowserTabList } from './BrowserTabList.tsx';
-import { useSidebarList } from '../../state/browserViewStore.ts';
+import { useSidebarList, VIEW_LISTS } from '../../state/browserViewStore.ts';
+import { FocusList } from '../focus/FocusCounter.tsx';
+import { usePanelSlot } from '../../state/panelSlotStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useTabCount } from '../../state/webPreviewStore.ts';
 import { rowIndicators } from '../webPreview/browserTabs.ts';
@@ -50,7 +49,6 @@ import { useDrafts } from '../../state/draftsStore.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, doneReason, doneReasonLabel, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, triageOrder, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
 import { NO_PICKS, pickGroup, rangePick, stepPick, togglePick, visiblePicks, type Picks } from '../../state/sessionPicks.ts';
-import { FocusCounter } from '../focus/FocusCounter.tsx';
 import type { MenuEntry } from '../Menu.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
@@ -70,8 +68,7 @@ import { thisComputerName } from '../../lib/platform.ts';
 import { agentNameOf, minimalRowTooltip, rowLeading, sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
 import { BrowserIntro } from './BrowserIntro.tsx';
-import { ComputersStrip } from '../computers/ComputersStrip.tsx';
-import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '../remote/ConnectedDevices.tsx';
+import { useDeviceAnnouncement } from '../remote/ConnectedDevices.tsx';
 import { ComputerChip, useComputerTint } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, markFromOthers, offlineLine, THIS_COMPUTER } from '../../state/remoteRows.ts';
@@ -777,14 +774,23 @@ export function Sidebar() {
   const anySessions = useSessions((s) => s.sessions.size > 0);
   const waiting = useHosts((s) => s.permissions.size);
   const search = useSessions((s) => s.filter);
+  // The filter field shows from the header's button, and stays while it has text.
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterShown = filterOpen || search !== '';
+  const filterRef = useRef<HTMLInputElement>(null);
+  const filterId = useId();
+  const revealFilter = () => {
+    setFilterOpen(true);
+    requestAnimationFrame(() => filterRef.current?.focus());
+  };
+  const filterButton = () => document.querySelector<HTMLElement>('[data-sidebar-open] [data-filter-toggle]');
   const selectedId = useSessions((s) => s.selectedId);
   const paneIds = useSessions((s) => s.paneIds);
   const complete = useSessions((s) => s.complete);
   const loaded = useSessions((s) => s.loaded);
-  const view = useSessions((s) => s.view);
   // Settings is a sheet over the session, which stays selected in the list behind it.
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
-  const { setFilter: setSearch, select, setView } = useSessions.getState();
+  const { setFilter: setSearch, select } = useSessions.getState();
   const projectFilter = useProjects((s) => s.filter);
   const archivedOpen = useProjects((s) => s.archivedOpen);
   const queue = useQueue();
@@ -812,11 +818,9 @@ export function Sidebar() {
   const catchUps = useCatchUp((s) => s.cards);
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   const width = useSidebar((s) => s.width);
-  // Unsent messages: a pen (and the draft's start) on their rows, the count in the footer, a pen on + for New session's.
+  // Unsent messages: a pen (and the draft's start) on their rows, the count in the footer (New session's pen is on the nav rail).
   // Only the count: each row selects the start of its own draft (`useDraftPreview`), so a keystroke re-renders one row.
   const unsentCount = useUnsentCount();
-  const newDraft = useNewSessionDraft();
-  const remoteNewDraft = useRemoteNewSessionDraft();
 
   const kept = useKeptSessions();
   const all = useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
@@ -1364,84 +1368,80 @@ export function Sidebar() {
   const openCount = useMemo(() => triageOrder(active).length, [active]);
   const waitingNotice = useWaitingAnnouncement(all, loaded);
   const deviceNotice = useDeviceAnnouncement();
-  const remoteFooterShown = useRemoteFooterShown();
-  const localWaiting = all.filter((row) => rowStatus(row) === 'needs-you').length;
   const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
-  const showTabs = useSidebarList((s) => browserPreview && s.list === 'browser');
+  // What the panel lists, one per item on the nav rail. The sessions stay mounted under the others, hidden.
+  const list = useSidebarList((s) => (s.list === 'browser' && !browserPreview ? 'sessions' : s.list));
+  const showTabs = list === 'browser';
+  // Projects, Upcoming, Activity and Settings put their own list here (`usePanelSlot`).
+  const viewList = VIEW_LISTS.includes(list);
+  const otherList = list !== 'sessions' && !showTabs;
+  // The sessions' header and footer show with the sessions and the Browser's tabs only.
+  const notSessions = otherList || showTabs;
   const minimal = useMinimal();
+  const setSlot = usePanelSlot((s) => s.setSlot);
 
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
     <aside aria-label="Sidebar" className="relative flex h-full shrink-0 flex-col bg-sidebar forced-colors:border-r" style={{ width }} data-sidebar-open>
-      {/* Traffic lights on the left (macOS), hidden in full screen, where the title starts at the edge like the rows. The
-          bar doubles as a window drag handle. */}
-      <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24 full-screen:pl-4.5' : 'pl-4.5'}`}>
-        <span className="text-body font-semibold text-text/90">Seshboard</span>
-        {/* Minimal mode: the View menu (grouping, sort and the project filter) sits up here, as the filter row goes. */}
-        {minimal && !showTabs && (
-          <span className="no-drag ml-auto pr-3">
-            <SidebarViewButton projects={projectKeys} withProjects />
-          </span>
+      {/* The panel's header: the list's name and, for the sessions, the project, the order and the filter. */}
+      <div className={`h-10 shrink-0 items-center gap-0.5 px-2 ${otherList ? 'hidden' : 'flex'}`} data-panel-header>
+        <h2 className="min-w-0 flex-1 truncate pl-1.5 text-ui font-semibold text-text">{showTabs ? 'Browser' : 'Sessions'}</h2>
+        {!showTabs && (
+          <>
+            {/* Minimal mode: the View menu holds the project filter too. */}
+            {!minimal && <ProjectFilter variant="header" counts={counts} sources={sourceSummaries} remoteProjects={remoteProjects} />}
+            <SidebarViewButton projects={projectKeys} withProjects={minimal} />
+            <Button
+              variant="quiet"
+              iconOnly
+              icon={<Search size={15} aria-hidden />}
+              aria-label="Filter sessions"
+              aria-expanded={filterShown}
+              aria-controls={filterId}
+              selected={filterShown}
+              onClick={() => (filterShown && search === '' ? setFilterOpen(false) : revealFilter())}
+              data-filter-toggle
+            />
+          </>
         )}
       </div>
 
-      {minimal ? (
-        <MinimalNav now={now} needsYou={localWaiting} newSessionLabel={newDraft ? newSessionDraftTooltip(newDraft.name) : remoteNewDraft ? remoteNewSessionDraftTooltip(remoteNewDraft.name) : 'New session'} onNewSession={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))} />
-      ) : (
-        <SidebarNav now={now} needsYou={localWaiting} />
+      {/* The filter: shown from the header's button, and while it has text. Escape clears and hides it. */}
+      {!notSessions && filterShown && (
+        <div className="flex items-center px-3 pb-1.5" id={filterId}>
+          {/* A real field on the darkest surface, so it reads as the place to type. */}
+          <label className="no-drag flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-bg px-2.5 text-faint focus-within:ring-1 focus-within:ring-accent-ink/50">
+            <Search size={14} className="shrink-0" aria-hidden />
+            <input
+              ref={filterRef}
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Escape') return;
+                e.preventDefault();
+                e.stopPropagation();
+                setSearch('');
+                setFilterOpen(false);
+                filterButton()?.focus();
+              }}
+              placeholder="Filter sessions"
+              aria-label="Filter sessions by title, project or branch"
+              spellCheck={false}
+              className="h-full min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
+              data-session-filter
+            />
+          </label>
+        </div>
       )}
-
-      {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. The
-          Browser's tab list has no search or New session. Minimal mode has both in its nav. */}
-      <div className={`items-center gap-1.5 px-3 pb-1.5 ${showTabs || minimal ? 'hidden' : 'flex'}`}>
-        {/* A real field on the darkest surface, so it reads as the place to type. */}
-        <label className="no-drag flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-bg px-2.5 text-faint focus-within:ring-1 focus-within:ring-accent-ink/50">
-          <Search size={14} className="shrink-0" aria-hidden />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search sessions"
-            aria-label="Search sessions by title, project or branch"
-            spellCheck={false}
-            className="h-full min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
-          />
-        </label>
-        {/* The sidebar's one primary action: a yellow fill, like every primary button. With an unsent New session
-            prompt it carries a pen, and opens New session on that prompt's project (or on the computer Run on last
-            picked, for a prompt typed for it). */}
-        <span className="no-drag relative flex shrink-0">
-          <Button
-            variant="primary"
-            size="lg"
-            iconOnly
-            icon={<Plus size={17} strokeWidth={2.4} aria-hidden />}
-            aria-label={newDraft ? newSessionDraftTooltip(newDraft.name) : remoteNewDraft ? remoteNewSessionDraftTooltip(remoteNewDraft.name) : 'New session'}
-            shortcut="session.new"
-            data-new-session
-            onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))}
-            className={`rounded-lg! ${view === 'new' ? 'ring-2 ring-accent/40 ring-offset-1 ring-offset-sidebar' : ''}`}
-          />
-          {newDraft ? (
-            <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />
-          ) : (
-            remoteNewDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-remote-new-session-draft={remoteNewDraft.computerId} />
-          )}
-        </span>
-      </div>
-
 
       {/* With the browser on, Browser swaps the sessions for its tabs; the sessions stay mounted (their notices too). */}
-      <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-sessions>
-      {/* The project and, beside it, the order: by time and state, or what takes least to unblock first. */}
-      {!minimal && (
-        <ProjectFilter
-          counts={counts}
-          sources={sourceSummaries}
-          remoteProjects={remoteProjects}
-          trail={<SidebarViewButton projects={projectKeys} />}
-        />
-      )}
+      {/* Behind another list the sessions stay laid out, invisible and out of reach, so the list keeps its rows and scroll. */}
+      <div
+        className={notSessions ? 'pointer-events-none invisible absolute inset-x-0 top-10 bottom-0 flex flex-col' : 'contents'}
+        aria-hidden={notSessions || undefined}
+        data-sidebar-sessions={notSessions ? 'hidden' : 'shown'}
+      >
       {noProjects && (
         <div className="mx-3 mb-2 grid justify-items-start gap-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-ui" data-sidebar-onboarding>
           <p className="font-medium text-text">Add a project</p>
@@ -1640,10 +1640,21 @@ export function Sidebar() {
       </div>
       </div>
       {showTabs && <BrowserTabList />}
+      {viewList && <div ref={setSlot} className="flex min-h-0 flex-1 flex-col" data-panel-view={list} data-panel-projects={list === 'projects' || undefined} />}
+      {list === 'running' && (
+        <div className="flex min-h-0 flex-1 flex-col" data-panel-running>
+          <div className="flex h-10 shrink-0 items-center px-2">
+            <h2 className="min-w-0 flex-1 truncate pl-1.5 text-ui font-semibold text-text">Running</h2>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <FocusList />
+          </div>
+        </div>
+      )}
 
-      {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines.
-          Under the Browser's tabs only Projects, Browser profiles and Settings: the rest is about sessions (hidden, not gone, so it is as it was on the way back). */}
-      <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={(!showTabs && !listEdge.atBottom) || undefined} data-sidebar-bottom>
+      {/* One block under the list: Done, Star on GitHub and the footer, with space between them instead of lines. Under the
+          Browser's tabs only Browser profiles: the rest is about sessions (hidden, not gone, so it is as it was on the way back). */}
+      <div className={`edge-t shrink-0 flex-col gap-2 ${otherList ? 'hidden' : 'flex'}`} data-scrolled={(!showTabs && !listEdge.atBottom) || undefined} data-sidebar-bottom>
       <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-session-footer>
       {/* Closed, Archived is docked under the list, so a short list never scrolls and a long one keeps it in sight. */}
       {archivedAt === 'dock' && (
@@ -1652,18 +1663,12 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* The remote footer: who is connected to this computer, then the computers you reach out to. */}
-      <ConnectedDevices />
-      <ComputersStrip localWaiting={localWaiting} joined={remoteFooterShown} />
-
       <BrowserIntro />
       <StarOnGithub sessions={all.length} />
       </div>
 
       <footer className="flex h-10 shrink-0 items-center gap-2 px-3 text-meta text-muted">
         <div className={showTabs ? 'hidden' : 'contents'}>
-        {/* The focus limit, while it's on: how many sessions are going, out of how many. */}
-        <FocusCounter />
         {/* The count opens every session, in Settings › Sessions. */}
         <button type="button" onClick={() => openSessionManager()} className="min-w-0 flex-1 truncate rounded text-left hover:text-text" data-tooltip="Manage sessions" data-footer-sessions>
           {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} running`}
@@ -1698,33 +1703,10 @@ export function Sidebar() {
           </Pill>
         )}
         </div>
-        {/* Projects and Settings stay under the Browser's tabs too, with Browser profiles between them. */}
-        <Button
-          variant="quiet"
-          iconOnly
-          icon={<FolderCog size={15} aria-hidden />}
-          className={showTabs ? 'ml-auto' : undefined}
-          aria-label="Projects"
-          selected={view === 'projects' || view === 'project'}
-          aria-current={view === 'projects' || view === 'project' ? 'page' : undefined}
-          data-open-projects
-          // The list and the open project are one view: a second click leaves it.
-          onClick={() => setView(view === 'projects' || view === 'project' ? 'session' : 'projects')}
-        />
+        {/* Under the Browser's tabs: its profiles (Projects and Settings are on the nav rail). */}
         {showTabs && (
-          <Button variant="quiet" iconOnly icon={<UserRound size={15} aria-hidden />} aria-label="Browser profiles" data-open-browser-profiles onClick={openBrowserProfiles} />
+          <Button variant="quiet" iconOnly icon={<UserRound size={15} aria-hidden />} aria-label="Browser profiles" className="ml-auto" data-open-browser-profiles onClick={openBrowserProfiles} />
         )}
-        <Button
-          variant="quiet"
-          iconOnly
-          icon={<Settings size={15} aria-hidden />}
-          aria-label="Settings"
-          shortcut="settings"
-          selected={view === 'settings'}
-          aria-current={view === 'settings' ? 'page' : undefined}
-          data-open-settings
-          onClick={() => (view === 'settings' ? useSessions.getState().closeSettings() : useSessions.getState().openSettings())}
-        />
       </footer>
       </div>
 

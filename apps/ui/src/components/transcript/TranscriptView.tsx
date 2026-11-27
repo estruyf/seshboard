@@ -80,7 +80,6 @@ import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { GitButton } from '../git/GitButton.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { isQuestionsFolder, QUESTION_LABEL, sessionOptions } from '../../lib/questions.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
@@ -146,6 +145,7 @@ import { ProviderSessionControls } from '../providers/ProviderSessionControls.ts
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab, panelWidthFor } from '../ask/askWidth.ts';
+import { useLayout } from '../../state/layoutStore.ts';
 import { ToolRail, useRailItems, type RailButton, type RailItem } from './ToolRail.tsx';
 import { PanelLauncher } from './PanelLauncher.tsx';
 import { launcherEntries, launcherPick, launcherShown } from './panelLauncher.ts';
@@ -1764,6 +1764,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The rail's panel button: Hide panel while the side shows something (the empty panel too), Show panel opens it empty.
   const sideShows = right.open.length > 0 || whyRequest !== null || showLauncher;
   const onPanelButton = useStableCallback(() => (sideShows ? hidePanels() : openPanelLauncher(sessionId)));
+  // The title bar's Tools panel button works on the active pane's side panel (not a pop-out's: it has no title bar).
+  const panelOwner = active && !inPopout;
+  useEffect(() => {
+    if (panelOwner) useLayout.setState({ toolsPanel: { shows: sideShows, toggle: onPanelButton } });
+  }, [panelOwner, sideShows, onPanelButton]);
+  useEffect(() => {
+    if (!panelOwner) return;
+    // Another pane may have taken it over in the same render: only clear what is still this pane's.
+    return () => {
+      if (useLayout.getState().toolsPanel?.toggle === onPanelButton) useLayout.setState({ toolsPanel: null });
+    };
+  }, [panelOwner, onPanelButton]);
   /** What the empty side panel lists: the tools that apply, hidden ones too, with the rail's icons and shortcuts. */
   const launcherRows = showLauncher
     ? launcherEntries(railAvailable, railOrder).map((entry) => {
@@ -1931,8 +1943,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         data-pane={tiled ? sessionId : undefined}
         data-pane-active={tiled ? active : undefined}
       >
-        {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
-        {leading && !inPopout && <SidebarToggle />}
         {/* A pop-out's traffic lights sit over its header's left end (macOS); elsewhere the window has its own title bar. */}
         {inPopout && currentPlatform() === 'darwin' && <span className="w-11 shrink-0" aria-hidden />}
         {/* In a pane under 400px wide the header has no room for the icon: the title and the buttons come first. */}
@@ -2644,7 +2654,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         )}
       </div>
     </div>
-    <ToolRail items={railItems} sideShows={sideShows} onPanel={onPanelButton} />
+    <ToolRail items={railItems} />
     </div>
   );
 }

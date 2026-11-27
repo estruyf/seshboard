@@ -171,8 +171,11 @@ export interface PaletteContext {
   /** The sidebar's grouping (its View button): by state or by project. */
   sidebarGroup: SidebarGroup;
   conversationView: ConversationView;
-  /** Open, the minimal rail, or closed. */
+  /** The panel beside the nav rail: open or closed. */
   sidebar: SidebarState;
+  /** Back and forward have a place to go (`navHistoryStore`). */
+  canGoBack: boolean;
+  canGoForward: boolean;
   settingsSection: SettingsSection;
   /** New session is on screen: what its route can do. */
   newSession: { canWorktree: boolean; canSaveDefaults: boolean; canQueue: boolean; canCatchUp: boolean; root?: string | null } | null;

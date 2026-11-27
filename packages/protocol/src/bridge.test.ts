@@ -41,16 +41,33 @@ describe('dockActivity preference', () => {
   });
 });
 
-describe('sidebarCollapsed preference', () => {
-  it('collapses to the minimal rail by default', () => {
-    expect(DEFAULT_PREFERENCES.sidebarCollapsed).toBe('minimal');
+describe('sidebarCollapsed preference (removed)', () => {
+  it('is gone: an old file with it still loads, without the key', () => {
+    expect('sidebarCollapsed' in DEFAULT_PREFERENCES).toBe(false);
+    expect(sanitizePreferences({ sidebarCollapsed: 'minimal', sidebarStyle: 'compact' })).toEqual({ sidebarStyle: 'compact' });
+    expect(sanitizePreferences({ sidebarCollapsed: 'closed' })).toEqual({});
+  });
+});
+
+describe('nav rail preferences', () => {
+  it('shows every item in the default order by default', () => {
+    expect(DEFAULT_PREFERENCES.navRailOrder).toEqual(['home', 'sessions', 'upcoming', 'activity', 'browser', 'projects', 'computers', 'running']);
+    expect(DEFAULT_PREFERENCES.navRailHidden).toEqual([]);
   });
 
-  it('keeps minimal and closed, and drops anything else', () => {
-    expect(sanitizePreferences({ sidebarCollapsed: 'closed' })).toEqual({ sidebarCollapsed: 'closed' });
-    expect(sanitizePreferences({ sidebarCollapsed: 'minimal' })).toEqual({ sidebarCollapsed: 'minimal' });
-    expect(sanitizePreferences({ sidebarCollapsed: 'hidden' })).toEqual({});
-    expect(sanitizePreferences({ sidebarCollapsed: 1 })).toEqual({});
+  it('keeps the known items hidden from the rail, once each, in the default order', () => {
+    expect(sanitizePreferences({ navRailHidden: ['activity', 'home', 'activity', 'settings', 'nope', 3] })).toEqual({ navRailHidden: ['home', 'activity'] });
+    expect(sanitizePreferences({ navRailHidden: 'home' })).toEqual({});
+  });
+
+  it("keeps the rail's order with every item once, a missing one at its own place", () => {
+    expect(sanitizePreferences({ navRailOrder: ['browser', 'home', 'sessions', 'upcoming', 'activity', 'projects', 'computers', 'running'] })).toEqual({
+      navRailOrder: ['browser', 'home', 'sessions', 'upcoming', 'activity', 'projects', 'computers', 'running'],
+    });
+    expect(sanitizePreferences({ navRailOrder: ['activity', 'home', 'new', 'settings', 'activity'] })).toEqual({
+      navRailOrder: ['activity', 'sessions', 'upcoming', 'home', 'browser', 'projects', 'computers', 'running'],
+    });
+    expect(sanitizePreferences({ navRailOrder: 'home' })).toEqual({});
   });
 });
 

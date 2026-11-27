@@ -347,6 +347,20 @@ export const SHORTCUTS = [
   },
   { id: "home", keys: ["mod+shift+h"], action: "Home", section: "general" },
   {
+    id: "nav.back",
+    keys: [],
+    action: "Go back",
+    section: "general",
+    note: "No key by default: use the title bar's Back, the mouse's back button, or the command palette",
+  },
+  {
+    id: "nav.forward",
+    keys: [],
+    action: "Go forward",
+    section: "general",
+    note: "No key by default: use the title bar's Forward, the mouse's forward button, or the command palette",
+  },
+  {
     id: "home.pick",
     keys: ["mod+1..9"],
     action: "Start in a project",
@@ -557,7 +571,7 @@ export const SHORTCUTS = [
   {
     id: "sidebar.toggle",
     keys: ["mod+b"],
-    action: "Collapse or open the sidebar",
+    action: "Open or close the panel",
     section: "sessions",
   },
   {
@@ -1118,7 +1132,7 @@ export const SHORTCUTS = [
     action: "Move a tool or an app on the rail up or down",
     section: "session",
     context: "On a button on the rail at the session's right edge",
-    note: "Or drag it. A button moves only inside its group",
+    note: "Or drag it. A button moves only inside its group. The same keys move an item on the nav rail at the window's left edge",
     when: inSession,
     where: "rail",
   },
@@ -1767,6 +1781,10 @@ export const keysFor = (id: ShortcutId) =>
  */
 export const clickKeysFor = (id: ShortcutId) =>
   shortcutById(id).keys.find((combo) => combo.endsWith("click")) ?? "";
+
+/** A shortcut's main keys like `keysFor`, or undefined for one with no key by default (`nav.back`). */
+export const keysIfAny = (id: ShortcutId): string | undefined =>
+  shortcutById(id).keys.length > 0 ? keysFor(id) : undefined;
 
 /** Every key that runs `id`, as `aria-keyshortcuts` lists them (space-separated). */
 export const ariaKeysFor = (id: ShortcutId) =>

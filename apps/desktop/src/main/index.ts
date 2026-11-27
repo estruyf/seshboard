@@ -42,6 +42,7 @@ import { runWebPreviewStep } from './webPreviewSmoke.ts';
 import { installBrowserAgent } from './browserAgent.ts';
 import { runBrowserAgentStep, runBrowserScriptsStep, runBrowserServerStep } from './browserAgentSmoke.ts';
 import { runPanelLauncherStep, runToolRailAppsStep, runToolRailBadgesStep, runToolRailOrderStep, runToolRailStep } from './toolRailSmoke.ts';
+import { runNavRailCustomizeStep, runNavRailHeadersStep, runNavRailLayoutStep, runNavRailMinimalStep, runNavRailPanelStep, runNavRailPeekStep, runNavRailStateStep, runTitleBarStep, type NavRailSmoke } from './navRailSmoke.ts';
 import { runSidebarCompactStep, runSidebarFoldProjectStep, runSidebarGroupByProjectStep, type SidebarGroupSmokeDeps } from './sidebarGroupSmoke.ts';
 import { runBrowserDownloadStep, runBrowserFavoritesStep, runBrowserIntroStep, runBrowserLinkStep, runBrowserPaletteStep, runBrowserProfilesStep, runBrowserOutsideLinkStep, runBrowserPickStep, runBrowserPinStep, runBrowserStopStep, runBrowserSuggestionsStep, runBrowserTextPageStep, runBrowserViewStep, runBrowserWindowStep, runSessionBrowserStep, type BrowserSmokeDeps } from './browserSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
@@ -610,15 +611,10 @@ ipcMain.handle(IpcChannel.shellCommand, async (_event, action: unknown): Promise
 });
 
 /**
- * Where the traffic lights sit: the default, or inside the 80px minimal sidebar. They are 54px wide, and
- * a few pixels more on newer macOS, so the rail leaves room on both sides instead of matching them exactly.
+ * Where the traffic lights sit. In the main window they are centred in its 40px title bar (`TitleBar.tsx`, the
+ * `title bar` smoke step checks it); pop-outs have no title bar and keep them beside their own header.
  */
-const WINDOW_BUTTONS = { default: { x: 16, y: 18 }, rail: { x: 12, y: 18 } } as const;
-ipcMain.on(IpcChannel.windowButtons, (event, position: unknown) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (process.platform !== 'darwin' || !win) return;
-  win.setWindowButtonPosition(position === 'rail' ? WINDOW_BUTTONS.rail : WINDOW_BUTTONS.default);
-});
+const WINDOW_BUTTONS = { main: { x: 16, y: 13 }, popout: { x: 16, y: 18 } } as const;
 
 ipcMain.on(IpcChannel.focusSession, (event, sessionId: unknown) => {
   focusedSessions.set(event.sender.id, typeof sessionId === 'string' ? sessionId : null);
@@ -1531,8 +1527,8 @@ const webPreferences = (): Electron.WebPreferences => ({
  * macOS: the traffic lights over the content. Elsewhere the system's own title bar, which follows light and dark
  * mode, and the menu bar shows with Alt (the command palette has every command).
  */
-const titleBar = (): Electron.BrowserWindowConstructorOptions =>
-  process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: WINDOW_BUTTONS.default } : { autoHideMenuBar: true };
+const titleBar = (place: keyof typeof WINDOW_BUTTONS = 'popout'): Electron.BrowserWindowConstructorOptions =>
+  process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: WINDOW_BUTTONS[place] } : { autoHideMenuBar: true };
 
 function createWindow(): BrowserWindow {
   const saved = windowState?.get();
@@ -1551,7 +1547,7 @@ function createWindow(): BrowserWindow {
     // same layout everywhere. macOS otherwise shrinks the window to fit; other systems allow it as is.
     enableLargerThanScreen: scripted,
     show: false,
-    ...titleBar(),
+    ...titleBar('main'),
     ...windowIcon(),
     backgroundColor: windowBackground(),
     webPreferences: webPreferences(),
@@ -3382,16 +3378,20 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const background = 'getComputedStyle(document.body).backgroundColor';
-  const rowHeight = "document.querySelector('[data-session-id]').offsetHeight";
+  const rowHeight = "document.querySelector('[data-session-list] [data-session-id]')?.offsetHeight";
   const pause = () => settle(win);
+  // From the session under test: closing Settings shows its tool cards.
+  await showSessionsList(win);
+  if (smokeSessionId) await js(`document.querySelector('[data-session-list] [data-session-id="${smokeSessionId}"]')?.click()`);
 
   const section = async (id: string) => {
     await click(`[data-settings-section="${id}"]`);
     return waitInPage(win, `document.querySelector('[data-settings-page="${id}"]')`, 2_000);
   };
-  // Session rows are checked with Settings closed, so nothing about the sheet can affect them.
+  // Session rows are checked with Settings closed, so nothing about the sheet can affect them, and the panel on Sessions.
   const withSettingsClosed = async (check: string) => {
     await click('[data-close-settings]');
+    await showSessionsList(win);
     const ok = await waitInPage(win, `!document.querySelector('[data-settings]') && ${check}`, 2_000);
     await click('[data-open-settings]');
     await waitInPage(win, "document.querySelector('[data-settings]')", 2_000);
@@ -3399,15 +3399,9 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   };
 
   await click('[data-open-settings]');
-  // Settings fills the main area with its sections inside; the sidebar keeps its session list.
-  if (
-    !(await waitInPage(
-      win,
-      "document.querySelector('[data-settings] [data-settings-nav] [data-settings-section]') && document.querySelector('[data-session-list]')",
-      3_000,
-    ))
-  ) {
-    return 'settings did not open with its sections, next to the session list';
+  // Settings fills the main area, with its sections in the panel beside the nav rail.
+  if (!(await waitInPage(win, "document.querySelector('[data-settings]') && document.querySelector('[data-sidebar-open] [data-settings-nav=\"panel\"] [data-settings-section]')", 3_000))) {
+    return 'settings did not open with its sections in the panel';
   }
   if (!(await section('theme'))) return 'the Theme section did not open';
   await click('[data-color-scheme="light"]');
@@ -3732,8 +3726,8 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
   const offer = `${page}?.querySelector('[data-provider-offer="copilot"]')`;
   const openPage = async (section: string) => {
     await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
-    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
-    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-settings-nav] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings-nav] [data-settings-section="${section}"]').click()`);
     return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
   };
   const skip = async (why: string) => {
@@ -3871,6 +3865,7 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     if (!laterOffered) return "Start's menu with Copilot doesn't offer Add to queue, Schedule… and Start when…";
 
     // Its session: a mark in the sidebar, a box for Copilot, and a ⋯ menu of what works for it.
+    await showSessionsList(win);
     if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Copilot session showed in the sidebar after adding the profile';
     const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
     const view = `document.querySelector('[data-current-session="${id}"]')`;
@@ -3996,8 +3991,8 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
   const offer = `${page}?.querySelector('[data-provider-offer="codex"]')`;
   const openPage = async (section: string) => {
     await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
-    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
-    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-settings-nav] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings-nav] [data-settings-section="${section}"]').click()`);
     return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
   };
   // Codex's sessions started outside Seshboard show only with sessions from other apps shown.
@@ -4220,8 +4215,8 @@ async function runAntigravityStep(win: BrowserWindow): Promise<string> {
   const offer = `${page}?.querySelector('[data-provider-offer="antigravity"]')`;
   const openPage = async (section: string) => {
     await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
-    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
-    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-settings-nav] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings-nav] [data-settings-section="${section}"]').click()`);
     return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
   };
   if (!(await openPage('sidebar'))) return 'no Sidebar page in Settings';
@@ -4353,7 +4348,8 @@ async function runSettingsGroupsStep(win: BrowserWindow): Promise<string> {
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
   };
-  const nav = '[data-settings] [data-settings-nav]';
+  // In the panel beside the nav rail while it shows Settings, else on the sheet's left.
+  const nav = '[data-settings-nav]';
   await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]').click()");
   if (!(await waitInPage(win, `document.querySelector('${nav} [data-settings-group="bottom"]')`, 3_000))) return 'no grouped menu in Settings';
 
@@ -4634,7 +4630,8 @@ async function runSessionsSettingsStep(win: BrowserWindow): Promise<string> {
 async function runFocusStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
-  const counter = "document.querySelector('[data-sidebar] [data-focus-counter]')";
+  // Running on the nav rail: the target over "2/3".
+  const counter = "document.querySelector('[data-nav-rail] [data-focus-counter]')";
   const counterText = `${counter}?.innerText.trim()`;
   const counterColour = `getComputedStyle(${counter}).color`;
   const pause = () => settle(win);
@@ -4651,13 +4648,13 @@ async function runFocusStep(win: BrowserWindow): Promise<string> {
   if (await js(`!!document.querySelector('[data-focus-options]') || !!${counter}`)) return 'the limit looked on before it was turned on';
 
   await click('[data-focus-limit-switch]');
-  if (!(await waitInPage(win, `document.querySelector('[data-focus-options]') && /^\\d+ \\/ 3$/.test(${counterText} ?? '')`, 2_000))) {
+  if (!(await waitInPage(win, `document.querySelector('[data-focus-options]') && /^\\d+ ?\\/ ?3$/.test(${counterText} ?? '')`, 2_000))) {
     return `turning it on did not show the options and a counter out of 3 (${await js(`${counterText} ?? 'no counter'`)})`;
   }
   await click('[data-focus-limit-more]');
-  const raised = await waitInPage(win, `/ \\/ 4$/.test(${counterText} ?? '') && document.querySelector('[data-focus-limit-value]').innerText === '4'`, 2_000);
+  const raised = await waitInPage(win, `/\\/ ?4$/.test(${counterText} ?? '') && document.querySelector('[data-focus-limit-value]').innerText === '4'`, 2_000);
   await click('[data-focus-limit-less]');
-  if (!raised || !(await waitInPage(win, `/ \\/ 3$/.test(${counterText} ?? '')`, 2_000))) return 'the stepper did not change the limit';
+  if (!raised || !(await waitInPage(win, `/\\/ ?3$/.test(${counterText} ?? '')`, 2_000))) return 'the stepper did not change the limit';
   await click('[data-focus-mode="strict"]');
   await until(() => preferences.get().focusMode === 'strict');
   const saved = JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8')) as Record<string, unknown>;
@@ -4677,12 +4674,14 @@ async function runFocusStep(win: BrowserWindow): Promise<string> {
   if (!light || !dark) return `the counter was not visible in ${light ? 'dark' : 'light'} mode`;
   if (light === dark) return `the counter kept one colour in both themes (${light})`;
 
-  // A click lists what counts, with the footer line; a second click closes it.
+  // Running on the nav rail shows the list in the panel; a second click closes the panel, and Settings opens it again.
   await click('[data-focus-counter]');
-  const listed = await waitInPage(win, "document.querySelector('[data-focus-popover]')?.innerText.includes('free a place')", 2_000);
+  const listed = await waitInPage(win, "document.querySelector('[data-panel-running] [data-focus-list]')?.innerText.includes('free a place')", 2_000);
   await shot(win, 'focus-dark.png');
   await click('[data-focus-counter]');
-  const closed = await waitInPage(win, "!document.querySelector('[data-focus-popover]')", 2_000);
+  const closed = await waitInPage(win, "!document.querySelector('[data-panel-running]') && document.querySelector('[data-sidebar]')?.dataset.sidebarState === 'closed'", 2_000);
+  await click('[data-open-settings]');
+  await waitInPage(win, "document.querySelector('[data-sidebar]')?.dataset.sidebarState === 'open'", 2_000);
 
   // Back to how it was: the system theme, Nudge, and the limit off.
   await click('[data-color-scheme="system"]');
@@ -4702,8 +4701,10 @@ async function runFocusStep(win: BrowserWindow): Promise<string> {
 
 /** Opens Projects unless it is on screen (its sidebar button leaves the view when it is). */
 async function openProjectsView(win: BrowserWindow): Promise<boolean> {
-  await win.webContents.executeJavaScript("document.querySelector('[data-projects-view]') || document.querySelector('[data-open-projects]')?.click()");
-  return waitInPage(win, "document.querySelector('[data-projects-view]')", 3_000);
+  // Projects on the nav rail opens the view with its list in the panel; with the view there but the panel closed or on
+  // another list, the same click shows the list.
+  await win.webContents.executeJavaScript("(document.querySelector('[data-projects-view]') && document.querySelector('[data-panel-projects] [data-project-list]')) || document.querySelector('[data-open-projects]')?.click()");
+  return waitInPage(win, "document.querySelector('[data-projects-view]') && document.querySelector('[data-panel-projects] [data-project-list]')", 3_000);
 }
 
 /** A right-click on a project's row in Projects, which opens the row menu (Rename…, Remove…). False without the row. */
@@ -4743,6 +4744,7 @@ async function removeProjectInProjects(win: BrowserWindow, root: string): Promis
 async function runProjectsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  await showSessionsList(win);
   if (!(await waitInPage(win, "document.querySelector('[data-sidebar-onboarding]')", 3_000))) return 'a new profile did not offer to add a project';
   await click('[data-open-projects]');
   if (!(await waitInPage(win, "document.querySelector('[data-projects-view] [data-no-projects]')", 3_000))) return 'the Projects view did not open empty';
@@ -4913,13 +4915,9 @@ async function runProjectsViewStep(win: BrowserWindow, root: string): Promise<st
 
   // Two more projects, from the folders Claude Code has sessions for.
   if (!(await openProjectsView(win))) return 'Projects did not open';
-  // A narrow view folds the list away (the header's ‹ shows it): with the sidebar open, make room by closing it.
+  // The list is in the panel beside the nav rail, the project page has the main area.
   const width = (await js("Math.round(document.querySelector('[data-projects-view]').getBoundingClientRect().width)")) as number;
-  const madeRoom = (await js("!!document.querySelector('[data-projects-view][data-narrow]') && !!document.querySelector('[data-sidebar-open]')")) as boolean;
-  if (madeRoom) {
-    if (!(await press("document.querySelector('[data-projects-view] [data-sidebar-toggle]')"))) return 'no sidebar toggle in the narrow Projects view';
-    if (!(await waitInPage(win, "!document.querySelector('[data-projects-view][data-narrow]') && document.querySelector('[data-project-list]')", 3_000))) return `the list did not show with the sidebar closed (view ${width}px wide)`;
-  }
+  if (await js("!!document.querySelector('[data-projects-view] [data-project-list]')")) return 'the Projects view still has its own list beside the panel';
   if (!(await press("document.querySelector('[data-manager-add]')"))) return `no + in the list (view ${width}px wide, narrow: ${String(await js("!!document.querySelector('[data-projects-view][data-narrow]')"))})`;
   if (!(await waitInPage(win, "document.querySelector('[data-add-project-dialog] [data-known-project]')", 5_000))) return 'no folders offered';
   const extra = (await js("[...document.querySelectorAll('[data-known-project][data-added=\"false\"]')].slice(0, 2).map((e) => e.dataset.knownProject)")) as string[];
@@ -4991,10 +4989,9 @@ async function runProjectsViewStep(win: BrowserWindow, root: string): Promise<st
     })()`);
     if (!(await waitInPage(win, `document.querySelector('[data-project-list] [data-project-row]')?.dataset.projectRow === ${JSON.stringify(dragged)}`, 3_000))) return 'dragging the third project to the top did not move it';
     await shot(win, 'projects-view.png');
-    if (madeRoom) {
-      await press("document.querySelector('[data-sidebar-toggle]')");
-      if (!(await waitInPage(win, "document.querySelector('[data-sidebar-open]')", 3_000))) return 'the sidebar did not open again';
-    }
+    // The sessions' project menu, with the panel back on the sessions.
+    await press("document.querySelector('[data-nav-rail] [data-nav=\"sessions\"]')");
+    if (!(await waitInPage(win, "document.querySelector('[data-sidebar-open] [data-project-filter]')?.checkVisibility()", 3_000))) return 'Sessions did not show the sessions again';
     if (!(await press("document.querySelector('[data-project-filter]')"))) return 'no project menu in the sidebar';
     const menuOrder = `[...document.querySelectorAll('[data-project-filter-menu] [data-project-root]')].map((e) => e.dataset.projectRoot)`;
     const expected = [dragged, ...order.filter((r) => r !== dragged)];
@@ -5002,19 +4999,14 @@ async function runProjectsViewStep(win: BrowserWindow, root: string): Promise<st
     pressKey(win, 'Escape');
     await waitInPage(win, "!document.querySelector('[data-project-filter-menu]')", 2_000);
     if (!followed) return `the sidebar's project menu did not follow the drag (${String(await js(`JSON.stringify(${menuOrder})`))})`;
-    return `ok (view ${width}px${madeRoom ? ', sidebar closed for the list' : ''}): a click opened the Overview, the hovered gear Settings, ⌥↓ the next project on Settings, the switcher another on the same tab, ⌥⇧↑ moved it and said so, a drag to the top reached the sidebar menu`;
+    return `ok (view ${width}px, the list in the panel): a click opened the Overview, the hovered gear Settings, ⌥↓ the next project on Settings, the switcher another on the same tab, ⌥⇧↑ moved it and said so, a drag to the top reached the sidebar menu`;
   } finally {
     for (const folder of extra) await removeProjectInProjects(win, folder);
-    // Back on the project under test, with the sidebar as it was, as the steps after this one expect. With the sidebar
-    // open again the view may be narrow, the list folded away: the header's ‹ shows it.
+    // Back on the project under test, as the steps after this one expect, with the projects list in the panel.
     await js("document.querySelector('[data-project-list]') || document.querySelector('[data-project-show-list]')?.click()");
     await waitInPage(win, rowOf(root), 3_000);
     await js(`${rowOf(root)}?.click()`);
     await waitInPage(win, pageOf(root), 3_000);
-    if (madeRoom && !(await js("!!document.querySelector('[data-sidebar-open]')"))) {
-      await js("document.querySelector('[data-sidebar-toggle]')?.click()");
-      await waitInPage(win, "document.querySelector('[data-sidebar-open]')", 3_000);
-    }
   }
 }
 
@@ -5656,10 +5648,9 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
   pressKey(win, 'Escape');
   // The Settings button closes Settings too.
   if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await click('[data-open-settings]');
-  if (!(await js("Boolean(document.querySelector('[data-sidebar-open]'))"))) {
-    await click('[data-sidebar-toggle]');
-    if (!(await waitInPage(win, "document.querySelector('[data-sidebar-open]')", 3_000))) return 'the sidebar did not open';
-  }
+  // Connected to this Mac is in the nav rail's Computers popover, with a green dot on Computers while Remote is on.
+  if (!(await waitInPage(win, "document.querySelector('[data-nav-rail] [data-nav-computers] [data-nav-remote-on]')", 5_000))) return 'Computers on the nav rail has no dot with Remote on';
+  if (!(await openComputers(win))) return 'Computers on the nav rail did not open its popover';
   if (!(await waitInPage(win, "document.querySelector('[data-connected-devices=\"idle\"]')?.innerText.includes('nobody connected')", 5_000))) return 'Remote on with nobody connected showed no quiet line';
 
   // A test phone, paired three days ago in the throwaway profile's cache, connects with the engine's throwaway key.
@@ -5691,6 +5682,7 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
     updatePreferences({ themeId: themeBefore });
     if (name !== (themeBefore === 'aluminium' ? 'Nord' : 'Aluminium')) return `the phone did not get the theme picked here (got "${name}", had "${theme.name}")`;
     const row = '[data-connected-devices="devices"] [data-connected-device="smoke-phone"]';
+    await openComputers(win);
     if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(row)})?.innerText.includes('Smoke iPhone')`, 5_000))) return 'the connected test phone has no row in the sidebar';
     if (!(await js(`/since /.test(document.querySelector(${JSON.stringify(row)}).innerText)`))) return 'the row does not say since when';
     const header = (await js("document.querySelector('[data-connected-devices-toggle]')?.getAttribute('aria-label')")) as string;
@@ -5717,7 +5709,8 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
     await click('[data-confirm-strip] [data-confirm]');
     const closed = await Promise.race([socket.closed.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5_000))]);
     if (!closed) return 'Revoke did not close the test phone\'s connection';
-    if (!(await waitInPage(win, `!document.querySelector(${JSON.stringify(row)}) && document.querySelector('[data-connected-devices="idle"]')`, 5_000))) return 'the revoked device stayed in the sidebar';
+    await openComputers(win);
+    if (!(await waitInPage(win, `!document.querySelector(${JSON.stringify(row)}) && document.querySelector('[data-connected-devices="idle"]')`, 5_000))) return 'the revoked device stayed in the Computers popover';
   } finally {
     remote.dispose();
     socket.ws.close();
@@ -5728,9 +5721,9 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
   await click('[data-settings-section="remote"]');
   await waitInPage(win, "document.querySelector('[data-remote-enabled]')", 3_000);
   await click('[data-remote-enabled]');
-  const off = await waitInPage(win, "document.querySelector('[data-remote-off-card]') && !document.querySelector('[data-connected-devices]')", 5_000);
+  const off = await waitInPage(win, "document.querySelector('[data-remote-off-card]') && !document.querySelector('[data-connected-devices]') && !document.querySelector('[data-nav-rail] [data-nav-remote-on]')", 5_000);
   pressKey(win, 'Escape');
-  if (!off) return 'turned off, the sidebar still shows Remote';
+  if (!off) return 'turned off, the nav rail still shows Remote';
   return 'ok: test phone connected, row and toast shown, details opened and closed, Revoke asked, cancelled, then disconnected it; idle line, then nothing once off';
 }
 
@@ -6032,8 +6025,10 @@ async function computerPage(win: BrowserWindow, computerId: string, settingsRow:
   if (!(await js(`Boolean(document.querySelector('${view} [data-computer-page-needs] [data-computer-prompt] [data-computer-allow]'))`))) return 'Needs you on the computer’s page has no prompt to answer';
   await shot(win, 'computer-page.png');
   await click(`${view} [data-computer-page-scope="mine"]`);
+  await openComputers(win);
   if (!(await waitInPage(win, `document.querySelector('${view} [data-computer-page-others]')?.innerText.includes('from others') && !document.querySelector('${view} [data-computer-page-recent]') && document.querySelector('[data-computers-strip] [data-computer-scope="mine"]')`, 3_000))) return 'Mine on the computer’s page did not leave the others’ sessions out, say how many, or switch its chip';
   await click(`${view} [data-computer-page-others] button`);
+  await openComputers(win);
   if (!(await waitInPage(win, `document.querySelector('${view} [data-computer-page-recent]') && document.querySelector('[data-computers-strip] [data-computer-scope="all"]')`, 3_000))) return 'Show on the computer’s page did not go back to All';
   await click(`${view} [data-computer-page-recent]`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-header]')", 5_000))) return 'a recent session on the computer’s page did not open';
@@ -6138,13 +6133,14 @@ async function runRemoteDoneStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-close-settings]')?.click()");
   const result = await (async () => {
     // All: the demo's sessions weren't started from here.
-    if (!(await waitInPage(win, "document.querySelector('[data-computers-strip] [data-computer-menu-button]')", 10_000))) return 'the computer has no chip in the sidebar';
+    if (!(await openComputers(win))) return 'the nav rail has no Computers';
+    if (!(await waitInPage(win, "document.querySelector('[data-computers-strip] [data-computer-menu-button]')", 10_000))) return 'the computer has no chip in the Computers popover';
     await click('[data-computers-strip] [data-computer-menu-button]');
     if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"all\"]')", 3_000))) return 'the chip’s menu has no All';
     await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
     pressKey(win, 'Escape');
     // The search narrows the list to the one session, Done included, so the virtualised list has it on screen.
-    await setFieldValue(win, 'input[aria-label="Search sessions by title, project or branch"]', 'Upgrade to Node 24');
+    await filterSessions(win, 'Upgrade to Node 24');
     const row = `[...document.querySelectorAll('[data-session-list] [data-remote-row=${JSON.stringify(computerId)}]')].find((r) => r.innerText.includes('Upgrade to Node 24'))`;
     if (!(await waitInPage(win, `${row} && ${row}.dataset.archived !== 'true'`, 10_000))) return 'the search did not find "Upgrade to Node 24" on the other computer';
     const menu = async () => {
@@ -6167,7 +6163,7 @@ async function runRemoteDoneStep(win: BrowserWindow): Promise<string> {
     return `ok: Done took "Upgrade to Node 24" to this sidebar’s Done; its menu has ${items}; a click reopened and opened it`;
   })();
   // Clean up: the search cleared, the computer removed through ⋯ › Remove….
-  await setFieldValue(win, 'input[aria-label="Search sessions by title, project or branch"]', '');
+  await filterSessions(win, '');
   await click('[data-open-settings]');
   await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
   await click('[data-settings-section="remote"]');
@@ -6271,17 +6267,24 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   // second ready as the restart).
   const remoteRow = `[data-session-list] [data-remote-row=${JSON.stringify(computerId)}]`;
   const scopeChip = (scope: string) => `[data-computers-strip] [data-computer-scope=${JSON.stringify(scope)}]`;
+  await openComputers(win);
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('mine'))})`, 10_000))) return `the other computer’s chip does not say Mine (${await js(`document.querySelector('[data-computers-strip]')?.innerText.replace(/\\s+/g, ' ')`)})`;
+  // The strip is in the panel's Computers list, the rows in its Sessions list: one shows at a time.
+  await showSessionsList(win);
+  await settle(win);
   if (await js(`document.querySelectorAll(${JSON.stringify(remoteRow)}).length`)) return 'Mine lists sessions this computer neither started nor acted on';
   if (await js(`/from others/.test(document.querySelector('[data-session-list]')?.innerText ?? '')`)) return 'the sidebar still says how many of the others’ sessions Mine hides';
   if (await js("Boolean(document.querySelector('[data-computer-show-button], [data-computer-show-options]'))")) return 'Settings › Remote still has a sessions choice for the computer';
+  await openComputers(win);
   await click('[data-computers-strip] [data-computer-menu-button]');
   if (!(await waitInPage(win, `document.querySelector('[data-computer-scope-menu] [role=radiogroup][aria-label="Sessions in the sidebar"]') && /others? (is|are) hidden/.test(document.querySelector('[data-computer-scope-menu] [data-computer-scope-line]')?.innerText ?? '')`, 3_000))) return `the chip’s menu has no Mine / All or does not say how many are hidden (${await js("document.querySelector('[data-computer-scope-menu]')?.innerText.replace(/\\s+/g, ' ')")})`;
   await shot(win, 'computers-scope-menu.png');
   await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
-  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))}) && document.querySelector(${JSON.stringify(remoteRow)})`, 5_000))) return 'All in the chip’s menu did not list the computer’s sessions';
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))})`, 5_000))) return 'All in the chip’s menu did not take';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-computer-scope-menu]')", 3_000))) return 'Esc did not close the chip’s menu';
+  await showSessionsList(win);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(remoteRow)})`, 5_000))) return 'All in the chip’s menu did not list the computer’s sessions';
   const starters = (await js(`[...document.querySelectorAll(${JSON.stringify(`${remoteRow} [data-row-started-by]`)})].map((el) => el.innerText)`)) as string[];
   // A person's device for the two started from afar, that computer's name for the rest (the list is virtualised: the
   // rows on screen show at least one of each).
@@ -6292,18 +6295,18 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
 
   // 1. Its sessions are in the sidebar, each with the computer's chip; the strip shows the computer.
   const row = remoteRow;
+  await showSessionsList(win);
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(row)})`, 10_000))) return 'no session of the other computer in the sidebar';
   const rows = (await js(`document.querySelectorAll(${JSON.stringify(row)}).length`)) as number;
   if (!(await js(`[...document.querySelectorAll(${JSON.stringify(row)})].every((r) => r.querySelector('[data-computer-chip="Smoke Mac"]'))`))) return 'a remote row has no chip with the computer’s name';
-  if (!(await js(`Boolean(document.querySelector('[data-computers-strip] [data-computer-filter=${JSON.stringify(computerId)}]'))`))) return 'the Computers strip has no chip for the other computer';
   // Green, picked in Settings: its rows and its strip chip draw the remote token in the profile green.
-  const tinted = (await js(`(() => {
-    const green = getComputedStyle(document.documentElement).getPropertyValue('--sb-profile-green').trim();
-    const of = (el) => el && getComputedStyle(el).getPropertyValue('--sb-remote').trim();
-    return of(document.querySelector(${JSON.stringify(row)})) === green && of(document.querySelector('[data-computers-strip] [data-computer-filter=${JSON.stringify(computerId)}]')) === green;
-  })()`)) as boolean;
-  if (!tinted) return 'the computer’s rows or strip chip are not in the colour picked for it';
+  const green = (selector: string) => js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); return !!el && getComputedStyle(el).getPropertyValue('--sb-remote').trim() === getComputedStyle(document.documentElement).getPropertyValue('--sb-profile-green').trim(); })()`) as Promise<boolean>;
+  const rowTinted = await green(row);
   await shot(win, 'computers-sidebar.png');
+  const stripChip = `[data-computers-strip] [data-computer-filter=${JSON.stringify(computerId)}]`;
+  if (!(await openComputers(win)) || !(await js(`Boolean(document.querySelector(${JSON.stringify(stripChip)}))`))) return 'the Computers strip has no chip for the other computer';
+  if (!rowTinted || !(await green(stripChip))) return 'the computer’s rows or strip chip are not in the colour picked for it';
+  await showSessionsList(win);
 
   // 2. One opens in the session view, with the violet line and "on Smoke Mac".
   await js(`document.querySelector(${JSON.stringify(row)}).click()`);
@@ -6372,18 +6375,24 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-computer-send]') && !document.querySelector('[data-computer-send]').disabled", 3_000))) return 'Send stayed disabled in someone else’s session';
   await click('[data-computer-send]');
   if (!(await waitInPage(win, `!${theirs}?.querySelector('[data-row-started-by]')`, 5_000))) return 'sending a message did not make someone else’s session mine';
+  await openComputers(win);
   await click('[data-computers-strip] [data-computer-menu-button]');
   if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"mine\"]')", 3_000))) return 'the chip’s menu did not open again';
   await click('[data-computer-scope-menu] [data-computer-scope-option="mine"]');
   pressKey(win, 'Escape');
-  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('mine'))}) && Boolean(${theirs})`, 5_000))) return 'the session sent a message from here went with Mine';
+  await openComputers(win);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('mine'))})`, 5_000))) return 'Mine in the chip’s menu did not take';
+  await showSessionsList(win);
+  if (!(await waitInPage(win, `Boolean(${theirs})`, 5_000))) return 'the session sent a message from here went with Mine';
   // The pipeline run started from here (`remoteRunRows`) is mine too; the run a trigger started there is not.
   const runRowOf = (title: string) => `[...document.querySelectorAll(${JSON.stringify(row)})].some((r) => r.dataset.runRow && r.innerText.includes(${JSON.stringify(title)}))`;
   if (!(await js(`${runRowOf('Smoke remote run')} && !${runRowOf('Retry failed webhook deliveries')}`))) return 'with Mine, the run started from here is not listed, or the run a trigger started there still is';
+  await openComputers(win);
   await click('[data-computers-strip] [data-computer-menu-button]');
   if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"all\"]')", 3_000))) return 'the chip’s menu did not open again';
   await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
   pressKey(win, 'Escape');
+  await openComputers(win);
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))})`, 3_000))) return 'All in the chip’s menu did not come back';
 
   // 4. New session with Run on set to it starts a session there, which opens here.
@@ -6472,8 +6481,8 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
 /**
  * The Computers strip with two paired computers (smoke.ts starts them: Studio Mac and Render workstation): one line,
  * neutral chips with the colour on the name only, All with nothing after the name and Mine as a person without words,
- * the menu from a right-click, and in a narrow sidebar the last chips folded into "+N" instead of a second line. Pairs
- * both and removes them again; the sidebar goes back to the width it had.
+ * the menu from a right-click, and the chips that don't fit the nav rail's Computers popover folded into "+N" instead
+ * of a second line. Pairs both and removes them again.
  */
 async function runComputersStripStep(win: BrowserWindow): Promise<string> {
   const links = JSON.parse(process.env.SESHBOARD_SMOKE_STRIP_LINKS ?? '[]') as string[];
@@ -6495,63 +6504,60 @@ async function runComputersStripStep(win: BrowserWindow): Promise<string> {
   const ids = (await js("[...document.querySelectorAll('[data-computer]')].filter((el) => /Studio Mac|Render workstation/.test(el.innerText)).map((el) => el.dataset.computer)")) as string[];
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-close-settings]')?.click()");
-  // Still open, Settings covers the sidebar's edge and the drags below would miss it.
   if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) return 'Settings did not close';
-  const width = () => js("Math.round(document.querySelector('[data-sidebar]').getBoundingClientRect().width)") as Promise<number>;
-  const drag = async (dx: number) => {
-    const { x, y } = (await js("(() => { const r = document.querySelector('[data-sidebar-resize]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()")) as { x: number; y: number };
-    win.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
-    for (let i = 1; i <= 5; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: x + Math.round((dx * i) / 5), y, button: 'left' });
-    win.webContents.sendInputEvent({ type: 'mouseUp', x: x + dx, y, button: 'left', clickCount: 1 });
-    await settle(win);
-  };
-  const before = await width();
   const result = await (async () => {
     if (ids.length !== 2) return `the strip’s two computers are not both in Settings › Remote (${ids.length})`;
+    // The strip is in the nav rail's Computers popover, 320px wide.
+    if (!(await openComputers(win))) return 'the nav rail has no Computers popover';
     const row = "document.querySelector('[data-computers-strip] [role=group]')";
     // Every chip on the first line's top, and nothing wider than the row.
     const oneLine = `(() => { const row = ${row}; const tops = [...row.children].map((c) => c.offsetTop); return tops.every((t) => t === tops[0]) && row.scrollWidth <= row.clientWidth + 1; })()`;
     const chipOf = (id: string) => `document.querySelector('[data-computers-strip] [data-computer-chip-of=${JSON.stringify(id)}]')`;
     const [studio, render] = ids as [string, string];
 
-    // 1. Wide: This Mac and both computers on one line, no "+N", every chip on the same neutral tint as This Mac.
-    await drag(400);
-    if (!(await waitInPage(win, `${chipOf(studio)} && ${chipOf(render)} && !document.querySelector('[data-computers-more]') && ${oneLine}`, 5_000))) await shot(win, 'computers-strip-failed.png');
-    if (!(await waitInPage(win, `${chipOf(studio)} && ${chipOf(render)} && !document.querySelector('[data-computers-more]') && ${oneLine}`, 100))) return `the wide strip is not one line with both computers (width ${await width()}, wanted ${before}+400, strip ${await js(`Math.round(${row}?.getBoundingClientRect().width)`)}) (${await js(`${row}?.innerText.replace(/\\s+/g, ' ')`)})`;
-    const neutral = (await js(`(() => { const bg = (el) => getComputedStyle(el).backgroundColor; const here = bg(document.querySelector('[data-computers-strip] [data-computer-filter="local"]')); return [${chipOf(studio)}, ${chipOf(render)}].every((c) => bg(c) === here); })()`)) as boolean;
+    // 1. One line: This Mac and the computers that fit, the rest in "+N"; every chip on This Mac's neutral tint.
+    const shown = `${chipOf(studio)} && (${chipOf(render)} || document.querySelector('[data-computers-more]'))`;
+    if (!(await waitInPage(win, `${shown} && ${oneLine}`, 5_000))) {
+      await shot(win, 'computers-strip-failed.png');
+      return `the strip is not one line with its computers (${await js(`${row}?.innerText.replace(/\\s+/g, ' ')`)})`;
+    }
+    const neutral = (await js(`(() => { const bg = (el) => getComputedStyle(el).backgroundColor; const here = bg(document.querySelector('[data-computers-strip] [data-computer-filter="local"]')); return [${chipOf(studio)}, ${chipOf(render)}].filter(Boolean).every((c) => bg(c) === here); })()`)) as boolean;
     if (!neutral) return 'a computer’s chip has a background of its own, not This Mac’s neutral one';
 
     // 2. All: nothing after the name. Mine (from the menu a right-click opens): the person, and no words.
     const rightClick = async (id: string) => {
+      await openComputers(win);
       await js(`(() => { const el = document.querySelector('[data-computers-strip] [data-computer-filter=${JSON.stringify(id)}]'); const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 8, clientY: r.top + 8 })); })()`);
       return waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option]')", 3_000);
     };
     if (!(await rightClick(studio))) return 'a right-click on the computer’s chip did not open its menu';
     await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
+    await waitInPage(win, `${chipOf(studio)}?.dataset.computerScope === 'all'`, 3_000);
+    await settle(win);
     pressKey(win, 'Escape');
-    if (!(await waitInPage(win, `${chipOf(studio)}?.dataset.computerScope === 'all' && !${chipOf(studio)}.querySelector('[data-computer-scope-icon]') && !document.querySelector('[data-computer-scope-menu]')`, 3_000))) return 'All on the chip still shows a filter icon, or Esc did not close the menu';
+    await openComputers(win);
+    if (!(await waitInPage(win, `${chipOf(studio)}?.dataset.computerScope === 'all' && !${chipOf(studio)}.querySelector('[data-computer-scope-icon]') && !document.querySelector('[data-computer-scope-menu]')`, 3_000))) return `All on the chip still shows a filter icon, or its menu stayed open (${String(await js(`JSON.stringify({ scope: ${chipOf(studio)}?.dataset.computerScope, icon: !!${chipOf(studio)}?.querySelector('[data-computer-scope-icon]'), menu: !!document.querySelector('[data-computer-scope-menu]'), popover: !!document.querySelector('[data-nav-computers-popover]'), popovers: document.querySelectorAll('[data-popover]').length })`))})`;
     if (!(await rightClick(studio))) return 'a second right-click did not open the chip’s menu';
     await click('[data-computer-scope-menu] [data-computer-scope-option="mine"]');
+    await waitInPage(win, `${chipOf(studio)}?.dataset.computerScope === 'mine'`, 3_000);
+    await settle(win);
     pressKey(win, 'Escape');
-    if (!(await waitInPage(win, `${chipOf(studio)}?.dataset.computerScope === 'mine' && ${chipOf(studio)}.querySelector('[data-computer-scope-icon]') && !/\\b(Mine|All)\\b/.test(${chipOf(studio)}.innerText)`, 3_000))) return `Mine on the chip is not the person alone (${await js(`${chipOf(studio)}?.innerText`)})`;
+    await openComputers(win);
+    if (!(await waitInPage(win, `${chipOf(studio)}?.dataset.computerScope === 'mine' && ${chipOf(studio)}.querySelector('[data-computer-scope-icon]') && !/\\b(Mine|All)\\b/.test(${chipOf(studio)}.innerText)`, 3_000))) return 'Mine on the chip is not the person alone';
     // The ▾ is the chip's second button, after it in the tab order, labelled for the computer.
     if ((await js(`${chipOf(studio)}.querySelector('[data-computer-menu-button]')?.getAttribute('aria-label')`)) !== 'Options for Studio Mac') return 'the chip has no ▾ labelled Options for Studio Mac';
     await shot(win, 'computers-strip.png');
 
-    // 3. Narrow: the computers fold into "+N" on the same line, and its menu lists them.
-    await drag(-280);
-    const narrow = await width();
-    if (!(await waitInPage(win, `document.querySelector('[data-computers-more]') && ${oneLine}`, 5_000))) return `at ${narrow}px the strip did not fold into "+N" on one line (${await js(`${row}?.innerText.replace(/\\s+/g, ' ')`)})`;
+    // 3. Folded: "+N" lists the computers that did not fit.
+    if (!(await js("!!document.querySelector('[data-computers-more]')"))) return 'ok: one line with both computers and neutral chips, All without and Mine with the person alone, right-click opens the menu (nothing folded at 320px)';
     const folded = (await js("document.querySelector('[data-computers-more]').dataset.computersMore")) as string;
     await click('[data-computers-more]');
     if (!(await waitInPage(win, `document.querySelectorAll('[role=menu] [data-computers-more-item]').length === ${Number(folded)}`, 3_000))) return `"+${folded}" did not list the folded computers`;
     pressKey(win, 'Escape');
-    await shot(win, 'computers-strip-narrow.png');
-    return `ok: one line wide with neutral chips, All without and Mine with the person alone, right-click opens the menu, +${folded} at ${narrow}px`;
+    return `ok: one line with neutral chips, All without and Mine with the person alone, right-click opens the menu, +${folded} lists the rest`;
   })();
 
-  // Clean up: the sidebar back to the width it had, both computers removed.
-  await drag(before - (await width()));
+  // Clean up: both computers removed.
   await click('[data-open-settings]');
   await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
   await click('[data-settings-section="remote"]');
@@ -6637,7 +6643,7 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
     return waitInPage(win, `document.querySelector('[data-settings-page="${id}"]')`, 2_000);
   };
   const sidebar = "getComputedStyle(document.querySelector('[data-sidebar-open]')).backgroundColor";
-  const rail = "getComputedStyle(document.querySelector('[data-sidebar-rail]')).backgroundColor";
+  const rail = "getComputedStyle(document.querySelector('[data-nav-rail]')).backgroundColor";
   const sidebarState = "document.querySelector('[data-sidebar]')?.dataset.sidebarState";
   const codeBlock = "getComputedStyle(document.querySelector('[data-rendering-check] .code-block')).backgroundColor";
   /** A token's value as the page computes it (the generated style element in use). */
@@ -6740,29 +6746,27 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "!document.querySelector('[data-theme-card=\"smoke-mint\"]')", 3_000))) return 'the minimal theme was not removed';
 
   /**
- * The collapsed sidebar in the theme: ⌘B down to the rail (Settings closed, a session beside it), its
- * background and the session view's against the theme, a screenshot, then ⌘B back to the full sidebar.
+   * The closed panel in the theme: ⌘B closes it (Settings closed, a session beside it), the nav rail and the title bar
+   * on the chrome token and the session view's background against the theme, a screenshot, then ⌘B opens it again.
    */
   const collapsedRail = async (id: string, mode: 'light' | 'dark', colors: Record<string, string>) => {
-    const collapsed = preferences.get().sidebarCollapsed;
-    updatePreferences({ sidebarCollapsed: 'minimal' });
     await click('[data-close-settings]');
     if (smokeSessionId) await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
     // Not from the terminal: on Windows its Ctrl keys are the shell's (⌘ keys reach the window on macOS).
     const blurTerminal = () => js("document.activeElement?.closest('.xterm') && document.activeElement.blur()");
     await blurTerminal();
     pressKey(win, 'B', ['meta']);
-    const minimal = await waitInPage(win, `${sidebarState} === 'minimal' && document.querySelector('[data-sidebar-rail] [data-sidebar-rail-row]')`, 3_000);
-    const ok = minimal && (await waitInPage(win, `${rail} === ${JSON.stringify(rgbOf(colors.sidebar!))} && getComputedStyle(document.body).backgroundColor === ${JSON.stringify(rgbOf(colors.bg!))}`, 2_000));
-    const got = minimal ? `rail ${await js(rail)}, page ${await js('getComputedStyle(document.body).backgroundColor')}` : `sidebar ${String(await js(sidebarState))}`;
-    if (minimal) await shot(win, `theme-rail-${id}-${mode}.png`);
+    const closed = await waitInPage(win, `${sidebarState} === 'closed' && document.querySelector('[data-nav-rail]')`, 3_000);
+    const chrome = `${rail} === ${token('chrome')} && getComputedStyle(document.querySelector('[data-title-bar]')).backgroundColor === ${token('chrome')}`;
+    const ok = closed && (await waitInPage(win, `${chrome} && getComputedStyle(document.body).backgroundColor === ${JSON.stringify(rgbOf(colors.bg!))}`, 2_000));
+    const got = closed ? `rail ${await js(rail)}, chrome ${await js(token('chrome'))}, page ${await js('getComputedStyle(document.body).backgroundColor')}` : `panel ${String(await js(sidebarState))}`;
+    if (closed) await shot(win, `theme-rail-${id}-${mode}.png`);
     await blurTerminal();
     pressKey(win, 'B', ['meta']);
     await waitInPage(win, `${sidebarState} === 'open'`, 2_000);
-    updatePreferences({ sidebarCollapsed: collapsed });
     await click('[data-open-settings]');
     await section('theme');
-    return ok ? null : `the collapsed sidebar does not follow the theme (${got})`;
+    return ok ? null : `the nav rail and title bar do not follow the theme (${got})`;
   };
 
   // Every built-in, in light and dark: the open sidebar, a code block, and the rail. A mode the theme
@@ -11414,7 +11418,9 @@ async function runOrchestratorStep(win: BrowserWindow): Promise<string> {
     await js(`${page('[data-plan-mode-instructions-save]')}.click()`);
     if (!(await waitInPage(win, `${page('[data-plan-mode-instructions]')}?.innerText.includes('Saved') && ${page('[data-plan-mode-instructions-save]')}.disabled`, 5_000))) return 'the plan mode instructions did not save';
     if ((await js(`${page('[data-orchestrator-instructions-input]')}.value`)) !== instructions) return 'saving the plan mode instructions changed the orchestrator’s';
-    // Back to the orchestrator.
+    // Back to the orchestrator, from the sessions in the panel.
+    await showSessionsList(win);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${orchestratorId}"]')`, 3_000))) return 'the orchestrator is not in the sessions list';
     await js(`document.querySelector('[data-session-list] [data-session-id="${orchestratorId}"]').click()`);
     if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${orchestratorId}"] [data-orchestrator-overview]')`, 5_000))) return 'the orchestrator did not open again from the sidebar';
     // Its agent would call start_session: three tasks, three sessions.
@@ -13348,6 +13354,40 @@ async function shortArchivedList(win: BrowserWindow, sidebarShot: (name: string)
 }
 
 /** Presses a key in the page (down and up), with modifiers. */
+/**
+ * The nav rail's Computers menu, which holds Connected to this Mac and the Computers strip: opened when it isn't (a click
+ * elsewhere or Escape closes it). False when it did not open (no Remote and no paired computer).
+ */
+async function openComputers(win: BrowserWindow): Promise<boolean> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (await js("!!document.querySelector('[data-nav-computers-popover]')")) return true;
+  await js("document.querySelector('[data-nav-rail] [data-nav-computers]')?.click()");
+  return waitInPage(win, "document.querySelector('[data-nav-computers-popover]')", 3_000);
+}
+
+/**
+ * The panel open on the sessions: on a project's page it lists the projects, as the Browser view lists its tabs, so a
+ * step that picks a session's row there clicks Sessions on the nav rail first, as a person would.
+ */
+async function showSessionsList(win: BrowserWindow): Promise<boolean> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const shown = "document.querySelector('[data-sidebar]')?.dataset.sidebarState === 'open' && document.querySelector('[data-sidebar-sessions=shown]')";
+  if (await js(shown)) return true;
+  await js("document.querySelector('[data-nav-rail] [data-nav=\"sessions\"]')?.click()");
+  return waitInPage(win, shown, 3_000);
+}
+
+/** Types into the panel's session filter, which the header's search button shows first. */
+async function filterSessions(win: BrowserWindow, text: string): Promise<void> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await showSessionsList(win);
+  if (!(await js("!!document.querySelector('[data-session-filter]')"))) await js("document.querySelector('[data-sidebar-open] [data-filter-toggle]')?.click()");
+  await waitInPage(win, "document.querySelector('[data-session-filter]')", 2_000);
+  await setFieldValue(win, '[data-session-filter]', text);
+  // Cleared, it lets go of the focus, as a click elsewhere would: Escape in it would clear it, not reach a menu.
+  if (!text) await js("document.querySelector('[data-session-filter]')?.blur()");
+}
+
 function pressKey(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift' | 'alt' | 'control'> = []): void {
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers: platformModifiers(modifiers) });
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers: platformModifiers(modifiers) });
@@ -14008,6 +14048,8 @@ async function runRemindStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `!!${item}`, 3_000))) return 'Upcoming does not list the reminder';
   await shot(win, 'upcoming-reminders.png');
   await js(`${item}.querySelector('[data-upcoming-reminder-now]').click()`);
+  // On Upcoming the panel shows its project filter: the sessions are one click on Sessions away.
+  await showSessionsList(win);
   if (!(await waitInPage(win, `!!${row}?.querySelector('[data-row-reminder]') && !!document.querySelector('[data-session-group="reminders"]')`, 5_000))) return 'Remind now did not bring it back under Reminders';
   const notified = await until(() => recordedNotifications.filter((n) => n.kind === 'reminder').length > notifiedBefore, 3_000);
   await shot(win, 'reminders.png');
@@ -15072,106 +15114,6 @@ async function runControlsStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * The sidebar's three states: ⌘B goes to the minimal rail and back; with "When collapsed" set to Hidden
- * it closes (the session view takes the whole window) and reopens; dragging the edge snaps to the rail
- * and back open; ⌃⇥ moves to another session and ⌃⇧⇥ back, with the HUD while the rail shows. The rail
- * and the closed header are captured in light and dark. Only the throwaway profile's preferences and
- * sidebar state change, and they are put back.
- */
-async function runSidebarStatesStep(win: BrowserWindow): Promise<string> {
-  const js = (code: string) => win.webContents.executeJavaScript(code);
-  // Preferences reach the page over IPC; anything else is waited for with settle (the sidebar animates its width).
-  const pause = (ms?: number) => (ms ? new Promise((resolve) => setTimeout(resolve, ms)) : settle(win));
-  const state = "document.querySelector('[data-sidebar]')?.dataset.sidebarState";
-  const width = () => js("Math.round(document.querySelector('[data-sidebar]').getBoundingClientRect().width)") as Promise<number>;
-  const inState = (name: string) => waitInPage(win, `${state} === '${name}'`, 2_000);
-  const before = preferences.get();
-  const restore = async () => {
-    updatePreferences({ sidebarCollapsed: before.sidebarCollapsed, colorScheme: before.colorScheme });
-    // From minimal or closed, ⌘B always opens.
-    if ((await js(state)) !== 'open') pressKey(win, 'B', ['meta']);
-    await waitInPage(win, `${state} === 'open'`, 2_000);
-    if (smokeSessionId) await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
-  };
-  const themed = async (name: string) => {
-    for (const scheme of ['light', 'dark'] as const) {
-      await setColorScheme(win, scheme);
-      await shot(win, `${name}-${scheme}.png`);
-    }
-    updatePreferences({ colorScheme: before.colorScheme });
-  };
-
-  if (!(await inState('open'))) return `the sidebar did not start open (${String(await js(state))})`;
-  if (!(await js("!!document.querySelector('[data-current-session] [data-sidebar-toggle]')"))) return 'no sidebar toggle in the session header';
-  const openWidth = await width();
-
-  // ⌘B: open → minimal → open, with "When collapsed" on the rail.
-  updatePreferences({ sidebarCollapsed: 'minimal' });
-  await pause(100);
-  pressKey(win, 'B', ['meta']);
-  if (!(await inState('minimal'))) return '⌘B did not minimize the sidebar';
-  if (!(await waitInPage(win, "document.querySelector('[data-sidebar-rail] [data-sidebar-rail-row]')", 2_000))) return 'the rail lists no sessions';
-  await pause();
-  if ((await width()) !== 80) return `the rail is ${await width()}px wide, not 80`;
-  const railLabel = (await js("document.querySelector('[data-sidebar-rail-row]').getAttribute('aria-label')")) as string;
-  if (!railLabel) return 'a rail row has no accessible name';
-  await themed('sidebar-minimal');
-
-  // ⌃⇥ and ⌃⇧⇥ walk the rail's order; the HUD says where you landed.
-  await js("document.querySelector('[data-sidebar-rail-row]').click()");
-  const first = (await js("document.querySelector('[data-sidebar-rail-row]').dataset.sidebarRailRow")) as string;
-  await waitInPage(win, `document.querySelector('[data-current-session="${first}"]')`, 3_000);
-  const rows = (await js("document.querySelectorAll('[data-sidebar-rail-row]').length")) as number;
-  let navigation = 'only one session, so ⌃⇥ was not checked';
-  if (rows > 1) {
-    pressKey(win, 'Tab', ['control']);
-    if (!(await waitInPage(win, `document.querySelector('[data-current-session]') && !document.querySelector('[data-current-session="${first}"]')`, 3_000))) return '⌃⇥ did not move to another session';
-    if (!(await waitInPage(win, "document.querySelector('[data-session-hud]')", 1_000))) return 'no HUD after ⌃⇥ with the rail showing';
-    pressKey(win, 'Tab', ['control', 'shift']);
-    if (!(await waitInPage(win, `document.querySelector('[data-current-session="${first}"]')`, 3_000))) return '⌃⇧⇥ did not go back to the first session';
-    navigation = '⌃⇥ moved on and ⌃⇧⇥ back, with the HUD';
-  }
-  pressKey(win, 'B', ['meta']);
-  if (!(await inState('open'))) return '⌘B did not open the sidebar again';
-  await pause();
-  if ((await width()) !== openWidth) return `the open width was not kept (${openWidth} → ${await width()}px)`;
-
-  // Hidden: ⌘B closes it; the session view takes the whole window.
-  updatePreferences({ sidebarCollapsed: 'closed' });
-  await pause(100);
-  pressKey(win, 'B', ['meta']);
-  if (!(await inState('closed'))) return '⌘B did not close the sidebar with "When collapsed" set to Hidden';
-  await pause();
-  const fullWidth = (await js(
-    "(() => { const view = document.querySelector('[data-current-session]').getBoundingClientRect(); return Math.round(view.left) === 0 && Math.round(view.width) === window.innerWidth && !document.querySelector('[data-sidebar-open], [data-sidebar-rail]'); })()",
-  )) as boolean;
-  if (!fullWidth) return 'the session view is not full width with the sidebar closed';
-  // The toggle moves right of the traffic lights (macOS); elsewhere the window's buttons are in its title bar, and it stays at the edge.
-  const toggleLeft = (await js("document.querySelector('[data-current-session] [data-sidebar-toggle]').getBoundingClientRect().left")) as number;
-  if (process.platform === 'darwin' ? toggleLeft < 72 : toggleLeft > 32) return `the toggle sits at ${Math.round(toggleLeft)}px, ${process.platform === 'darwin' ? 'under the traffic lights' : 'away from the edge'}`;
-  await themed('sidebar-closed');
-  await js("document.querySelector('[data-current-session] [data-sidebar-toggle]').click()");
-  if (!(await inState('open'))) return 'the header toggle did not reopen the sidebar';
-  await pause();
-
-  // Drag the edge into the rail's zone, then back out past 200: it snaps to minimal, then open.
-  const edge = (await js("(() => { const r = document.querySelector('[data-sidebar-resize]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()")) as { x: number; y: number };
-  const drag = async (from: number, to: number) => {
-    win.webContents.sendInputEvent({ type: 'mouseDown', x: from, y: edge.y, button: 'left', clickCount: 1 });
-    for (let i = 1; i <= 5; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(from + ((to - from) * i) / 5), y: edge.y, button: 'left' });
-    win.webContents.sendInputEvent({ type: 'mouseUp', x: to, y: edge.y, button: 'left', clickCount: 1 });
-    await pause();
-  };
-  await drag(edge.x, 150);
-  if (!(await inState('minimal'))) return `dragging the edge to 150px did not snap to the rail (${String(await js(state))})`;
-  await drag(80, 260);
-  if (!(await inState('open'))) return `dragging the rail's edge past 200px did not open the sidebar (${String(await js(state))})`;
-  const reopened = await width();
-  await restore();
-  return `ok: ⌘B open → minimal (80px rail) → open at ${openWidth}px, Hidden closes it with a full-width session view, the toggle reopens it, the edge snaps to the rail and back open (${reopened}px), ${navigation}, both themes captured`;
-}
-
-/**
  * Dragging images over a session shows a drop target on the message box; other files offer an @ mention. Synthetic drag events only:
  * nothing is dropped, so nothing is attached or sent.
  */
@@ -15966,6 +15908,10 @@ async function runArchiveManyStep(win: BrowserWindow): Promise<string> {
 /** Closes a dialog, menu or palette a step left open (with Escape, as a person would), so the next step starts clean. */
 async function closeOverlays(win: BrowserWindow | undefined): Promise<string | null> {
   if (!win || win.isDestroyed()) return null;
+  // The panel back on the sessions, where every step starts (a step on Upcoming or Computers leaves its list there).
+  await win.webContents.executeJavaScript(
+    "document.querySelector('[data-sidebar-open]') && !document.querySelector('[data-sidebar-sessions=shown]') && document.querySelector('[data-nav-rail] [data-nav=\"sessions\"]')?.click()",
+  );
   const open = "[...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [data-command-palette]')].map((el) => el.getAttribute('aria-label') || el.dataset.menu || el.getAttribute('role'))";
   let left = (await win.webContents.executeJavaScript(open)) as string[];
   if (!left.length) return null;
@@ -16334,7 +16280,37 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('Ask about this session, nothing added to the conversation', () => runAskStep(win));
   await step('controls', () => runControlsStep(win));
   await step('message box and its tray: the chips under the box, no footer, folds narrow, a model from the tray, Stop and Queue in the box', () => runComposerTrayStep(win));
-  await step('sidebar states', () => runSidebarStatesStep(win));
+  // The title bar, the nav rail and the panel beside it (navRailSmoke.ts).
+  const navRail: NavRailSmoke = {
+    shot: (name) => shot(win, name),
+    prefs: () => preferences.get(),
+    update: (patch) => updatePreferences(patch),
+    host: (sessionId, cwd, state) => engine.send({ type: 'smokeQueueHost', sessionId, cwd, state }),
+    tempFolder: () => {
+      const path = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-nav-')));
+      return { path, remove: () => rmSync(path, { recursive: true, force: true }) };
+    },
+    setAppState: (key, value) => {
+      const db = new DatabaseSync(join(app.getPath('userData'), 'cache.sqlite'));
+      try {
+        db.prepare('INSERT INTO app_state (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
+      } finally {
+        db.close();
+      }
+    },
+    reload: () => reloadForSmoke(win),
+    windowButtons: () => (process.platform === 'darwin' ? win.getWindowButtonPosition() : null),
+    sessionId: smokeSessionId,
+    running: async () => (await runningSessions())?.ids ?? new Set<string>(),
+  };
+  await step('nav rail: state', () => runNavRailStateStep(win, navRail), { timeoutMs: 45_000 });
+  await step('title bar', () => runTitleBarStep(win, navRail));
+  await step('nav rail: layout', () => runNavRailLayoutStep(win, navRail));
+  await step('nav rail: panel', () => runNavRailPanelStep(win, navRail));
+  await step('nav rail: headers', () => runNavRailHeadersStep(win, navRail));
+  await step('nav rail: customize', () => runNavRailCustomizeStep(win, navRail));
+  await step('nav rail: peek', () => runNavRailPeekStep(win, navRail));
+  await step('nav rail: minimal', () => runNavRailMinimalStep(win, navRail));
   await step('new session view', () => runNewSessionStep(win));
   // Finding a checkout of an unknown repository walks the folders on disk.
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
@@ -16509,7 +16485,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", its page from Open, the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('other computers: Settings › Remote updates an older computer, asks with sessions working, waits for idle, checks for updates', () => runComputerUpdateStep(win), { timeoutMs: 45_000 });
   await step('other computers: Done on a remote session shows it under this Done, Reopen in its menu, a click reopens and opens it', () => runRemoteDoneStep(win), { timeoutMs: 60_000 });
-  await step('computers strip: one line, neutral chips, Mine as a person, the menu from a right-click, "+N" in a narrow sidebar', () => runComputersStripStep(win), { timeoutMs: 75_000 });
+  await step('computers strip: one line, neutral chips, Mine as a person, the menu from a right-click, "+N" lists the rest', () => runComputersStripStep(win), { timeoutMs: 75_000 });
   // The remote app on a phone, in a window of its own (remotePhoneSmoke.ts). The first of these to run pairs it, which
   // waits for Vite's first build of the app on a fresh runner.
   await step('remote app on a phone: the menu button opens the drawer, no app icon, Settings and the computer at the bottom', runPhoneDrawerStep, { timeoutMs: 75_000 });

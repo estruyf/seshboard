@@ -188,7 +188,7 @@ export function Lightbox({ sessionId, images, start, returnFocus, onClose }: { s
       data-lightbox-index={index}
     >
       <div className="flex w-full items-start justify-between gap-3">
-        {/* The traffic lights stay on top of the lightbox; they end 68px in, so the label starts after them (as SidebarToggle does). */}
+        {/* The traffic lights stay on top of the lightbox; they end 68px in, so the label starts after them. */}
         <span className="overlay ml-17 rounded-lg px-2.5 py-1.5 text-ui text-muted" aria-live="polite" onClick={stop} data-lightbox-label>
           {many ? `${index + 1} / ${images.length} · ${facts}` : facts}
         </span>

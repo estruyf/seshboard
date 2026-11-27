@@ -4,7 +4,6 @@ import type { Computer } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
 import { Button } from '../ui/Button.tsx';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
@@ -64,7 +63,6 @@ export function paneHandle(pane: PaneProps | undefined) {
  */
 export function ComputerView({ computerId, missing = false, starting = false, pane }: { computerId: string | null; missing?: boolean; starting?: boolean; pane?: PaneProps }) {
   const handle = paneHandle(pane);
-  const toggle = !pane || pane.leading;
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const computer = useComputers((s) => s.status?.computers.find((c) => c.id === computerId) ?? null);
@@ -75,7 +73,6 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
     return (
       <div className="flex h-full flex-col">
         <header className={PANE_HEADER} {...paneHeader(pane)}>
-          {toggle && <SidebarToggle />}
           <div className={`min-w-0 flex-1 self-stretch ${handle.className}`} data-pane-handle={handle['data-pane-handle']} />
           {pane && <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip="Close and go Home" />}
         </header>
@@ -90,7 +87,6 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
   return (
     <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-computer-view={computer.id}>
       <header className={`${PANE_HEADER} ${remoteLine(pane)}`} {...paneHeader(pane)}>
-        {toggle && <SidebarToggle />}
         <Monitor size={16} aria-hidden className="shrink-0 text-remote" />
         <div className={`min-w-0 flex-1 ${handle.className}`} data-pane-handle={handle['data-pane-handle']}>
           <h1 className="truncate text-title font-semibold">{computer.name}</h1>

@@ -24,11 +24,11 @@ export interface TileDrag {
 
 /** Things in a header or a row that keep their own clicks: a press on one never starts a drag. */
 const OWN_CLICKS = 'button, a, input, textarea, select, [role="button"], [role="menuitem"], [role="radio"]';
-/** A session's row in the open sidebar, or its button in the rail. Only in a session list: reading mode carries `data-session-id` too. */
-const SESSION_ROW = '[data-session-list] [data-session-id], [data-sidebar-rail-row]';
+/** A session's row in the panel's list. Only in a session list: reading mode carries `data-session-id` too. */
+const SESSION_ROW = '[data-session-list] [data-session-id]';
 
 /**
- * Dragging a pane by its header, or a session by its row in the sidebar (or rail), onto a pane to arrange the
+ * Dragging a pane by its header, or a session by its row in the sidebar, onto a pane to arrange the
  * layout: five drop zones per pane (the four edges dock beside it, the centre swaps, or replaces for a session
  * from the sidebar), with Esc to cancel. Pointer events rather than HTML5 drag and drop: they work the same
  * everywhere, can be cancelled with Esc, leave the message box's file drops alone (those are real drag events),
@@ -71,7 +71,7 @@ export function useTileDrag(area: RefObject<HTMLElement | null>, enabled: boolea
       } else if (row) {
         source = 'session';
         grab = row;
-        id = row.dataset.sessionId ?? row.dataset.sidebarRailRow;
+        id = row.dataset.sessionId;
       } else return;
       const own = target.closest(OWN_CLICKS);
       if (!id || (own && own !== grab && grab.contains(own))) return;

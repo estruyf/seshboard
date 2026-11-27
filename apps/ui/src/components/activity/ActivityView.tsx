@@ -1,4 +1,7 @@
 import { ViewHeader } from '../ViewHeader.tsx';
+import { createPortal } from 'react-dom';
+import { usePanelView } from '../../state/panelSlotStore.ts';
+import { PanelFilterList } from '../sidebar/PanelFilterList.tsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronLeft, ChevronRight, Copy, Download, FileDiff, GitCommitHorizontal, GitPullRequest, Loader2, MonitorSmartphone, Repeat, Sparkles, User, X, Zap } from 'lucide-react';
 import type { ActivityStarter } from '@seshboard/protocol/client';
@@ -100,6 +103,32 @@ export function ActivityView() {
   // The bars list every project of the span, also while one is picked: another is one click away.
   const groups = useMemo(() => projectGroups(inDays(rows, spanFrom, spanTo), rows), [rows, spanFrom, spanTo]);
 
+  // The panel beside the nav rail, while it shows Activity: the span's projects to filter by, with the time on each.
+  const slot = usePanelView('activity');
+  const filterList = slot
+    ? createPortal(
+        <PanelFilterList
+          title="Activity"
+          hook="activity"
+          selected={project?.key ?? null}
+          onPick={(key) => {
+            const group = groups.find((g) => g.key === key);
+            if (key === null || !group) useActivity.setState({ project: null });
+            else useActivity.setState({ project: { key: group.key, name: group.name } });
+          }}
+          rows={groups.map((g) => ({
+            key: g.key,
+            name: g.name,
+            icon: <ActivityProjectIcon group={g} />,
+            meta: formatWorkedShort(g.activeMs),
+            metaLabel: `${formatWorked(g.activeMs)}, ${plural(g.sessions, 'session')}`,
+          }))}
+          empty="No sessions in this span."
+        />,
+        slot,
+      )
+    : null;
+
   const moveStrip = (by: number) => {
     const next = addDays(monday, by);
     // The same weekday of that week, so a day can be compared with last week's.
@@ -123,6 +152,7 @@ export function ActivityView() {
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-activity>
+      {filterList}
       <ViewHeader title="Activity" />
       <div className="relative z-10 shrink-0">
         <div className="edge-b" data-scrolled={(!edge.atTop && !pinned) || undefined} data-activity-header>
@@ -501,6 +531,12 @@ function EmptySpan({ span, title, day, today, counts, project }: { span: Activit
       {span === 'day' && <span className="text-meta text-faint">{neighbourLine(day, today, counts)}</span>}
     </div>
   );
+}
+
+/** A project's icon in the panel's filter list, as its bar draws it. */
+function ActivityProjectIcon({ group }: { group: ProjectGroup }) {
+  const project = useProjects((s) => (group.root ? s.projects.get(group.root) : undefined));
+  return <ProjectIcon project={project} root={group.root ?? group.name} name={group.name} size={14} remote={group.computerId ?? false} />;
 }
 
 function ProjectBar({ group, groups, picked }: { group: ProjectGroup; groups: readonly ProjectGroup[]; picked: boolean }) {

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 /**
- * An icon with its count on the corner, or a dot: the sidebar's nav tray and the session's rail of tools. The count is
+ * An icon with its count on the corner, or a dot: the nav rail and the session's rail of tools. The count is
  * hidden from screen readers; the control's label says it. `ring` is the surface the icon sits on, so the badge
  * stands clear of it.
  */
@@ -18,13 +18,14 @@ export function Badged({
   count?: number;
   /** A dot in place of a count: pink for what needs you (pulsing), blue for something ready to look at. */
   dot?: boolean | 'warn' | 'link';
-  tone?: 'default' | 'ok';
-  ring?: 'sidebar' | 'bg';
-  data?: Record<`data-${string}`, boolean>;
+  /** `warn`: what needs you (the nav rail's Sessions). */
+  tone?: 'default' | 'ok' | 'warn';
+  ring?: 'sidebar' | 'bg' | 'chrome';
+  data?: Record<`data-${string}`, boolean | string | number>;
   /** Minimal mode: no numbers on icons. A count or a dot becomes a 6px dot in the text colour; the label keeps the number. */
   minimal?: boolean;
 }) {
-  const ringClass = ring === 'bg' ? 'ring-bg' : 'ring-sidebar';
+  const ringClass = ring === 'bg' ? 'ring-bg' : ring === 'chrome' ? 'ring-chrome' : 'ring-sidebar';
   if (minimal) {
     const shown = (count !== undefined && count > 0) || !!dot;
     return (
@@ -41,7 +42,7 @@ export function Badged({
       {count !== undefined && count > 0 && (
         <span
           aria-hidden
-          className={`pointer-events-none absolute -top-2.5 -right-3.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1.5 text-meta leading-none font-semibold tabular-nums ring-2 ${ringClass} ${tone === 'ok' ? 'bg-ok text-bg' : 'bg-border text-text'}`}
+          className={`pointer-events-none absolute -top-2.5 -right-3.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1.5 text-meta leading-none font-semibold tabular-nums ring-2 ${ringClass} ${tone === 'ok' ? 'bg-ok text-bg' : tone === 'warn' ? 'bg-warn text-bg' : 'bg-border text-text'}`}
           {...data}
         >
           {count > 99 ? '99+' : count}

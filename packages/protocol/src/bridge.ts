@@ -73,7 +73,6 @@ export const IpcChannel = {
   getThemes: "seshboard:get-themes",
   themesChanged: "seshboard:themes-changed",
   themeCommand: "seshboard:theme-command",
-  windowButtons: "seshboard:window-buttons",
   focusWindow: "seshboard:focus-window",
   listSounds: "seshboard:list-sounds",
   appIcon: "seshboard:app-icon",
@@ -320,8 +319,6 @@ export type MainWindowRequest =
 export type ColorScheme = "system" | "light" | "dark";
 /** Sidebar rows: a large project icon beside three lines, three lines, or one line. */
 export type SidebarStyle = "large" | "standard" | "compact";
-/** What collapsing the sidebar (⌘B) does: the narrow rail of project icons, or hide it. */
-export type SidebarCollapsed = "minimal" | "closed";
 /** Tool calls in a conversation: one summary line per run (click for the steps), or every step. */
 export type ToolActivity = "summary" | "steps";
 /** How a conversation shows Claude's work: finished turns with less to read, or everything as written. */
@@ -376,6 +373,9 @@ export const RAIL_TOOLS = ["files", "changes", "terminal", "web", "ask", "agents
 export type RailTool = (typeof RAIL_TOOLS)[number];
 /** The rail's tools in their default order, as `railOrder` starts (the mods' panes keep their own place). */
 export const RAIL_ORDER: readonly Exclude<RailTool, "mods">[] = RAIL_TOOLS.filter((tool): tool is Exclude<RailTool, "mods"> => tool !== "mods");
+/** The nav rail's items at the window's left edge, in their default order. New session (first) and Settings (last) always show and don't move. */
+export const NAV_RAIL_ITEMS = ["home", "sessions", "upcoming", "activity", "browser", "projects", "computers", "running"] as const;
+export type NavRailItem = (typeof NAV_RAIL_ITEMS)[number];
 /** An editor id as `editors.list` gives it, for `railApps`. */
 const RAIL_APP_ID = /^[a-z0-9-]{1,40}$/;
 const RAIL_APPS_MAX = 20;
@@ -496,7 +496,6 @@ export const DEFAULT_MARK_READ_AFTER: MarkReadAfter = { enabled: true, seconds: 
 export interface Preferences {
   colorScheme: ColorScheme;
   sidebarStyle: SidebarStyle;
-  sidebarCollapsed: SidebarCollapsed;
   toolActivity: ToolActivity;
   conversationView: ConversationView;
   /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
@@ -722,6 +721,10 @@ export interface Preferences {
   railHidden: RailTool[];
   /** The rail's tools in the order you dragged them to: every tool once, each group's in its own order. */
   railOrder: Exclude<RailTool, "mods">[];
+  /** The nav rail's items in the order you dragged them to: every item once. */
+  navRailOrder: NavRailItem[];
+  /** Items left off the nav rail (its right-click menu, or More › Customize the rail). They keep their shortcuts and palette commands. */
+  navRailHidden: NavRailItem[];
   /** Apps pinned to the rail (its right-click menu), by editor id (`editors.list`), top to bottom. A click opens the session's folder in one. */
   railApps: string[];
   /**
@@ -748,7 +751,6 @@ export function modKey(profileId: string, name: string): string {
 export const DEFAULT_PREFERENCES: Preferences = {
   colorScheme: "system",
   sidebarStyle: "standard",
-  sidebarCollapsed: "minimal",
   toolActivity: "summary",
   conversationView: "skim",
   fileLinkClick: "switchboard",
@@ -820,6 +822,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarShowDone: true,
   railHidden: [],
   railOrder: [...RAIL_ORDER],
+  navRailOrder: [...NAV_RAIL_ITEMS],
+  navRailHidden: [],
   railApps: [],
   siteActions: DEFAULT_SITE_ACTIONS.map((action) => ({ ...action })),
   quickActions: true,
@@ -934,8 +938,6 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.colorScheme = raw.colorScheme;
   if (oneOf(["large", "standard", "compact"] as const, raw.sidebarStyle))
     out.sidebarStyle = raw.sidebarStyle;
-  if (oneOf(["minimal", "closed"] as const, raw.sidebarCollapsed))
-    out.sidebarCollapsed = raw.sidebarCollapsed;
   if (oneOf(["summary", "steps"] as const, raw.toolActivity))
     out.toolActivity = raw.toolActivity;
   if (oneOf(["skim", "full"] as const, raw.conversationView))
@@ -1063,6 +1065,13 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (Array.isArray(raw.railOrder)) {
     const known = RAIL_ORDER.filter((tool) => (raw.railOrder as unknown[]).includes(tool)).sort((a, b) => (raw.railOrder as unknown[]).indexOf(a) - (raw.railOrder as unknown[]).indexOf(b));
     out.railOrder = RAIL_ORDER.reduce((order, tool) => (order.includes(tool) ? order : [...order.slice(0, RAIL_ORDER.indexOf(tool)), tool, ...order.slice(RAIL_ORDER.indexOf(tool))]), known);
+  }
+  if (Array.isArray(raw.navRailHidden))
+    out.navRailHidden = NAV_RAIL_ITEMS.filter((item) => (raw.navRailHidden as unknown[]).includes(item));
+  // Every item once, as railOrder: the ones the list leaves out (an item added later) go where they are by default.
+  if (Array.isArray(raw.navRailOrder)) {
+    const known = NAV_RAIL_ITEMS.filter((item) => (raw.navRailOrder as unknown[]).includes(item)).sort((a, b) => (raw.navRailOrder as unknown[]).indexOf(a) - (raw.navRailOrder as unknown[]).indexOf(b));
+    out.navRailOrder = NAV_RAIL_ITEMS.reduce<NavRailItem[]>((order, item) => (order.includes(item) ? order : [...order.slice(0, NAV_RAIL_ITEMS.indexOf(item)), item, ...order.slice(NAV_RAIL_ITEMS.indexOf(item))]), known);
   }
   if (Array.isArray(raw.railApps))
     out.railApps = [...new Set(raw.railApps.filter((id): id is string => typeof id === "string" && RAIL_APP_ID.test(id)))].slice(0, RAIL_APPS_MAX);
@@ -1319,11 +1328,6 @@ export interface SeshboardBridge {
   update(command: UpdateCommand): void;
   /** Saves the channel in Preferences and checks again right away. */
   setUpdateChannel(channel: UpdateChannel): void;
-  /**
-   * Where the window's traffic lights sit: `rail` tucks them into the 64px minimal sidebar, `default`
-   * puts them back. macOS only; elsewhere it does nothing.
-   */
-  setWindowButtons(position: "default" | "rail"): void;
   /** A `seshboard://` link was opened (main holds links until this window's renderer is ready). */
   onDeepLink(listener: (message: DeepLinkMessage) => void): () => void;
   /**

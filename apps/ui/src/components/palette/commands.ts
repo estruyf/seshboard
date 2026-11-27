@@ -172,8 +172,12 @@ export interface PaletteApi {
   manageSessions(options?: { focus?: 'archive' | 'delete' }): void;
   setPreferences(patch: PreferencesPatch): void;
   setSidebar(state: SidebarState): void;
-  /** ⌘B: open, or collapsed as Settings says. */
+  /** ⌘B: open closes the panel, closed opens it. */
   toggleSidebar(): void;
+  /** Back (-1) or forward (1) through the places shown, as the title bar's buttons do. */
+  goInHistory(direction: 1 | -1): void;
+  /** The nav rail's menu: which items show, and Reset. */
+  customizeNavRail(): void;
   /** The next (1) or previous (-1) session in the sidebar's order. */
   goToSession(direction: 1 | -1): void;
   goToNextNeedsYou(): void;
@@ -468,10 +472,12 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'next-session', title: 'Next session', group: 'general', shortcut: keysFor('session.next'), icon: ChevronsDown, keywords: 'switch cycle down sidebar order', when: always, run: (api) => api.goToSession(1) },
   { id: 'previous-session', title: 'Previous session', group: 'general', shortcut: keysFor('session.previous'), icon: ChevronsUp, keywords: 'switch cycle up sidebar order back', when: always, run: (api) => api.goToSession(-1) },
   { id: 'next-needs-you', title: 'Go to next session that needs you', group: 'general', shortcut: keysFor('session.next-needs-you'), icon: BellRing, keywords: 'waiting permission question attention', when: always, run: (api) => api.goToNextNeedsYou() },
-  { id: 'toggle-sidebar', title: 'Toggle sidebar', group: 'general', shortcut: keysFor('sidebar.toggle'), icon: PanelLeft, keywords: 'hide show collapse rail', when: always, run: (api) => api.toggleSidebar() },
-  { id: 'sidebar-open', title: 'Open sidebar', group: 'general', icon: PanelLeftOpen, keywords: 'show expand', when: (ctx) => ctx.sidebar !== 'open', run: (api) => api.setSidebar('open') },
-  { id: 'sidebar-minimize', title: 'Minimize sidebar', group: 'general', icon: PanelLeftDashed, keywords: 'rail icons collapse narrow', when: (ctx) => ctx.sidebar !== 'minimal', run: (api) => api.setSidebar('minimal') },
-  { id: 'sidebar-close', title: 'Close sidebar', group: 'general', icon: PanelLeftClose, keywords: 'hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
+  { id: 'toggle-sidebar', title: 'Open or close the panel', group: 'general', shortcut: keysFor('sidebar.toggle'), icon: PanelLeft, keywords: 'sidebar toggle hide show collapse list', when: always, run: (api) => api.toggleSidebar() },
+  { id: 'sidebar-open', title: 'Open the panel', group: 'general', icon: PanelLeftOpen, keywords: 'sidebar show expand list', when: (ctx) => ctx.sidebar !== 'open', run: (api) => api.setSidebar('open') },
+  { id: 'sidebar-close', title: 'Close the panel', group: 'general', icon: PanelLeftClose, keywords: 'sidebar hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
+  { id: 'nav-back', title: 'Go back', group: 'general', icon: ArrowLeft, keywords: 'history previous place return', when: (ctx) => ctx.canGoBack, run: (api) => api.goInHistory(-1) },
+  { id: 'nav-forward', title: 'Go forward', group: 'general', icon: ArrowRight, keywords: 'history next place', when: (ctx) => ctx.canGoForward, run: (api) => api.goInHistory(1) },
+  { id: 'customize-nav-rail', title: 'Customize the rail…', group: 'general', icon: PanelLeftDashed, keywords: 'nav rail left views hide show order reorder icons', when: always, run: (api) => api.customizeNavRail() },
   { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: LayoutList, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
   { id: 'upcoming', title: 'Go to Upcoming', group: 'general', shortcut: keysFor('upcoming'), icon: CalendarClock, keywords: 'queue queued schedules scheduled runs planned later timeline week', when: (ctx) => ctx.view !== 'upcoming', run: (api) => api.openUpcoming('all') },
   { id: 'activity', title: 'Go to Activity', group: 'general', shortcut: keysFor('activity'), icon: Clock, keywords: 'what did i do today yesterday week history standup timesheet export summary day', when: (ctx) => ctx.view !== 'activity', run: (api) => api.openActivity() },

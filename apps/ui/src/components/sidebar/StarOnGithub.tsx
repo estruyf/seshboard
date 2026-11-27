@@ -1,11 +1,10 @@
 import { Star, X } from 'lucide-react';
-import { useEffect, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import { REPO_URL } from '@seshboard/protocol/bridge';
 import type { GithubStarStatus } from '@seshboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -97,42 +96,5 @@ export function StarOnGithub({ sessions }: { sessions: number }) {
       </Button>
       <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Don't show again" data-star-dismiss onClick={done} />
     </div>
-  );
-}
-
-/** The rail's Star on GitHub: the star alone; its context menu has Don't show again. */
-export function RailStarButton({ sessions, onMenu }: { sessions: number; onMenu(at: { x: number; y: number }, dismiss: () => void): void }) {
-  const { prompt, starring, onStar, tooltip } = useStarPrompt(sessions);
-  if (prompt === 'hidden') return null;
-  const at = (el: HTMLElement) => {
-    const rect = el.getBoundingClientRect();
-    return { x: rect.right - 4, y: rect.top + 8 };
-  };
-  return (
-    <Button
-      variant="quiet"
-      iconOnly
-      icon={<Star size={15} className="text-accent-ink" fill="currentColor" aria-hidden />}
-      aria-label="Star on GitHub"
-      disabled={starring}
-      aria-busy={starring}
-      data-tooltip={['Star on GitHub', tooltip, 'Right-click to hide it'].join('\n')}
-      data-tooltip-placement="right"
-      data-tooltip-title="Star on GitHub"
-      data-tooltip-meta={tooltip}
-      data-tooltip-hint="Right-click to hide it"
-      data-star-prompt={prompt}
-      data-star-button
-      onClick={onStar}
-      onContextMenu={(e: MouseEvent<HTMLButtonElement>) => {
-        e.preventDefault();
-        onMenu(e.clientX === 0 && e.clientY === 0 ? at(e.currentTarget) : { x: e.clientX, y: e.clientY }, done);
-      }}
-      onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
-        if (!isContextMenuKey(e)) return;
-        e.preventDefault();
-        onMenu(at(e.currentTarget), done);
-      }}
-    />
   );
 }

@@ -95,7 +95,7 @@ export async function runToolRailAppsStep(win: BrowserWindow, shot: (name: strin
   if (!(await waitInPage(win, `!!${app}`, 3_000))) return 'checking Finder in the menu did not pin it to the rail';
   // Main reads the icon from the app after the button shows. Linux has none to read: there the kind's own icon shows.
   if (process.platform !== 'linux') await waitInPage(win, `!!${app}.querySelector('img[data-app-icon="finder"]')?.complete`, 3_000);
-  const button = (await js(`({ label: ${app}.getAttribute('aria-label'), pressed: ${app}.getAttribute('aria-pressed'), icon: !!${app}.querySelector('img[data-app-icon="finder"]'), last: [...document.querySelectorAll(${JSON.stringify(`${S} [data-rail-button]:not([data-rail-hide])`)})].at(-1) === ${app} })`)) as Record<string, unknown>;
+  const button = (await js(`({ label: ${app}.getAttribute('aria-label'), pressed: ${app}.getAttribute('aria-pressed'), icon: !!${app}.querySelector('img[data-app-icon="finder"]'), last: [...document.querySelectorAll(${JSON.stringify(`${S} [data-rail-button]`)})].at(-1) === ${app} })`)) as Record<string, unknown>;
   await shot('tool-rail-apps');
   // The pin is a preference: take it off again whatever the checks found.
   if (await openMenu()) await js(`${menuItem}.click()`);
@@ -135,22 +135,23 @@ export async function runToolRailOrderStep(win: BrowserWindow, sessionId: string
 }
 
 /**
- * Side panel launcher: with nothing on the side, the rail's panel button says Show panel and opens the side panel empty,
+ * Side panel launcher: with nothing on the side, the title bar's Tools panel button says Show panel and opens the side panel empty,
  * with a list of the tools to open there (the first one focused). ↓ and Enter open a tool from it, in front, in the
  * list's place; the button then says Hide panel and closes the side. Esc closes the empty panel.
  */
 export async function runPanelLauncherStep(win: BrowserWindow, shot: (name: string) => Promise<void>, sessionId: string | null): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   await showSession(win, sessionId);
-  const button = q('[data-tool-rail] [data-rail-hide]');
+  // The title bar's Tools panel button (it was the rail's last button).
+  const button = "document.querySelector('[data-title-bar] [data-title-tools-panel]')";
   const launcher = q('[data-panel-launcher]');
   const panel = q('[data-panel-launcher-panel]');
-  if (!(await waitInPage(win, `!!${button}`, 5_000))) return 'the rail has no panel button';
+  if (!(await waitInPage(win, `!!${button} && ${button}.dataset.titleToolsPanel !== 'none'`, 5_000))) return 'the title bar has no Tools panel button for the session';
   // Start with nothing on the side.
-  if ((await js(`${button}.dataset.railPanel`)) === 'hide') await js(`${button}.click()`);
-  if (!(await waitInPage(win, `${button}.dataset.railPanel === 'show' && ${button}.getAttribute('aria-label') === 'Show panel'`, 3_000))) return 'the panel button does not say Show panel with nothing on the side';
+  if ((await js(`${button}.dataset.titleToolsPanel`)) === 'hide') await js(`${button}.click()`);
+  if (!(await waitInPage(win, `${button}.dataset.titleToolsPanel === 'show' && ${button}.getAttribute('aria-label') === 'Show panel'`, 3_000))) return 'the panel button does not say Show panel with nothing on the side';
   await js(`${button}.click()`);
-  if (!(await waitInPage(win, `!!${launcher} && ${button}.dataset.railPanel === 'hide' && document.activeElement?.hasAttribute('data-panel-launcher-item')`, 3_000))) return 'Show panel did not open the empty side panel with its first row focused';
+  if (!(await waitInPage(win, `!!${launcher} && ${button}.dataset.titleToolsPanel === 'hide' && document.activeElement?.hasAttribute('data-panel-launcher-item')`, 3_000))) return 'Show panel did not open the empty side panel with its first row focused';
   const rows = (await js(`[...${launcher}.querySelectorAll('[data-panel-launcher-item]')].map((b) => b.dataset.panelLauncherItem + (b.textContent.match(/[⌘⌃⇧⌥]|Ctrl/) ? '+key' : ''))`)) as string[];
   const ids = rows.map((r) => r.replace('+key', ''));
   if (!ids.includes('terminal')) return `the list has no Terminal (${rows.join(', ')})`;
@@ -214,7 +215,7 @@ export async function runPanelLauncherStep(win: BrowserWindow, shot: (name: stri
   await js(`${launcher}.querySelector('[data-panel-launcher-item]').focus()`);
   // Esc closes the empty panel; then open it again for the pick.
   await js(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
-  if (!(await waitInPage(win, `!${panel} && ${button}.dataset.railPanel === 'show'`, 3_000))) return 'Esc did not close the empty side panel';
+  if (!(await waitInPage(win, `!${panel} && ${button}.dataset.titleToolsPanel === 'show'`, 3_000))) return 'Esc did not close the empty side panel';
   await js(`${button}.click()`);
   if (!(await waitInPage(win, `document.activeElement?.dataset.panelLauncherItem === ${JSON.stringify(ids[0])}`, 3_000))) return 'the empty side panel did not open again';
   // A tool that opens on the side: Changes or Files where they apply, otherwise Ask, Agents or Commands.
@@ -226,8 +227,8 @@ export async function runPanelLauncherStep(win: BrowserWindow, shot: (name: stri
   // Enter on a focused button clicks it.
   await js('document.activeElement.click()');
   const rail = q(`[data-tool-rail] [data-rail-tool="${pick}"]`);
-  if (!(await waitInPage(win, `!${panel} && ${rail}?.dataset.railState === 'front' && ${button}.dataset.railPanel === 'hide'`, 3_000))) return `${pick} from the list did not open in front in its place`;
+  if (!(await waitInPage(win, `!${panel} && ${rail}?.dataset.railState === 'front' && ${button}.dataset.titleToolsPanel === 'hide'`, 3_000))) return `${pick} from the list did not open in front in its place`;
   await js(`${button}.click()`);
-  if (!(await waitInPage(win, `${rail}?.dataset.railState === 'closed' && !${panel} && ${button}.dataset.railPanel === 'show'`, 3_000))) return 'Hide panel did not close the side';
+  if (!(await waitInPage(win, `${rail}?.dataset.railState === 'closed' && !${panel} && ${button}.dataset.titleToolsPanel === 'show'`, 3_000))) return 'Hide panel did not close the side';
   return `ok: Show panel listed ${rows.join(', ')}; ← → on its edge resized it; Full and Side; Esc closed it; ↓ to ${pick} opened it in front; Hide panel closed the side`;
 }

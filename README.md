@@ -213,6 +213,8 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘P | Go to a session or project (⌥↩ opens a session beside this one) |
 | ⌘⇧F | Search all conversations |
 | ⌘⇧H | Home |
+|  | Go back (No key by default: use the title bar's Back, the mouse's back button, or the command palette) |
+|  | Go forward (No key by default: use the title bar's Forward, the mouse's forward button, or the command palette) |
 | ⌘1 to ⌘9 | Start in a project (on Home; with what you typed in the start box as the prompt) |
 | ⌘⇧Y | Upcoming: queued and scheduled |
 | ⌘⇧T | Activity: what you did per day |
@@ -255,7 +257,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 
 | Shortcut | What it does |
 |---|---|
-| ⌘B | Collapse or open the sidebar |
+| ⌘B | Open or close the panel |
 | ⌃⇥ | Next session (in the sidebar's order) |
 | ⌃⇧⇥ | Previous session (in the sidebar's order) |
 | ⌘⇧U | Next session that needs you |
@@ -326,7 +328,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧M | Comment on the selected lines (in a diff in Changes; Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box) |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |
 | ⌘⇧E | Show or hide Commands (The commands Claude runs in the background, with their output) |
-| ⌥↑ or ⌥↓ | Move a tool or an app on the rail up or down (on a button on the rail at the session's right edge; Or drag it. A button moves only inside its group) |
+| ⌥↑ or ⌥↓ | Move a tool or an app on the rail up or down (on a button on the rail at the session's right edge; Or drag it. A button moves only inside its group. The same keys move an item on the nav rail at the window's left edge) |
 | ⌥← or ⌥→ or ⌥↑ or ⌥↓ | Move a project action (on an action above the message box (left or right), or in the list of the actions editor (up or down); Or drag it) |
 | ⌘⇧B | Show or hide the session's browser (Your running dev server, or with the browser on any page, beside the conversation) |
 |  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |
