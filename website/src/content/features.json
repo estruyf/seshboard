@@ -3368,7 +3368,7 @@
     },
     {
       "id": "feature:image-lightbox",
-      "name": "Images full size",
+      "name": "Images full size, in the conversation and attached to the message box, Quick start or the palette (a click on the thumbnail)",
       "page": "sessions/conversation"
     },
     {

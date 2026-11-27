@@ -9335,7 +9335,7 @@ async function runDraftStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `!!${thumbs}?.querySelector('img')`, 2_000))) return (await setFieldValue(win, `[data-current-session="${smokeSessionId}"] [data-composer]`, ''), 'pasting an image in the message box did not attach it');
   // Last first, so each click still names the image it removes (React drops them after the loop).
   const removeImages = async () => {
-    await js(`[...(${thumbs}?.querySelectorAll('button') ?? [])].reverse().forEach((b) => b.click())`);
+    await js(`[...(${thumbs}?.querySelectorAll('button[aria-label^="Remove"]') ?? [])].reverse().forEach((b) => b.click())`);
     await waitInPage(win, `!${thumbs}`, 2_000);
   };
   const other = (await js(
@@ -12245,9 +12245,16 @@ async function runComposerScreenshotStep(win: BrowserWindow): Promise<string> {
   await js(`${button}.click()`);
   if (!(await waitInPage(win, `${thumbs} === 1`, 5_000))) return 'failed: no screenshot was attached';
   await shot(win, 'composer-screenshot.png');
-  await js(`document.querySelector('${scope} [data-attachments] button').click()`);
+  // A click on the thumbnail shows it full size in the transcript's lightbox; Esc closes it and gives focus back.
+  const thumb = `document.querySelector('${scope} [data-attachment-thumb="0"]')`;
+  await js(`${thumb}.click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[data-lightbox] [data-lightbox-image]')", 3_000))) return 'failed: a click on the thumbnail did not show the image full size';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `!document.querySelector('[data-lightbox]') && document.activeElement === ${thumb}`, 3_000))) return 'failed: Esc did not close the image and give focus back to its thumbnail';
+  if (((await js(thumbs)) as number) !== 1) return 'failed: closing the full size image took the screenshot off';
+  await js(`document.querySelector('${scope} [data-attachments] button[aria-label^="Remove"]').click()`);
   if (!(await waitInPage(win, `${thumbs} === 0`, 3_000))) return 'failed: × did not take the screenshot off';
-  return 'ok: the camera in the message box attached a screenshot, and × took it off';
+  return 'ok: the camera in the message box attached a screenshot, a click showed it full size, and × took it off';
 }
 
 /**
@@ -14238,7 +14245,7 @@ async function runPaletteNewSessionStep(win: BrowserWindow): Promise<string> {
   })()`)) as string;
   if (dropState !== 'ok') return (await closePalette(win), `dragging an image over the prompt step showed ${dropState}, not the drop target`);
   if (!(await waitInPage(win, "!document.querySelector('[data-command-palette] [data-drop-overlay]')", 1_000))) return (await closePalette(win), 'the prompt step kept the drop target after the drag ended');
-  await js("document.querySelector('[data-command-palette] [data-attachments] button').click()");
+  await js("document.querySelector('[data-command-palette] [data-attachments] button[aria-label^=\"Remove\"]').click()");
   if (!(await waitInPage(win, "!document.querySelector('[data-command-palette] [data-attachments]')", 1_000))) return (await closePalette(win), 'removing the pasted image did not work');
   await shot(win, 'command-palette-prompt.png');
   if (!(await closePalette(win))) return 'Esc did not close the prompt step';

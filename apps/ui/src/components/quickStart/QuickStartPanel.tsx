@@ -497,7 +497,8 @@ export function QuickStartPanel() {
   }, []);
 
   const onKeyDown = (event: ReactKeyboardEvent) => {
-    if (event.nativeEvent.isComposing || actionsOpen) return;
+    // Keys in an image's lightbox (a portal, so React still passes them up here) are the lightbox's: Esc closes it, not a step.
+    if (event.nativeEvent.isComposing || actionsOpen || !event.currentTarget.contains(event.target as Node)) return;
     onKey(event);
   };
 
