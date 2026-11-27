@@ -1,4 +1,4 @@
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Globe, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users } from 'lucide-react';
+import { Activity, AppWindow, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Globe, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users } from 'lucide-react';
 import type { SettingsSection } from '../state/sessionsStore.ts';
 
 /** What a Settings page is about: Seshboard itself, how Claude behaves, the things you keep, what Seshboard talks to; `bottom` is the rarely used ones under a line. */
@@ -39,6 +39,7 @@ export const SETTINGS_SECTIONS: readonly SettingsPage[] = [
   { id: 'prompts', label: 'Prompts', icon: Bookmark, group: 'work' },
   { id: 'pipelines', label: 'Pipelines', icon: ListTree, group: 'work' },
   { id: 'vscode', label: 'VS Code', icon: SquareCode, group: 'connect' },
+  { id: 'browserExtension', label: 'Browser extension', icon: AppWindow, group: 'connect' },
   { id: 'remote', label: 'Remote', icon: Smartphone, group: 'connect' },
   { id: 'mods', label: 'Mods', icon: Puzzle, group: 'connect' },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore, group: 'bottom' },

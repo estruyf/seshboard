@@ -9,7 +9,7 @@ import {
   type PermissionDecision,
 } from '@seshboard/protocol';
 import { CompanionServer } from './companionServer.ts';
-import { companionSessions, promptsFor, sessionsFor, type ListingOptions, type SessionSources } from './companionSessions.ts';
+import { companionSessions, githubRepoOfPage, promptsFor, sessionsFor, type ListingOptions, type SessionSources } from './companionSessions.ts';
 
 type SessionScope = NonNullable<ListingOptions['scope']>;
 
@@ -22,6 +22,10 @@ export interface CompanionHubOptions {
   archiveAfterDays(): number;
   /** Seshboard windows attached to the engine. */
   windows(): number;
+  /** Seshboard's projects, most recently active first (the browser extension's list). */
+  projects(): Array<{ root: string; name: string }>;
+  /** The project with a remote on GitHub's `owner/name`, or null. */
+  checkoutOf(repo: string): Promise<string | null>;
   /** Answers a permission prompt, question or plan (throws NOT_FOUND when it was already answered). */
   respond(requestId: string, decision: PermissionDecision, acceptEdits: boolean): void | Promise<void>;
   log(level: 'info' | 'warn' | 'error', message: string): void;
@@ -64,7 +68,7 @@ export class CompanionHub {
           this.watchers.set(context, { folders, last: JSON.stringify(snapshot) });
           return {};
         },
-        'context.add': ({ target, items, reveal }) => {
+        'context.add': ({ target, items, images, reveal }) => {
           const window = this.focusWindow();
           if (target.kind === 'session' && !this.knows(target.sessionId)) throw new RpcError('NOT_FOUND', 'Seshboard has no session with that id');
           if (target.kind === 'new' && !existsSync(target.cwd)) throw new RpcError('NOT_FOUND', `Folder not found: ${target.cwd}`);
@@ -76,7 +80,7 @@ export class CompanionHub {
             }, this.options.deliveryTimeoutMs ?? 10_000);
             this.deliveries.set(deliveryId, { resolve, reject, timer });
           });
-          window.emit('companion.context', { deliveryId, target, items, reveal });
+          window.emit('companion.context', { deliveryId, target, items, ...(images?.length ? { images } : {}), reveal });
           return delivered.then(() => ({}));
         },
         'session.reveal': ({ sessionId }) => {
@@ -87,6 +91,12 @@ export class CompanionHub {
         'prompt.respond': async ({ requestId, decision, acceptEdits }) => {
           await this.options.respond(requestId, decision, acceptEdits);
           return {};
+        },
+        'projects.list': async ({ url }) => {
+          const projects = this.options.projects();
+          const repo = url ? githubRepoOfPage(url) : null;
+          const matched = repo ? await this.options.checkoutOf(repo) : null;
+          return { projects, matched };
         },
       },
     });
@@ -107,7 +117,7 @@ export class CompanionHub {
   }
 
   status() {
-    return { listening: this.server.listening, clients: this.server.clients, error: this.server.error };
+    return { listening: this.server.listening, clients: this.server.clients, browsers: this.server.browsers, error: this.server.error };
   }
 
   get infoFile(): string {

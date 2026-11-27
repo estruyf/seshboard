@@ -63,7 +63,8 @@ import { ActivityDay, ActivityEntry, ActivitySummary, ActivitySummaryExtra, Acti
 import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
-import { ContextItems } from './context.ts';
+import { ContextItem, ContextItems } from './context.ts';
+import { MAX_CONTEXT_ITEMS } from './companionConstants.ts';
 import { PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
 import { GithubIssueDetail, GithubOrigin, GithubPrDetail, GithubReason, GithubSearchResult } from './github.ts';
 import { CompanionTarget } from './companion.ts';
@@ -1519,7 +1520,8 @@ export const contract = {
       result: z.object({}),
     },
     /** Whether the companion socket is listening, and how many editors are connected to it. */
-    'companion.status': { params: z.object({}), result: z.object({ listening: z.boolean(), clients: z.number(), error: z.string().nullable() }) },
+    /** The companion socket: whether it listens, and how many editor windows (`clients`) and browsers are connected. */
+    'companion.status': { params: z.object({}), result: z.object({ listening: z.boolean(), clients: z.number(), browsers: z.number().default(0), error: z.string().nullable() }) },
 
     // --- Remote: follow and steer sessions from a phone (docs/remote-access.md) --------------------------------
     'remote.status': { params: z.object({}), result: RemoteStatus },
@@ -1944,7 +1946,7 @@ export const contract = {
      * Context from the VS Code companion, for this window to add as chips (to a session's message box, or New session
      * on a folder) and confirm with `companion.received`. Sent to the window that reported focus last.
      */
-    'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: ContextItems, reveal: z.boolean() }),
+    'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: z.array(ContextItem).max(MAX_CONTEXT_ITEMS), images: z.array(ImageAttachment).optional(), reveal: z.boolean() }),
     /** The companion asked to show a session (its status bar item): select it and bring the window forward. */
     'companion.reveal': z.object({ sessionId: z.string() }),
     /** A session's catch-up was made, refreshed or cleared (null: a new message or turn started). */

@@ -752,6 +752,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-browserExtension",
+      "name": "settings-browserExtension",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-remote",
       "name": "Settings: Remote",
       "page": "settings"
@@ -1295,6 +1300,11 @@
       "id": "palette:vscode-extension",
       "name": "VS Code extension",
       "page": "vscode-companion"
+    },
+    {
+      "id": "palette:browser-extension",
+      "name": "Browser extension",
+      "page": "settings"
     },
     {
       "id": "palette:worktrees",
@@ -2109,6 +2119,11 @@
     {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
+      "page": "settings"
+    },
+    {
+      "id": "settings:browserExtension",
+      "name": "Settings: Browser extension",
       "page": "settings"
     },
     {
@@ -4865,6 +4880,11 @@
       "id": "feature:vscode-companion",
       "name": "VS Code companion extension",
       "page": "vscode-companion"
+    },
+    {
+      "id": "feature:browser-extension",
+      "name": "Browser extension for Chrome, Edge, Brave and Firefox: right-click to send the selected text or the page to a session, or start a session in the project a GitHub page belongs to; the popup lists the sessions waiting for you and sends the selection, the page's address, a screenshot and a local page's console errors to a session or project you search for, as chips and images in the message box",
+      "page": "settings"
     },
     {
       "id": "feature:vscode-connection-status",

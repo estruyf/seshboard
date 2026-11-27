@@ -20,6 +20,7 @@ import { listForView, useSidebarList } from '../state/browserViewStore.ts';
 import { createPortal } from 'react-dom';
 import { BackupSettings } from './backup/BackupSettings.tsx';
 import { CompanionSettings } from './companion/CompanionSettings.tsx';
+import { BrowserExtensionSettings } from './companion/BrowserExtensionSettings.tsx';
 import { RemoteSettings } from './remote/RemoteSettings.tsx';
 import { ModsSettings } from './mods/ModsSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
@@ -623,6 +624,15 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           description="The Seshboard extension for VS Code (also Cursor and Windsurf) sends what you're looking at in the editor to a session, as chips above the message box. Nothing goes to Claude until you send."
         >
           <CompanionSettings />
+        </Section>
+      );
+    case 'browserExtension':
+      return (
+        <Section
+          title="Browser extension"
+          description="The Seshboard extension for Chrome, Edge, Brave and Firefox sends what you select on a page to a session, or starts one in the page's project, as chips above the message box. Nothing goes to Claude until you send."
+        >
+          <BrowserExtensionSettings />
         </Section>
       );
     case 'remote':

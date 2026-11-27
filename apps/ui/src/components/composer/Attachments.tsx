@@ -65,6 +65,7 @@ export function AttachmentThumbs({ attachments, onRemove, className = '' }: { at
             <button
               type="button"
               onClick={() => onRemove(i)}
+              data-attachment-remove={i}
               className="absolute top-0.5 right-0.5 flex size-4 items-center justify-center rounded-full bg-black/70 text-[10px] text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
               aria-label={`Remove ${a.name ?? `image ${i + 1}`}`}
               data-tooltip="Remove"

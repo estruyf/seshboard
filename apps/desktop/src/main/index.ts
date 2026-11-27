@@ -7,11 +7,11 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, webContents as electronWebContents, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { APP_ICONS, DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type StartFromPageRequest, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, type QuickStartScreenshot, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
+import { APP_ICONS, DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, BROWSER_POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type StartFromPageRequest, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type ShellCommandResult, type BrowserExtensionHostResult, type ThemeCommand, type UpdateCommand, type UpdateState, type BrowserToolRequest, type QuickStartScreenshot, BROWSER_SCRIPTS_ENV } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { fillSitePrompt, githubPage, isBuiltInSiteAction, previewKind, siteActionsFor, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
-import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
+import { APP_DATA_FOLDERS, BROWSER_HOST_NAME, COMPANION_DIR, COMPANION_INFO_FILE, type BrowserHostMessage, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
 import { DOCK_LOOKS, DockActivity } from './dockActivity.ts';
@@ -52,6 +52,7 @@ import { SoundPlayer } from './sounds.ts';
 import { KeepAwake } from './keepAwake.ts';
 import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
+import { browserHostStatus, browserTargets, installBrowserHost, removeBrowserHost, type HostInstall } from './browserExtensionHost.ts';
 import { Cancelled, commandFolders, folderFromArgv, installShellCommand, pathCheck, readShellCommand, removeShellCommand, SHELL_COMMAND_NAMES, shellCommandDir, shellCommandPlan, type ShellCommandPlan } from './shellCommand.ts';
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableAgySession, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
@@ -592,6 +593,44 @@ function shellCommandHere(): ShellCommandPlan | null {
   // A scripted run looks only in its own profile, so the machine's commands never change what it sees.
   const lookIn = scripted ? [] : commandFolders(process.platform, homedir(), process.env.PATH);
   return shellCommandPlan(process.platform, dir, target, process.env, lookIn);
+}
+/**
+ * The browser extension's native messaging host, for this app (docs/browser-extension.md). Scripted runs use a made-up
+ * home in their throwaway profile, so they never touch a real browser's folders or the registry.
+ */
+function browserHostHere(): HostInstall {
+  const home = scripted ? join(app.getPath('userData'), 'browser-home') : homedir();
+  const appDataRoot = app.getPath('appData');
+  const own = join(app.getPath('userData'), COMPANION_DIR, COMPANION_INFO_FILE);
+  // This app's engine first, then the others the extension may meet (the installed app, a dev build).
+  const others = scripted ? [] : APP_DATA_FOLDERS.map((name) => join(appDataRoot, name, COMPANION_DIR, COMPANION_INFO_FILE));
+  const launch = !app.isPackaged ? null : process.platform === 'darwin' ? { command: 'open', args: [resolve(process.execPath, '../../..')] } : { command: process.env.APPIMAGE || process.execPath, args: [] };
+  return {
+    platform: process.platform === 'darwin' || process.platform === 'win32' ? process.platform : 'linux',
+    home,
+    appData: app.getPath('userData'),
+    executable: process.env.APPIMAGE || process.execPath,
+    hostScript: join(here, 'browser-host.js'),
+    config: { infoFiles: [...new Set([own, ...others])], launch, version: app.getVersion() },
+  };
+}
+ipcMain.handle(IpcChannel.browserExtensionHost, async (_event, action: unknown): Promise<BrowserExtensionHostResult> => {
+  const install = browserHostHere();
+  // The registry is a real system's, even in a scripted run: there it only lists what would be done.
+  const touchesRegistry = install.platform === 'win32' && scripted;
+  try {
+    if (action === 'install' && !touchesRegistry) return { status: await installBrowserHost(install), error: null };
+    if (action === 'remove' && !touchesRegistry) return { status: await removeBrowserHost(install), error: null };
+  } catch (caught) {
+    return { status: browserHostStatus(install), error: caught instanceof Error ? caught.message : String(caught) };
+  }
+  return { status: browserHostStatus(install), error: null };
+});
+/** Once installed, the host is written again at each start: the app may have moved or updated since. */
+function refreshBrowserHost(): void {
+  const install = browserHostHere();
+  if (!browserHostStatus(install).installed) return;
+  installBrowserHost(install).catch((error: unknown) => console.warn(`Browser extension host: ${error instanceof Error ? error.message : String(error)}`));
 }
 ipcMain.handle(IpcChannel.shellCommand, async (_event, action: unknown): Promise<ShellCommandResult> => {
   const plan = shellCommandHere();
@@ -4385,7 +4424,7 @@ async function runSettingsGroupsStep(win: BrowserWindow): Promise<string> {
   if (bottom.pages.join(',') !== 'backup,diagnostics,about') return `the bottom block holds ${bottom.pages.join(', ')}`;
   if (bottom.border !== '1px') return `the bottom block's top border is ${bottom.border}`;
   const pageCount = layout.reduce((n, g) => n + g.pages.length, 0);
-  if (pageCount !== 19) return `the menu lists ${pageCount} pages, not 19`;
+  if (pageCount !== 20) return `the menu lists ${pageCount} pages, not 20`;
 
   // ↓ from the last page of App lands on Conversation: the Claude header is skipped.
   await js(`document.querySelector('${nav} [data-settings-section="focus"]').focus()`);
@@ -10835,6 +10874,117 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * The browser extension: Settings › Browser extension connects the browsers of a made-up home in the throwaway profile
+ * (never the real one's), then the native messaging host is started from the manifest it wrote, as a browser would,
+ * with this app's binary. It reaches the engine, a page sent through it lands as a chip in New session on a folder of
+ * this step, and Settings counts the connected browser. Chips removed, Disconnect takes the host out again.
+ */
+async function runBrowserExtensionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where connecting writes to the registry';
+  const install = browserHostHere();
+  const chromeDir = browserTargets(install.platform, install.home).find((t) => t.id === 'chrome')!.dir!;
+  const firefoxDir = browserTargets(install.platform, install.home).find((t) => t.id === 'firefox')!.dir!;
+  mkdirSync(join(chromeDir, '..'), { recursive: true });
+  mkdirSync(join(firefoxDir, '..'), { recursive: true });
+  const folder = join(app.getPath('userData'), 'smoke-browser-extension');
+  mkdirSync(folder, { recursive: true });
+  const tray = "document.querySelector('[data-new-session-view] [data-context-tray]')";
+  const chips = `(${tray}?.querySelectorAll('[data-context-chip]').length ?? 0)`;
+  const status = "document.querySelector('[data-browser-extension-status]')?.dataset.browserExtensionStatus";
+  let host: ChildProcess | null = null;
+  const waitFor = async (check: () => boolean, ms: number) => {
+    for (const end = Date.now() + ms; Date.now() < end; ) {
+      if (check()) return true;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return check();
+  };
+  const openPage = async () => {
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"browserExtension\"]')", 3_000))) return false;
+    await js("document.querySelector('[data-settings-section=\"browserExtension\"]').click()");
+    return waitInPage(win, "document.querySelector('[data-browser-extension-action]')", 3_000);
+  };
+  try {
+    if (!(await openPage())) return 'Settings has no Browser extension page with a Connect button';
+    if ((await js(`${status}`)) !== 'off') return `the page did not start disconnected (${String(await js(status))})`;
+    await js("document.querySelector('[data-browser-extension-action=\"install\"]').click()");
+    if (!(await waitInPage(win, `${status} === 'waiting' && document.querySelectorAll('[data-browser-extension-browser]').length === 2`, 5_000))) {
+      return `Connect browsers did not connect Chrome and Firefox (${String(await js(`${status} + ' ' + (document.querySelector('[data-browser-extension-error]')?.innerText ?? '')`))})`;
+    }
+    const manifestFile = join(chromeDir, `${BROWSER_HOST_NAME}.json`);
+    if (!existsSync(manifestFile) || !existsSync(join(firefoxDir, `${BROWSER_HOST_NAME}.json`))) return 'no manifest in the browsers’ folders';
+    const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as { path: string; allowed_origins: string[] };
+
+    // As Chrome starts it: the manifest's program, with the extension's origin as its argument.
+    host = spawn(manifest.path, [manifest.allowed_origins[0]!], { stdio: ['pipe', 'pipe', 'ignore'] });
+    // Native messaging's frames (browserHost/frames.ts, not imported here: the host's bundle stays free of shared chunks).
+    const encodeFrame = (value: BrowserHostMessage) => {
+      const body = Buffer.from(JSON.stringify(value));
+      const header = Buffer.alloc(4);
+      header.writeUInt32LE(body.length, 0);
+      return Buffer.concat([header, body]);
+    };
+    const received: BrowserHostMessage[] = [];
+    let pending: Buffer = Buffer.alloc(0);
+    host.stdout!.on('data', (chunk: Buffer) => {
+      pending = Buffer.concat([pending, chunk]);
+      while (pending.length >= 4 && pending.length >= 4 + pending.readUInt32LE(0)) {
+        const length = pending.readUInt32LE(0);
+        received.push(JSON.parse(pending.subarray(4, 4 + length).toString('utf8')) as BrowserHostMessage);
+        pending = pending.subarray(4 + length);
+      }
+    });
+    const connected = () => received.some((m) => m.type === 'status' && m.state === 'connected');
+    if (!(await waitFor(connected, 10_000))) return `the host did not reach the engine (${JSON.stringify(received)})`;
+    host.stdin!.write(
+      encodeFrame({
+        type: 'wire',
+        message: { kind: 'request', id: 1, method: 'context.add', params: { target: { kind: 'new', cwd: folder }, items: [
+              { kind: 'text', source: 'page', label: 'Checkout fails', text: 'Checkout fails\nhttp://localhost:5173/cart' },
+              { kind: 'text', source: 'console', label: 'Console errors on localhost:5173 (1)', text: '[09:30:05] error: Cart total is NaN', language: 'text' },
+            ],
+            // A screenshot, as the popup sends it: a 1×1 PNG.
+            images: [{ type: 'image', mediaType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', name: 'localhost-5173.png' }],
+            reveal: true } },
+      }),
+    );
+    const answered = () => received.find((m) => m.type === 'wire' && m.message.kind === 'response' && m.message.id === 1);
+    if (!(await waitFor(() => !!answered(), 10_000))) return 'context.add through the host got no answer';
+    const answer = answered() as Extract<BrowserHostMessage, { type: 'wire' }>;
+    if (answer.message.kind !== 'response' || !answer.message.ok) return `context.add through the host failed: ${JSON.stringify(answer.message)}`;
+
+    // The page and the console errors are chips in New session on the folder, the screenshot an attached image.
+    const thumbs = "document.querySelectorAll('[data-new-session-view] [data-attachment-thumb]').length";
+    if (!(await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && ${chips} === 2 && ${thumbs} === 1`, 5_000))) {
+      return `the page, its console errors and its screenshot did not show in New session on the folder (${String(await js(`${chips} + ' chips, ' + ${thumbs} + ' images in ' + document.querySelector('[data-folder-select]')?.dataset.value`))})`;
+    }
+    const chip = (await js(`[...${tray}.querySelectorAll('[data-context-chip]')].map((c) => c.innerText.trim()).join(', ')`)) as string;
+    for (let left = 2; left > 0; left--) {
+      await js(`${tray}?.querySelector('[data-context-chip-remove]')?.click()`);
+      if (!(await waitInPage(win, `${chips} === ${left - 1}`, 2_000))) return 'removing a chip did not take it away';
+    }
+    await js("document.querySelector('[data-new-session-view] [data-attachment-remove]')?.click()");
+    if (!(await waitInPage(win, `!${tray} && ${thumbs} === 0`, 3_000))) return 'removing the chips and the screenshot left something behind';
+
+    // Settings counts the browser while its host is connected; Disconnect takes the host out.
+    if (!(await openPage())) return 'Settings › Browser extension did not open again';
+    if (!(await waitInPage(win, `${status} === 'connected'`, 6_000))) return `Settings did not count the connected browser (${String(await js(status))})`;
+    const label = (await js("document.querySelector('[data-browser-extension-label]')?.innerText.trim()")) as string;
+    await js("document.querySelector('[data-browser-extension-action=\"remove\"]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[data-browser-extension-action=\"install\"]')", 5_000))) return 'Disconnect did not take the host out';
+    if (existsSync(manifestFile)) return 'Disconnect left the Chrome manifest behind';
+    return `ok: Connect browsers wrote the host for Chrome and Firefox, the host started from the manifest reached the engine, a page, its console errors and a screenshot sent through it showed in New session on the folder (${chip}, 1 image), Settings said "${label}", Disconnect removed it`;
+  } finally {
+    host?.stdin?.end();
+    host?.kill();
+    await js("document.querySelector('[data-close-settings]')?.click()").catch(() => {});
+    if (smokeSessionId) await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`).catch(() => {});
+  }
+}
+
+/**
  * Saved prompts, in a sandbox (a throwaway git repository, opened in New session with a link): a prompt for
  * every project with a pull request and a text blank, made in Settings › Prompts; picked with / in New session, both
  * blanks filled (the pull request typed, as without gh), more context under it, and sent to the queue (never to
@@ -16354,6 +16504,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
   await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
+  await step('browser extension', () => runBrowserExtensionStep(win));
   await step('queue', () => runQueueStep(win));
   await step('pipelines: run, @ links, a round 2, another round, done', () => runPipelineStep(win));
   await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));
@@ -16598,6 +16749,7 @@ app.whenReady().then(() => {
   });
   sendEngineSettings(preferences.get());
   engine.sendStanding({ type: 'appUpdate', state: updater.state });
+  if (!scripted) refreshBrowserHost();
   engine.start();
   // The website's screenshots draw a session with demo mods (SESHBOARD_SMOKE_MODS), started as the app opens.
   if (driven && process.env.SESHBOARD_SMOKE_MODS) engine.sendStanding({ type: 'smokeMods' });

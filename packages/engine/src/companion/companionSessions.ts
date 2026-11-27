@@ -217,3 +217,26 @@ export function promptsFor(permissions: readonly PermissionRequest[], sessions: 
   // elsewhere there is no room for every prompt in full, Open in editor or the ticks.
   return permissions.filter((p) => ids.has(p.sessionId) && !p.approval).sort((a, b) => a.createdAt - b.createdAt);
 }
+
+/** GitHub's own pages under `github.com/<first>/…` that are not a repository's owner. */
+const GITHUB_NOT_OWNERS = new Set(['orgs', 'settings', 'notifications', 'marketplace', 'sponsors', 'topics', 'apps', 'users', 'search', 'login', 'features', 'explore', 'pulls', 'issues', 'codespaces', 'collections', 'trending', 'new', 'organizations']);
+
+/**
+ * The GitHub repository (`owner/name`, lowercased) a page in the browser is on, such as an issue, a pull request or a
+ * file: `https://github.com/acme/web/issues/412` is `acme/web`. Null for any other page.
+ */
+export function githubRepoOfPage(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+  if (parsed.hostname.toLowerCase() !== 'github.com' && parsed.hostname.toLowerCase() !== 'www.github.com') return null;
+  const [owner, name] = parsed.pathname.split('/').filter(Boolean);
+  if (!owner || !name || GITHUB_NOT_OWNERS.has(owner.toLowerCase())) return null;
+  const valid = /^[A-Za-z0-9._-]+$/;
+  if (!valid.test(owner) || !valid.test(name)) return null;
+  return `${owner}/${name.replace(/\.git$/i, '')}`.toLowerCase();
+}

@@ -650,6 +650,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'import-settings', title: 'Import settings…', group: 'general', icon: Download, keywords: 'backup restore move mac projects actions preferences', when: always, run: (api) => api.backup('import') },
   { id: 'connect-computer', title: 'Connect to another computer…', group: 'general', icon: Monitor, keywords: 'pair remote machine mac pc other computers sessions link', when: always, run: (api) => api.openSettings('remote') },
   { id: 'vscode-extension', title: 'VS Code extension', group: 'general', icon: SquareCode, keywords: 'companion cursor windsurf install marketplace settings', when: always, run: (api) => api.openSettings('vscode') },
+  { id: 'browser-extension', title: 'Browser extension', group: 'general', icon: AppWindow, keywords: 'chrome firefox edge brave web page selection connect install settings', when: always, run: (api) => api.openSettings('browserExtension') },
   { id: 'manage-sessions', title: 'Manage sessions', group: 'general', icon: Archive, keywords: 'archived archive done delete trash clean up old all sessions overview size disk', when: always, run: (api) => api.manageSessions() },
   {
     id: 'delete-archived-sessions',

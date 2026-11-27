@@ -604,6 +604,17 @@ export function settingsIndex(): SettingEntry[] {
     },
     { id: 'companion-install', page: 'vscode', label: 'Visual Studio Marketplace', detail: 'Install the Seshboard extension.', keywords: 'install download extension open vsx cursor windsurf', target: '[data-companion-link="marketplace"]' },
 
+    // Browser extension
+    {
+      id: 'browser-extension',
+      page: 'browserExtension',
+      label: 'Browser extension',
+      detail: 'The Seshboard extension sends what you select on a page to a session, or starts one in the page’s project.',
+      keywords: 'chrome firefox edge brave browser extension web page selection companion',
+      target: '[data-browser-extension-settings]',
+    },
+    { id: 'browser-extension-connect', page: 'browserExtension', label: 'Connect browsers', detail: 'Lets the extension in each browser on this computer reach Seshboard.', keywords: 'install native messaging host chrome firefox edge brave', target: '[data-browser-extension-action]', fallback: '[data-browser-extension-settings]' },
+
     // Remote
     {
       id: 'remote-enabled',

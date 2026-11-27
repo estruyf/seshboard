@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { BROWSER_POPOUT_QUERY, ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartScreenshot, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type BrowserMessageItem, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
+import { BROWSER_POPOUT_QUERY, ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartScreenshot, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type BrowserMessageItem, type SaveImageRequest, type ShellCommandResult, type BrowserExtensionHostResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -112,6 +112,7 @@ const bridge: SeshboardBridge = {
   keepAwakeStatus: () => ipcRenderer.invoke(IpcChannel.keepAwakeStatus) as Promise<boolean>,
   openLoginItemsSettings: () => ipcRenderer.send(IpcChannel.openLoginItemsSettings),
   shellCommand: (action) => ipcRenderer.invoke(IpcChannel.shellCommand, action) as Promise<ShellCommandResult>,
+  browserExtensionHost: (action) => ipcRenderer.invoke(IpcChannel.browserExtensionHost, action) as Promise<BrowserExtensionHostResult>,
   windowActive: ipcRenderer.sendSync(IpcChannel.getWindowActive) as boolean,
   onWindowActive(listener) {
     const handler = (_event: unknown, active: boolean) => listener(active);

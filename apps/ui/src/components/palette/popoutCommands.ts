@@ -90,6 +90,7 @@ const PLANS: Record<string, Plan> = {
   'memory-settings': 'main',
   'connect-computer': 'main',
   'vscode-extension': 'main',
+  'browser-extension': 'main',
   'manage-sessions': 'main',
   'delete-archived-sessions': 'main',
   diagnostics: 'main',

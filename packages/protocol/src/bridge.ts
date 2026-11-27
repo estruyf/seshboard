@@ -84,6 +84,7 @@ export const IpcChannel = {
   setOpenAtLogin: "seshboard:set-open-at-login",
   openLoginItemsSettings: "seshboard:open-login-items-settings",
   shellCommand: "seshboard:shell-command",
+  browserExtensionHost: "seshboard:browser-extension-host",
   keepAwakeStatus: "seshboard:keep-awake-status",
   getPopouts: "seshboard:get-popouts",
   popOut: "seshboard:pop-out",
@@ -1389,6 +1390,11 @@ export interface SeshboardBridge {
   openLoginItemsSettings(): void;
   /** How the `seshboard`, `sesh` and `switchboard` shell commands stand, or installs or removes them; answers how they stand afterwards. */
   shellCommand(action?: "install" | "remove"): Promise<ShellCommandResult>;
+  /**
+   * The browser extension's native messaging host (docs/browser-extension.md): which browsers are here and whether
+   * each one can start the host. `install` connects them, `remove` takes the host out again.
+   */
+  browserExtensionHost(action?: "install" | "remove"): Promise<BrowserExtensionHostResult>;
   /** Whether Keep awake is holding sleep off right now (on, and `caffeinate` or the sleep blocker is running). */
   keepAwakeStatus(): Promise<boolean>;
   /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
@@ -1589,6 +1595,19 @@ export interface ShellCommandState {
 }
 
 /** How the shell commands stand after a change, and why the change failed (null when it worked or was cancelled). */
+/** The browsers the extension's native messaging host is installed for. */
+export interface BrowserExtensionHostStatus {
+  /** This app installed the host: its files are in the app's data folder. */
+  installed: boolean;
+  /** The browsers found here, and whether each one starts this app's host. */
+  browsers: Array<{ id: string; name: string; family: "chromium" | "firefox"; found: boolean; registered: boolean }>;
+}
+
+export interface BrowserExtensionHostResult {
+  status: BrowserExtensionHostStatus;
+  error: string | null;
+}
+
 export interface ShellCommandResult {
   state: ShellCommandState;
   error: string | null;

@@ -3177,6 +3177,13 @@ export function createEngine(options: EngineOptions): Engine {
       sources: () => ({ summaries: sessions.snapshot().sessions.filter((s) => !isOtherProviderSession(s)), live: liveList(), ...hosts.list(), kept: keptSessions() }),
       archiveAfterDays: () => retention.archiveAfterDays,
       windows: () => servers.size,
+      // The browser extension's list of projects: the ones on disk, most recently active first.
+      projects: () =>
+        listProjects()
+          .filter((p) => p.exists)
+          .sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0))
+          .map((p) => ({ root: p.root, name: p.name })),
+      checkoutOf: (repo) => findCheckout(listProjects().filter((p) => p.exists).map((p) => p.root), repo),
       respond: async (requestId, decision, acceptEdits) => {
         const sessionId = hosts.list().permissions.find((p) => p.requestId === requestId)?.sessionId;
         hosts.respond(requestId, decision);
@@ -5264,7 +5271,7 @@ export function createEngine(options: EngineOptions): Engine {
       companion?.received(deliveryId, error);
       return {};
     },
-    'companion.status': () => companion?.status() ?? { listening: false, clients: 0, error: null },
+    'companion.status': () => companion?.status() ?? { listening: false, clients: 0, browsers: 0, error: null },
     'catchup.get': ({ sessionId }) => ({ catchUp: catchUp.get(sessionId) }),
     'catchup.list': () => ({ catchUps: catchUp.list() }),
     'catchup.build': async ({ sessionId }) => {

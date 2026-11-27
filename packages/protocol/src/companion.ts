@@ -1,12 +1,14 @@
 import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
 import type { ContractShape } from './rpc.ts';
-import { CompanionContextItems } from './context.ts';
-import { PermissionDecision, PermissionRequest } from './host.ts';
+import { ImageAttachment, PermissionDecision, PermissionRequest } from './host.ts';
+import { MAX_CONTEXT_ITEMS } from './companionConstants.ts';
+import { CompanionContextItem } from './context.ts';
 
 /**
- * The VS Code companion's contract: what the extension asks the engine over its Unix socket, and what the
- * engine tells it. The engine validates every message against it; see docs/vscode-companion.md.
+ * The companion contract: what the VS Code companion and the browser extension ask the engine over its Unix socket,
+ * and what the engine tells them. The engine validates every message against it; see docs/vscode-companion.md and
+ * docs/browser-extension.md.
  */
 
 const SessionId = z.string().min(1).max(200);
@@ -52,6 +54,13 @@ export const CompanionSessions = z.object({
 });
 export type CompanionSessions = z.infer<typeof CompanionSessions>;
 
+/** The most pictures one `context.add` takes. */
+export const MAX_COMPANION_IMAGES = 4;
+
+/** A project you can start a session in, for the browser extension's list. */
+export const CompanionProject = z.object({ root: z.string(), name: z.string() });
+export type CompanionProject = z.infer<typeof CompanionProject>;
+
 export const companionContract = {
   requests: {
     /** The first message on a connection; anything else, or a wrong token, closes it. */
@@ -76,7 +85,15 @@ export const companionContract = {
      * `reveal` brings Seshboard to the front on that session.
      */
     'context.add': {
-      params: z.object({ target: CompanionTarget, items: CompanionContextItems, reveal: z.boolean().default(true) }),
+      params: z
+        .object({
+          target: CompanionTarget,
+          items: z.array(CompanionContextItem).max(MAX_CONTEXT_ITEMS).default([]),
+          /** Pictures for the message box, as Attach images adds them (the browser extension's screenshot). */
+          images: z.array(ImageAttachment).max(MAX_COMPANION_IMAGES).optional(),
+          reveal: z.boolean().default(true),
+        })
+        .refine((p) => p.items.length > 0 || (p.images?.length ?? 0) > 0, 'Send at least one item or image'),
       result: z.object({}),
     },
     /** Shows a session in Seshboard and brings it to the front (the status bar item). */
@@ -88,6 +105,15 @@ export const companionContract = {
     'prompt.respond': {
       params: z.object({ requestId: z.string().min(1).max(200), decision: PermissionDecision, acceptEdits: z.boolean().default(false) }),
       result: z.object({}),
+    },
+    /**
+     * Seshboard's projects (most recently active first), for the browser extension. With `url`, `matched` is the
+     * project whose GitHub remote that page is on (`github.com/owner/name/…`), or null. Engines from before the
+     * browser extension answer METHOD_NOT_FOUND.
+     */
+    'projects.list': {
+      params: z.object({ url: z.string().max(2000).optional() }),
+      result: z.object({ projects: z.array(CompanionProject), matched: z.string().nullable() }),
     },
   },
   events: {

@@ -63,6 +63,8 @@ export default defineConfig({
           'browser-mcp': resolve(here, 'src/browserMcp/index.ts'),
           // The orchestrator MCP server an orchestrator's agent starts: its calls go to the engine the same way.
           'orchestrator-mcp': resolve(here, 'src/orchestratorMcp/index.ts'),
+          // The browser extension's native messaging host: copied out of the app when installed, so it takes no shared chunks.
+          'browser-host': resolve(here, 'src/browserHost/index.ts'),
         },
       },
     },

@@ -15,7 +15,7 @@ export type LineRange = z.infer<typeof LineRange>;
  * - `file`: a file or folder by reference, optionally a range of lines. Claude reads it itself, so a large
  *   selection stays small.
  * - `text`: text that isn't a file on disk, or not as it is on disk: a selection with unsaved changes,
- *   problems, terminal output, a long paste into the message box (`paste`), a failed check's log (`checks`), review comments on lines in Changes (`review`), or an element of a session's page in the browser (`element`).
+ *   problems, terminal output, a long paste into the message box (`paste`), a failed check's log (`checks`), review comments on lines in Changes (`review`), an element of a session's page in the browser (`element`), or from your own web browser through the browser extension: a page or its selection (`page`), or the errors in a local page's console (`console`).
  *   `path` and `range` say where it came from, when it came from a file.
  * - `session`: another session, linked with `@`; the engine adds a brief about it when the message goes to Claude.
  * - `github`: an issue or pull request, attached with `#`; the engine adds its title, link, labels and text (and a pull
@@ -29,7 +29,7 @@ const FileItem = z.object({
 });
 const TextItem = z.object({
   kind: z.literal('text'),
-  source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste', 'checks', 'review', 'element', 'file', 'search']),
+  source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste', 'checks', 'review', 'element', 'file', 'search', 'page', 'console']),
   /** What the chip says, such as "Problems in auth.ts". */
   label: z.string().trim().min(1).max(200),
   text: z.string().max(MAX_PROMPT_LENGTH),
@@ -65,7 +65,7 @@ export type ContextItemInput = z.input<typeof ContextItem>;
 /** The items for one message. */
 export const ContextItems = z.array(ContextItem).min(1).max(MAX_CONTEXT_ITEMS);
 
-/** What the VS Code companion may add: files and text, never a linked session (that is only made in the app). */
+/** What the VS Code companion and the browser extension may add: files and text, never a linked session (that is only made in the app). */
 export const CompanionContextItem = z.discriminatedUnion('kind', [FileItem, TextItem]);
 export type CompanionContextItem = z.infer<typeof CompanionContextItem>;
 /** A companion context item as it is sent (defaults may be left out). */
