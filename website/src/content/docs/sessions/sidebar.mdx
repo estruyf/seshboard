@@ -29,6 +29,8 @@ At the top, the panel's header has:
 
 A session you ran a [pipeline](/sessions/pipelines/) from shows where the run is, such as *Validate · 3 of 4*, with the pipeline icon. Its steps sit under it, closed at first: open them with the arrow. A run you started from New session has a row of its own with the pipeline icon instead of a project icon.
 
+Sessions a session started sit under it the same way: ones you started [from a reply](/sessions/conversation/#start-a-session-from-a-reply), and ones the session [asked to start](/sessions/conversation/#sessions-that-start-sessions). They show there right away, with their titles, while they start. A sub-session with sessions of its own has an arrow to show them too, and when one of them needs you, the top row says so.
+
 At the bottom, the footer counts your sessions ("12 sessions · 2 running · 1 queued · 1 waiting") and your [unsent messages](/sessions/unsent-drafts/). **Projects**, **Settings** and the [focus limit](/focus-limit/) are on the [rail](/sessions/rail/).
 
 **N open** in the footer counts what is still yours to finish: To review, Open and reminders that came due. Click it to [go through them one by one](/sessions/catch-up/#go-through-your-sessions).
@@ -58,7 +60,7 @@ Grouped by project, each project has a header with its icon, its name and how ma
 - Point at a header for **New session in** the project (**+**) and its menu (**⋯**). Right-click the header for the menu too.
 - With the keyboard, <Kbd keys="arrowleft" /> folds a project and <Kbd keys="arrowright" /> unfolds it. <Kbd keys="enter" /> or <Kbd keys="space" /> on its header does either.
 
-A project on [another computer](/other-computers/) has its own header, with the computer's chip.
+A project on [another computer](/other-computers/) has its own header, with the computer's chip. Its **+** opens New session on that computer, with the project picked.
 
 Grouping by project works with **All projects**. With one project picked in the filter, the list is grouped by state, and the View button says so in a paler colour.
 
@@ -122,10 +124,11 @@ The session count at the bottom of the sidebar opens [Settings › Sessions](/se
 
 Hover a session and buttons show at the end of its row, so you can tidy the list in one click:
 
+- **+** (**New session here**) opens [New session](/new-session/form/) in that session's folder. For a session in a worktree, the new one starts in the same worktree. It isn't there for a session on another computer or a pipeline's run row.
 - **Mark as read** or **Mark as unread**, **Pin** or **Unpin**, and **Done** on a finished session.
 - **Pin**, **Stop** and **Done** on a session that is working or needs you.
 - **Reopen** on a session under Done.
-- On a [pipeline](/sessions/pipelines/)'s row, the first button shows or hides its steps.
+- On a row with sub-sessions or [pipeline](/sessions/pipelines/) steps, the arrow that shows or hides them is the last button, on the right, where the row's own arrow was. **Done** sits one place to its left, so a click aimed at the arrow never marks the session done.
 
 Each button does the same as its item in the session menu. A toast then says what it did, such as "Pinned", with **Undo**. <Kbd shortcut="sidebar.undo" /> in the sidebar undoes it too, while the toast is up.
 
@@ -189,7 +192,7 @@ In [Settings, Sidebar](/settings/#sidebar):
 
 - **Sidebar style:** **Large icons** (each project easy to spot), **Standard** (the default) or **Compact** (one line per session). The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact*.
 - **Show sessions from other apps:** also list sessions from your terminal, Claude desktop and your editor. Off (the default) shows only sessions you started or continued in Seshboard.
-- **Quick actions on hover:** show the [buttons on a row under the pointer](#quick-actions-on-hover) (on by default). **Show** picks **Done only** or **Read · Pin · Done** (the default). Working sessions show Stop too.
+- **Quick actions on hover:** show the [buttons on a row under the pointer](#quick-actions-on-hover) (on by default). **Show** picks **Done only** or **New · Read · Pin · Done** (the default). The **+** for a new session in the same folder shows only with the second. Working sessions show Stop too.
 
 <Screenshot name="settings-sidebar" alt="Settings open on Sidebar: the three sidebar styles, the Show sessions from other apps switch and Quick actions on hover" />
 

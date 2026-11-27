@@ -25,9 +25,10 @@ Activity opens on today. A strip at the top has the days from Monday to Sunday, 
 For the day you picked, you see:
 
 - **The day in short**: a few lines by Haiku on what you did, from the catch-ups of the day's sessions. **Regenerate** writes it again, and **Try again** shows when it couldn't be written.
-- The numbers: sessions, turns, **Claude working** (the time Claude worked), commits, pull requests and, with costs shown, what it would [cost at API prices](/usage/#estimated-cost).
+- The numbers: sessions, turns, **Claude working** (the time Claude worked), commits, pull requests, tokens and, with costs shown, what it would [cost at API prices](/usage/#estimated-cost).
 - **When**: the 24 hours of the day, darker for the hours you worked most. Point at an hour for its time.
 - **Projects**: the time per project, as bars. See [One project](#one-project).
+- **Started by**: who started the sessions, when a phone, another computer, a trigger or a schedule started some. See [Who started them](#who-started-them).
 - **What you did**: your sessions, per project. See [Your sessions](#your-sessions).
 
 A day without sessions says so, with how many the days before and after it had.
@@ -57,9 +58,15 @@ Click a project under **Projects** to see only its sessions: the numbers, the ho
 
 ## Your sessions
 
-**What you did** lists your sessions by project, each with its title and, where there are any, its commits, the files it changed, its pull requests and **needs you**. Click a session for what it did, taken from its [catch-up](/sessions/catch-up/), with **Open session** and a button for each pull request. A session without a catch-up says so, and one whose transcript is gone can't be opened.
+**What you did** lists your sessions by project, each with its title, its tokens and, where there are any, its commits, the files it changed, its pull requests and **needs you**. Click a session for what it did, taken from its [catch-up](/sessions/catch-up/), with **Open session** and a button for each pull request. A session without a catch-up says so, and one whose transcript is gone can't be opened.
 
 Sessions from your [other computers](/other-computers/) count too, with the computer's chip. **Open session** opens one on the computer it ran on.
+
+## Who started them
+
+A session that a [paired phone or computer](/remote-access/) started shows that device on its row, and one a [trigger](/projects/triggers/) or a [schedule](/new-session/schedules/) started shows that too. Point at it to see the device's ID, which tells two devices of the same name apart.
+
+When anyone but you started a session on screen, the **Started by** card lists each of them with its sessions, tokens and time, the most tokens first. Sessions you started at the computer itself are **You, at this computer**. It shows who uses a shared computer the most.
 
 ## Copy for standup
 
@@ -67,7 +74,7 @@ Sessions from your [other computers](/other-computers/) count too, with the comp
 
 ## Export
 
-**Export…** saves your sessions to a file: **This day** or **The week** (or the range you picked), as **CSV** or **Markdown**.
+**Export…** saves your sessions to a file: **This day** or **The week** (or the range you picked), as **CSV** or **Markdown**. Both have each session's tokens and who started it. The CSV has the device's ID too, and the Markdown a **Started by** list for each day.
 
 ## On Home
 

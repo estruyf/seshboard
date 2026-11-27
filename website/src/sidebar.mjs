@@ -56,6 +56,7 @@ export const sidebar = [
       'sessions/linking',
       'sessions/pipelines',
       'sessions/orchestrator',
+      'sessions/seshboard-tools',
       'sessions/github-issues',
       'sessions/agents',
       'sessions/commands',

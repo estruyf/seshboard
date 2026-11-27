@@ -36,7 +36,7 @@ Text from a page reaches the agent as data, not as instructions.
 
 - **Pages on this computer** (`localhost`, names that end in `.localhost`, `127.0.0.1`) need no approval.
 - **Sites the project allows**, in its Browser sites, need none either.
-- **Any other site asks first**, on the session's permission card: "Claude Code wants to use github.com in the browser". The card says the agent clicks and types there as you, with your login on that site. The session shows as needing you until you answer.
+- **Any other site asks first**, on the session's permission card: "Claude Code wants to use github.com in the browser". Under it, the card says what the agent wants to do, in the page's own words, such as Click “New issue”, Type “octocat” into “Search”, Open https://github.com/ or Press Enter. It also says the agent clicks and types there as you, with your login on that site. The session shows as needing you until you answer.
 
 The card has these buttons:
 
@@ -70,7 +70,7 @@ A script can read what the page and its requests hold, such as tokens, and chang
 
 - Pages on this computer need no approval.
 - Any other site asks on a card of its own, such as **Claude Code wants to run scripts on contoso.sharepoint.com as you**, even when the site itself is allowed.
-- **Always allow** on that card keeps the site in the project's **Scripts in pages**, in its Settings tab. That list takes wildcards too, such as `*.sharepoint.com`, but has no Any site.
+- **Always allow** on that card keeps the site in the project's **Scripts in pages**, in its Settings tab. That list takes wildcards too, such as `*.sharepoint.com`, and has an **Any site** check box, as Browser sites has.
 
 Turning the setting off counts at once, also for sessions that are running.
 
@@ -84,6 +84,7 @@ The agent can open a page in one of your [browser profiles](/browser/profiles/) 
 
 - **Agents**: **Allow Seshboard to control the browser** (on by default) and **Allow scripts in pages** (off by default).
 - **Browser profiles**: the Default profile and yours, with **New profile**. See [Browser profiles](/browser/profiles/).
+- **Site actions**: **Start session** on the pages they name, such as GitHub pull requests and issues. See [Start a session from a page](/browser/tabs-and-pages/#start-a-session-from-a-page).
 
 The browser itself is turned on and off in **Settings › General › Browser › Allow browser**. See [Settings](/settings/#browser).
 

@@ -10,7 +10,7 @@ import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-Seshboard checks for new versions of itself and of the Claude Code it runs. It tells you when one is out, and nothing downloads or installs until you click.
+Seshboard checks for new versions of itself, of the Claude Code it runs, and of the other agents' CLIs you use. It tells you when one is out, and nothing downloads or installs until you click.
 
 <Screenshot name="settings-about" alt="Settings on About: the Seshboard version, the Updates section with Check for Updates, the automatic checks switch and the Stable and Beta channels, and the Claude Code section below it" eager />
 
@@ -39,7 +39,9 @@ On Windows, **Restart to update** closes Seshboard and runs the installer: its p
 
 Close the message to decide later. It comes back for the next step, or the next time you open Seshboard. Settings → About has the same buttons, and **Check for Updates** checks right away.
 
-After the update, a message says which version you now run, with its release notes.
+After the update, a message says which version you now run, with its release notes. Update messages show only in the main window, not in the Quick start or menu bar panel, so they wait for you there.
+
+For the first minutes after a release or a beta comes out, its download isn't ready yet. A check then offers the release before it, if that one is newer than yours, and the new release on a later check.
 
 ### Channel
 
@@ -113,9 +115,15 @@ If you turned off Claude Code's own updater (`DISABLE_AUTOUPDATER` in your envir
 
 With a [GitHub Copilot profile](/settings/other-agents/), Settings → About shows GitHub Copilot CLI too: the version you have, whether a newer one is out, and **Update**. A toast says when a new version is available, as it does for Claude Code. Seshboard uses the new version the next time it opens a session.
 
+## Update Antigravity CLI
+
+With a [Google Antigravity profile](/settings/other-agents/), Settings → About shows Antigravity CLI too: the version you have, whether a newer one is out, and **Update**. A toast says when a new version is available, as it does for Claude Code. Seshboard checks by itself while **Check for Antigravity CLI updates automatically** is on.
+
+**Update** runs `agy update`, or `brew upgrade --cask antigravity-cli` if you installed it with Homebrew.
+
 ## Settings
 
-Both updaters are in [Settings → About](/settings/#about): the automatic checks, the channel and the Claude Code details.
+The updaters are in [Settings → About](/settings/#about): the automatic checks, the channel and the Claude Code details.
 
 ## Related
 

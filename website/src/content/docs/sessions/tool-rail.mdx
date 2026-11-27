@@ -24,7 +24,7 @@ From top to bottom, in groups with a line between them:
 | [Mods](/sessions/mods/) | A letter tile for each pane a mod draws |
 | Apps | The apps you pinned, each with its own icon. See [Apps on the rail](#apps-on-the-rail). |
 
-**Tools panel** in the [title bar](/sessions/rail/#the-title-bar) shows or hides the right side: **Hide panel** closes whatever it shows, and **Show panel** opens it with a list of the tools to open there.
+**Tools panel** in the [title bar](/sessions/rail/#the-title-bar) shows or hides the right side: **Hide panel** closes whatever it shows, and **Show panel** opens the [side panel](#the-side-panel) with a list of the tools to open there.
 
 A tool shows only when it applies to the session, so the rail never has greyed-out buttons:
 
@@ -46,6 +46,28 @@ The keys do the same: <Kbd shortcut="files.toggle" /> for Files, <Kbd shortcut="
 
 In a narrow session, a panel opens over the conversation instead of beside it.
 
+## The side panel
+
+The panels on the right of a session share one side panel. You can open it with nothing in it:
+
+- Click **Tools panel** in the title bar while it says **Show panel**, or run *Show side panel* in the [command palette](/command-palette/).
+- It lists the tools you can open there, with their keys. Tools you hid from the rail are in the list too.
+- Click one to open it, or use <Kbd keys="arrowup|arrowdown" /> and <Kbd keys="enter" />. <Kbd keys="escape" /> closes the panel.
+
+### Side, Half or Full
+
+Every panel on the right, the empty one and the terminal too, has **Side**, **Half** and **Full** at the top right, as the browser has:
+
+- **Side**: beside the conversation. Drag its left edge to change its width.
+- **Half**: the panel and the conversation share the session, also as the window resizes.
+- **Full**: the panel takes the whole session.
+
+Docked on the right, the terminal is as wide as the other panels, and keeps its tabs as they were when you switch back to it.
+
+### In new sessions
+
+Turn on **Open the side panel in new sessions** in [Settings › Conversation](/settings/#conversation) to start each new session with the side panel open, so the conversation sits on the left. Pick a tool there, or close it. It is off by default.
+
 With the keyboard, <Kbd keys="arrowup|arrowdown" /> move between the buttons on the rail.
 
 ## Show or hide tools
@@ -54,7 +76,8 @@ Right-click the rail (or press <Kbd shortcut="context-menu" /> on one of its but
 
 - **Tools**: check or uncheck **Files**, **Changes**, **Terminal**, **Browser**, **Ask**, **Agents**, **Commands**, **Note** and **Mods**. A tool you hide keeps its key and its command in the palette.
 - **Open in**: the apps to pin. See below.
-- **Panels at half width**: every panel on the right takes half of the session. Drag a panel's edge to give it its own width again.
+- **Panels at half width**: every panel on the right takes half of the session. Drag a panel's edge to give it its own width again. Seshboard remembers it after you quit.
+- **Open panel in new sessions**: the same as **Open the side panel in new sessions** in Settings.
 - **Reset** shows every tool again, unpins the apps and puts the buttons back in their first order.
 
 ## Apps on the rail

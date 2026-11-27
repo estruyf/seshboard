@@ -32,6 +32,8 @@ New session uses the width of the window, without scrolling: your projects on th
 - **Going now**: with the [focus limit](/focus-limit/) on, the sessions that count, such as "2 of 3".
 - **Defaults for &lt;project&gt;**: the profile, model and mode a session starts with, and where it works. **Edit in project settings** opens the project's [Settings tab](/projects/settings/).
 
+The three columns sit in the middle of the window, not at the top, so on a big screen you don't have to look up to use them.
+
 In a narrower window the right column moves under the message box, and in a narrow one everything is one column.
 
 ## Pick a project
@@ -93,8 +95,15 @@ The message box works the same as in a session, except that <Kbd keys="arrowup" 
 - <Kbd shortcut="composer.send" /> starts, <Kbd shortcut="composer.newline" /> adds a new line.
 - Type <Kbd shortcut="composer.commands" /> for commands and skills, <Kbd shortcut="composer.mention" /> to mention a file.
 - Paste, drop or attach images, and add files as context with <Kbd shortcut="composer.add-context" />, from the project or from anywhere on your computer with **Choose in <Os mac="Finder" windows="File Explorer" />…**. A long paste goes in a [Pasted card](/sessions/conversation/#pasted-text).
+- Click an attached image to see it full size before you start. <Kbd keys="arrowleft|arrowright" /> go through the others, <Kbd keys="mod+c" /> copies and <Kbd keys="mod+s" /> saves.
 
 The box takes the colour of the picked project, with a faint ring around it.
+
+### Attach a screenshot
+
+The camera next to **Attach images**, **Take a screenshot** (<Kbd shortcut="composer.screenshot" />), attaches a picture of part of your screen to your message. It works here and in a session's message box. Seshboard steps aside, and you pick an area <Os mac="as with Shift-Command-4" windows="with the Snipping Tool's picker" />. The picture is attached when you are done, and Esc in the picker leaves without one.
+
+On Linux, Seshboard uses GNOME Screenshot, Spectacle, Flameshot, or grim and slurp, whichever is installed.
 
 Under the message box sit the chips for the Claude profile (with more than one profile), the model, the effort and the permission mode. They show only the value, such as "Opus 4.5", "Medium" or "Auto". See [Model, effort and mode](/new-session/models-and-options/). On the right of that line you see your plan usage for the profile the session uses.
 
@@ -116,7 +125,7 @@ Prompts you write here and don't start are kept per project, also after you quit
 
 When something stops Start, its tooltip says why: "Type a message first", "Choose a folder first", or the focus limit.
 
-The session opens as soon as it starts. Claude Code was already warmed up in the folder while you typed, so the first reply comes quickly.
+The session opens as soon as it starts. Claude Code was already warmed up in the folder while you typed, so the first reply comes quickly. A session in a new worktree opens at once too, while git makes the worktree: see [Worktrees](/new-session/worktrees/#start-in-a-new-worktree).
 
 ## GitHub Copilot
 
@@ -125,6 +134,8 @@ With a [GitHub Copilot profile](/settings/other-agents/), pick it in New session
 ## Project defaults
 
 New session starts from the project's defaults: model, effort, permission mode, current checkout or worktree, what a worktree branches from, and a branch. Fields the project leaves unset use the [defaults of the session's Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), then Claude Code's own defaults. When neither the project nor the profile sets a permission mode, the session starts in **Global permission mode** from [Settings › General](/settings/#new-sessions), which can also remember the last one you picked.
+
+A profile, model, effort, permission mode or worktree you set by hand stays when you pick another project, over that project's defaults. A branch you picked stays with its own project.
 
 Change something in New session, and it applies to that prompt only: the next one starts from the project's defaults again (the permission mode too, unless it comes from **Remember last** in Settings › General). To keep it, open the **Where** menu (the route button in the strip) and choose **Save as project default**, or run *Save as project default* in the command palette. A line under the message box confirms it ("Saved as acme-store's defaults"). The menu item says **Saved** when the choices on screen already are the defaults.
 
@@ -162,15 +173,41 @@ Start then reads **Add to queue** (<Kbd shortcut="new-session.start" />): the pr
 
 ## Quick start, from any app
 
-Press <Kbd shortcut="quickstart.open" /> in any app to start a session without leaving what you're doing. A panel opens over it: what needs you on top, then your projects. Pick a project with <Kbd shortcut="quickstart.pick" /> or by typing its name, type the task and press <Kbd shortcut="quickstart.start" />. The session runs in the background and Seshboard doesn't come forward.
+Press <Kbd shortcut="quickstart.open" /> in any app to start a session without leaving what you're doing. A panel opens over it: **Actions** first, then the sessions that need you, your projects and **Quick question**. Pick a project with <Kbd shortcut="quickstart.pick" />, or with the arrow keys and <Kbd keys="enter" />, type the task and press <Kbd shortcut="quickstart.start" />. The session runs in the background and Seshboard doesn't come forward.
+
+Type to find anything in the panel. While you type, it shows one list of the actions, projects and **Quick question** that match, with the best match first and selected. Type `scree` and press <Kbd keys="enter" /> to take a screenshot, or type `quick` for **Quick question**.
 
 | Key | What it does |
 |---|---|
 | <Kbd shortcut="quickstart.start-open" /> | Starts it and opens Seshboard. |
 | <Kbd shortcut="quickstart.actions" /> | Shows the other actions: start in a new worktree, change the model, mode or profile, attach the clipboard, or add it to Later instead. |
-| <Kbd keys="escape" /> | Goes back one step: clears the task, goes out of a project or a list, then clears what you typed, then closes the panel. The panel opens empty each time. |
+| <Kbd shortcut="quickstart.screenshot" /> | Takes a screenshot and attaches it. |
+| <Kbd shortcut="quickstart.clear-images" /> | Removes all the images you attached. |
+| <Kbd keys="escape" /> | Goes back one step: clears the task, goes back to the list with the project's name still typed, then clears what you typed, then closes the panel. In a list of sessions, it goes back to the first screen. The panel opens empty each time. |
 
 Change the shortcut, or turn off starting in the background, in [Settings › General › Quick start](/settings/#quick-start).
+
+### Take a screenshot
+
+Choose **Take a screenshot** under **Actions**, or press <Kbd shortcut="quickstart.screenshot" /> anywhere in the panel. Pick an area of the screen <Os mac="as with the macOS screenshot keys, or press Space for a window" windows="with the Snipping Tool's picker" />. The panel comes back with the picture attached and the first project selected, so you pick the project, ask your question and start. The picture goes on the clipboard too.
+
+- **Take another screenshot** adds more to the same task.
+- **Remove all images** (<Kbd shortcut="quickstart.clear-images" />) empties them, and **×** on an image removes just that one.
+- Click an image to see it full size before you start.
+- <Kbd keys="escape" /> in the picker brings the panel back without a picture.
+
+<Os mac="If Seshboard has no Screen Recording permission yet, the panel says so, and Open Settings opens the setting." windows="" /> On Linux, Seshboard uses the first screenshot tool it finds, such as GNOME Screenshot, Spectacle or Flameshot.
+
+### Get around
+
+**Actions** also has these, to get to your sessions without opening Seshboard first:
+
+- **Open Seshboard** brings its window to the front.
+- **Open the last session** opens the session you used last.
+- **Working sessions** lists the sessions Claude is working on.
+- **Sessions to review** lists the sessions that finished and wait for you to read them.
+
+In **Working sessions** and **Sessions to review**, type to find a session and press <Kbd keys="enter" /> to open it, or <Kbd keys="escape" /> to go back.
 
 ## Start from the palette
 

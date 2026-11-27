@@ -39,6 +39,8 @@ A folder that isn't a git repository can't have a worktree: the switch is greyed
 
 The worktree goes in `.claude/worktrees/<name>` inside the project, on a new branch `worktree-<name>`. Hover the route for where it will be: "Isolated in .claude/worktrees/amber-baking-acorn · your checkout stays untouched".
 
+The session opens at once, with your message, and says **Making the worktree…** while git fetches the branch and makes the worktree. Claude starts once the worktree is there. New session already fetches the branch while you write the prompt, so the worktree is ready sooner. If git can't make the worktree, the session says why and your prompt goes back in the message box.
+
 ### From another branch
 
 Claude Code only starts a worktree from the remote's default branch or your local HEAD. For any other branch, Seshboard makes the worktree itself, in the same folder and with the same branch name, and then starts Claude in it:

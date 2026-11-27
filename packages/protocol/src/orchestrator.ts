@@ -181,7 +181,7 @@ export function sessionStartPromptText(agent: string, ask: SessionStartAsk): { t
   if (ask.computer) {
     return {
       title: `${agent} wants to start a session on ${ask.computer}: ${ask.project ?? ask.title}`,
-      description: `"${ask.title}" runs there${who}${where}, with that computer’s limits. It does not show under this session. Its prompt is in the details.`,
+      description: `"${ask.title}" runs there${who}${where}, with that computer’s limits, under this session in the sidebar. Its prompt is in the details.`,
       alwaysLabel: null,
     };
   }

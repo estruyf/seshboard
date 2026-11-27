@@ -1,0 +1,96 @@
+---
+title: Seshboard tools in sessions
+description: Ask a session to set up a pipeline, a trigger or a schedule, start a session here or on another computer, or wait for your usage limit. Each save or start asks you first.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+Every session Seshboard runs can use Seshboard itself. Ask it, in your own words, and it does what you would otherwise click through yourself:
+
+- "Plan with Opus, build with Sonnet, review with a fresh Opus, then open a draft pull request." It saves that [pipeline](/sessions/pipelines/).
+- "When an issue gets the bug label and is assigned to me, run it." It saves that [trigger](/projects/triggers/).
+- "Every weekday at 08:00, review yesterday's open pull requests." It saves that [schedule](/new-session/schedules/).
+- "Run the Windows smoke on the Windows box." It starts a session on [another computer](/other-computers/).
+
+Reading never asks. Anything that saves, starts, runs or deletes asks you first, on a card in the session, in every permission mode.
+
+It works with Claude Code, GitHub Copilot, OpenAI Codex and Antigravity. A read-only session doesn't get the tools. An [orchestrator](/sessions/orchestrator/) has tools of its own.
+
+## The card
+
+When a session wants to save something, a card shows in the session, as a [permission card](/permissions/) does. The session shows **Needs you** until you answer.
+
+- **The title** says what and which, such as *Claude Code wants to save a pipeline: "Plan, build, review"*. The card says which project.
+- **What it saves**, line by line. A pipeline shows each step with its model and mode.
+- **Every prompt and command in full**, never cut: a step's prompt, a trigger's prompt, an action's command.
+- **Choices that let work go on without you** are on their own lines, unticked: **Open the pull request without me**, **Approve Plan's plan for me** (with the step's name), **Run without stopping for me**, **Keep state labels on GitHub**, **Assign the issue to me when it starts** and **Take issues and pull requests from anyone**. Only what the session asked for shows. What you leave unticked is saved off.
+- **Start watching now** shows for a new trigger. Unticked, the trigger is saved paused. Resume it on the [Triggers tab](/projects/triggers/#the-triggers-tab).
+
+Then pick one:
+
+- **Save** (or **Run**, **Delete**, **Remove**, as the card says) does it, with what you ticked. <Kbd shortcut="permission.allow" /> picks it.
+- **Open in editor** opens the pipeline editor, the trigger editor, the schedule dialog or the action editor, filled in from the card. Change what you like and save there; the session hears what you saved. Close the editor to say no. It starts with the unticked choices off, so turning one on is your own edit.
+- **Deny** saves nothing. Type in the field under it to tell the session what to do instead.
+
+A session can never save a pipeline step, a trigger or a schedule with **Bypass permissions**.
+
+<Aside>
+The card is answered in Seshboard on the computer that runs the session. Your phone, [another computer](/other-computers/) and the VS Code companion show that the session needs you, but not the card.
+</Aside>
+
+## Set up automation
+
+With **With automation** in the project's [Seshboard tools in sessions](/projects/settings/#seshboard-tools-in-sessions), the default, a session can:
+
+- **Pipelines:** list the project's pipelines, check a draft as the editor does, save a new one or change one of yours, and run one with a task, under this session or as a run row of its own. Built-in pipelines are only copied, never changed.
+- **Triggers:** read what a trigger needs from GitHub (your `gh` login, the default branch, the workflows, the labels and the collaborators), check a draft, save it, and **Check now**.
+- **Schedules:** save one and **Run now**.
+- **Project actions:** save one, its command in full, and run one such as Test. A command action runs in a terminal tab you see, in the session's folder, and the session reads its exit code and the end of its output. The first run asks; after that, the session runs the same action again without asking.
+- **Pause, resume and delete** a trigger or a schedule, and delete a pipeline, trigger, schedule or project action of yours. You can undo a delete from its list right after.
+- **Clean up worktrees:** remove the project's worktrees whose branches are merged, with nothing uncommitted and no session working in them. The card lists each one with its folder. Their branches are deleted too, and Git keeps a recovery ref to get each branch back. See also the [Worktrees tab](/projects/worktrees/).
+
+A session sets up its own project. When you name another project of yours, it can read that project's pipelines, triggers, schedules and actions too.
+
+## Start a session
+
+Ask a session to start another one for a separate task, such as a fix it noticed on the way. The card says *Claude Code wants to start a session*, with the title, where it runs and its prompt, and has **Allow** and **Deny**. The new session runs in its own worktree, under the session that asked in the sidebar.
+
+### On another computer
+
+Ask a session to run a task on a computer you paired in **Settings › Remote › Other computers**, such as "run the Windows smoke on the Windows box". The session can see which paired computers are connected and which have the project.
+
+- The project there is found by its GitHub repository, so its folder can differ from yours.
+- When that computer doesn't have the project, the card offers to clone it there first. This needs [Clone from GitHub](/projects/clone-from-github/#on-another-computer) on there.
+- The card names the computer, such as *Claude Code wants to start a session on mystic: seshboard*.
+- The session runs with that computer's [focus limit](/focus-limit/) and usage limits, and shows under the session that asked in your sidebar.
+
+An orchestrator spreads its tasks across computers the same way. See [Other computers](/other-computers/).
+
+## More help
+
+These come with every session, also with **Start sessions**:
+
+| Ask it to | What happens |
+|---|---|
+| Check your usage | It reads how much of your 5-hour and weekly limits is left, and whether a limit stops sessions now. It can pick a smaller model, or wait. |
+| Start a task later | After the usage limit resets, the task waits in the [queue](/new-session/queue/) and starts by itself. At a time you name, it becomes a one-time [schedule](/new-session/schedules/). The card has **Queue it** or **Schedule it**. |
+| Find an earlier session | It searches this project's sessions by words, and reads one: its branch, pull request, what it was asked, what it did and its last reply. Only sessions of the same project. |
+| Notify your phone | It sends a notification to your paired phone when a long task ends or needs a decision. At most one a minute and ten an hour per session. See [Remote on your phone](/remote-access/#notifications). |
+| Hand off | When its context is nearly full, it goes on in a fresh session in the same folder, with a brief of what is done and what is left, and a link back. The card has **Start it**. The new session shows under this one. |
+
+## Pick the tools for a project
+
+A project's [Settings tab](/projects/settings/#seshboard-tools-in-sessions) has **Seshboard tools in sessions**:
+
+- **With automation** (the default): everything on this page.
+- **Start sessions**: starting sessions, here or on another computer, starting later, reading other sessions and notifying you. It leaves out pipelines, triggers, schedules, project actions and worktrees.
+
+Fewer tools leave more room in the context for agents without tool search. The choice applies to sessions started from then on.
+
+## Related
+
+<Related pages={['sessions/pipelines', 'projects/triggers', 'new-session/schedules', 'projects/actions', 'sessions/orchestrator', 'other-computers']} />

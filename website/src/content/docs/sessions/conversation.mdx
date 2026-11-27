@@ -27,12 +27,12 @@ The header shows the title, the [state](/sessions/states/), the project and the 
 
 Type in the message box and press <Kbd shortcut="composer.send" />. <Kbd shortcut="composer.newline" /> starts a new line. In a list (`- `, `* ` or `1. `) it starts the next item, numbered one up; on an empty item it ends the list.
 
-- **Commands and skills:** type <Kbd shortcut="composer.commands" /> at the start of the message for your commands and skills, your own included.
+- **Commands and skills:** type <Kbd shortcut="composer.commands" /> at the start of the message for your commands and skills, your own included. A command the session knows, such as `/design`, shows in the accent colour, so you can tell it from the prompt that goes with it. A path such as `/tmp` stays as it is.
 - **Ask about this session:** the **Ask** button next to **Send** (or `/btw` and a question) asks Claude about the session in a panel on the right, without adding it to the conversation, also while Claude works. See [Ask about this session](/sessions/ask/).
 - **Mention a file or a session:** type <Kbd shortcut="composer.mention" /> and pick a file from the list, or another session to [link it](/sessions/linking/): Claude then gets its branch, pull request, what it did and its last reply.
 - **Code:** select text and type <Kbd keys="`" /> to wrap it as code: one line as `inline code`, several lines in a code block.
 - **Earlier messages:** <Kbd shortcut="composer.history" /> at the start of your text brings back what you sent before in this session. It only shows the session's own messages, and doesn't work in New session. On the first line, the first <Kbd keys="arrowup" /> takes the caret to the start, and the next one brings the message back. Esc goes back to what you were typing.
-- **Images:** paste them, drop them on the session, or click the image button under the message box. Images Claude reads or you attach show in the conversation.
+- **Images:** paste them, drop them on the session, or click **Attach images** under the message box. The camera next to it, **Take a screenshot** (<Kbd shortcut="composer.screenshot" />), attaches a picture of part of your screen: see [Take a screenshot](/new-session/form/#attach-a-screenshot). Click an attached image to see it full size before you send, in the same viewer as the conversation's images: <Kbd keys="arrowleft|arrowright" /> go through the others, <Kbd keys="mod+c" /> copies and <Kbd keys="mod+s" /> saves. Images Claude reads or you attach show in the conversation.
 - **Right-click:** right-click in the message box, on the New session page too, for **Cut**, **Copy**, **Paste** and **Select all**. **Paste** also attaches an image on the clipboard.
 
 ### Context
@@ -55,6 +55,16 @@ When you paste a long text (more than 2,000 characters or 25 lines), it goes in 
 
 A message holds up to 1,000,000 characters. For a larger file, drop the file on the message box instead: Claude reads the parts it needs from disk.
 
+### Suggested replies
+
+When Claude ends a turn with something like "say go" or "should I run the tests?", the message box offers the reply Claude Code expects, such as **go**, as a button above the box.
+
+- Click it to send it.
+- Press <Kbd shortcut="composer.take-reply" /> to put it in the box, so you can change it first.
+- Typing anything hides it.
+
+It shows only in an empty box, after a turn, and works on your [phone](/remote-access/) too. It is only for Claude Code sessions. Claude Code doesn't suggest a reply on the first turn, in plan mode or near your usage limit. To hide it, turn off **Suggested replies** in [Settings, Conversation](/settings/#conversation).
+
 ### While Claude works
 
 Replies stream in as Claude writes them. At the bottom of the conversation, the view follows the reply as it grows. Scroll up to read and it stays where you are; **New output below** takes you back to the end, which follows again (so does scrolling all the way down). When Claude is done, the button says **Jump to latest**.
@@ -69,7 +79,7 @@ You can keep typing while it works. What <Kbd keys="enter" /> does is your choic
 The send button says **Queue** or **Steer** to match. Its ▾ menu has both, plus **Send now**. <Kbd shortcut="composer.send-other" /> does the one Enter doesn't.
 
 - **Send now:** <Kbd shortcut="composer.send-now" />, or **Send now** in the ▾ menu, stops what Claude is doing and sends your message right away.
-- **Stop:** press <Kbd shortcut="claude.stop" /> or click **Stop** to stop Claude. Esc doesn't stop Claude while a dialog, menu or list is open.
+- **Stop:** press Esc twice in the message box (<Kbd shortcut="claude.stop" />), or click **Stop**. The first Esc says "Press Esc again to stop", with the agent's name, and a second one within two seconds stops it. A stray Esc doesn't stop a turn. To stop with one Esc, turn off **Press Esc twice to stop** in [Settings, Conversation](/settings/#conversation). **Stop** always stops at once. It works the same for Claude, Copilot and Codex. Esc doesn't stop the agent while a dialog, menu or list is open.
 
 ### Up next
 
@@ -140,6 +150,19 @@ In a narrow pane the line drops the tokens first, then the duration. To change w
 ## Questions Claude asked
 
 When Claude asks you a question, the question and what you answered stay in the conversation after you answer, with the options you picked marked and anything you typed yourself.
+
+## Messages from other sessions
+
+When another Claude Code session sends a message to this one, the conversation shows it on the left in a dashed box, with **From another session** and the sender's name over it. You see only what the other session wrote, not Claude Code's guidance around it. Your phone, [search](/sessions/search/) and the [catch-up](/sessions/catch-up/) show it the same way. <Kbd shortcut="composer.history" /> in the message box skips it, since you didn't write it.
+
+## Sessions that start sessions
+
+Ask a session to start a new session for a separate task, or let it offer one for a fix it noticed on the way. A card in the session asks you first, in every permission mode:
+
+- **Allow** starts the new session in its own worktree. It shows under the session that asked in the [sidebar](/sessions/sidebar/), right away, while it starts.
+- **Deny** starts nothing.
+
+It works with Claude Code, Copilot, Codex and Antigravity. The [focus limit](/focus-limit/) and your usage limits apply as for any session: when one holds it, it waits in the [queue](/new-session/queue/).
 
 ## Go back to a prompt
 
@@ -236,7 +259,7 @@ Hover over a message for its toolbar:
   - **Copy as rich text.** Copies the reply as it looks, to paste into an email, a document, Slack or Notion with its headings, lists, bold, links, code and tables. A field that takes only plain text gets the Markdown. Links to files in the project paste as their text.
 - **On both:** **Remember this…** (the brain button) saves the message as a memory. See [Remember this](/memory/adding-memory/#remember-this).
 
-You can also select text in any message and press <Kbd keys="mod+c" />. It pastes with its formatting but without the theme's colours: see [Copy from a reply](/sessions/replies/#copy-from-a-reply). A toolbar shows above the selection with **Quote**, **Copy** and **Remember this…**. Press <Kbd keys="tab" /> to reach it from the keyboard, <Kbd keys="arrowleft|arrowright" /> to move between its buttons, and <Kbd keys="escape" /> to close it. The command palette has *Fork session…* and *Rewind to a message…* to pick a message from a list, and *Copy last reply*.
+You can also select text in any message and press <Kbd keys="mod+c" />. It pastes with its formatting but without the theme's colours: see [Copy from a reply](/sessions/replies/#copy-from-a-reply). A toolbar shows above the selection with **Quote**, **Copy**, **Start session** and **Remember this…**. Press <Kbd keys="tab" /> to reach it from the keyboard, <Kbd keys="arrowleft|arrowright" /> to move between its buttons, and <Kbd keys="escape" /> to close it. The command palette has *Fork session…* and *Rewind to a message…* to pick a message from a list, and *Copy last reply*.
 
 To save part of a message as a memory, select it and click **Remember this**, or right-click it and choose **Remember this…**.
 
@@ -245,6 +268,10 @@ To copy a link from a message, right-click it and choose **Copy link**.
 ### Quote in reply
 
 When Claude asks you something, you can answer each question under a quote of it. Select the text in a message and click **Quote**, or right-click it and choose **Quote** (**Quote message** without a selection, for the whole message). It goes at the end of the message box as a Markdown quote, `> ` before each line, with the cursor under it so you can type your answer. Quote the next question the same way and it lands after your answer. *Quote in reply* in the command palette quotes the selected text, or Claude's last reply when nothing is selected.
+
+### Start a session from a reply
+
+Select text in a message and click **Start session** over it, or right-click and choose **Start session from this** (**Start session from message** without a selection). [New session](/new-session/form/) opens in the same project, in a new worktree, with the text as the prompt and a [link](/sessions/linking/) to this session. Nothing starts until you press **Start**. Once started, the new session goes under this one in the [sidebar](/sessions/sidebar/).
 
 ## Continue a past session
 
@@ -305,6 +332,8 @@ Click the **×** in the header (or *Close session* in the command palette) to go
 - [Settings, Conversation](/settings/#conversation): **Summarised** (the default) shows each run of tool calls as one line; **Every step** shows each tool call as its own card.
 - **Conversation view**: **Skim** (the default) or **Full**, and **Let the agent mark its key sentences**. See [Skim](/sessions/skim/).
 - **Show prompt outline** (on by default) shows the rail of your prompts beside the conversation.
+- **Press Esc twice to stop** (on by default): the first Esc only asks you to press it again. Off, one Esc stops the agent.
+- **Suggested replies** (on by default) offers the reply Claude Code expects after a turn. See [Suggested replies](#suggested-replies).
 - **Under each reply** sets the line under each turn: **Nothing**, **Time**, **Time and duration** (the default) or **Time, duration and tokens**.
 - Each project's defaults for model, effort and mode are on its [Settings tab](/projects/settings/).
 
