@@ -18,7 +18,13 @@ import { formatBytes, frameSize, imageFacts, stepIndex, type ImageVariant, type 
 const cache = new Map<string, Promise<string>>();
 const CACHE_SIZE = 60;
 
-function useImage(sessionId: string, ref: ImageRef): { url: string | null; failed: boolean } {
+/**
+ * An image the lightbox can show: one from the transcript (fetched by its id) or one already in memory, such as
+ * an image attached to the message box (`url`, a data URL, with `fileName` to suggest when saving it).
+ */
+export type LightboxImage = ImageRef & { url?: string; fileName?: string };
+
+function useImage(sessionId: string, ref: LightboxImage): { url: string | null; failed: boolean } {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const key = `${sessionId}|${ref.imageId}`;
@@ -26,7 +32,7 @@ function useImage(sessionId: string, ref: ImageRef): { url: string | null; faile
   const [state, setState] = useState<{ key: string; url: string | null; failed: boolean }>({ key, url: null, failed: false });
 
   useEffect(() => {
-    if (!client) return;
+    if (!client || ref.url) return;
     let cancelled = false;
     let pending = cache.get(key);
     if (!pending) {
@@ -42,18 +48,19 @@ function useImage(sessionId: string, ref: ImageRef): { url: string | null; faile
     return () => {
       cancelled = true;
     };
-  }, [client, key, sessionId, ref.imageId]);
+  }, [client, key, sessionId, ref.imageId, ref.url]);
 
+  if (ref.url) return { url: ref.url, failed: false };
   return state.key === key ? state : { url: null, failed: false };
 }
 
 /** Asks where to save an image (a data URL) and writes it there; a toast says where it went. */
-async function saveImage(url: string, imageId: string) {
-  const image = parseDataUrl(url);
+async function saveImage(url: string, image: LightboxImage) {
+  const parsed = parseDataUrl(url);
   const bridge = window.seshboard;
-  if (!image || !bridge) return;
+  if (!parsed || !bridge) return;
   try {
-    const path = await bridge.saveImage({ ...image, fileName: imageFileName(imageId, image.mediaType) });
+    const path = await bridge.saveImage({ ...parsed, fileName: image.fileName ?? imageFileName(image.imageId, parsed.mediaType) });
     if (!path) return;
     toast('Image saved', {
       body: basename(path),
@@ -91,7 +98,7 @@ const describe = (image: ImageRef) => `${image.mediaType.replace(/^image\//, '')
 const knownSize = (image: ImageRef): Size | null => (image.width && image.height ? { width: image.width, height: image.height } : null);
 
 /** One image in the lightbox's filmstrip. */
-function FilmstripThumb({ sessionId, image, index, count, current, onSelect }: { sessionId: string; image: ImageRef; index: number; count: number; current: boolean; onSelect(): void }) {
+function FilmstripThumb({ sessionId, image, index, count, current, onSelect }: { sessionId: string; image: LightboxImage; index: number; count: number; current: boolean; onSelect(): void }) {
   const { url } = useImage(sessionId, image);
   const ref = useRef<HTMLButtonElement>(null);
   // A long reply's strip scrolls, so the one showing stays in view as ← → move on.
@@ -116,9 +123,9 @@ function FilmstripThumb({ sessionId, image, index, count, current, onSelect }: {
 /**
  * A message's or a reply's images full size: ← → (or the chevrons and the filmstrip) step through them, ⌘C copies
  * the one showing, ⌘S saves it (both are in its context menu too) and Esc closes. Focus stays inside, and goes back
- * to `returnFocus` on close.
+ * to `returnFocus` on close. Images with a `url` need no session (`sessionId` can be empty).
  */
-function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionId: string; images: ImageRef[]; start: number; returnFocus: RefObject<HTMLElement | null>; onClose(): void }) {
+export function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionId: string; images: LightboxImage[]; start: number; returnFocus: RefObject<HTMLElement | null>; onClose(): void }) {
   const ref = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const [index, setIndex] = useState(start);
@@ -127,7 +134,7 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
   const { url } = useImage(sessionId, image);
   const many = images.length > 1;
   const description = describe(image);
-  const save = () => url && void saveImage(url, image.imageId);
+  const save = () => url && void saveImage(url, image);
   const copy = () => url && void copyImage(url);
   const openMenu = (pointer: { x: number; y: number } | null) => {
     const rect = imageRef.current?.getBoundingClientRect();
@@ -181,7 +188,7 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
       data-lightbox-index={index}
     >
       <div className="flex w-full items-start justify-between gap-3">
-        {/* The traffic lights stay on top of the lightbox; they end 68px in, so the label starts after them (as SidebarToggle does). */}
+        {/* The traffic lights stay on top of the lightbox; they end 68px in, so the label starts after them. */}
         <span className="overlay ml-17 rounded-lg px-2.5 py-1.5 text-ui text-muted" aria-live="polite" onClick={stop} data-lightbox-label>
           {many ? `${index + 1} / ${images.length} · ${facts}` : facts}
         </span>
@@ -192,7 +199,7 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
           <Button variant="quiet" icon={<Download size={14} />} kbd="⌘S" onClick={save} disabled={!url} data-lightbox-save>
             Save
           </Button>
-          <Button variant="quiet" iconOnly aria-label="Close" kbd="Esc" icon={<X size={16} />} onClick={close} />
+          <Button variant="quiet" iconOnly aria-label="Close" kbd="Esc" icon={<X size={15} aria-hidden />} onClick={close} />
         </span>
       </div>
       <div className={`relative flex min-h-0 w-full flex-1 items-center justify-center ${many ? 'px-14' : ''}`}>
@@ -266,7 +273,7 @@ export function TranscriptImage({ sessionId, image, variant = 'single', gallery,
   // Shrinks with the column, keeping its shape; the loading placeholder has the same frame, so nothing jumps.
   const frameStyle = { width: frame.width, aspectRatio: `${frame.width} / ${frame.height}`, maxWidth: '100%' };
   const description = describe(image);
-  const save = () => url && void saveImage(url, image.imageId);
+  const save = () => url && void saveImage(url, image);
   if (failed) {
     return (
       <span

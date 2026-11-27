@@ -17,6 +17,8 @@ const DOWNLOAD_NAME = `smoke-download-with-a-name-long-enough-to-be-cut-${'long-
 const DOWNLOAD_TEXT = 'Saved by the smoke run.';
 /** The download's response, held open until the step has checked its Downloading toast. */
 let heldDownload: ServerResponse | null = null;
+/** The responses of `/slow`, which never answers until "browser stop" ends them: a page that is still loading. */
+const heldSlow: ServerResponse[] = [];
 
 const PAGES: Record<string, string> = {
   // Broken icons around the real one: the tab still gets it, whichever the page reports first.
@@ -25,6 +27,7 @@ const PAGES: Record<string, string> = {
   '/long': `<title>Smoke browser long ${'title '.repeat(40)}</title><h1>Long</h1>`,
   // A click that reaches the button marks the body: a pick must keep it from the page.
   '/profile': '<title>Smoke profile</title><h1>Profile</h1>',
+  '/from-link': '<title>Smoke from a link</title><h1>From a link</h1>',
   '/download': `<title>Smoke download</title><a id=file href=/file/${DOWNLOAD_NAME}>File</a>`,
   '/pick': '<title>Smoke pick</title><main><h1 id=heading>Pick me</h1><p id=words>Some words to quote here.</p><button class="cta" data-testid=buy onclick="document.body.dataset.clicked=1">Buy now</button></main>',
 };
@@ -53,6 +56,8 @@ export interface BrowserSmokeDeps {
   reload(): void;
   /** Where pages' downloads go in a smoke run (a folder in the throwaway profile). */
   downloadsDir: string;
+  /** Opens a `seshboard://` link as macOS hands one over (main's `openDeepLink`). */
+  openLink?(url: string): void;
 }
 
 let server: Server | null = null;
@@ -73,6 +78,10 @@ async function site(): Promise<string> {
       response.writeHead(200, { 'content-type': 'application/octet-stream', 'x-content-type-options': 'nosniff', 'content-disposition': `attachment; filename="${DOWNLOAD_NAME}"`, 'content-length': String(DOWNLOAD_TEXT.length) });
       response.write(DOWNLOAD_TEXT.slice(0, 8));
       heldDownload = response;
+      return;
+    }
+    if (request.url === '/slow') {
+      heldSlow.push(response);
       return;
     }
     const raw = RAW[request.url ?? ''];
@@ -100,7 +109,8 @@ const q = (selector: string) => `document.querySelector(${JSON.stringify(selecto
 /**
  * "browser view": Browser in the sidebar's views shows the Browser view with its tabs listed, without the search row and
  * without an address bar until a tab is open; Open tab gives one; the local page loads there, and its title and favicon
- * show in the list. Dragging a tab moves it, and so does ⌥↓. A middle click closes the tab and ⌘⇧T brings it back.
+ * show in the list. Dragging a tab moves it, and so does ⌥↓. A middle click closes the tab and ⌘⇧T brings it back. Under
+ * the tabs, Browser profiles, which opens Settings › Browser at the profiles.
  */
 export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -108,15 +118,20 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   deps.setBrowser(true);
   if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
   for (const nav of ['home', 'upcoming', 'activity']) if (!(await js(`!!${q(`[data-nav="${nav}"]`)}`))) return `no ${nav} icon in the sidebar's views`;
-  // "browser intro" may have opened it already; Browser again would go back to the sessions.
+  // "browser intro" may have opened it already.
   if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'Browser did not show the Browser view and its tab list';
+  // A second click on the nav rail's Browser closes the panel and keeps the Browser view; a third opens it on the tabs.
+  await js(`${q('[data-nav="browser"]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-sidebar]')}?.dataset.sidebarState === 'closed' && ${q('[data-browser-view]')}`, 3_000))) return 'a second click on Browser did not close the panel and keep the Browser view';
+  await js(`${q('[data-nav="browser"]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-sidebar]')}?.dataset.sidebarState === 'open' && ${q('[data-browser-tab-list]')}`, 3_000))) return 'a third click on Browser did not open the panel on its tabs';
   if (!(await js(`!!${q('[data-browser-view] [data-browser-empty]')} || !!${q('[data-browser-view] [data-web-preview-slot]')}`))) return 'the Browser view shows neither a page nor its empty state';
   if (await js(`!!${q('[data-browser-view] [data-browser-empty]')} && !!${q('[data-browser-view] [data-browser-address]')}`)) return 'the empty Browser view shows an address bar';
-  if (await js(`!!${q('[data-new-session]')}?.checkVisibility()`)) return 'the Browser tab list still shows New session and the search';
-  // Under the tabs only Settings: no Done, no session count, no Projects.
-  if (!(await js(`!!${q('[data-open-settings]')}?.checkVisibility()`))) return 'the Browser tab list has no Settings button';
-  for (const hook of ['data-footer-sessions', 'data-archived-dock', 'data-open-projects']) if (await js(`!!${q(`[${hook}]`)}?.checkVisibility()`)) return `the Browser tab list still shows ${hook}`;
+  if (await js(`!!${q('[data-sidebar-open] [data-filter-toggle]')}?.checkVisibility()`)) return 'the Browser tab list still shows the session filter';
+  // Under the tabs only Browser profiles (Projects and Settings are on the nav rail): no Done, no session count.
+  for (const hook of ['data-open-browser-profiles']) if (!(await js(`!!${q(`[${hook}]`)}?.checkVisibility()`))) return `the Browser tab list has no ${hook} button`;
+  for (const hook of ['data-footer-sessions', 'data-archived-dock']) if (await js(`!!${q(`[${hook}]`)}?.checkVisibility()`)) return `the Browser tab list still shows ${hook}`;
   await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
   if (!(await waitInPage(win, `${q('[data-browser-view] [data-browser-address]')} && !${q('[data-browser-view] [data-browser-address]')}.disabled`, 3_000))) return 'Open tab gave no address bar';
   await setFieldValue(win, '[data-browser-view] [data-browser-address]', url.replace('http://', ''));
@@ -178,7 +193,12 @@ export async function runBrowserViewStep(win: BrowserWindow, deps: BrowserSmokeD
   if (!(await waitInPage(win, `${listed} && ${q('[data-browser-view] [data-browser-address]')}`, 3_000))) return '⌘⇧T did not reopen the closed tab';
   if (await js(`!!${q('[data-activity]')}`)) return '⌘⇧T opened Activity in the Browser view';
   if (!(await until(() => pageWithTitle('Smoke browser') !== undefined, 10_000))) return 'the reopened tab did not load its page';
-  return `ok: ${url} opened in a Browser tab with Copy address in its bar, its title and favicon in the list, moved by a drag and ⌥↓, closed with a middle click and reopened with ⌘⇧T`;
+  // Browser profiles under the tabs opens Settings › Browser at its profiles; Settings again goes back to the tabs.
+  await js(`${q('[data-open-browser-profiles]')}.click()`);
+  if (!(await waitInPage(win, `document.activeElement?.matches('[data-settings-page="browser"] [data-new-browser-profile]')`, 3_000))) return 'Browser profiles did not open Settings › Browser at its profiles';
+  await js(`${q('[data-open-settings]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${q('[data-browser-tab-list]')}`, 3_000))) return 'closing Settings did not go back to the Browser view and its tabs';
+  return `ok: ${url} opened in a Browser tab with Copy address in its bar, its title and favicon in the list, moved by a drag and ⌥↓, closed with a middle click and reopened with ⌘⇧T, and Browser profiles opened Settings at the profiles`;
 }
 
 /**
@@ -963,6 +983,46 @@ export async function runBrowserOutsideLinkStep(win: BrowserWindow, deps: Browse
 }
 
 /**
+ * "browser link": `seshboard://open?url=…` (what LinkLane sends) opens the page in a tab of the Browser view, and the
+ * same link again brings that tab forward instead of a second one. A file: address is refused, and with the browser off
+ * the link says where to turn it on. Leaves the browser on, with the tab closed.
+ */
+export async function runBrowserLinkStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!deps.openLink) return 'no way to open a link';
+  const page = `${await site()}from-link`;
+  const link = `seshboard://open?url=${encodeURIComponent(page)}`;
+  const rows = `[...document.querySelectorAll('[data-browser-tab-list] [data-browser-tab]')].filter((t) => t.textContent.includes('Smoke from a link'))`;
+  const error = q('[data-link-error]');
+  const dismiss = async () => {
+    await js(`${error}?.querySelector('button')?.click()`);
+    await waitInPage(win, `!${error}`, 2_000);
+  };
+  deps.setBrowser(true);
+  await dismiss();
+  deps.openLink(link);
+  if (!(await until(() => pageWithTitle('Smoke from a link') !== undefined, 10_000))) return 'the link did not load its page';
+  // The panel may show another list beside the Browser view (Sessions picked there): Browser on the nav rail shows its tabs.
+  if (!(await waitInPage(win, q('[data-browser-tab-list]'), 1_000))) await js(`${q('[data-nav="browser"]')}?.click()`);
+  if (!(await waitInPage(win, `${q('[data-browser-view]')} && ${rows}.length === 1`, 3_000))) return `the page is not a tab of the Browser view (${String(await js(`${rows}.length`))} tabs)`;
+  deps.openLink(link);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if ((await js(`${rows}.length`)) !== 1) return 'the same link again opened a second tab';
+  deps.openLink(`seshboard://open?url=${encodeURIComponent('file:///etc/hosts')}`);
+  if (!(await waitInPage(win, `${error}?.innerText.includes('http and https')`, 3_000))) return 'a file: address showed no error';
+  await dismiss();
+  deps.setBrowser(false);
+  deps.openLink(link);
+  const off = await waitInPage(win, `${error}?.innerText.includes('Turn on Allow browser')`, 3_000);
+  await dismiss();
+  deps.setBrowser(true);
+  if (!off) return 'with the browser off the link showed no error';
+  await js(`${rows}[0]?.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
+  if (!(await waitInPage(win, `${rows}.length === 0`, 3_000))) return 'could not close the tab the link opened';
+  return 'ok: a link opened its page in the Browser view, again brought the same tab forward, refused file: and said to turn the browser on';
+}
+
+/**
  * "browser download": a link to a file saves it in the Downloads folder (the profile's, in a smoke run). While it runs,
  * a toast says so, its long name cut, and Show all shows the whole name. Once done, a toast offers to show the file.
  */
@@ -995,6 +1055,36 @@ export async function runBrowserDownloadStep(win: BrowserWindow, deps: BrowserSm
   if (!existsSync(file) || readFileSync(file, 'utf8') !== DOWNLOAD_TEXT) return `the file is not in the Downloads folder as it was sent (${file})`;
   await js(`${done}.querySelector('[data-toast-close]')?.click()`);
   return 'ok: the file saved in the Downloads folder, its long name cut and shown in full, Show in Finder offered';
+}
+
+/**
+ * "browser stop": the ✕ next to the address stops a new tab's first load, a page that hasn't answered yet (so has no
+ * `dom-ready`), and gives Reload back. The tab is closed after.
+ */
+export async function runBrowserStopStep(win: BrowserWindow, deps: BrowserSmokeDeps): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const url = await site();
+  const address = '[data-browser-view] [data-browser-address]';
+  deps.setBrowser(true);
+  if (!(await waitInPage(win, q('[data-nav="browser"]'), 3_000))) return 'no Browser icon in the sidebar with the browser on';
+  if (!(await js(`!!${q('[data-browser-tab-list]')}`))) await js(`${q('[data-nav="browser"]')}.click()`);
+  if (!(await waitInPage(win, q('[data-browser-tab-list] [data-browser-open-tab]'), 3_000))) return 'no Browser view';
+  await js(`${q('[data-browser-tab-list] [data-browser-open-tab]')}.click()`);
+  if (!(await waitInPage(win, `${q(address)} && !${q(address)}.disabled`, 3_000))) return 'Open tab gave no address bar';
+  await setFieldValue(win, address, `${url.replace('http://', '')}slow`);
+  await js(`${q(address)}.form.requestSubmit()`);
+  const stop = q('[data-browser-view] [data-web-preview-stop]');
+  try {
+    if (!(await waitInPage(win, stop, 5_000))) return 'no Stop loading button while the page loads';
+    if (!(await until(() => heldSlow.length > 0, 5_000))) return 'the page did not reach the server';
+    await js(`${stop}.click()`);
+    if (!(await waitInPage(win, `!${stop} && ${q('[data-browser-view] [data-web-preview-reload]')}`, 3_000))) return 'Stop loading did not stop the first load: the page is still loading';
+  } finally {
+    for (const response of heldSlow.splice(0)) response.destroy();
+    // The tab in front is the one this step opened.
+    await js(`${q('[data-browser-tab-list] [data-browser-tab][aria-current="page"]')}?.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))`);
+  }
+  return 'ok: Stop loading stopped a first load that had not answered, and Reload came back';
 }
 
 /**

@@ -1,4 +1,6 @@
 import { Bot, ScrollText } from 'lucide-react';
+import { useThemes } from '../../state/themeStore.ts';
+import { languageFromPath } from '../../lib/highlight.ts';
 import { useContext } from 'react';
 import { openAgents } from '../../state/agentsPanelStore.ts';
 import { openCommands } from '../../state/commandsPanelStore.ts';
@@ -37,7 +39,14 @@ export function ToolImages({ item, sessionId }: { item: ToolItem; sessionId: str
  * What a tool did, in full: a subagent's run, or the input and output.
  * `withDiffAndImages` adds the diff and images, which tool cards already show outside this.
  */
+/** The language of the file an edit changed (its `file_path`), for its diff's code colours. */
+const editedLanguage = (item: ToolItem): string | undefined => {
+  const path = (item.input as { file_path?: unknown }).file_path;
+  return typeof path === 'string' ? languageFromPath(path) : undefined;
+};
+
 export function ToolDetails({ item, cwd, sessionId, withDiffAndImages = false }: { item: ToolItem; cwd: string | null; sessionId: string; withDiffAndImages?: boolean }) {
+  const syntaxKey = useThemes((s) => s.syntaxKey);
   if (isAgentTool(item)) {
     return (
       <div className="grid gap-1.5">
@@ -65,7 +74,7 @@ export function ToolDetails({ item, cwd, sessionId, withDiffAndImages = false }:
           </Button>
         </div>
       )}
-      {withDiffAndImages && hunks && !failed && <DiffView hunks={hunks} truncated={item.inputTruncated} />}
+      {withDiffAndImages && hunks && !failed && <DiffView hunks={hunks} truncated={item.inputTruncated} language={editedLanguage(item)} syntaxKey={syntaxKey} />}
       {!hunks && (
         <pre className="max-h-64 overflow-auto rounded bg-code px-2 py-1.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted">
           {/* A command reads better as itself than as JSON. */}

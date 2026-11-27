@@ -1,4 +1,5 @@
 import { NotebookPen, X } from 'lucide-react';
+import { PanelSize, sidePanelClass } from '../transcript/PanelSize.tsx';
 import { useEffect, useId, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { cleanNote, SESSION_NOTE_MAX } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -11,6 +12,10 @@ interface NotePanelProps {
   /** The note as saved, or null without one. */
   note: string | null;
   width: number;
+  /** Full: the panel takes the whole session area (`useRightPanel().full`). */
+  full?: boolean;
+  /** Picks Full or back; with it, the header shows the panel's size (Side, Half, Full). */
+  onFull?(full: boolean): void;
   onWidth(width: number): void;
   onClose(): void;
 }
@@ -19,7 +24,7 @@ interface NotePanelProps {
  * The session's note on the right next to the conversation (a tab beside Changes, Ask and Agents): the whole note,
  * which the sidebar row and the header cut short, in a field to change or clear it.
  */
-export function NotePanel({ sessionId, note, width, onWidth, onClose }: NotePanelProps) {
+export function NotePanel({ sessionId, note, width, onWidth, full = false, onFull, onClose }: NotePanelProps) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [value, setValue] = useState(note ?? '');
@@ -79,8 +84,8 @@ export function NotePanel({ sessionId, note, width, onWidth, onClose }: NotePane
   };
 
   return (
-    <aside aria-label="Note" tabIndex={-1} onKeyDown={onPanelKey} className="relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l" style={{ width }} data-note-panel>
-      <div
+    <aside aria-label="Note" tabIndex={-1} onKeyDown={onPanelKey} className={sidePanelClass(full)} style={full ? undefined : { width }} data-note-panel>
+      {!full && <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Note panel width"
@@ -92,13 +97,14 @@ export function NotePanel({ sessionId, note, width, onWidth, onClose }: NotePane
         onKeyDown={resizeByKey}
         className="absolute inset-y-0 -left-0.5 z-10 w-1 cursor-col-resize hover:bg-accent-ink/40 focus-visible:bg-accent-ink/40"
         data-tooltip="Drag (or use ← →) to resize"
-      />
-      <header className="flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
+      />}
+      <header className="@container/toolbar flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
         <NotebookPen size={16} aria-hidden className="mt-0.5 shrink-0 text-accent-ink" />
         <div className="grid min-w-0 flex-1">
           <h2 className="truncate text-ui font-semibold text-text">Note</h2>
           <span className="text-meta text-muted">What's left in this session. It shows under its title in the sidebar.</span>
         </div>
+        {onFull && <PanelSize full={full} onChange={onFull} />}
         <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close note" onClick={onClose} data-note-close />
       </header>
       <form
@@ -121,7 +127,7 @@ export function NotePanel({ sessionId, note, width, onWidth, onClose }: NotePane
           placeholder="push after review, waiting on Jan…"
           aria-invalid={error !== null}
           aria-describedby={error ? `${id}-error` : undefined}
-          className={`w-full resize-none rounded-md border bg-bg px-2.5 py-1.5 text-body text-text outline-none select-text focus:border-accent-ink ${error ? 'border-error' : 'border-edge'}`}
+          className={`field w-full resize-none px-2.5 py-1.5 text-body outline-none select-text ${error ? 'border-error' : ''}`}
           data-note-panel-input
         />
         <p className="text-meta text-muted">

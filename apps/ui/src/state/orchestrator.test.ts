@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatchUp, OrchestratorInfo } from '@seshboard/protocol/client';
-import { goToOrchestrator, orchestratorOfWorker, orchestratorRowLine, overviewGroups, projectOrchestrator, workerNote, workerStatus } from './orchestrator.ts';
+import { goToOrchestrator, orchestratorOfWorker, startedBy, workerTitle, orchestratorRowLine, overviewGroups, projectOrchestrator, workerNote, workerStatus } from './orchestrator.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 
 const row = (id: string, over: Partial<SessionRowData> = {}): SessionRowData => ({
@@ -95,5 +95,23 @@ describe('the orchestrator of a session and a project', () => {
     expect(orchestratorRowLine(0, 'app')).toBe('Orchestrator · no sessions yet · app');
     expect(orchestratorRowLine(1, null)).toBe('Orchestrator · 1 session');
     expect(orchestratorRowLine(3, 'app')).toBe('Orchestrator · 3 sessions · app');
+  });
+});
+
+describe('the sessions that were started, for the sidebar tree', () => {
+  const started = [{ sessionId: 'child', parentId: 'plain', title: 'PR 2575 · open review points' }];
+
+  it('nests an orchestrator’s sessions and those another session started under the session that started them', () => {
+    const map = startedBy([info], started);
+    expect(map.get('a')).toBe('orc');
+    expect(map.get('not-listed-yet')).toBe('orc');
+    expect(map.get('child')).toBe('plain');
+    expect(map.has('item-1')).toBe(false);
+  });
+
+  it('gives a session still starting the title it was started with', () => {
+    expect(workerTitle([info], 'not-listed-yet', started)).toBe('Just started');
+    expect(workerTitle([info], 'child', started)).toBe('PR 2575 · open review points');
+    expect(workerTitle([info], 'other', started)).toBeNull();
   });
 });

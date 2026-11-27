@@ -33,7 +33,7 @@ import {
   type TranscriptMessage,
   writeStub,
 } from '@seshboard/protocol';
-import type { RemoteAppUpdate, RemoteLimitStanding } from '@seshboard/protocol';
+import type { RemoteAppUpdate, RemoteLimitStanding, TranscriptUpdate } from '@seshboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
@@ -128,8 +128,10 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
   const sentImages: RemoteImage[][] = [];
   /** The sessions phones follow now (a watch's `stop` takes it out). */
   const watching = new Set<string>();
+  /** Each watched session's listener, to send it updates as the transcript hub would. */
+  const transcriptListeners = new Map<string, (update: TranscriptUpdate) => void>();
   const answered: string[] = [];
-  const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[] }> = [];
+  const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[]; orchestrator?: boolean; title?: string }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
   const calls: string[] = [];
   /** How each session stands with its usage limit. */
@@ -197,7 +199,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     readTranscript: async () => options.transcript ?? ['a', 'b', 'c'].map(message),
     // No scratchpads: the tests of `sessionFiles.ts` cover them.
     scratchpadRoots: async () => [],
-    watchTranscript: (sessionId) => (watching.add(sessionId), () => void watching.delete(sessionId)),
+    watchTranscript: (sessionId, listener) => (watching.add(sessionId), transcriptListeners.set(sessionId, listener), () => void watching.delete(sessionId)),
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
     sendQueuedNow: async (sessionId, id) => void calls.push(`send now ${sessionId} ${id}`),
@@ -210,7 +212,9 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     commands: async (sessionId) => [{ name: 'review', description: `Review ${sessionId}`, argumentHint: '[pr]' }],
     respond: (requestId) => void answered.push(requestId),
-    create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
+    create: async (root, prompt, choice, images, orchestrator, title) => (created.push({ root, prompt, model: choice.model, choice, images, orchestrator: orchestrator ?? false, ...(title ? { title } : {}) }), { sessionId: 'new' }),
+    // Another computer finds a project by its GitHub repository; this one has none.
+    repoOf: async (root) => (root === ROOT ? 'me/web' : null),
     // The Copilot profile is GitHub Copilot's, with its own modes.
     providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }], supports: [] } : null),
     providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
@@ -300,7 +304,7 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, dir, port, updateRuns, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
+  return { hub, dir, port, updateRuns, on, watching, transcriptListeners, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -447,10 +451,16 @@ describe('Remote hub', () => {
     expect(answered).toEqual(['r1']);
     await expect(remote.call('session.respond', { requestId: 'r-unknown', decision: { behavior: 'allow' } })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
-    expect(await remote.call('projects.list', {})).toEqual({ projects: [{ id: projectIdOf(FIRST), name: 'Api' }, { id: projectIdOf(ROOT), name: 'Web' }] });
+    expect(await remote.call('projects.list', {})).toEqual({ projects: [{ id: projectIdOf(FIRST), name: 'Api', repo: null }, { id: projectIdOf(ROOT), name: 'Web', repo: 'me/web' }] });
     await expect(remote.call('session.create', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test' });
-    expect(created).toMatchObject([{ root: ROOT, prompt: 'add a test', model: 'opus', images: [] }]);
+    expect(created).toMatchObject([{ root: ROOT, prompt: 'add a test', model: 'opus', images: [], orchestrator: false }]);
+    // Run as › Orchestrator on the phone: the engine starts it as the project's orchestrator.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'ship the backlog', orchestrator: true });
+    expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'ship the backlog', orchestrator: true });
+    // A session on another computer asked for it (start_session with computer): it gets the title it gave.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'run the smoke', title: 'Windows smoke' });
+    expect(created.at(-1)).toMatchObject({ prompt: 'run the smoke', title: 'Windows smoke' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'match this', images: [image], files: [{ name: 'spec.pdf', data: 'aGVsbG8=' }] });
     expect(created.at(-1)).toMatchObject({ images: [image], prompt: expect.stringMatching(/^match this\n\n@\S+spec\.pdf$/) });
     await expect(remote.call('session.create', { projectId: projectIdOf('/elsewhere'), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
@@ -669,6 +679,25 @@ describe('Remote hub', () => {
     expect((await remote.call('sessions.archived', {})).sessions).toEqual([expect.objectContaining({ id: SESSION, steps: 1 })]);
     await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
     expect(calls.at(-1)).toBe('archive run-1 false');
+  });
+
+  it('sends a phone a splice as the whole list, since phones only know append and replace', async () => {
+    const { hub, port, on, transcriptListeners } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const updates: Array<{ mode: string; messages: Array<{ uuid: string }> }> = [];
+    remote.on('transcript.updated', (u) => void updates.push(u));
+    await remote.call('transcript.watch', { sessionId: SESSION });
+    const send = transcriptListeners.get(SESSION)!;
+    send({ sessionId: SESSION, mode: 'replace', messages: ['a', 'b'].map(message) });
+    send({ sessionId: SESSION, mode: 'append', messages: ['c'].map(message) });
+    send({ sessionId: SESSION, mode: 'splice', at: 2, messages: ['s', 'c'].map(message) });
+    await until(() => updates.length === 3);
+    expect(updates.map((u) => [u.mode, u.messages.map((m) => m.uuid).join('')])).toEqual([
+      ['replace', 'ab'],
+      ['append', 'c'],
+      ['replace', 'absc'],
+    ]);
   });
 
   it('stops following a session once it leaves the list, so nothing more of it reaches the phone', async () => {
@@ -1107,6 +1136,28 @@ describe('Remote hub', () => {
 
     await remote.call('push.unsubscribe', {});
     expect(appState.get('remote.push')).toEqual([]);
+  });
+
+  it('holds back what a phone wants only while you are away, while someone uses this computer', async () => {
+    const { hub, port, on, pushes, permissions } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    await remote.call('push.subscribe', { subscription: PUSH, needsYou: true, finished: true, onlyWhenAway: { finished: true } });
+    hub.setPresent(true);
+    hub.hostChanged({ sessionId: SESSION, state: 'running' } as SessionHostInfo);
+    hub.hostChanged({ sessionId: SESSION, state: 'idle' } as SessionHostInfo);
+    // Needs you isn't held back: it still comes.
+    hub.permissionAsked(permissions[0]!);
+    await until(() => pushes.length === 1);
+    expect(pushes[0]!.urgency).toBe('high');
+    await new Promise((r) => setTimeout(r, 60));
+    expect(pushes).toHaveLength(1);
+
+    hub.setPresent(false);
+    hub.hostChanged({ sessionId: SESSION, state: 'running' } as SessionHostInfo);
+    hub.hostChanged({ sessionId: SESSION, state: 'idle' } as SessionHostInfo);
+    await until(() => pushes.length === 2);
+    expect(pushes[1]!.urgency).toBe('normal');
   });
 
   it('signs with the device\'s own VAPID key when it gives one, and says which device and computer a push is for', async () => {

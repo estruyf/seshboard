@@ -167,6 +167,7 @@ describe('codexMessages', () => {
     const call = (extra: object) => [{ id: 't', items: [{ type: 'mcpToolCall', id: 'm', server: 'weather', tool: 'forecast', arguments: { city: 'Ghent' }, result, status: 'completed', ...extra }] }] as unknown as Turn[];
     const app = (turns: Turn[]) => codexMessages(turns).flatMap((m) => normaliseMessage(m).blocks).find((b) => b.type === 'tool_use');
     expect(app(call({ mcpAppUi: { resourceUri: 'ui://weather/card', preferredModelDisplayMode: 'inline' } }))).toMatchObject({ name: 'mcp__weather__forecast', input: { city: 'Ghent' }, app: { server: 'weather', resourceUri: 'ui://weather/card', callId: 'm', result } });
+    expect(app(call({ server: 'seshboard-browser', tool: 'snapshot' }))).toMatchObject({ name: 'mcp__browser__snapshot' });
     expect(app(call({ mcpAppUi: null, mcpAppResourceUri: 'ui://weather/card' }))).toMatchObject({ app: { resourceUri: 'ui://weather/card' } });
     // Only ui:// pages are apps.
     expect(app(call({ mcpAppResourceUri: 'https://example.com/card' }))).not.toHaveProperty('app');

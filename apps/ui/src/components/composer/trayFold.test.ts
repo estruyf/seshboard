@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boxPlaceholder, foldedFace, foldedLabel, trayFolds } from './trayFold.ts';
+import { boxPlaceholder, foldedFace, foldedLabel, trayFolds, trayLevel } from './trayFold.ts';
 
 describe('trayFolds', () => {
   // A session's tray: the chips at their smallest level, Tools and usage, and the context ring.
@@ -26,6 +26,33 @@ describe('trayFolds', () => {
 
   it('gives half a pixel of slack to fractional widths', () => {
     expect(trayFolds(486, { chips: 150.4, info: 230, ring: 90 })).toBe(false);
+  });
+});
+
+describe('trayLevel', () => {
+  // Usage with a cost after each window: 120 of the 230 is cost.
+  const widths = { chips: 150, info: 230, ring: 90, costs: 120 };
+
+  it('shows everything when it fits', () => {
+    expect(trayLevel(486, widths)).toBe('full');
+  });
+
+  it('drops the costs before it folds the chips', () => {
+    expect(trayLevel(485, widths)).toBe('lean');
+    expect(trayLevel(366, widths)).toBe('lean');
+  });
+
+  it('folds once the line without costs does not fit either', () => {
+    expect(trayLevel(365, widths)).toBe('folded');
+  });
+
+  it('folds at once without costs to drop', () => {
+    expect(trayLevel(485, { ...widths, costs: 0 })).toBe('folded');
+    expect(trayLevel(485, { chips: 150, info: 230, ring: 90 })).toBe('folded');
+  });
+
+  it('never folds a tray without a chip row', () => {
+    expect(trayLevel(120, { ...widths, chips: 0 })).toBe('full');
   });
 });
 

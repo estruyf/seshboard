@@ -36,7 +36,7 @@ const waitFor = async (check: () => boolean, ms = 8_000) => {
 describe('ThemeStore', () => {
   it('lists the built-ins first, in order', () => {
     const { store } = setup();
-    expect(store.state().themes.map((t) => t.id)).toEqual(['demo-time', 'catppuccin', 'nord', 'solarized', 'graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon']);
+    expect(store.state().themes.map((t) => t.id)).toEqual(['demo-time', 'black-and-white', 'catppuccin', 'nord', 'solarized', 'graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon']);
     expect(store.state().themes.every((t) => t.builtIn && t.path === null)).toBe(true);
   });
 

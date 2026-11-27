@@ -23,6 +23,7 @@ interface WebviewElement extends HTMLElement {
   goBack(): void;
   goForward(): void;
   reload(): void;
+  reloadIgnoringCache(): void;
   stop(): void;
   getWebContentsId(): number;
   getURL(): string;
@@ -266,13 +267,24 @@ class PreviewPage {
     else void this.element.loadURL(url).catch(() => {}); // A failure shows through did-fail-load.
   }
 
-  reload(url: string | null) {
+  /** Loads the page again; `hard` skips the cache, so changed scripts, styles and pictures come back fresh. */
+  reload(url: string | null, hard = false) {
     setState(this.sessionId, { failure: null, crashed: false });
-    if (this.ready) this.call((e) => e.reload());
+    if (this.ready) this.call((e) => (hard ? e.reloadIgnoringCache() : e.reload()));
     else if (url) this.load(url);
   }
 
-  stop = () => this.call((e) => e.stop());
+  /**
+   * Stops the load. Not behind `ready`: a page's first load is the one that most needs stopping, and it hasn't reached
+   * `dom-ready` yet. The `<webview>` takes the call as soon as it is attached; before that there is nothing to stop.
+   */
+  stop = () => {
+    try {
+      this.element.stop();
+    } catch {
+      // Not attached yet.
+    }
+  };
   /** The page's developer tools, in a window of their own; again closes them. */
   devTools = () => this.call((e) => (e.isDevToolsOpened() ? e.closeDevTools() : e.openDevTools()));
   /** Zooms the page a step in (1) or out (-1) through Chrome's levels, or back to 100% (0), and keeps it with the tab. */

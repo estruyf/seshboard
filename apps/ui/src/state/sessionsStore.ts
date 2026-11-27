@@ -18,7 +18,7 @@ import { toast } from './toastStore.ts';
  */
 export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote' | 'upcoming' | 'activity' | 'browser';
 /** The pages of Settings, listed in its own sidebar. */
-export type SettingsSection = 'general' | 'browser' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'usage' | 'memory' | 'prompts' | 'pipelines' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
+export type SettingsSection = 'general' | 'browser' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'usage' | 'memory' | 'prompts' | 'pipelines' | 'vscode' | 'browserExtension' | 'remote' | 'backup' | 'diagnostics' | 'about';
 
 /** Shown when there is no room for another pane (a session opened beside, or a pane dropped where it doesn't fit). */
 const NO_ROOM = 'There is no room for that. Make the window larger or close a pane first.';
@@ -147,7 +147,12 @@ export const useSessions = create<SessionsState>()((set) => ({
   applyChanged: (changes) => {
     if (changes.length > 0) set((state) => mergeSessionChanges(state, changes));
   },
-  setLive: (live) => set({ live: new Map(live.map((l) => [l.sessionId, l])) }),
+  setLive: (live) =>
+    set((state) => {
+      const next = nextLive(state.live, live);
+      // The state itself when nothing moved: `{}` would still tell every listener (zustand 5 replaces the state object).
+      return next === state.live ? state : { live: next };
+    }),
   patchSummary: (id, patch) => set((state) => ({ sessions: patchedSessions(state.sessions, id, patch) })),
   select: (id) => {
     if (id && showElsewhere(id)) return;
@@ -194,6 +199,26 @@ export const useSessions = create<SessionsState>()((set) => ({
   setFilter: (filter) => set({ filter }),
 }));
 
+/**
+ * The registry after a new list of live sessions: entries that say the same keep their objects (the rows built from them
+ * stay as they were), and with nothing different at all, the registry itself (no update). The engine sends the whole list every couple of
+ * seconds, whether or not anything in it moved.
+ */
+export function nextLive(current: Map<string, LiveSession>, list: readonly LiveSession[]): Map<string, LiveSession> {
+  let changed = false;
+  const next = new Map<string, LiveSession>();
+  for (const entry of list) {
+    const had = current.get(entry.sessionId);
+    if (had && (had === entry || JSON.stringify(had) === JSON.stringify(entry))) next.set(entry.sessionId, had);
+    else {
+      next.set(entry.sessionId, entry);
+      changed = true;
+    }
+  }
+  // A list with an id twice is shorter than it looks: compare what was kept, not the list's length.
+  return changed || next.size !== current.size ? next : current;
+}
+
 /** A session as the sidebar shows it: the summary (if indexed) merged with its live state. */
 export interface SessionRowData {
   id: string;
@@ -226,44 +251,68 @@ export interface SessionRowData {
   remote?: RemoteRowInfo | null;
 }
 
+/** What a row was built from, and the row: the next build reuses the row while every one of them is still the same object. */
+export type RowCache = Map<string, { inputs: readonly unknown[]; row: SessionRowData }>;
+
 /**
  * The sessions as rows, with their live state. `kept` are the sessions with an unsent message or a queued prompt
  * (`useKeptSessions`); messages in a session's Up next count too.
+ *
+ * With a `cache`, a row whose summary, registry entry and host are the same objects as last time is the same object
+ * again (`rowsStore.ts` keeps one): memoised rows and every view built on them skip what did not change.
  */
 export function toRows(
   sessions: Map<string, SessionSummary>,
   live: Map<string, LiveSession>,
   hosts: Map<string, SessionHostInfo> = new Map(),
   kept: ReadonlySet<string> = new Set(),
+  cache?: RowCache,
 ): SessionRowData[] {
   const rows: SessionRowData[] = [];
+  const used = cache ? new Set<string>() : null;
+  /** The cached row when what it was built from is unchanged (and `kept` says the same), else the row `build` makes. */
+  const reuse = (id: string, inputs: readonly unknown[], isKept: boolean, build: () => SessionRowData): SessionRowData => {
+    if (!cache) return build();
+    used!.add(id);
+    const had = cache.get(id);
+    if (had && had.inputs.length === inputs.length && had.inputs.every((input, i) => input === inputs[i]) && (had.row.kept === true) === isKept) return had.row;
+    const row = build();
+    cache.set(id, { inputs, row });
+    return row;
+  };
   // Sessions running in this app report their own state; it is more precise than the registry.
   const liveFor = (id: string) => {
     const host = hosts.get(id);
     return isActiveHost(host) ? hostAsLive(host) : (live.get(id) ?? null);
   };
   for (const s of sessions.values()) {
-    const l = liveFor(s.id);
-    rows.push({
-      id: s.id,
-      title: l?.name && !s.customTitle ? l.name : s.title,
-      projectRoot: s.projectRoot,
-      // An idle process says nothing new happened (Claude Code reopening a session marks it idle "now").
-      updatedAt: Math.max(s.updatedAt, l && l.status !== 'idle' ? (l.updatedAt ?? 0) : 0),
-      workingSince: l?.status === 'running' ? (hosts.get(s.id)?.promptedAt ?? null) : null,
-      branch: s.worktree?.branch ?? realBranch(s.gitBranch),
-      isWorktree: s.worktree !== null,
-      live: l,
-      summary: s,
-      pinned: s.pinned,
-      archivedAt: s.archivedAt,
-      restoredAt: s.restoredAt,
-      unread: s.unread,
-      inApp: s.inApp || l?.origin === 'app',
-      error: hosts.get(s.id)?.state === 'error',
-      profileId: s.profileId,
-      ...(kept.has(s.id) || (hosts.get(s.id)?.queue.length ?? 0) > 0 ? { kept: true } : {}),
-    });
+    const host = hosts.get(s.id);
+    const isKept = kept.has(s.id) || (host?.queue.length ?? 0) > 0;
+    rows.push(
+      reuse(s.id, [s, host, live.get(s.id)], isKept, () => {
+        const l = liveFor(s.id);
+        return {
+          id: s.id,
+          title: l?.name && !s.customTitle ? l.name : s.title,
+          projectRoot: s.projectRoot,
+          // An idle process says nothing new happened (Claude Code reopening a session marks it idle "now").
+          updatedAt: Math.max(s.updatedAt, l && l.status !== 'idle' ? (l.updatedAt ?? 0) : 0),
+          workingSince: l?.status === 'running' ? (host?.promptedAt ?? null) : null,
+          branch: s.worktree?.branch ?? realBranch(s.gitBranch),
+          isWorktree: s.worktree !== null,
+          live: l,
+          summary: s,
+          pinned: s.pinned,
+          archivedAt: s.archivedAt,
+          restoredAt: s.restoredAt,
+          unread: s.unread,
+          inApp: s.inApp || l?.origin === 'app',
+          error: host?.state === 'error',
+          profileId: s.profileId,
+          ...(isKept ? { kept: true } : {}),
+        };
+      }),
+    );
   }
   // Running sessions that have not written a transcript yet still deserve a row.
   const seen = new Set(sessions.keys());
@@ -277,24 +326,46 @@ export function toRows(
     // background workers, from this app or another; they aren't sessions to show.
     if (l.origin === 'sdk') continue;
     seen.add(l.sessionId);
-    rows.push({
-      id: l.sessionId,
-      title: l.name ?? 'New session',
-      projectRoot: l.projectRoot ?? l.cwd ?? 'Unknown folder',
-      updatedAt: l.updatedAt ?? l.startedAt ?? Date.now(),
-      workingSince: l.status === 'running' ? (hosts.get(l.sessionId)?.promptedAt ?? null) : null,
-      branch: null,
-      isWorktree: false,
-      live: l,
-      summary: null,
-      pinned: false,
-      archivedAt: null,
-      restoredAt: null,
-      unread: false,
-      inApp: l.origin === 'app',
-      error: false,
-      profileId: l.profileId,
-    });
+    const host = hosts.get(l.sessionId);
+    // `l` is rebuilt from the host on every call, so the row is keyed by the host and the registry entry it came from.
+    rows.push(
+      reuse(l.sessionId, [null, host, live.get(l.sessionId)], false, () => ({
+        id: l.sessionId,
+        title: l.name ?? 'New session',
+        projectRoot: l.projectRoot ?? l.cwd ?? 'Unknown folder',
+        updatedAt: l.updatedAt ?? l.startedAt ?? Date.now(),
+        workingSince: l.status === 'running' ? (host?.promptedAt ?? null) : null,
+        branch: null,
+        isWorktree: false,
+        live: l,
+        summary: null,
+        pinned: false,
+        archivedAt: null,
+        restoredAt: null,
+        unread: false,
+        inApp: l.origin === 'app',
+        error: false,
+        profileId: l.profileId,
+      })),
+    );
   }
+  // Forget the rows of sessions that are gone.
+  if (cache) for (const id of cache.keys()) if (!used!.has(id)) cache.delete(id);
   return rows;
+}
+
+const keptRows = new WeakMap<SessionRowData, SessionRowData>();
+
+/**
+ * The rows with `kept` (the sessions with an unsent message or a queued prompt) marked: the rows that need it are copied
+ * (once each, the copy is remembered), the others are the same objects.
+ */
+export function markKept(rows: readonly SessionRowData[], kept: ReadonlySet<string>): readonly SessionRowData[] {
+  if (kept.size === 0) return rows;
+  return rows.map((row) => {
+    if (row.kept || !kept.has(row.id)) return row;
+    let copy = keptRows.get(row);
+    if (!copy) keptRows.set(row, (copy = { ...row, kept: true }));
+    return copy;
+  });
 }

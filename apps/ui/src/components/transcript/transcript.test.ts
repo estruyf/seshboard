@@ -169,6 +169,17 @@ describe('agent reports', () => {
   });
 });
 
+describe('messages from other sessions', () => {
+  const sent =
+    'Another Claude session sent a message:\n<cross-session-message from="uds:/tmp/cc-socks/1.sock" from-name="dev-game-2f" from-mode="prompting">\nDon\'t edit versions.ts.\n</cross-session-message>\n\nThis came from another Claude session.';
+
+  it('shows what the other session wrote, with who sent it, as a turn of its own', () => {
+    const items = buildDisplayItems([m('u1', 'user', [{ type: 'text', text: sent }])]);
+    expect(items).toMatchObject([{ kind: 'user', text: "Don't edit versions.ts.", peer: { from: 'uds:/tmp/cc-socks/1.sock', name: 'dev-game-2f' } }]);
+    expect(groupActivity(items)[0]!.kind).toBe('user');
+  });
+});
+
 describe('agentRuns', () => {
   const agent = (key: string, result: string | null): DisplayItem => ({
     ...tool(key, 'Agent', { description: key }),

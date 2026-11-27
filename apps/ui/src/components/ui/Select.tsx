@@ -142,12 +142,15 @@ export function Select<T extends string>({ value, options, onChange, disabled, l
         disabled={disabled}
         onClick={() => (open ? close() : show())}
         onKeyDown={onButtonKey}
-        className={`no-drag inline-flex min-w-0 items-center gap-1.5 text-left disabled:opacity-50 ${className}`}
+        // A Select in a form is a `field` (its edge and focus come from there); one without a box (a toolbar, the
+        // message box's line, a pane header) shows its target with a fill on hover and focus instead.
+        className={`no-drag inline-flex min-w-0 items-center gap-1.5 text-left disabled:opacity-50 ${/(^|\s)field(\s|$)/.test(className) ? '' : 'rounded-md hover:bg-border/50 focus-visible:bg-border/50'} ${className}`}
         {...dataAttrs}
       >
         {selected?.icon && <span className="flex shrink-0 items-center">{selected.icon}</span>}
         <span className="min-w-0 flex-1 truncate">{selected?.short ?? selected?.label ?? placeholder ?? value}</span>
-        {chevron === 'up-down' ? <ChevronsUpDown size={12} className="shrink-0 opacity-60" /> : <ChevronDown size={12} className="shrink-0 opacity-60" />}
+        {/* The one hint that this opens a list: the muted colour at full strength, readable at 4.5:1. */}
+        {chevron === 'up-down' ? <ChevronsUpDown size={12} className="shrink-0 text-muted" /> : <ChevronDown size={12} className="shrink-0 text-muted" />}
       </button>
       {/* The list fits its longest option (a long pipeline name), up to a cap; past that, options truncate. */}
       {open && (

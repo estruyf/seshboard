@@ -335,7 +335,7 @@ export function FilesPanel({ sessionId, cwd, width, onWidth, changes, changesBas
         />
         <span className="flex-1" />
         <PanelSize full={full} onChange={setFull} />
-        <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close Files" shortcut="files.toggle" onClick={close} data-files-close="" />
+        <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close files" shortcut="files.toggle" onClick={close} data-files-close="" />
       </header>
       {content}
       {filesMenu.menu}

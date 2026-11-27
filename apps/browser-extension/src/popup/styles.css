@@ -1,0 +1,56 @@
+@import 'tailwindcss';
+
+/* Seshboard's colours (Demo Time, apps/ui/src/styles.css), dark by default and light when the system is. */
+@theme {
+  --color-bg: #15181f;
+  --color-card: #202736;
+  --color-border: #2d3142;
+  --color-text: #d9dbe1;
+  --color-muted: #9ba4b7;
+  --color-faint: #8b94a6;
+  --color-accent: #ffd43b;
+  --color-accent-ink: #ffd43b;
+  --color-on-accent: #15181f;
+  --color-ok: #51cf66;
+  --color-warn: #ed217c;
+  --color-error: #ff6b6b;
+  --color-link: #74c0fc;
+  --text-meta: 11px;
+  --text-ui: 12px;
+  --text-body: 13.5px;
+  --text-title: 15px;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-bg: #ffffff;
+    --color-card: #f4f6fa;
+    --color-border: #e1e4e8;
+    --color-text: #202736;
+    --color-muted: #505869;
+    --color-faint: #687082;
+    --color-accent-ink: #916c00;
+    --color-ok: #00806f;
+    --color-warn: #d1186b;
+    --color-error: #d73a49;
+    --color-link: #005cc5;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+body {
+  width: 340px;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: 1px;
+}

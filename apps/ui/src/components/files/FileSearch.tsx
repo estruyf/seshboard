@@ -176,8 +176,8 @@ export function FileSearch({ sessionId, cwd, narrow, viewer, onContextMenu }: Fi
         </p>
       )}
       <div className="flex shrink-0 gap-1.5">
-        <input aria-label="Files to include" placeholder="Include: src/**, *.ts" value={search.include} onChange={(e) => set({ include: e.target.value })} spellCheck={false} className="h-7 min-w-0 flex-1 rounded-md border border-edge bg-bg px-2 font-mono text-meta text-text outline-none placeholder:font-sans placeholder:text-faint focus:border-focus-ring" data-files-search-include="" />
-        <input aria-label="Files to leave out" placeholder="Leave out: *.snap" value={search.exclude} onChange={(e) => set({ exclude: e.target.value })} spellCheck={false} className="h-7 min-w-0 flex-1 rounded-md border border-edge bg-bg px-2 font-mono text-meta text-text outline-none placeholder:font-sans placeholder:text-faint focus:border-focus-ring" data-files-search-exclude="" />
+        <input aria-label="Files to include" placeholder="Include: src/**, *.ts" value={search.include} onChange={(e) => set({ include: e.target.value })} spellCheck={false} className="field h-7 min-w-0 flex-1 px-2 font-mono text-meta outline-none placeholder:font-sans placeholder:text-faint focus:border-focus-ring" data-files-search-include="" />
+        <input aria-label="Files to leave out" placeholder="Leave out: *.snap" value={search.exclude} onChange={(e) => set({ exclude: e.target.value })} spellCheck={false} className="field h-7 min-w-0 flex-1 px-2 font-mono text-meta outline-none placeholder:font-sans placeholder:text-faint focus:border-focus-ring" data-files-search-exclude="" />
       </div>
       <p role="status" aria-live="polite" className="px-1 text-meta text-muted" data-files-search-count="">
         {status}

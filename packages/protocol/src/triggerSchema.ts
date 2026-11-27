@@ -10,10 +10,14 @@ import { DEFAULT_STATE_LABELS, TRIGGER_EVENTS_KEPT, TRIGGER_LIMITS } from './tri
 const Name = z.string().trim().min(1).max(200);
 const LabelName = z.string().trim().min(1).max(50);
 
+/** A GitHub login, or `@me` for the account gh is signed in with. */
+const Login = z.string().trim().min(1).max(100).regex(/^(@me|[A-Za-z0-9-]+(\[bot\])?)$/, 'Pick a GitHub login');
+
 /**
  * Where a trigger looks for work. `ci`: failed workflow runs on a branch (null: the repository's default branch), of
  * some workflows (empty: all of them). `issues`: open issues with a label, assigned to someone (`@me`: the account gh
- * is signed in with), or both; at least one of the two is set.
+ * is signed in with), or both; at least one of the two is set. `reviews`: open pull requests that ask someone for a
+ * review (`@me` by default), with a label, or both; a review request again after a review is a new event.
  */
 export const TriggerSource = z
   .discriminatedUnion('kind', [
@@ -25,13 +29,22 @@ export const TriggerSource = z
     z.object({
       kind: z.literal('issues'),
       label: LabelName.nullable().default(null),
-      assignee: z.string().trim().min(1).max(100).regex(/^(@me|[A-Za-z0-9-]+(\[bot\])?)$/, 'Pick a GitHub login').nullable().default(null),
+      assignee: Login.nullable().default(null),
       /** Only issues opened by the repository's owners, members and collaborators. */
+      collaboratorsOnly: z.boolean().default(true),
+    }),
+    z.object({
+      kind: z.literal('reviews'),
+      label: LabelName.nullable().default(null),
+      /** Whose review the pull request asks for; a request to one of their teams counts too. */
+      reviewer: Login.nullable().default('@me'),
+      /** Only pull requests opened by the repository's owners, members and collaborators. */
       collaboratorsOnly: z.boolean().default(true),
     }),
   ])
   .superRefine((source, ctx) => {
     if (source.kind === 'issues' && !source.label && !source.assignee) ctx.addIssue({ code: 'custom', message: 'Pick a label, an assignee, or both.' });
+    if (source.kind === 'reviews' && !source.label && !source.reviewer) ctx.addIssue({ code: 'custom', message: 'Pick a reviewer, a label, or both.' });
   });
 export type TriggerSource = z.infer<typeof TriggerSource>;
 
@@ -72,6 +85,8 @@ export const StateLabels = z.object({
   working: LabelName.default(DEFAULT_STATE_LABELS.working),
   needsInput: LabelName.default(DEFAULT_STATE_LABELS.needsInput),
   prOpen: LabelName.default(DEFAULT_STATE_LABELS.prOpen),
+  /** A pull request's label once its review session is done (reviews triggers). */
+  reviewed: LabelName.default(DEFAULT_STATE_LABELS.reviewed),
   failed: LabelName.default(DEFAULT_STATE_LABELS.failed),
 });
 export type StateLabels = z.infer<typeof StateLabels>;
@@ -98,6 +113,11 @@ export const Trigger = z.object({
   stateLabels: StateLabels.default(StateLabels.parse({})),
   /** Assign the issue to you when its work is picked up; issues that already have an assignee are skipped. */
   assignOnPickUp: z.boolean().default(false),
+  /**
+   * Move what it started to Done once it finishes: a session whose turn ended without an error, or a pipeline run that
+   * is done. It stays out of To review, and out of the focus limit's count. One stopped or failed stays for you.
+   */
+  doneWhenFinished: z.boolean().default(false),
   paused: z.boolean().default(false),
   /** Why Seshboard paused it ("gh is signed out"); null when you paused it, or it runs. */
   pausedReason: z.string().max(300).nullable().default(null),
@@ -137,14 +157,18 @@ export type TriggerSave = z.input<typeof TriggerSave>;
 export const TriggerEventStatus = z.enum(['waiting', 'started', 'queued', 'skipped', 'replaced']);
 export type TriggerEventStatus = z.infer<typeof TriggerEventStatus>;
 
-/** One event of a trigger: a failed run, or an issue that newly matched. */
+/** What an event is: a failed run, an issue, or a pull request that asks for a review. */
+export const TriggerEventKind = z.enum(['ci', 'issue', 'pr']);
+export type TriggerEventKind = z.infer<typeof TriggerEventKind>;
+
+/** One event of a trigger: a failed run, an issue that newly matched, or a pull request that asks for a review. */
 export const TriggerEvent = z.object({
   id: z.string().min(1).max(100),
   triggerId: z.string().min(1).max(100),
-  /** What it is told apart by: the workflow and commit of a run, the number of an issue. */
+  /** What it is told apart by: the workflow and commit of a run, the number of an issue or pull request. */
   key: z.string().min(1).max(300),
-  kind: z.enum(['ci', 'issue']),
-  /** The run's title (its commit's first line) or the issue's. */
+  kind: TriggerEventKind,
+  /** The run's title (its commit's first line), the issue's or the pull request's. */
   title: z.string().max(500),
   url: z.string().max(1000),
   /** What `{{event.<field>}}` fills in: `number`, `workflow`, `branch`, `commit`, `run`, `author`, `labels`, … */
@@ -161,6 +185,8 @@ export const TriggerEvent = z.object({
   label: z.string().max(50).nullable().default(null),
   /** Who has the issue now, when it was assigned to someone else while its session works. */
   reassignedTo: z.string().max(100).nullable().default(null),
+  /** When Seshboard moved its session (or run) to Done (`doneWhenFinished`); it does that once. */
+  doneAt: z.number().nullable().default(null),
   createdAt: z.number(),
   startedAt: z.number().nullable().default(null),
 });
@@ -174,8 +200,8 @@ export const TriggerSession = z.object({
   eventId: z.string(),
   /** The trigger's name when it started, kept for a trigger deleted since. */
   triggerName: z.string(),
-  kind: z.enum(['ci', 'issue']),
-  /** "CI #4512" or "#212". */
+  kind: TriggerEventKind,
+  /** "CI #4512", "#212" or "PR #88". */
   ref: z.string(),
   url: z.string(),
   at: z.number(),
@@ -206,10 +232,10 @@ export const TriggerNotice = z.object({
   projectRoot: z.string(),
   projectName: z.string(),
   /** The event's kind, for the wording; null for a pause. */
-  eventKind: z.enum(['ci', 'issue']).nullable(),
+  eventKind: TriggerEventKind.nullable(),
   /** "main", for a CI failure. */
   branch: z.string().nullable(),
-  /** "CI #4512" or "#212". */
+  /** "CI #4512", "#212" or "PR #88". */
   ref: z.string().nullable(),
   /** The session's title. */
   title: z.string().nullable(),

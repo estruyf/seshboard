@@ -42,3 +42,29 @@ export const MAX_LINE_BYTES = 8 * 1024 * 1024;
 /** Editors whose Claude Code extension can continue a session (`<scheme>://anthropic.claude-code/open?session=<id>`). */
 export const CONTINUE_EDITORS = ['vscode', 'vscode-insiders', 'cursor', 'windsurf'] as const;
 export type ContinueEditor = (typeof CONTINUE_EDITORS)[number];
+
+/**
+ * The browser extension's native messaging host: the program Chrome, Edge or Firefox starts for the extension, which
+ * relays its messages to the engine's socket (docs/browser-extension.md). Its manifest in each browser has this name.
+ */
+export const BROWSER_HOST_NAME = 'app.seshboard.companion';
+
+/**
+ * The extension's ids, the only ones the host's manifests let in. Chromium's comes from the `key` in the extension's
+ * manifest (so a build loaded unpacked keeps it); add the store's id here once it is published. Firefox's is
+ * `browser_specific_settings.gecko.id`.
+ */
+export const BROWSER_EXTENSION_IDS = {
+  // The Chrome Web Store's, then the one the manifest's `key` gives a build loaded unpacked.
+  chromium: ['mggojongcaoeaagcldllnaklknokaago', 'bgffnbmaoadkminaadlghmhpicbloplk'],
+  firefox: 'seshboard@eliostruyf.com',
+} as const;
+
+/** What the host and the extension say to each other over native messaging (each message one JSON frame). */
+export type BrowserHostMessage =
+  /** Host to extension: whether it reached Seshboard. `not-running`: no engine to connect to; it keeps looking. */
+  | { type: 'status'; state: 'connecting' | 'connected' | 'not-running' | 'incompatible'; appVersion?: string; detail?: string; canLaunch?: boolean }
+  /** Either way: a companion RPC message (request, response or event), as on the socket. */
+  | { type: 'wire'; message: import('./wire.ts').WireMessage }
+  /** Extension to host: open Seshboard, then connect once it is up. */
+  | { type: 'launch' };

@@ -149,6 +149,21 @@ describe('agyDriver', () => {
     expect(r.cards).toEqual([]);
   });
 
+  it("allows Seshboard's own MCP tools without a card, in every mode", async () => {
+    const { fake, driver } = fakeAgy();
+    const r = recorder();
+    await driver.start({ cwd: '/w', model: null, permissionMode: 'auto', mcpServers: { 'seshboard-browser': { command: '/bin/node', args: [], env: {} } } }, r.events);
+    const options = [
+      { optionId: 'allow', kind: 'allow_once' },
+      { optionId: 'deny', kind: 'reject_once' },
+    ];
+    expect(await fake.ask('session/request_permission', { sessionId: ID, toolCall: { toolCallId: 'a', name: 'mcp_seshboard-browser_open', args: { url: 'http://localhost:3000' } }, options })).toEqual({ outcome: { outcome: 'selected', optionId: 'allow' } });
+    expect(r.cards).toEqual([]);
+    void fake.ask('session/request_permission', { sessionId: ID, toolCall: { toolCallId: 'b', name: 'mcp_github_create_issue', args: {} }, options });
+    await tick();
+    expect(r.cards.map((c) => c.toolName)).toEqual(['mcp_github_create_issue']);
+  });
+
   it('reports a crash on the session and resumes it with the next message', async () => {
     const { fake, driver } = fakeAgy({ 'session/resume': { sessionId: ID } });
     const r = recorder();

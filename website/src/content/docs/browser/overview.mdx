@@ -22,7 +22,9 @@ To turn it off, open [Settings › General](/settings/#general) and turn off **A
 The browser has two places, each with its own tabs:
 
 - **A session's Browser panel**, on the right of the conversation. Click **Browser** on the session's rail, press <Kbd shortcut="web.toggle" />, or run *Open browser* in the [command palette](/command-palette/). The session keeps its tabs, and its dev server opens there. See [The browser in a session](/browser/in-a-session/).
-- **The Browser view**, for pages that belong to no session, such as your mail or the team's board. Click **Browser** in the tray at the top of the sidebar, press <Kbd shortcut="browser.view" /> outside a session, or run *Go to Browser* in the palette. The sidebar then lists its tabs, and the page fills the main area. Its icon says how many tabs are open, such as "Browser · 3 tabs".
+- **The Browser view**, for pages that belong to no session, such as your mail or the team's board. Click **Browser** on the [rail](/sessions/rail/) (its tabs show in the panel), press <Kbd shortcut="browser.view" /> outside a session, or run *Go to Browser* in the palette. The sidebar then lists its tabs, and the page fills the main area. Its icon says how many tabs are open, such as "Browser · 3 tabs".
+
+Under the Browser view's tabs, the **Browser profiles** button opens Settings › Browser at your [browser profiles](/browser/profiles/).
 
 The pages keep running while another session or view is in front, with their scroll and what you typed. A session row in the sidebar shows a small globe while its browser is open.
 
@@ -32,7 +34,7 @@ With no tab in front, the Browser view says **No page selected**, with **Open ta
 
 With the browser on, links open in Seshboard's browser instead of your usual one:
 
-- **Links in Claude's replies** open in the session's browser. A tab already on that address comes to the front.
+- **Links in Claude's replies** open in the session's browser. A tab already on that address comes to the front. Two links that differ only after the `?`, such as two Hacker News threads, open in two tabs.
 - **A web address in a terminal** opens in the session's browser. In the window's own terminal, it opens in the Browser view.
 - **Links the app offers**: **Open in › GitHub**, the GitHub app on the rail, pull request and issue links, and links in a reply's apps. In a session they open in its browser, elsewhere in the Browser view.
 
@@ -45,6 +47,8 @@ With the browser on, links open in Seshboard's browser instead of your usual one
 | <Kbd shortcut="web.toggle" /> | In a session: show or hide its Browser panel. Outside a session: go to the Browser view. |
 | <Kbd shortcut="browser.new-tab" /> | New tab. |
 | <Kbd shortcut="browser.address" /> | Go to the address bar. |
+| <Kbd shortcut="browser.reload" /> | Reload the page on screen, wherever the focus is. |
+| <Kbd shortcut="browser.hard-reload" /> | Hard reload: load the page without the cache. |
 | <Kbd shortcut="browser.find" /> | Find in the page, while a page or its address bar has the focus, or in the Browser view. |
 | <Kbd shortcut="browser.bookmark" /> | Bookmark the page, or edit its bookmark. |
 | <Kbd shortcut="browser.close-tab" /> | Close the tab, while a page or its address bar has the focus. |

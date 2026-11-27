@@ -21,6 +21,10 @@ export interface TriggerEditorRequest {
   from?: Partial<Pick<TriggerForm, 'prompt' | 'profileId' | 'model' | 'effort' | 'permissionMode' | 'workspace' | 'baseRef' | 'start' | 'pipelineId'>>;
   /** Saved: what the opener does next (New session empties its box). */
   onSaved?(trigger: Trigger): void;
+  /** A whole trigger to start the form from (an agent's draft, Open in editor); `trigger` says whether it changes one. */
+  draft?: Trigger;
+  /** The editor closed, saved or not. */
+  onClosed?(): void;
 }
 
 interface TriggersState {
@@ -73,7 +77,9 @@ export function openTriggerEditor(request: TriggerEditorRequest): void {
 }
 
 export function closeTriggerEditor(): void {
+  const closing = useTriggers.getState().editor;
   useTriggers.setState({ editor: null });
+  closing?.onClosed?.();
 }
 
 /** A project's Triggers tab (the project's ⋯ menu, a notification). */

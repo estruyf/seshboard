@@ -18,6 +18,13 @@ export const isScriptTool = (tool: string): boolean => (BROWSER_SCRIPT_TOOLS as 
 export const browserToolsFor = (scripts: boolean): BrowserTool[] => BROWSER_TOOLS.filter((tool) => scripts || !isScriptTool(tool));
 export const BROWSER_SERVER = 'browser';
 export const BROWSER_TOOL_PREFIX = `mcp__${BROWSER_SERVER}__`;
+/**
+ * The server's name for other agents (Copilot, Codex): OpenAI's API reserves the `browser` namespace for its own tool
+ * and refuses every request that lists tools in it, so a session on a GPT model could not send a single message.
+ */
+export const PROVIDER_BROWSER_SERVER = 'seshboard-browser';
+/** Claude Code's name for a server another agent started under its own: `browser` for the browser tools. */
+export const claudeServerName = (server: string): string => (server === PROVIDER_BROWSER_SERVER ? BROWSER_SERVER : server);
 
 /** What an agent reads about the tools once, as the server's instructions; `scripts`: evaluate and network are offered. */
 export function browserInstructions(scripts: boolean): string {
@@ -199,6 +206,8 @@ export interface BrowserToolResult {
   error?: boolean;
   /** `where`: the browser profile of the page the tools work on, null for the Default one. */
   profileId?: string | null;
+  /** `where` with a ref: the name of the element the call acts on, null when the ref is gone. */
+  target?: string | null;
 }
 
 /**
@@ -222,6 +231,8 @@ export interface BrowserAsk {
   input: Record<string, unknown>;
   /** The browser profile's name when it isn't the Default one. */
   profile: string | null;
+  /** The name of the element a click or type acts on (its text or label), since its ref means nothing to you. */
+  target?: string | null;
   /** The session is in an added project, which can keep the site: the card offers Always allow. */
   project: boolean;
 }
@@ -233,17 +244,57 @@ export type BrowserAnswer = 'deny' | 'once' | 'session' | 'always';
 export const browserAnswerOf = (decision: { behavior: 'allow' | 'deny'; always?: boolean; session?: boolean }): BrowserAnswer =>
   decision.behavior !== 'allow' ? 'deny' : decision.always ? 'always' : decision.session ? 'session' : 'once';
 
-/** A browser card's title, description and Always allow label; `agent` names who asks ("Claude Code", "Copilot"). */
-export function browserPromptText(agent: string, ask: BrowserAsk): { title: string; description: string; alwaysLabel: string | null } {
+const clipText = (text: string, max = 60): string => {
+  const line = text.replace(/\s+/g, ' ').trim();
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+};
+
+/**
+ * What a browser call does, in words, for the card's line under its title: "Click “Sign in”", not the element's ref
+ * (`e105`), which only the agent's snapshot explains. `target` is the element's name, when the page still has it.
+ */
+export function browserCallDetail(tool: BrowserTool, input: Record<string, unknown>, target?: string | null): string {
+  const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value : null);
+  const element = target?.trim() ? `“${clipText(target)}”` : 'an element on the page';
+  switch (tool) {
+    case 'open':
+      return text(input.url) ? `Open ${text(input.url)}` : 'Open a page';
+    case 'click':
+      return `Click ${element}`;
+    case 'type': {
+      const typed = text(input.text);
+      return `Type ${typed ? `“${clipText(typed)}”` : 'text'} into ${target?.trim() ? element : 'a field'}${input.submit === true ? ' and press Enter' : ''}`;
+    }
+    case 'press':
+      return text(input.key) ? `Press ${text(input.key)}` : 'Press a key';
+    case 'snapshot':
+      return 'Read the page';
+    case 'read':
+      return 'Read the page’s text';
+    case 'screenshot':
+      return 'Take a picture of the page';
+    case 'console':
+      return 'Read the page’s console';
+    case 'evaluate':
+      return text(input.script) ? `Run a script: ${clipText(text(input.script)!, 80)}` : 'Run a script in the page';
+    case 'network':
+      return text(input.id) ? `Read the response of request ${text(input.id)}` : 'List the page’s requests';
+  }
+}
+
+/** A browser card's title, description, Always allow label and what the call does; `agent` names who asks ("Claude Code", "Copilot"). */
+export function browserPromptText(agent: string, ask: BrowserAsk): { title: string; description: string; alwaysLabel: string | null; detail: string } {
   const host = siteLabel(ask.site);
+  const detail = browserCallDetail(ask.tool, ask.input, ask.target);
   if (ask.kind === 'scripts') {
     return {
       title: `${agent} wants to run scripts on ${host} as you`,
       description: browserScriptsDescription(ask.profile),
       alwaysLabel: ask.project ? `scripts on ${host} in this project` : null,
+      detail,
     };
   }
-  return { title: `${agent} wants to use ${host} in the browser`, description: browserSiteDescription(ask.profile), alwaysLabel: ask.project ? `${host} in this project` : null };
+  return { title: `${agent} wants to use ${host} in the browser`, description: browserSiteDescription(ask.profile), alwaysLabel: ask.project ? `${host} in this project` : null, detail };
 }
 
 /** What `browserAccess` weighs: the call's page and the sites you allowed, for the project and for this session. */

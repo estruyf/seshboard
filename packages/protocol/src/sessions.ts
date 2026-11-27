@@ -130,6 +130,12 @@ export const ProjectDefaults = z.object({
    * (docs/browser.md, the script guard); this computer always may. Apart from `browserSites`: a script reaches more.
    */
   browserScriptSites: z.array(z.string().min(1).max(500)).max(50).optional(),
+  /**
+   * Which of the `seshboard` server's tools this project's sessions get (docs/seshboard-tools.md): `sessions` only
+   * starts sessions and the helpers around that, `all` (left out) adds pipelines, triggers, schedules and actions. Read
+   * when a session starts. Fewer tools leave more context for agents without tool search.
+   */
+  sessionTools: z.enum(['sessions', 'all']).optional(),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
 
@@ -137,7 +143,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, globalFallbackModel: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true, planModeInstructions: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true, globalFallbackModel: true, browserSites: true, browserScriptSites: true, orchestratorInstructions: true, planModeInstructions: true, sessionTools: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({
@@ -303,9 +309,14 @@ export type SessionsChanged = z.infer<typeof SessionsChanged>;
 
 export const TranscriptUpdate = z.object({
   sessionId: z.string(),
-  /** `append` when the new messages extend what was sent before; `replace` after rewinds or compaction. */
-  mode: z.enum(['append', 'replace']),
+  /**
+   * `append` when the new messages extend what was sent before; `splice` when they take the place of everything from
+   * `at` on (a line only the transcript file has, among messages that came live); `replace` after rewinds or compaction.
+   */
+  mode: z.enum(['append', 'replace', 'splice']),
   messages: z.array(TranscriptMessage),
+  /** With `splice`: how many of the messages sent before stay; the new ones follow them. */
+  at: z.number().int().nonnegative().optional(),
   /** Set (with an empty `replace`) when the first read of the transcript failed; `transcript.diagnose` says more. */
   error: z.string().optional(),
 });

@@ -30,17 +30,32 @@ interface Flags {
 const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null, note: null, donePr: null, remindAt: null, remindedAt: null };
 /** Writes that land right after the user looked are not "new" for them. */
 const UNREAD_SLACK_MS = 2_000;
+/**
+ * How long a newer time and size may wait to go out while a session is being written. Both change on nearly every
+ * write, and the sidebar shows the time by the minute, so a busy session is sent (and stored) about this often instead.
+ */
+export const ACTIVITY_DELAY_MS = 15_000;
+
+/** True when two summaries differ in nothing but what every write moves: the last activity and the file's size. */
+export function onlyActivity(a: RawSummary, b: RawSummary): boolean {
+  const { updatedAt: _a, fileSize: _b, ...restA } = a;
+  const { updatedAt: _c, fileSize: _d, ...restB } = b;
+  return JSON.stringify(restA) === JSON.stringify(restB);
+}
 
 interface Entry {
   summary: RawSummary;
   path: string | null;
   mtime: number | null;
+  /** The file's size when it was read; null for an entry loaded from the cache, which stores only the mtime. */
+  size: number | null;
   entrypoint: string | null;
 }
 
 interface TranscriptFile {
   path: string;
   mtime: number;
+  size: number;
   profileId: string;
 }
 
@@ -75,6 +90,8 @@ export interface SessionIndexOptions {
   parentOf?: (sessionId: string) => string | null;
   /** Safety-net full rescan, in case file events were missed. */
   refreshIntervalMs?: number;
+  /** How long a change of only the time and size may wait (`ACTIVITY_DELAY_MS`; tests shorten it). */
+  activityDelayMs?: number;
 }
 
 const SESSION_FILE = /^([^\\/]+)[\\/]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
@@ -106,6 +123,12 @@ export class SessionIndex {
   private readonly changed = new Map<string, { path: string; profileId: string }>();
   /** Sessions changed or forgotten while a full scan awaited the source; that scan's older view must not undo them. */
   private touchedDuringScan: Set<string> | undefined;
+  /** A newer summary that differs only in its time and size (`onlyActivity`), sent when its timer runs out. */
+  private readonly deferred = new Map<string, { entry: Entry; timer: ReturnType<typeof setTimeout> }>();
+  /** When each session's transcript was last written, as the file watcher saw it. */
+  private readonly written = new Map<string, number>();
+  /** Sessions with a transcript in more than one folder, at the last full scan or since. */
+  private duplicates = new Set<string>();
   private readonly statements;
 
   constructor(private readonly options: SessionIndexOptions) {
@@ -156,6 +179,7 @@ export class SessionIndex {
           summary,
           path: (row.jsonl_path as string | null) ?? null,
           mtime: (row.jsonl_mtime as number | null) ?? null,
+          size: null,
           entrypoint: (row.entrypoint as string | null) ?? null,
         });
       } catch {
@@ -200,6 +224,28 @@ export class SessionIndex {
     return this.entries.get(sessionId)?.path ?? null;
   }
 
+  /**
+   * The one transcript file of a session, for reading it directly; null when unknown or when the session has files in
+   * more than one folder (the SDK's reader then picks one itself).
+   */
+  transcriptFile(sessionId: string): string | null {
+    return this.duplicates.has(sessionId) ? null : this.pathFor(sessionId);
+  }
+
+  /**
+   * The session's latest time and size, including a change still held back (`ACTIVITY_DELAY_MS`): what search compares
+   * against, so a turn's end is indexed without waiting for it to be sent.
+   */
+  latestActivity(sessionId: string): { updatedAt: number; fileSize: number | null } | null {
+    const summary = (this.deferred.get(sessionId)?.entry ?? this.entries.get(sessionId))?.summary;
+    return summary ? { updatedAt: summary.updatedAt, fileSize: summary.fileSize } : null;
+  }
+
+  /** When the file watcher last saw the session's transcript written (this run), or null. */
+  writtenAt(sessionId: string): number | null {
+    return this.written.get(sessionId) ?? null;
+  }
+
   /** Drops a deleted session from the index and its flags, and tells every window. */
   forget(sessionId: string): void {
     this.touchedDuringScan?.add(sessionId);
@@ -209,6 +255,8 @@ export class SessionIndex {
     this.perFile.get(sessionId)?.stop();
     this.perFile.delete(sessionId);
     this.changed.delete(sessionId);
+    this.undefer(sessionId);
+    this.written.delete(sessionId);
   }
 
   /**
@@ -403,6 +451,7 @@ export class SessionIndex {
     for (const c of this.perFile.values()) c.stop();
     this.perFile.clear();
     this.changed.clear();
+    for (const id of [...this.deferred.keys()]) this.undefer(id);
   }
 
   /** Full reconcile with ~/.claude. Concurrent calls share one run. */
@@ -452,11 +501,12 @@ export class SessionIndex {
   /** Maps session id → transcript file for every top-level transcript under each profile's projects/. */
   private scanFiles(): Map<string, TranscriptFile> {
     const files = new Map<string, TranscriptFile>();
+    const duplicates = new Set<string>();
     for (const { dir: root, profileId, provider } of this.options.projectsDirs()) {
       if (provider) {
         for (const [id, path] of provider.files()) {
           const stat = statSync(path, { throwIfNoEntry: false });
-          if (stat?.isFile()) files.set(id, { path, mtime: Math.round(stat.mtimeMs), profileId });
+          if (stat?.isFile()) files.set(id, { path, mtime: Math.round(stat.mtimeMs), size: stat.size, profileId });
         }
         continue;
       }
@@ -478,10 +528,14 @@ export class SessionIndex {
           if (!match) continue;
           const path = join(root, dir, name);
           const stat = statSync(path, { throwIfNoEntry: false });
-          if (stat?.isFile()) files.set(match[2]!, { path, mtime: Math.round(stat.mtimeMs), profileId });
+          if (!stat?.isFile()) continue;
+          // The same session in two folders (a moved project): the first, as the SDK's reader finds it.
+          if (files.has(match[2]!)) duplicates.add(match[2]!);
+          else files.set(match[2]!, { path, mtime: Math.round(stat.mtimeMs), size: stat.size, profileId });
         }
       }
     }
+    this.duplicates = duplicates;
     return files;
   }
 
@@ -498,8 +552,9 @@ export class SessionIndex {
     const firstPrompt = info.firstPrompt ? withoutContext(info.firstPrompt) : '';
     const title = oneLine(info.customTitle || info.summary || firstPrompt || 'Untitled session', TITLE_MAX);
     // The SDK's lastModified is the file's mtime, which moves when Claude Code merely exits or
-    // reopens the session; use the last message instead. Read again only when the file changed.
-    const unchanged = previous && file && previous.mtime === file.mtime;
+    // reopens the session; use the last message instead. Read again only when the file changed: two writes
+    // can share an mtime (the same millisecond, or the same clock tick on Linux), so the size counts too.
+    const unchanged = previous && file && previous.mtime === file.mtime && (previous.size === null || previous.size === file.size);
     const updatedAt = info.provider ? info.lastModified : unchanged ? previous.summary.updatedAt : ((file && readLastActivity(file.path)) ?? info.lastModified);
     const summary: RawSummary = {
       id: info.sessionId,
@@ -520,12 +575,14 @@ export class SessionIndex {
       profileId: info.profileId ?? file?.profileId ?? previous?.summary.profileId ?? BUILTIN_PROFILE_ID,
       ...(info.provider ? { provider: info.provider } : {}),
     };
-    return { summary, path: file?.path ?? previous?.path ?? null, mtime: file?.mtime ?? previous?.mtime ?? null, entrypoint };
+    return { summary, path: file?.path ?? previous?.path ?? null, mtime: file?.mtime ?? previous?.mtime ?? null, size: file?.size ?? previous?.size ?? null, entrypoint };
   }
 
   private apply(upserted: Entry[], removed: string[]): void {
     for (const entry of upserted) this.touchedDuringScan?.add(entry.summary.id);
     for (const id of removed) this.touchedDuringScan?.add(id);
+    // What goes out now is newer than what waited.
+    for (const entry of upserted) this.undefer(entry.summary.id);
     const { db } = this.options;
     db.exec('BEGIN');
     try {
@@ -547,7 +604,11 @@ export class SessionIndex {
   }
 
   private fileChanged(sessionId: string, path: string, profileId: string): void {
+    // A second file for a known session, while the first is still there.
+    const known = this.entries.get(sessionId)?.path;
+    if (known && known !== path && existsSync(known) && existsSync(path)) this.duplicates.add(sessionId);
     this.changed.set(sessionId, { path, profileId });
+    this.written.set(sessionId, Date.now());
     let runner = this.perFile.get(sessionId);
     if (!runner) {
       runner = coalesce(() => {
@@ -557,6 +618,46 @@ export class SessionIndex {
       this.perFile.set(sessionId, runner);
     }
     runner.trigger();
+  }
+
+  /**
+   * Whether a change can wait (`ACTIVITY_DELAY_MS`): only the time and size moved, in the same file, and the session
+   * neither turns unread nor comes back from hidden by it.
+   */
+  private mayWait(previous: Entry, next: Entry): boolean {
+    if (previous.path !== next.path || !onlyActivity(previous.summary, next.summary)) return false;
+    if (this.hidden(previous.summary) !== this.hidden(next.summary)) return false;
+    // Done until new activity, or back in the list until then: the new time can move the session between lists.
+    const flags = this.flags.get(next.summary.id) ?? NO_FLAGS;
+    const crosses = (at: number | null) => at !== null && at >= previous.summary.updatedAt !== at >= next.summary.updatedAt;
+    if (crosses(flags.archivedAt) || crosses(flags.restoredAt)) return false;
+    return this.decorate(previous.summary).unread === this.decorate(next.summary).unread;
+  }
+
+  /** Keeps the newest summary that may wait, and sends it once the delay since the first one runs out. */
+  private defer(entry: Entry): void {
+    const id = entry.summary.id;
+    // A full scan in flight read the session before this change: it must not undo it.
+    this.touchedDuringScan?.add(id);
+    const waiting = this.deferred.get(id);
+    if (waiting) {
+      waiting.entry = entry;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const latest = this.deferred.get(id)?.entry;
+      this.deferred.delete(id);
+      if (latest && this.entries.has(id)) this.apply([latest], []);
+    }, this.options.activityDelayMs ?? ACTIVITY_DELAY_MS);
+    timer.unref?.();
+    this.deferred.set(id, { entry, timer });
+  }
+
+  private undefer(sessionId: string): void {
+    const waiting = this.deferred.get(sessionId);
+    if (!waiting) return;
+    clearTimeout(waiting.timer);
+    this.deferred.delete(sessionId);
   }
 
   private async updateOne(sessionId: string, path: string, profileId: string): Promise<void> {
@@ -571,8 +672,11 @@ export class SessionIndex {
       if (info) {
         const stat = statSync(path, { throwIfNoEntry: false });
         const previous = this.entries.get(sessionId);
-        const entry = this.build(info, { path, mtime: Math.round(stat?.mtimeMs ?? Date.now()), profileId }, previous);
-        if (!previous || JSON.stringify(previous.summary) !== JSON.stringify(entry.summary)) this.apply([entry], []);
+        const entry = this.build(info, { path, mtime: Math.round(stat?.mtimeMs ?? Date.now()), size: stat?.size ?? 0, profileId }, previous);
+        if (!previous || JSON.stringify(previous.summary) !== JSON.stringify(entry.summary)) {
+          if (previous && this.mayWait(previous, entry)) this.defer(entry);
+          else this.apply([entry], []);
+        }
       }
       this.options.onTranscriptChanged(sessionId);
     } catch (error) {

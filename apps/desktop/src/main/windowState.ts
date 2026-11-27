@@ -54,6 +54,15 @@ export function placeWindow(bounds: Rect, workAreas: Rect[], min: { width: numbe
   return { x, y, width, height };
 }
 
+/**
+ * Whether a window saved at `bounds` opens exactly there on these displays. False when its display is missing or
+ * smaller than it was, as right after a restart, when macOS often connects external displays after the app starts.
+ */
+export function fitsWhereSaved(bounds: Rect, workAreas: Rect[], min: { width: number; height: number }): boolean {
+  const placed = placeWindow(bounds, workAreas, min);
+  return !!placed && placed.x === bounds.x && placed.y === bounds.y && placed.width === Math.max(bounds.width, min.width) && placed.height === Math.max(bounds.height, min.height);
+}
+
 /** The main window's last size and position, saved as JSON in the app's data folder. */
 export class WindowStateStore {
   #state: WindowState | undefined;

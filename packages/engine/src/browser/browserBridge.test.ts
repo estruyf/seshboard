@@ -49,6 +49,13 @@ describe('BrowserBridge', () => {
     await expect(allowing.b.handle({ id: 3, token: token(other), tool: 'click', args: { ref: 'e1' } })).resolves.toEqual({ text: 'ran click' });
   });
 
+  it('names the element a call acts on when it asks', async () => {
+    const { b, asked } = bridge({ where: async () => ({ url: 'https://github.com/x', profile: null, target: 'New issue' }) });
+    const server = await b.serverFor(BASE, () => 'session-1');
+    await b.handle({ id: 6, token: token(server), tool: 'click', args: { ref: 'e105' } });
+    expect(asked[0]).toMatchObject({ tool: 'click', input: { ref: 'e105' }, target: 'New issue' });
+  });
+
   it('refuses an unknown token or tool', async () => {
     const { b } = bridge();
     await expect(b.handle({ id: 4, token: 'nope', tool: 'snapshot', args: {} })).resolves.toMatchObject({ error: true });

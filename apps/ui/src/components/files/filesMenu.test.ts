@@ -15,6 +15,14 @@ describe('the Files menu', () => {
     expect(filesMenu({ ...picked, lines: null })[0]).toBe('add-file');
   });
 
+  it('copies the link and the selected text in the viewer first', () => {
+    const viewer = { kind: 'viewer' as const, path: '/r/a.md', lines: null };
+    expect(filesMenu({ ...viewer, copy: true, link: 'https://example.com' }).slice(0, 4)).toEqual(['copy-link', 'copy', 'separator', 'add-file']);
+    expect(filesMenu({ ...viewer, copy: true }).slice(0, 2)).toEqual(['copy', 'separator']);
+    expect(filesMenu(viewer)).not.toContain('copy');
+    expect(filesActionLabel('copy-link', viewer, 'Finder')).toBe('Copy link');
+  });
+
   it('lists the open files and closing the others only with more than one tab', () => {
     expect(filesMenu({ kind: 'tab', path: '/r/a.ts', tabs: 3 })).toEqual(expect.arrayContaining(['add-open-files', 'close-others', 'close-all']));
     expect(filesMenu({ kind: 'tab', path: '/r/a.ts', tabs: 1 })).not.toContain('add-open-files');

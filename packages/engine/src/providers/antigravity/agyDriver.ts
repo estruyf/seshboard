@@ -5,10 +5,10 @@ import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, Mc
 import { AcpError, AUTH_REQUIRED, type AcpConnection } from '../acp/acpConnection.ts';
 import { acpOutcome, acpPermissionRequest, acpPrompt } from '../acp/acpCards.ts';
 import type { AcpContentBlock, AcpPermissionOutcome, AcpPermissionRequest, AcpPromptResponse } from '../acp/acpTypes.ts';
-import { agyPromptId, agyReplayInfo, agyToolCard } from './agyEvents.ts';
+import { agyPromptId, agyReplayInfo, agyToolCard, agyToolName } from './agyEvents.ts';
 import { AgyLive } from './agyLive.ts';
 import { AGY_MODES, agyModeId, agyModels, agyThoughtLevel, currentValue } from './agyModes.ts';
-import { AGY_MCP_REFUSED, agyCapabilities, agyCommands } from './agyTools.ts';
+import { AGY_MCP_REFUSED, agyCapabilities, agyCommands, isOwnServerTool } from './agyTools.ts';
 
 export interface AgyDriverOptions {
   /** The profile's `agy acp` that runs its sessions (not the one that reads them). */
@@ -262,6 +262,7 @@ export function agyDriver(options: AgyDriverOptions): AgyDriver {
       let response: unknown;
       let prompts = 0;
       const servers = acpServers(config.mcpServers);
+      const ownServers = Object.keys(config.mcpServers ?? {});
       const release = connection.hold();
       try {
         if (config.resume) {
@@ -341,6 +342,9 @@ export function agyDriver(options: AgyDriverOptions): AgyDriver {
       running.set(sessionId, {
         update: (update) => live.handle(update),
         permission(request, signal) {
+          // Seshboard's own tools (the browser, the orchestrator) go on in every mode, as for Claude Code and Copilot:
+          // Antigravity asks for every MCP call, even in Auto. The browser asks for a site that isn't on this computer itself.
+          if (isOwnServerTool(agyToolName(request.toolCall), ownServers)) return Promise.resolve(acpOutcome({ behavior: 'allow' }, request.options ?? []));
           const card = agyToolCard(request.toolCall);
           // A read-only session: what only reads goes through, the rest is declined without a card.
           if (readOnly) return Promise.resolve(acpOutcome(isReadOnlyTool(card.toolName, card.input) ? { behavior: 'allow' } : { behavior: 'deny', message: READ_ONLY_STEP_REASON }, request.options ?? []));

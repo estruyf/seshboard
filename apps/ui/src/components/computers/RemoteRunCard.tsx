@@ -178,7 +178,7 @@ function PushDialog({ client, computer, runId, onClose }: { client: RpcClient<Co
           disabled={!preview || busy}
           aria-label="Commit message"
           placeholder={preview?.files === 0 ? 'Nothing to commit: Push sends the commits on the branch.' : undefined}
-          className="w-full resize-y rounded-lg border border-edge bg-card px-2.5 py-1.5 font-mono text-ui text-text outline-none focus:border-link disabled:opacity-60"
+          className="field w-full resize-y rounded-lg bg-card px-2.5 py-1.5 font-mono text-ui outline-none"
         />
         {error && (
           <p role="alert" className="text-ui text-error">

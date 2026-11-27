@@ -14,7 +14,7 @@ import { projectsThatFit, type NewSessionMode } from './newSessionLayout.ts';
 import { useColumns } from '../ui/useColumns.ts';
 import { addOrSelect, completePath, listEnd, ghostText, isPathInput, knownFolderRows, pathRows, splitPathInput } from './pathInput.ts';
 import { useFolderSuggestions } from './useFolderSuggestions.ts';
-import { matches } from '../../lib/shortcuts.ts';
+import { ariaKeysFor, formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { QUESTION_LABEL } from '../../lib/questions.ts';
 
 /** A row in the open list's other modes: a typed path's folders, or folders with Claude sessions. */
@@ -373,7 +373,6 @@ export function FolderPicker({
         {highlighted && (
           <span className="ml-auto flex shrink-0 items-center gap-1.5 text-meta text-muted @max-[600px]:ml-0 @max-[600px]:w-full @max-[600px]:justify-end">
             {action}
-            <Kbd keys="↩" />
           </span>
         )}
       </button>
@@ -387,6 +386,9 @@ export function FolderPicker({
       aria-pressed={question.selected}
       onClick={askQuestion}
       onMouseDown={(e) => e.preventDefault()}
+      data-tooltip={QUESTION_LABEL}
+      data-tooltip-kbd={formatKeys(keysFor('session.question'))}
+      aria-keyshortcuts={ariaKeysFor('session.question')}
       data-quick-question
       data-selected={question.selected || undefined}
       className={`flex min-h-11 min-w-0 shrink-0 items-center gap-2.5 rounded-lg border px-2.5 py-1 text-left transition-colors ${
@@ -398,7 +400,6 @@ export function FolderPicker({
         <span className="truncate text-ui font-semibold">{QUESTION_LABEL}</span>
         <span className="truncate text-meta text-faint">Ask without a project</span>
       </span>
-      <Kbd shortcut="session.question" tone="plain" />
     </button>
   );
 
@@ -513,8 +514,9 @@ export function FolderPicker({
     );
 
   return (
-    // A container: the list shows one or two columns as the picker (not the window) narrows.
-    <div ref={rootRef} className="@container relative flex min-h-0 flex-1 flex-col gap-2" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    // A container: the list shows one or two columns as the picker (not the window) narrows. In three columns it is as
+    // tall as its rows, so the projects centre beside the message box; it shrinks and scrolls when they don't fit.
+    <div ref={rootRef} className="@container relative flex min-h-0 flex-1 flex-col gap-2 @min-[1200px]/new-session:flex-initial" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {open ? (
         // As tall as its rows, like the short list, so the footer stays under them; it shrinks and scrolls when they don't fit.
         <div className="flex min-h-0 flex-col gap-2" data-folder-list>

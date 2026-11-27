@@ -94,7 +94,7 @@ export function PushCard({ state }: { state: PipelineRunState }) {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={Math.min(8, Math.max(2, message.split('\n').length))}
-                className="mt-2 w-full resize-y rounded-md border border-edge bg-code px-2.5 py-1.5 font-mono text-ui text-text outline-none focus:border-accent-ink"
+                className="field mt-2 w-full resize-y bg-code px-2.5 py-1.5 font-mono text-ui outline-none"
                 autoFocus
                 data-push-message-input
               />

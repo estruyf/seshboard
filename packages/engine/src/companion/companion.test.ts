@@ -21,7 +21,7 @@ import type { SessionSource } from '../claude/sessionSource.ts';
 import { createEngine } from '../engine.ts';
 import type { PermissionDecision, PermissionRequest, SessionSummary } from '@seshboard/protocol';
 import { CompanionHub } from './companionHub.ts';
-import { companionSessions, doneSessions, inFolders, isWithin, promptsFor, sessionsFor } from './companionSessions.ts';
+import { companionSessions, doneSessions, githubRepoOfPage, inFolders, isWithin, promptsFor, sessionsFor } from './companionSessions.ts';
 
 const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 // Folders in this platform's form (E:\work\web on Windows), as the companion only takes absolute local paths.
@@ -221,6 +221,11 @@ describe('prompts', () => {
     expect(promptsFor(prompts, [{ id: 's1' }]).map((p) => p.requestId)).toEqual(['a', 'b']);
   });
 
+  it('leaves out approval cards: they are answered in the session on the computer', () => {
+    const card = { ...prompt('card', 's1', 3), approval: { kind: 'pipeline' as const, allowLabel: 'Save', lines: [], blocks: [], options: [], editor: null, draft: null } };
+    expect(promptsFor([prompt('a', 's1', 1), card], [{ id: 's1' }]).map((p) => p.requestId)).toEqual(['a']);
+  });
+
   it('hands an editor the prompts of its folders, and its answers to the engine', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-companion-'));
     const answers: Array<[string, PermissionDecision, boolean]> = [];
@@ -231,6 +236,8 @@ describe('prompts', () => {
       sources: () => ({ summaries: [summary], live: [], hosts: [], permissions: [prompt('ask', SESSION_ID), prompt('other', 'not-listed')] }),
       archiveAfterDays: () => 3,
       windows: () => 1,
+      projects: () => [],
+      checkoutOf: async () => null,
       respond: (requestId, decision, acceptEdits) => {
         if (requestId !== 'ask') throw new Error('gone');
         answers.push([requestId, decision, acceptEdits]);
@@ -380,5 +387,53 @@ describe('which sessions are listed', () => {
     expect(done('all').map(([id]) => id)).toEqual(['old', 'archived', 'terminal']);
     // Every session in scope is in one of the two lists.
     expect([...ids(list, { scope: 'all' }), ...done('all').map(([id]) => id)].sort()).toEqual(list.map((s) => s.id).sort());
+  });
+});
+
+describe('the browser extension', () => {
+  it('finds the GitHub repository a page is on', () => {
+    expect(githubRepoOfPage('https://github.com/Acme/Web/issues/412')).toBe('acme/web');
+    expect(githubRepoOfPage('https://github.com/acme/web.git')).toBe('acme/web');
+    expect(githubRepoOfPage('https://www.github.com/acme/web/pull/3/files')).toBe('acme/web');
+    expect(githubRepoOfPage('https://github.com/acme')).toBeNull();
+    expect(githubRepoOfPage('https://github.com/orgs/acme/projects')).toBeNull();
+    expect(githubRepoOfPage('https://gitlab.com/acme/web')).toBeNull();
+    expect(githubRepoOfPage('file:///github.com/acme/web')).toBeNull();
+    expect(githubRepoOfPage('not a url')).toBeNull();
+  });
+
+  it('lists projects with the one a page is on, and counts browsers apart from editors', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-companion-'));
+    const asked: string[] = [];
+    const hub = new CompanionHub({
+      infoDir: join(dataDir, COMPANION_DIR),
+      appVersion: '9.9.9',
+      sources: () => ({ summaries: [], live: [], hosts: [] }),
+      archiveAfterDays: () => 3,
+      windows: () => 1,
+      projects: () => [{ root: WEB, name: 'web' }],
+      checkoutOf: async (repo) => {
+        asked.push(repo);
+        return repo === 'acme/web' ? WEB : null;
+      },
+      respond: () => {},
+      log: () => {},
+    });
+    cleanups.push(() => {
+      hub.stop();
+      rmSync(dataDir, { recursive: true, force: true });
+    });
+    await hub.start();
+    const info = JSON.parse(readFileSync(hub.infoFile, 'utf8')) as CompanionInfo;
+    const { client } = editor(info);
+    await client.call('hello', { token: info.token, protocol: COMPANION_PROTOCOL, client: { name: 'browser', version: '0' } });
+    const vscode = editor(info).client;
+    await hello(vscode, info.token);
+    expect(hub.status()).toMatchObject({ clients: 1, browsers: 1 });
+
+    expect(await client.call('projects.list', { url: 'https://github.com/acme/web/issues/1' })).toEqual({ projects: [{ root: WEB, name: 'web' }], matched: WEB });
+    expect(await client.call('projects.list', { url: 'https://example.com/' })).toEqual({ projects: [{ root: WEB, name: 'web' }], matched: null });
+    expect(await client.call('projects.list', {})).toMatchObject({ matched: null });
+    expect(asked).toEqual(['acme/web']);
   });
 });

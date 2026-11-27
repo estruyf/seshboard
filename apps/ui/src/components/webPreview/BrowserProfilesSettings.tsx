@@ -34,7 +34,7 @@ function ScopeSelect({ value, onChange, label }: { value: string | null; onChang
       options={options}
       onChange={(next) => onChange(next === EVERYWHERE ? null : next)}
       menuWidth={200}
-      className="h-7 max-w-48 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+      className="field h-7 max-w-48 shrink-0 px-2.5 text-ui outline-none"
       dataAttrs={{ 'data-browser-profile-scope': true }}
     />
   );

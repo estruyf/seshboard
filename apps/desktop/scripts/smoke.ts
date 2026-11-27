@@ -44,6 +44,9 @@ const command = packaged ? packagedApp() : (createRequire(import.meta.url)('elec
 const started = performance.now();
 const childEnv: NodeJS.ProcessEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
+// Quick start was used yesterday, so its panel is made at launch, as for someone who uses it (the step that destroys it covers the
+// panel made on the first press).
+childEnv.SESHBOARD_QUICK_START_USED ??= String(Date.now() - 24 * 60 * 60_000);
 
 // Each --only adds a pattern; a step runs when its label matches any of them.
 const patterns = process.argv.flatMap((arg, i) => (arg === '--only' ? [process.argv[i + 1] ?? ''] : arg.startsWith('--only=') ? [arg.slice('--only='.length)] : []));
@@ -79,7 +82,9 @@ if (process.argv.includes('--demo')) {
   // Two sessions Auto started that grew past their first prompt, with their picks, for the step-up note's step.
   const autoSuggest = writeAutoSuggestDemo(world.home);
   const demoUsage = join(world.home, 'smoke-demo-usage.json');
-  writeFileSync(demoUsage, JSON.stringify({ profiles: [], autoPicks: autoSuggest.autoPicks }));
+  // One session a phone started, for Activity's Started by.
+  const fromPhone = world.history['Write a getting started guide']?.id;
+  writeFileSync(demoUsage, JSON.stringify({ profiles: [], autoPicks: autoSuggest.autoPicks, remoteStarts: fromPhone ? [{ sessionId: fromPhone, deviceId: 'smoke-phone', deviceName: 'Smoke phone' }] : [] }));
   Object.assign(childEnv, { SESHBOARD_DEMO_USAGE: demoUsage, SESHBOARD_SMOKE_AUTO_SUGGEST: JSON.stringify({ effort: autoSuggest.effort, model: autoSuggest.model }) });
 }
 

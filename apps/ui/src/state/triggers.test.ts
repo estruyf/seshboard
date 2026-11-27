@@ -219,7 +219,7 @@ describe('a trigger that starts a pipeline', () => {
 });
 
 describe('the Triggers tab', () => {
-  const event = (over: Partial<TriggerEvent>): TriggerEvent => ({ id: 'e', triggerId: 't', key: '#214', kind: 'issue', title: 'Archive keeps the scroll position', url: '', fields: { number: '214' }, status: 'waiting', reason: null, sessionId: null, runId: null, itemId: null, label: null, reassignedTo: null, createdAt: 1, startedAt: null, ...over });
+  const event = (over: Partial<TriggerEvent>): TriggerEvent => ({ id: 'e', triggerId: 't', key: '#214', kind: 'issue', title: 'Archive keeps the scroll position', url: '', fields: { number: '214' }, status: 'waiting', reason: null, sessionId: null, runId: null, itemId: null, label: null, reassignedTo: null, doneAt: null, createdAt: 1, startedAt: null, ...over });
 
   it('says how busy a trigger is', () => {
     expect(statusPill({ paused: false }, { busy: 2, max: 3, waiting: 0 })).toEqual({ text: '2 of 3 busy', tone: 'working' });
@@ -264,5 +264,44 @@ describe('the Triggers tab', () => {
   it('shows sessions first, then what waits, then the rest', () => {
     const list = cardEvents([event({ id: 's', status: 'skipped', createdAt: 9 }), event({ id: 'w2', createdAt: 5 }), event({ id: 'w1', createdAt: 2 }), event({ id: 'a', status: 'started', createdAt: 1 })]);
     expect(list.map((e) => e.id)).toEqual(['a', 'w1', 'w2', 's']);
+  });
+});
+
+describe('a reviews trigger in the editor', () => {
+  const text = (parts: SummaryPart[]) => parts.map((p) => p.text).join('');
+
+  it('asks for your review when you pick it, with its own prompt and name', () => {
+    const f = updateForm(form(), { kind: 'reviews' });
+    expect(f.which).toBe('assignee');
+    expect(f.prompt).toBe(DEFAULT_PROMPTS.reviews);
+    expect(f.name).toBe('Reviews for you');
+    expect(formSource(f)).toEqual({ kind: 'reviews', label: null, reviewer: '@me', collaboratorsOnly: true });
+    expect(text(triggerSummary(f, { login: 'estruyf' }))).toBe('When a pull request asks @estruyf for a review, start a session in a new worktree. Up to 3 at once.');
+  });
+
+  it('takes a label, or both, and wants each part it shows', () => {
+    const both = updateForm(form(), { kind: 'reviews', which: 'both', label: 'ui' });
+    expect(formSource(both)).toMatchObject({ label: 'ui', reviewer: '@me' });
+    expect(text(triggerSummary(both, {}))).toMatch(/^When a pull request with the ui label asks you for a review/);
+    expect(formProblem(updateForm(both, { label: ' ' }))).toBe('Type the label to look for.');
+    expect(formProblem(updateForm(both, { assignee: '' }))).toBe('Pick whose review the pull requests ask for.');
+    expect(problemSection(updateForm(both, { assignee: '' }))).toBe('which');
+  });
+
+  it('keeps state labels, with reviewed in place of pull request open, and never assigns', () => {
+    const f = updateForm(form({ stateLabels: { ...form().stateLabels, on: true }, assignOnPickUp: true }), { kind: 'reviews', which: 'label' });
+    expect(triggerSections('reviews')).toEqual(['when', 'which', 'github', 'start', 'limits']);
+    expect(formToSave(f)).toMatchObject({ source: { kind: 'reviews', label: 'seshboard', reviewer: null }, stateLabels: { on: true, reviewed: 'seshboard: reviewed' }, assignOnPickUp: false });
+    // Only the labels a pull request gets need a name.
+    expect(formProblem(updateForm(f, { stateLabels: { ...f.stateLabels, prOpen: '' } }))).toBeNull();
+    const unnamed = updateForm(f, { stateLabels: { ...f.stateLabels, reviewed: ' ' } });
+    expect(formProblem(unnamed)).toBe('Give every state label a name.');
+    expect(problemSection(unnamed)).toBe('github');
+    expect(foldable(updateForm(f, { stateLabels: { ...f.stateLabels, on: false } }), 'github')).toBe(true);
+  });
+
+  it('reads a saved reviews trigger back', () => {
+    const saved = { ...formToSave(updateForm(form(), { kind: 'reviews', which: 'both', label: 'ui', assignee: 'mara-k' })), id: 't9', createdAt: 1, updatedAt: 1 } as unknown as Trigger;
+    expect(triggerForm(saved)).toMatchObject({ kind: 'reviews', which: 'both', label: 'ui', assignee: 'mara-k' });
   });
 });

@@ -38,7 +38,7 @@ export interface RunAgainInput {
  * Returns the new session's id.
  */
 export async function runAgain(input: RunAgainInput, deps: RunAgainDeps): Promise<string> {
-  const first = input.items.find((item): item is Extract<DisplayItem, { kind: 'user' }> => item.kind === 'user' && !item.subagent);
+  const first = input.items.find((item): item is Extract<DisplayItem, { kind: 'user' }> => item.kind === 'user' && !item.subagent && !item.peer);
   const cwd = input.host?.cwd ?? input.cwd;
   if (!first || !cwd) throw new Error("Couldn't find the first prompt of this session.");
   const attachments: ImageAttachment[] = [];

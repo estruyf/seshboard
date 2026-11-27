@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { BROWSER_POPOUT_QUERY, ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type BrowserMessageItem, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
+import { BROWSER_POPOUT_QUERY, ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartScreenshot, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type BrowserTabsHandoff, type BrowserMessageItem, type SaveImageRequest, type ShellCommandResult, type BrowserExtensionHostResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys, type WebPreviewEvent, type PickedElement, type BrowserAgentTarget, type BrowserAgentTargetRequest } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -8,6 +8,12 @@ ipcRenderer.on(IpcChannel.enginePort, (event) => {
 });
 
 const theme = (command: ThemeCommand) => ipcRenderer.invoke(IpcChannel.themeCommand, command);
+
+// Whether the window can be seen, from main: kept here from the start, so the page reads the latest whenever it asks.
+let windowShown = ipcRenderer.sendSync(IpcChannel.getWindowShown) as boolean;
+ipcRenderer.on(IpcChannel.windowShown, (_event, shown: boolean) => {
+  windowShown = shown;
+});
 
 const bridge: SeshboardBridge = {
   platform: process.platform,
@@ -73,12 +79,12 @@ const bridge: SeshboardBridge = {
   update: (command) => ipcRenderer.send(IpcChannel.updateCommand, command),
   // The channel is a preference; main checks again as soon as it changes.
   setUpdateChannel: (channel) => ipcRenderer.send(IpcChannel.setPreferences, { updateChannel: channel }),
-  setWindowButtons: (position) => ipcRenderer.send(IpcChannel.windowButtons, position),
   onDeepLink(listener) {
     const handler = (_event: unknown, message: DeepLinkMessage) => listener(message);
     ipcRenderer.on(IpcChannel.deepLink, handler);
     return () => ipcRenderer.off(IpcChannel.deepLink, handler);
   },
+  startFromPage: (request) => ipcRenderer.send(IpcChannel.startFromPage, request),
   // With the preferences, so the first paint already has the theme's colours.
   themes: ipcRenderer.sendSync(IpcChannel.getThemes) as ThemeState,
   onThemesChanged(listener) {
@@ -106,6 +112,25 @@ const bridge: SeshboardBridge = {
   keepAwakeStatus: () => ipcRenderer.invoke(IpcChannel.keepAwakeStatus) as Promise<boolean>,
   openLoginItemsSettings: () => ipcRenderer.send(IpcChannel.openLoginItemsSettings),
   shellCommand: (action) => ipcRenderer.invoke(IpcChannel.shellCommand, action) as Promise<ShellCommandResult>,
+  browserExtensionHost: (action) => ipcRenderer.invoke(IpcChannel.browserExtensionHost, action) as Promise<BrowserExtensionHostResult>,
+  windowActive: ipcRenderer.sendSync(IpcChannel.getWindowActive) as boolean,
+  onWindowActive(listener) {
+    const handler = (_event: unknown, active: boolean) => listener(active);
+    ipcRenderer.on(IpcChannel.windowActive, handler);
+    return () => ipcRenderer.off(IpcChannel.windowActive, handler);
+  },
+  windowShown: () => windowShown,
+  onWindowShown(listener) {
+    const handler = (_event: unknown, shown: boolean) => listener(shown);
+    ipcRenderer.on(IpcChannel.windowShown, handler);
+    return () => ipcRenderer.off(IpcChannel.windowShown, handler);
+  },
+  fullScreen: ipcRenderer.sendSync(IpcChannel.getWindowFullScreen) as boolean,
+  onFullScreen(listener) {
+    const handler = (_event: unknown, fullScreen: boolean) => listener(fullScreen);
+    ipcRenderer.on(IpcChannel.windowFullScreen, handler);
+    return () => ipcRenderer.off(IpcChannel.windowFullScreen, handler);
+  },
   popout: new URLSearchParams(window.location.search).get(POPOUT_QUERY),
   popouts: ipcRenderer.sendSync(IpcChannel.getPopouts) as string[],
   onPopoutsChanged(listener) {
@@ -160,6 +185,7 @@ const bridge: SeshboardBridge = {
   quickStart: new URLSearchParams(window.location.search).has(QUICK_START_QUERY),
   quickStartClose: () => ipcRenderer.send(IpcChannel.quickStartCommand, 'close'),
   quickStartPassClicks: (pass) => ipcRenderer.send(IpcChannel.quickStartPassClicks, pass),
+  quickStartReady: () => ipcRenderer.send(IpcChannel.quickStartReady),
   onQuickStartShown(listener) {
     const handler = (_event: unknown, keepDraft: boolean) => listener(keepDraft === true);
     ipcRenderer.on(IpcChannel.quickStartShown, handler);
@@ -170,6 +196,9 @@ const bridge: SeshboardBridge = {
     ipcRenderer.on(IpcChannel.quickStartKey, handler);
     return () => ipcRenderer.off(IpcChannel.quickStartKey, handler);
   },
+  quickStartScreenshot: () => ipcRenderer.invoke(IpcChannel.quickStartScreenshot) as Promise<QuickStartScreenshot>,
+  openScreenRecordingSettings: () => ipcRenderer.send(IpcChannel.openScreenRecordingSettings),
+  takeScreenshot: () => ipcRenderer.invoke(IpcChannel.takeScreenshot) as Promise<QuickStartScreenshot>,
   quickStartStatus: () => ipcRenderer.invoke(IpcChannel.getQuickStartStatus) as Promise<QuickStartStatus>,
   onQuickStartStatus(listener) {
     const handler = (_event: unknown, status: QuickStartStatus) => listener(status);

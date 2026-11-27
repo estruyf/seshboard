@@ -17,6 +17,7 @@ export const THEME_TOKENS = [
   'code-pane',
   'border',
   'overlay-border',
+  'field-border',
   'overlay-shadow',
   'text',
   'paper',
@@ -195,6 +196,8 @@ export interface ThemeFile {
   name: string;
   author?: string;
   version: number;
+  /** Project icons, editor icons and site icons show in greys, and projects get no colour of their own (a black and white theme). */
+  monochrome?: boolean;
   light?: ThemeModeFile;
   dark?: ThemeModeFile;
 }

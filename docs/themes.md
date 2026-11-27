@@ -35,11 +35,13 @@ This one has only a dark version, so in light mode Seshboard uses Demo Time.
   "name": "Solarized",          // required, 1 to 48 characters
   "author": "Ethan Schoonover",  // optional
   "version": 1,                 // required: the theme format, 1
+  "monochrome": true,           // optional: grey pictures too (project, editor and site icons)
   "light": { "canvas": "…", "accent": "…", "colors": { … }, "syntax": … },
   "dark":  { "canvas": "…", "accent": "…", "colors": { … }, "terminal": { … }, "syntax": … }
 }
 ```
 
+- **`monochrome`** (optional): for a theme in greys. Project icons, emoji and letter tiles, editor icons and site icons show in greys too, and projects get no colour of their own (the frame in New session). Images in a conversation keep their colours. Links, which have the text colour in such a theme, are underlined. Black and white sets it.
 - **`light` and `dark`**: at least one. A missing mode uses Demo Time, and Settings says so.
 - **`canvas` and `accent`** (per mode, optional): the background and the accent every missing colour is generated from.
 - **`colors`** (per mode, optional): any of the [tokens](#every-token-and-where-it-shows) by their name. They win over what canvas and accent generate. Without `canvas`, the mode's `colors.bg` stands in for it (and `colors.accent` for `accent`); without those either, Demo Time's.
@@ -92,7 +94,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
     "accent": "#ffd43b",
     "colors": {
       "bg": "#ffffff", "sidebar": "#f4f6fa", "card": "#ffffff", "popover": "#ffffff", "code-bg": "#f4f6fa", "code-pane": "#ffffff",
-      "border": "#e1e4e8", "overlay-border": "#d1d5da", "overlay-shadow": "#15181f33",
+      "border": "#e1e4e8", "overlay-border": "#d1d5da", "field-border": "#8b8e95", "overlay-shadow": "#15181f33",
       "text": "#202736", "muted": "#505869", "faint": "#687082", "link": "#005cc5",
       "selected": "#2027361a", "focus-ring": "#916c008c", "scrim": "#15181f59",
       "ok": "#00806f", "warn": "#d1186b", "error": "#d73a49", "caution": "#b35900", "unread": "#005cc5", "memory": "#8250df", "remote": "#7048e8", "paper": "#fbfaf7", "paper-text": "#1f2328", "trigger": "#6f42c1", "pipeline": "#6741d9", "ultrathink-a": "#d6336c", "ultrathink-b": "#b35900", "ultrathink-c": "#2b8a3e", "ultrathink-d": "#1971c2",
@@ -111,7 +113,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
     "accent": "#ffd43b",
     "colors": {
       "bg": "#15181f", "sidebar": "#202736", "card": "#202736", "popover": "#2a3244", "code-bg": "#202736", "code-pane": "#15181f",
-      "border": "#2d3142", "overlay-border": "#414861", "overlay-shadow": "#000000b3",
+      "border": "#2d3142", "overlay-border": "#414861", "field-border": "#787b82", "overlay-shadow": "#000000b3",
       "text": "#d9dbe1", "muted": "#9ba4b7", "faint": "#8b94a6", "link": "#74c0fc",
       "selected": "#d9dbe11c", "focus-ring": "#ffd43b8c", "scrim": "#00000099",
       "ok": "#51cf66", "warn": "#ed217c", "error": "#ff6b6b", "caution": "#ffa94d", "unread": "#74c0fc", "memory": "#b197fc", "remote": "#b197fc", "paper": "#15181f", "paper-text": "#d9dbe1", "trigger": "#b197fc", "pipeline": "#9775fa", "ultrathink-a": "#ff6b9d", "ultrathink-b": "#ffa94d", "ultrathink-c": "#69db7c", "ultrathink-d": "#74c0fc",
@@ -172,6 +174,7 @@ For each mode, Seshboard first generates every token from `canvas` and `accent`,
 | `profile-*`, `ultrathink-a` to `ultrathink-d` | Demo Time's hues, moved to 3:1 on `bg` |
 | `selected` | `text` at 10% (light) or 11% (dark) |
 | `focus-ring` | `accent-ink` at 55% |
+| `field-border` | 45% of `text` over the canvas, moved until it reaches 3:1 against the canvas, sidebar, cards and popovers |
 | `diff-added`, `diff-removed` | `ok` and `error` at 14% |
 | `scrim`, `overlay-shadow`, `terminal-shadow` | near-black at Demo Time's strengths |
 | `terminal-bg` | dark in both modes, in the canvas's hue |
@@ -193,7 +196,8 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `code-bg` | code blocks, tool output, inline diffs | `#f4f6fa` | `#202736` |
 | `code-pane` | a file or diff inside a side panel (the Files viewer, Changes), set apart from `sidebar` | `#ffffff` | `#15181f` |
 | `border` | card edges, the hairline under a header while content scrolls under it | `#e1e4e8` | `#2d3142` |
-| `overlay-border` | edges of menus and dialogs, and of fields, chips and secondary buttons inside them | `#d1d5da` | `#414861` |
+| `overlay-border` | edges of menus and dialogs, and of chips and secondary buttons inside them | `#d1d5da` | `#414861` |
+| `field-border` | the edge of fields, dropdowns and text areas (the `field` utility), 3:1 against the canvas, sidebar, cards and popovers | `#8b8e95` | `#787b82` |
 | `overlay-shadow` | the shadow under menus and dialogs (one colour; the app builds the layers) | `#15181f33` | `#000000b3` |
 | `text` | text | `#202736` | `#d9dbe1` |
 | `muted` | secondary text, quiet icons | `#505869` | `#9ba4b7` |
@@ -267,12 +271,13 @@ The background of code is always the theme's `code-bg`, never the syntax theme's
 | Theme | Light | Dark | Code colours |
 |---|---|---|---|
 | Demo Time | Demo Time Light | Demo Time Dark | Demo Time |
+| Black and white | greys on white | greys on black | Demo Time, and green and red diffs (Code highlighting off puts the code in one colour) |
 | Catppuccin | Latte | Mocha | `catppuccin-latte` / `catppuccin-mocha` |
 | Nord | Demo Time Light | Nord | `nord` |
 | Solarized | Solarized Light | Solarized Dark | `solarized-light` / `solarized-dark` |
 | Graphite, Midnight, Paper, Signal, Forest, Plum, Aluminium, Ocean, Neon | their own | their own | Demo Time |
 
-They are theme files like any other ([apps/ui/src/themes](../apps/ui/src/themes)), checked the same way as imports, and they can't be removed. Nord is dark only, as the original is, so in light mode it shows Demo Time. The nine after Solarized match the [app icon's colourways](../assets/app-icons): each takes its accent from the icon's main cable, its second cable for a chart series (and for links where it is blue), and its background from the icon's body; the rest is generated, then adjusted until every pair reaches WCAG AA, Demo Time's code colours included. All of them reach WCAG AA for text, muted text and the accent as text in every mode they have. Solarized, Nord and Catppuccin keep their own palettes where that is lower, as the originals do: text on Solarized's yellow in light mode (3.0:1) and its comments in code (2.3:1 light, 2.6:1 dark), Nord's comments in code (2.7:1) and Catppuccin Latte's (3.3:1). Where a VS Code theme's status colours are too light to read as text on its background, the port darkens them (Catppuccin Latte's green, pink, peach, yellow and blue) or lightens them (Nord's red, orange and purple) and keeps their hue. Nord's code blocks sit a step darker than its background, so its dim comments stay as readable as they can.
+They are theme files like any other ([apps/ui/src/themes](../apps/ui/src/themes)), checked the same way as imports, and they can't be removed. Nord is dark only, as the original is, so in light mode it shows Demo Time. The nine after Solarized match the [app icon's colourways](../assets/app-icons): each takes its accent from the icon's main cable, its second cable for a chart series (and for links where it is blue), and its background from the icon's body; the rest is generated, then adjusted until every pair reaches WCAG AA, Demo Time's code colours included. Black and white is in greys, except errors (red) and what needs you (amber), which keep their colour; its links are underlined instead of coloured. All of them reach WCAG AA for text, muted text and the accent as text in every mode they have. Solarized, Nord and Catppuccin keep their own palettes where that is lower, as the originals do: text on Solarized's yellow in light mode (3.0:1) and its comments in code (2.3:1 light, 2.6:1 dark), Nord's comments in code (2.7:1) and Catppuccin Latte's (3.3:1). Where a VS Code theme's status colours are too light to read as text on its background, the port darkens them (Catppuccin Latte's green, pink, peach, yellow and blue) or lightens them (Nord's red, orange and purple) and keeps their hue. Nord's code blocks sit a step darker than its background, so its dim comments stay as readable as they can.
 
 ## Credits and licences
 

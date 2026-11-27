@@ -3,7 +3,7 @@ import type { AttentionEvent } from './attention.ts';
 
 /**
  * What event triggers (#180) tell you, as notifications: a session a CI failure started ("CI failed on main. Started
- * “Fix test on main”"), an issue picked up ("Issue #212 picked up", which may still wait for a slot), and a trigger
+ * “Fix test on main”"), a review a pull request asked for ("Review requested on PR #88. Started “Review #88 …”"), an issue picked up ("Issue #212 picked up", which may still wait for a slot), and a trigger
  * that paused itself, with why.
  */
 export function triggerAlerts(notices: readonly TriggerNotice[]): AttentionEvent[] {
@@ -13,7 +13,7 @@ export function triggerAlerts(notices: readonly TriggerNotice[]): AttentionEvent
         return {
           kind: 'trigger-started',
           sessionId: notice.sessionId ?? '',
-          title: notice.eventKind === 'ci' ? `CI failed on ${notice.branch || 'the branch'}. Started “${notice.title ?? notice.triggerName}”` : `Started “${notice.title ?? notice.triggerName}”`,
+          title: `${startedBecause(notice)}Started “${notice.title ?? notice.triggerName}”`,
           body: [notice.projectName, notice.ref].filter(Boolean).join(' · '),
         };
       case 'pickedUp':
@@ -34,6 +34,13 @@ export function triggerAlerts(notices: readonly TriggerNotice[]): AttentionEvent
         };
     }
   });
+}
+
+/** What happened, before "Started …": a CI failure or a review request; nothing for anything else. */
+function startedBecause(notice: TriggerNotice): string {
+  if (notice.eventKind === 'ci') return `CI failed on ${notice.branch || 'the branch'}. `;
+  if (notice.eventKind === 'pr') return `Review requested on ${notice.ref || 'a pull request'}. `;
+  return '';
 }
 
 /** A reason as a sentence. Its first letter stays as it is: "gh is signed out" names a program. */

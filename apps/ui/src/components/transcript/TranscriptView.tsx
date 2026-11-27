@@ -1,9 +1,12 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
+import { openSidePanelOnStart } from '../../state/sidePanelOnStart.ts';
+import { minimalAlert } from '../composer/minimalComposer.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, FileDiff, Folder, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, NotebookPen, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
-import { apiRetryLine, isAbsolutePath, joinPath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl, webPageUrl } from '@seshboard/protocol/client';
+import { AppWindow, ArrowDown, ChevronDown, CircleAlert, Coffee, GitBranch, ListTodo, LoaderCircle, NotebookPen, SquareArrowDownLeft, X } from 'lucide-react';
+import { lazy, memo, Suspense, useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { apiRetryLine, isAbsolutePath, joinPath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { fastCommand, fastModeFace } from '../../lib/fastMode.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -12,12 +15,14 @@ import { nextMode } from '../../lib/modes.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
+import { useStreaming, useStreamingKind } from '../../state/streamingStore.ts';
+import { useStreamWatch } from '../../state/streamWatch.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
 import { trustRepository } from '../../state/repoTrust.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../state/paletteBus.ts';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { realBranch, useSessions } from '../../state/sessionsStore.ts';
 import { popOut, popoutSession, showInMain, useBrowserPopouts } from '../../state/popoutsStore.ts';
@@ -25,6 +30,7 @@ import { currentPlatform } from '../../lib/platform.ts';
 import { openInProviderCli, runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
+import { startFromSelection } from '../../state/startUnderStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { keepAwakeUntilDoneDetail } from '../general/keepAwake.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
@@ -35,7 +41,7 @@ import { RunFailedNotice } from '../session/RunFailedNotice.tsx';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
-import { Composer } from '../composer/Composer.tsx';
+import { Composer, type SubmitApi } from '../composer/Composer.tsx';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
@@ -61,6 +67,8 @@ import { LargeContextNotice } from '../session/LargeContextNotice.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
 import { useHeight } from '../ui/useHeight.ts';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
+import { followEnd } from './followEnd.ts';
+import { useStableCallback, useStableHandlers } from '../../lib/useStableCallback.ts';
 import { useCleanCopy } from './useCleanCopy.ts';
 import { anchorAt, recallScroll, rememberScroll } from './scrollMemory.ts';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
@@ -72,7 +80,6 @@ import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { GitButton } from '../git/GitButton.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { isQuestionsFolder, QUESTION_LABEL, sessionOptions } from '../../lib/questions.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
@@ -138,18 +145,24 @@ import { ProviderSessionControls } from '../providers/ProviderSessionControls.ts
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab, panelWidthFor } from '../ask/askWidth.ts';
-import { ToolRail, type RailItem } from './ToolRail.tsx';
+import { useLayout } from '../../state/layoutStore.ts';
+import { ToolRail, useRailItems, type RailButton, type RailItem } from './ToolRail.tsx';
+import { PanelLauncher } from './PanelLauncher.tsx';
+import { launcherEntries, launcherPick, launcherShown } from './panelLauncher.ts';
+import { closePanelLauncher, openPanelLauncher, usePanelLauncher } from '../../state/panelLauncherStore.ts';
 import { AppIcon } from '../AppIcon.tsx';
 import { GitHubIcon } from '../GitHubIcon.tsx';
 import { useGithubPage, useOpenIn } from '../OpenInButton.tsx';
-import { RAIL_GITHUB, railEntries, railLabel, railToolState, type RailAppId, type RailToolId } from './toolRail.ts';
+import { RAIL_GITHUB, railEntries, railLabel, railToolState, type RailAppId, type RailAvailable, type RailToolId } from './toolRail.ts';
+import { openLinkInBrowser } from './openLinkInBrowser.ts';
+import { RAIL_ICONS } from './railIcons.tsx';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
 import { closeCommands, openCommands, pickCommand, toggleCommandsPanel, useSessionCommands } from '../../state/commandsPanelStore.ts';
 import { closeNote, toggleNotePanel, useNotePanel } from '../../state/notePanelStore.ts';
 import { closeChanges, toggleChangesPanel, useSessionChanges } from '../../state/changesPanelStore.ts';
-import { toggleTerminalPanel, useRightPanel, useRightTab } from '../../state/rightPanelStore.ts';
+import { toggleTerminalPanel, useRightPanel, useRightTab, useSidePanelFull } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions, type ReadableReply } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
@@ -158,9 +171,9 @@ import { useTranscript } from './useTranscript.ts';
 import { PromptOutline } from './PromptOutline.tsx';
 import { currentPrompt, isPrompt, LAND_OFFSET, MIN_PROMPTS, MIN_WIDTH, nextPrompt, outlinePrompts, previousPrompt, promptKeysBlocked, type OutlinePrompt } from './promptOutline.ts';
 import { startNewSession } from '../newSession/startSession.ts';
-import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
+import { sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
-import { formatKeys, keysFor, matches as isShortcut, modKey } from '../../lib/shortcuts.ts';
+import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
 import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
 import { BackToRunButton, ParentRunRows, ParentStepTree, StepCrumb, StepStopNotice, StepTopLines, StepVerdictCard, useRunPlaceholder } from '../pipelines/RunParts.tsx';
 import { OrchestratorCrumb, OrchestratorOverview } from '../orchestrator/OrchestratorOverview.tsx';
@@ -180,18 +193,6 @@ const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', s
  * pink when it needs you, green only while background tasks run. Idle is quiet, like the rest of the line.
  */
 const STATUS_TONE = { running: 'text-accent-ink', 'needs-you': 'text-warn', idle: 'text-muted' } as const;
-
-/** The rail's icons for Seshboard's own tools. */
-const RAIL_ICONS = {
-  files: <Folder size={17} aria-hidden />,
-  changes: <FileDiff size={17} aria-hidden />,
-  terminal: <SquareTerminal size={17} aria-hidden />,
-  web: <Globe size={17} aria-hidden />,
-  ask: <MessageCircleQuestion size={17} aria-hidden />,
-  agents: <Bot size={17} aria-hidden />,
-  commands: <ScrollText size={17} aria-hidden />,
-  note: <NotebookPen size={17} aria-hidden />,
-};
 
 /** A session view narrower than this (without its rail) gives a panel on the right the whole view, as a sheet. */
 const NARROW_PANEL = 760;
@@ -226,8 +227,21 @@ function SpinnerSlot({ sessionId, message, children }: { sessionId: string; mess
   );
 }
 
-function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: string; since: number | null; showIndicator: boolean; live: LiveTurnInfo }) {
-  const block = useHosts((s) => s.streaming.get(sessionId));
+/** No models yet (another provider's readiness not known): one array, so memoised props don't change with it. */
+const NO_MODELS: never[] = [];
+/** Nothing in Up next: one array, so the memoised list doesn't render for a new empty one. */
+const NO_QUEUE: never[] = [];
+/** The GitHub button's icon on the rail: one element, so the rail's items compare as unchanged. */
+const GITHUB_RAIL_ICON = <GitHubIcon size={18} aria-hidden />;
+
+/**
+ * What Claude is writing now, or the working line. The only part of the view that reads the streaming text: it renders
+ * once per frame while a reply streams, and keeps the end in view itself (`onGrow`), so the view doesn't render with it.
+ */
+const StreamingBlock = memo(function StreamingBlock({ sessionId, since, showIndicator, live, onGrow }: { sessionId: string; since: number | null; showIndicator: boolean; live: LiveTurnInfo; onGrow(): void }) {
+  const block = useStreaming((s) => s.blocks.get(sessionId));
+  // Before anything measures the view (its scroll edges), so following the end never shows a frame away from it.
+  useLayoutEffect(() => onGrow(), [block, onGrow]);
   // Waiting on a permission or a question is still the turn: the line says so, with the panel in its waiting frame.
   const running = useHosts((s) => {
     const state = s.hosts.get(sessionId)?.state;
@@ -235,11 +249,26 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   });
   // A new session on Auto: your message waits until Auto has picked its model.
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
+  // A new session's worktree is still being made: Claude Code starts in it once it is there.
+  const preparing = useHosts((s) => s.hosts.get(sessionId)?.preparing === true);
   // Claude Code is compacting: the host says so, so it shows after switching sessions and in pop-outs too.
   const compacting = useHosts((s) => s.hosts.get(sessionId)?.compacting === true);
   // Claude Code is retrying a failed API call: say so, with the wait counting down, instead of looking stuck.
   const apiRetry = useHosts((s) => s.hosts.get(sessionId)?.apiRetry);
-  const now = useTicker((choosing || !!apiRetry) && showIndicator);
+  const now = useTicker((choosing || preparing || !!apiRetry) && showIndicator);
+  if (preparing) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-preparing-worktree>
+        <p className="flex min-w-0 items-center gap-2 text-ui text-muted" role="status">
+          <span className="flex w-4 shrink-0 justify-center">
+            <WorkingPanel />
+          </span>
+          {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
+          <span className="shrink-0">Making the worktree…</span>
+        </p>
+      </div>
+    );
+  }
   if (choosing) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>
@@ -281,7 +310,7 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
       </SpinnerSlot>
     </div>
   );
-}
+});
 
 /** How the turn that just ended went, as the setting shows it, for its announcement: " It took 2 minutes 14 seconds, 18.4 thousand tokens." */
 function finishedDetails(live: LiveTurnInfo | null): string {
@@ -333,72 +362,63 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
   const client = connection.status === 'connected' ? connection.client : null;
   const [changes, setChanges] = useState<GitChanges | null>(null);
   const [isRepo, setIsRepo] = useState(true);
-  /** Asks for a check after `delay` ms (a later ask replaces a waiting one); a no-op without a folder. */
-  const request = useRef<(delay: number) => void>(() => {});
   const openRef = useRef(open);
   openRef.current = open;
+  // A hidden window stops watching (the engine then stops looking for it) and watches again when it shows.
+  const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
   useEffect(() => {
-    if (!client || !cwd) return;
-    let cancelled = false;
-    // One git.changes at a time: an ask while one runs checks again once it is back.
-    let busy = false;
-    let again = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const load = () => {
-      timer = undefined;
-      if (busy) {
-        again = true;
-        return;
-      }
-      busy = true;
-      client
-        .call('git.changes', { cwd, base })
-        .then(
-          (result) => {
-            if (cancelled) return;
-            // The open panel takes every new list (its open diffs reload with it); the header's count only needs news.
-            setChanges((current) => (!openRef.current && sameChanges(current, result) ? current : result));
-            setIsRepo(true);
-          },
-          () => !cancelled && (setChanges(null), setIsRepo(false)),
-        )
-        .finally(() => {
-          busy = false;
-          if (cancelled || !again) return;
-          again = false;
-          load();
-        });
-    };
-    const ask = (delay: number) => {
-      if (timer !== undefined) clearTimeout(timer);
-      timer = setTimeout(load, delay);
-    };
-    request.current = ask;
-    ask(500);
-    const visible = () => document.visibilityState === 'visible';
-    // Nothing is checked while the window is hidden; it checks once it shows again.
-    const poll = setInterval(() => visible() && !busy && timer === undefined && load(), GIT_POLL_MS);
-    const onVisible = () => visible() && ask(0);
-    const onFocus = () => ask(500);
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onFocus);
+    const onVisibility = () => setVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+  /** A result for this checkout, from the engine's push or an answer. */
+  const apply = useCallback((result: GitChanges | null) => {
+    if (!result) {
+      setChanges(null);
+      setIsRepo(false);
+      return;
+    }
+    // The open panel takes every new list (its open diffs reload with it); the header's count only needs news.
+    setChanges((current) => (!openRef.current && sameChanges(current, result) ? current : result));
+    setIsRepo(true);
+  }, []);
+  // The engine looks at the checkout when something may have changed (a write, a turn's end, git's own files, the
+  // window coming to the front) and sends each result: one look per checkout, however many views show it. The first
+  // result is asked for too, so a view doesn't depend on being the first of its window to watch.
+  useEffect(() => {
+    if (!client || !cwd || !visible) return;
+    let live = true;
+    const off = client.on('git.changed', (event) => {
+      if (event.cwd === cwd && event.base === base) apply(event.changes);
+    });
+    void client.call('git.watch', { cwd, base }).catch(() => {});
+    void client.call('git.changes', { cwd, base }).then(
+      (result) => live && apply(result),
+      () => live && apply(null),
+    );
     return () => {
-      cancelled = true;
-      if (timer !== undefined) clearTimeout(timer);
-      clearInterval(poll);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onFocus);
-      request.current = () => {};
+      live = false;
+      off();
+      void client.call('git.unwatch', { cwd, base }).catch(() => {});
     };
-  }, [client, cwd, base]);
-  // The session did something (or the branch changed): check again once it settles.
-  useEffect(() => request.current(500), [activity]);
+  }, [client, cwd, base, visible, apply]);
+  /** Looks again now; every view of the checkout gets the result. */
+  const lookAgain = useCallback(() => {
+    if (!client || !cwd) return;
+    void client.call('git.changes', { cwd, base, fresh: true }).then(apply, () => apply(null));
+  }, [client, cwd, base, apply]);
+  // The branch changed here (a switch from the header): look again at once. Turns and writes reach the engine itself.
+  const seen = useRef(activity);
+  useEffect(() => {
+    if (seen.current === activity) return;
+    seen.current = activity;
+    lookAgain();
+  }, [activity, lookAgain]);
   // Opening the panel shows what is there now, not what was there at the last check.
   useEffect(() => {
-    if (open) request.current(0);
-  }, [open]);
-  const refresh = useCallback(() => request.current(500), []);
-  return { changes, isRepo, refresh };
+    if (open) lookAgain();
+  }, [open, lookAgain]);
+  return { changes, isRepo, refresh: lookAgain };
 }
 
 /**
@@ -406,24 +426,13 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
  * panes, so its header has the handle to drag it by and a close for the pane, and an inactive one dims.
  * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
  */
-/**
- * A web link in a reply, with the browser on: it opens in the session's browser (a tab already on that address
- * comes to the front). ⌘-click (Ctrl-click) leaves it to the system browser. File links keep their own setting.
- */
-function openLinkInBrowser(event: ReactMouseEvent<HTMLElement>, sessionId: string): void {
-  if (event.defaultPrevented || event.button !== 0 || modKey(event) || event.shiftKey || event.altKey) return;
-  const link = (event.target as HTMLElement).closest('a[href]');
-  const url = link ? webPageUrl(link.getAttribute('href') ?? '') : null;
-  if (!url) return;
-  event.preventDefault();
-  useWebPreview.getState().open(sessionId, url);
-}
 
 /** One empty list, so a session without a provider keeps the same one between renders. */
 const NO_FEATURES: readonly ProviderFeature[] = [];
 const NO_MESSAGES: ReadonlySet<string> = new Set();
 
 export function TranscriptView({ sessionId, tiled = false, active = true, leading = true }: { sessionId: string; tiled?: boolean; active?: boolean; leading?: boolean }) {
+  if (RENDER_COUNTS) countRender('TranscriptView');
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const summary = useSessions((s) => s.sessions.get(sessionId) ?? null);
@@ -562,7 +571,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const [changesBase, setChangesBase] = useState<ChangesBase>('uncommitted');
   // A branch switch (here or in another pane on the same checkout) changes what the panel shows.
   const branchSwitches = useCheckoutBranches((s) => s.switches);
-  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, `${items.length}:${live?.status ?? ''}:${branchSwitches}`, changesOpen);
+  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, String(branchSwitches), changesOpen);
   const isRepo = options.git && inRepo;
   // The badge on the Changes button counts uncommitted files only (the panel can compare with a branch too).
   const changedCount = changesBase === 'uncommitted' && changes ? changes.files.length : 0;
@@ -635,9 +644,21 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   const panesOpen = modPanes.length > 0;
+  // The side panel with nothing in it (the rail's Show panel): it lists the tools to open there, and gives way to one.
+  const launcherRequested = usePanelLauncher((s) => s.open.has(sessionId));
+  const showLauncher = launcherShown(launcherRequested, right.open.length, whyRequest !== null) && !terminalMaximized;
+  const launcherQuiet = usePanelLauncher((s) => s.quiet.has(sessionId));
+  // Full for the panels without a Full of their own: the empty panel, Ask, Agents, Commands, Note and mods' panes.
+  const sharedFull = useSidePanelFull(sessionId);
+  const setSharedFull = useCallback((full: boolean) => useRightPanel.getState().setFull(sessionId, full), [sessionId]);
+  const sharedFullShows = sharedFull && !whyRequest && !terminalMaximized && (showLauncher || frontPane !== null || right.tab === 'ask' || right.tab === 'agents' || right.tab === 'commands' || right.tab === 'note');
+  // Once a tool opens on the side, the empty panel is done: closing that tool closes the side, as before.
+  useEffect(() => {
+    if (launcherRequested && (right.open.length > 0 || whyRequest !== null)) closePanelLauncher(sessionId);
+  }, [launcherRequested, right.open.length, whyRequest, sessionId]);
   // A session view can be narrower than a panel and a usable conversation together: then the panel opens over the
   // conversation as a sheet, and the rail (or the panel's ×) brings the conversation back.
-  const narrowPanel = (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_PANEL;
+  const narrowPanel = (right.open.length > 0 || whyRequest !== null || showLauncher) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_PANEL;
   const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
   const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
   const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showNote || showFiles || showWeb || terminalOnRight || panesOpen);
@@ -669,6 +690,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     useRightPanel.getState().setTab(sessionId, modPaneTab(focusRequested));
     setPaneFocus((f) => ({ id: focusRequested, nonce: f.nonce + 1 }));
   }, [focusRequested, modPanes]);
+  // Behind another panel the terminal stays mounted (hidden): back in front, it takes the keys, as it did when it mounted.
+  const terminalFront = terminalOnRight && right.tab === 'terminal';
+  const terminalWasFront = useRef(terminalFront);
+  useEffect(() => {
+    if (terminalFront && !terminalWasFront.current && active) {
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-current-session="${CSS.escape(sessionId)}"] [data-terminal-panel] .xterm-helper-textarea`)?.focus());
+    }
+    terminalWasFront.current = terminalFront;
+  }, [terminalFront]);
   // The terminal coming to the right (opened, or docked there) comes to the front, as a panel opened there does.
   const terminalWasOnRight = useRef(terminalOnRight);
   useEffect(() => {
@@ -687,73 +717,79 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   useEffect(() => {
     if (showChanges) useTerminals.getState().setMaximized(sessionId, false);
   }, [showChanges, sessionId]);
+  // The view's keys read this render's state; the listener is added once, not again on every render.
+  const onViewKey = useEffectEvent((event: KeyboardEvent) => {
+    // Behind the Settings sheet the session stays mounted (inert); its shortcuts wait until Settings closes.
+    if (useSessions.getState().view !== 'session') return;
+    // A key something else already took (a shortcut recorder), or one pressed while a dialog is open, isn't for this view.
+    if (event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+    if (active && isShortcut(event, 'changes.toggle')) {
+      event.preventDefault();
+      toggleChangesHere();
+    }
+    if (active && isShortcut(event, 'agents.toggle')) {
+      event.preventDefault();
+      toggleAgentsHere();
+    }
+    if (active && isShortcut(event, 'commands.toggle')) {
+      event.preventDefault();
+      toggleCommandsHere();
+    }
+    if (active && cwd && isShortcut(event, 'files.toggle')) {
+      event.preventDefault();
+      toggleFilesHere();
+    }
+    // ⌘⌥F: Search in files, with the text selected in the viewer as the query.
+    if (active && cwd && isShortcut(event, 'files.search')) {
+      event.preventDefault();
+      const picked = window.getSelection();
+      const text = picked && !picked.isCollapsed && (picked.anchorNode?.parentElement?.closest('[data-files-viewer]') ?? null) ? picked.toString().trim() : '';
+      const files = useFilesPanel.getState();
+      if (text && !text.includes('\n')) files.setSearch(sessionId, { query: text });
+      files.setOpen(sessionId, true);
+      files.setMode(sessionId, 'search');
+      files.command(sessionId, 'search');
+    }
+    if (active && cwd && isShortcut(event, 'files.go-to-line') && showFiles && filesState.front) {
+      event.preventDefault();
+      const files = useFilesPanel.getState();
+      files.setOpen(sessionId, true);
+      files.setMode(sessionId, 'files');
+      files.command(sessionId, 'goto');
+    }
+    if (active && isShortcut(event, 'web.toggle') && previewAllowed()) {
+      event.preventDefault();
+      toggleWebHere();
+    }
+    // ⌘F finds in this conversation (the terminal keeps its own keys).
+    if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm, [data-web-preview-page], [data-browser-address], [data-browser-find], [data-files-viewer], [data-files-search]')) {
+      event.preventDefault();
+      setFindQuery((q) => q ?? '');
+      setFindFocus((n) => n + 1);
+    }
+    // ⌘⇧↑ / ⌘⇧↓ move between your prompts, also with the rail hidden. Not in the terminal, nor in a field with
+    // text, where they select to the start or the end.
+    const promptStep = isShortcut(event, 'transcript.prompt-previous') ? -1 : isShortcut(event, 'transcript.prompt-next') ? 1 : 0;
+    if (active && promptStep !== 0 && !(event.target as HTMLElement | null)?.closest?.('.xterm') && !promptKeysBlocked(document.activeElement as HTMLElement | null)) {
+      event.preventDefault();
+      stepPrompt(promptStep);
+    }
+  });
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      // Behind the Settings sheet the session stays mounted (inert); its shortcuts wait until Settings closes.
-      if (useSessions.getState().view !== 'session') return;
-      // A key something else already took (a shortcut recorder), or one pressed while a dialog is open, isn't for this view.
-      if (event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
-      if (active && isShortcut(event, 'changes.toggle')) {
-        event.preventDefault();
-        toggleChangesHere();
-      }
-      if (active && isShortcut(event, 'agents.toggle')) {
-        event.preventDefault();
-        toggleAgentsHere();
-      }
-      if (active && isShortcut(event, 'commands.toggle')) {
-        event.preventDefault();
-        toggleCommandsHere();
-      }
-      if (active && cwd && isShortcut(event, 'files.toggle')) {
-        event.preventDefault();
-        toggleFilesHere();
-      }
-      // ⌘⌥F: Search in files, with the text selected in the viewer as the query.
-      if (active && cwd && isShortcut(event, 'files.search')) {
-        event.preventDefault();
-        const picked = window.getSelection();
-        const text = picked && !picked.isCollapsed && (picked.anchorNode?.parentElement?.closest('[data-files-viewer]') ?? null) ? picked.toString().trim() : '';
-        const files = useFilesPanel.getState();
-        if (text && !text.includes('\n')) files.setSearch(sessionId, { query: text });
-        files.setOpen(sessionId, true);
-        files.setMode(sessionId, 'search');
-        files.command(sessionId, 'search');
-      }
-      if (active && cwd && isShortcut(event, 'files.go-to-line') && showFiles && filesState.front) {
-        event.preventDefault();
-        const files = useFilesPanel.getState();
-        files.setOpen(sessionId, true);
-        files.setMode(sessionId, 'files');
-        files.command(sessionId, 'goto');
-      }
-      if (active && isShortcut(event, 'web.toggle') && previewAllowed()) {
-        event.preventDefault();
-        toggleWebHere();
-      }
-      // ⌘F finds in this conversation (the terminal keeps its own keys).
-      if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm, [data-web-preview-page], [data-browser-address], [data-browser-find], [data-files-viewer], [data-files-search]')) {
-        event.preventDefault();
-        setFindQuery((q) => q ?? '');
-        setFindFocus((n) => n + 1);
-      }
-      // ⌘⇧↑ / ⌘⇧↓ move between your prompts, also with the rail hidden. Not in the terminal, nor in a field with
-      // text, where they select to the start or the end.
-      const promptStep = isShortcut(event, 'transcript.prompt-previous') ? -1 : isShortcut(event, 'transcript.prompt-next') ? 1 : 0;
-      if (active && promptStep !== 0 && !(event.target as HTMLElement | null)?.closest?.('.xterm') && !promptKeysBlocked(document.activeElement as HTMLElement | null)) {
-        event.preventDefault();
-        stepPrompt(promptStep);
-      }
-    };
+    const onKey = (event: KeyboardEvent) => onViewKey(event);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, []);
 
   // What to call the run of steps Claude is on now (summary mode), between steps.
   // Sessions running elsewhere (a terminal, Claude desktop) count too: their status comes from the registry.
   const working = running || live?.status === 'running' || live?.status === 'needs-you';
-  const streamKind = useHosts((s) => s.streaming.get(sessionId)?.kind ?? null);
-  const streamTool = useHosts((s) => (s.streaming.get(sessionId)?.kind === 'tool' ? s.streaming.get(sessionId)!.text : null));
+  // Only what Claude is doing (thinking, a tool), not the text it writes: the view doesn't render again for every word.
+  // This view shows the session's streaming text: the engine sends it here while the view is up and can be seen.
+  useStreamWatch(sessionId);
+  const streamShape = useStreamingKind(sessionId);
+  const streamKind = streamShape?.kind ?? null;
+  const streamTool = streamShape?.kind === 'tool' ? streamShape.text : null;
   const activeLabel =
     live?.status === 'needs-you' ? 'Waiting for you' : streamKind === 'thinking' ? 'Thinking' : streamKind === 'tool' && streamTool ? usingLabel(streamTool) : null;
   // When your last message went in, for the "9s · Thinking" timer.
@@ -763,8 +799,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const turnDetails = usePreferences((s) => s.prefs.turnDetails);
   // Reading mode: a portal from here, so it has this view's providers; the conversation stays mounted under it.
   const reading = useReadMode((s) => (active && s.open?.sessionId === sessionId ? s.open : null));
-  const readingText = useHosts((s) => {
-    const block = s.streaming.get(sessionId);
+  // Reading mode shows the reply as it streams; without it open, the text is the streaming block's alone.
+  const readingText = useStreaming((s) => {
+    if (!reading) return null;
+    const block = s.blocks.get(sessionId);
     return block?.kind === 'text' ? block.text : null;
   });
   const readReplyNow = useMemo(() => {
@@ -875,9 +913,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const stickToBottom = useRef(returnTo === null);
   // Away from the end while not following: shows Jump to latest.
   const [away, setAway] = useState(false);
+  // What `away` was last set to: the end that grows while you read further up sets it again and again, and a set to
+  // the same value still renders the view once.
+  const awayNow = useRef(false);
   const syncAway = () => {
     const el = scrollRef.current;
-    setAway(Boolean(el) && !stickToBottom.current && distanceFromEnd(el!) > AWAY_PX);
+    const next = Boolean(el) && !stickToBottom.current && distanceFromEnd(el!) > AWAY_PX;
+    if (next === awayNow.current) return;
+    awayNow.current = next;
+    setAway(next);
   };
   const follow = (on: boolean) => {
     stickToBottom.current = on;
@@ -911,13 +955,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) markUserScroll();
     if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) leaveEnd();
   };
+  // The streaming reply grew: still at the end, it stays there (only refs, so it is the same function every render).
+  const followTheEnd = useCallback(() => void followEnd(scrollRef.current, stickToBottom.current), []);
   const jumpToLatest = () => {
     const el = scrollRef.current;
     if (!el) return;
     follow(true);
     el.scrollTop = el.scrollHeight;
   };
-  const streamingText = useHosts((s) => s.streaming.get(sessionId)?.text.length ?? 0);
   // Rows start at an estimated height and grow once measured, so follow the total size too:
   // otherwise the first jump lands short of the end and the last message sits under the composer.
   // This sets scrollTop itself: the virtualizer's scrollToIndex keeps chasing its target for seconds,
@@ -955,7 +1000,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       el.scrollTop = el.scrollHeight;
       requestAnimationFrame(() => stickToBottom.current && (el.scrollTop = el.scrollHeight));
     } else syncAway();
-  }, [renderItems.length, totalSize, streamingText, permissions.length, virtualizer, status]);
+  }, [renderItems.length, totalSize, permissions.length, virtualizer, status]);
   // Leaving the session (another one takes this pane): keep where you were reading, or nothing when at the end.
   useEffect(
     () => () => {
@@ -970,7 +1015,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // and the browser keeps scrollTop without a scroll event, so the last lines slide under the box.
   // The "Working…" line below the list grows the end the same way: on a session's first message it
   // appears only once Claude Code has started, after everything above has settled.
-  // Following the end again on every height change keeps them in sight.
+  // Following the end again on every height change keeps them in sight. The streaming reply grows the end too: this
+  // follows it, so the view itself doesn't render for every word.
   // The list too: right after a commit that grows it, scrollHeight can still read the old height, so the follow above lands
   // short. Nothing else moves the view afterwards when the message box doesn't animate (Reduce motion).
   const tailRef = useRef<HTMLDivElement>(null);
@@ -985,6 +1031,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       if (height === lastHeight && !contentChanged) return;
       lastHeight = height;
       if (stickToBottom.current && height > 0) el.scrollTop = el.scrollHeight;
+      else syncAway();
     });
     observer.observe(el);
     if (tailRef.current) observer.observe(tailRef.current);
@@ -1035,10 +1082,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     return currentPrompt(promptStarts(), el.scrollTop);
   };
   const [currentMark, setCurrentMark] = useState(-1);
+  const currentMarkNow = useRef(-1);
   const currentFrame = useRef(0);
   const scheduleCurrent = () => {
     cancelAnimationFrame(currentFrame.current);
-    currentFrame.current = requestAnimationFrame(() => setCurrentMark(findCurrentPrompt()));
+    currentFrame.current = requestAnimationFrame(() => {
+      // Scrolling asks on every frame: only a new prompt sets it (a set to the same one still renders the view).
+      const next = findCurrentPrompt();
+      if (next !== currentMarkNow.current) setCurrentMark((currentMarkNow.current = next));
+    });
   };
   useEffect(() => {
     if (showOutline) scheduleCurrent();
@@ -1065,7 +1117,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       pinnedPrompt.current = { index, top: el.scrollTop };
     };
     place();
-    setCurrentMark(index);
+    setCurrentMark((currentMarkNow.current = index));
     // The rows around it are measured once they render: settle on the exact spot over the next frames.
     requestAnimationFrame(() => {
       place();
@@ -1269,7 +1321,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     const kept = useDrafts.getState().drafts[sessionId];
     if (kept?.startIn) presetBox(kept.text, kept.attachments);
   }, [restarting, sessionId]);
-  const onDraftLoaded = (draft: ComposerDraft) => setRestored(draft.seeded ? null : draft);
+  const onDraftLoaded = useCallback((draft: ComposerDraft) => setRestored(draft.seeded ? null : draft), []);
   const onDraftText = useCallback((text: string) => setRestored((current) => (current && draftMessage(current) !== text ? null : current)), []);
 
   // Fork, edit and rewind from a message.
@@ -1342,6 +1394,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     onRemember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
     onQuote: (text) => useDrafts.getState().requestQuote(sessionId, text),
     onSavePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
+    // A task the reply mentions: New session in this project with the text, linked to and under this session. A pop-out
+    // window has no New session of its own.
+    onStartSession: projectRoot && popoutSession !== sessionId ? (text) => startFromSelection({ root: projectRoot, sessionId, label: summary?.title ?? registryLive?.name ?? 'This session', text }) : undefined,
   });
 
   // The command palette's Fork…, Rewind…, Copy last reply: your prompts and Claude's last reply, from the active pane.
@@ -1431,7 +1486,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
       const outcome = await startNewSession(
         { ...restart, prompt: text, attachments, skipGate: ungated },
-        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, trust: (needed) => trustRepository(client, needed), addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, trust: (needed) => trustRepository(client, needed), addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, sidePanel: openSidePanelOnStart, open: select },
       );
       return outcome.kind === 'started' ? undefined : false;
     }
@@ -1448,7 +1503,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // Up next: the messages queued while Claude works. Edit brings one back into the message box. A session that isn't
   // running here (stopped, or from before the app quit) shows what the engine kept, waiting for you.
   const keptUpNext = useUpNext((s) => s.queues.get(sessionId));
-  const upNext = activeHost ? activeHost.queue : (keptUpNext ?? []);
+  const upNext = activeHost ? activeHost.queue : (keptUpNext ?? NO_QUEUE);
   const upNextHold = activeHost ? activeHost.queueHold : upNext.length ? 'saved' : null;
   // The profile is at a usage limit: Up next waits for it rather than sending into it.
   const limitHeld = useLimits((s) => profileId !== null && s.state.limits.some((l) => l.profileId === profileId));
@@ -1486,7 +1541,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (context.length) useDrafts.getState().addContext(sessionId, context);
     return { text, attachments };
   };
-  const upNextActions: UpNextActions = {
+  // The same object on every render, each action reading this render's state: Up next is memoised.
+  const upNextActions = useStableHandlers<UpNextActions>({
     edit: (message) => void takeBack(message.id).catch((e: Error) => setActionError(`Could not take the message back: ${e.message}`)),
     remove: (message) =>
       void client
@@ -1518,7 +1574,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       void resumeAllowed()
         .then((go) => (go ? client?.call('session.queue.resume', { sessionId }) : undefined))
         .catch((e: Error) => setActionError(`Could not send the next message: ${e.message}`)),
-  };
+  });
 
   const isWorktree = Boolean(summary?.worktree || (cwd && inWorktree(cwd)));
   // On this checkout the branch button shows the live branch; the transcript's is out of date once you switch.
@@ -1541,11 +1597,17 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const failed = !activeHost && host?.state === 'error';
   const statusLabel = live ? liveLabel(live, agentName) : failed ? 'Failed' : 'Not running';
   const statusTone = live ? (live.status === 'idle' && live.background?.length ? 'text-ok' : STATUS_TONE[live.status]) : failed ? 'text-error' : 'text-muted';
-  const gitActivity = `${items.length}:${live?.status ?? ''}:${branchSwitches}`;
-  const contextLive =
-    activeHost && activeHost.contextTokens !== null && activeHost.contextMax
-      ? { tokens: activeHost.contextTokens, max: activeHost.contextMax, percent: activeHost.contextPercent ?? (activeHost.contextTokens / activeHost.contextMax) * 100 }
-      : null;
+  // The git button reads the branch's state again when a turn starts or ends, the branch changes (here, or as git status
+  // sees it) or the checkout turns clean or changed (a commit), not for every message or file; its count of changed files
+  // comes from the live list.
+  const gitActivity = `${live?.status ?? ''}:${branchSwitches}:${changes?.branch ?? ''}:${changes ? (changes.files.length ? 'changed' : 'clean') : ''}`;
+  const contextTokens = activeHost?.contextTokens ?? null;
+  const contextMax = activeHost?.contextMax ?? null;
+  const contextPercent = activeHost?.contextPercent ?? null;
+  const contextLive = useMemo(
+    () => (contextTokens !== null && contextMax ? { tokens: contextTokens, max: contextMax, percent: contextPercent ?? (contextTokens / contextMax) * 100 } : null),
+    [contextTokens, contextMax, contextPercent],
+  );
   const checkTranscript = () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: summary ? title : null });
   // While Claude works here, Enter queues or steers (Settings › Conversation); Send now stops the current turn first.
   const canSendNow = running && Boolean(activeHost);
@@ -1555,7 +1617,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const parentRun = useRunOfParent(sessionId);
   const toRun = (text: string) => (parentRun ? withRunStub(text, parentRun.run) : text);
   const runPlaceholder = useRunPlaceholder(sessionId);
-  const compact = activeHost ?() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)) : undefined;
+  // Stable, so the context meter in the message box doesn't make the memoised box render with every update.
+  const compactNow = useStableCallback(() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)));
+  const compact = activeHost ? compactNow : undefined;
   /** The last reply, for another provider's ⋯ › Copy the last reply. */
   const lastReply = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i--) {
@@ -1577,8 +1641,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const railCounts = { changes: changedCount, terminal: terminalCount, web: browserPreview ? webTabs : 0, agents: agentsRunning, commands: commandsRunning };
   const railState = (id: RailToolId) => (id === 'terminal' && !terminalOnRight ? (panelOpen ? 'front' : 'closed') : railToolState(id, right.open, right.tab));
   const modTitles = new Map(modPanes.map((p) => [modPaneTab(p.id), p.title]));
-  const railTool = (id: RailToolId): RailItem => {
-    const name = id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : modTitles.get(id as `mod:${string}`);
+  /** The tool's name where it isn't its own: Web while the browser is off, a mod's pane by its title. */
+  const railName = (id: RailToolId) => (id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : modTitles.get(id as `mod:${string}`));
+  const railTool = (id: RailToolId): RailButton => {
+    const name = railName(id);
     const shortcut = id === 'files' ? 'files.toggle' : id === 'changes' ? 'changes.toggle' : id === 'terminal' ? 'terminal.toggle' : id === 'web' ? 'web.toggle' : id === 'agents' ? 'agents.toggle' : id === 'commands' ? 'commands.toggle' : null;
     const state = railState(id);
     const ready = id === 'ask' && ask.ready && !ask.open;
@@ -1619,7 +1685,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (id === `app:${RAIL_GITHUB}` && githubPage) {
       return {
         id,
-        icon: <GitHubIcon size={18} aria-hidden />,
+        icon: GITHUB_RAIL_ICON,
         label: `Open ${githubPage.repo} on GitHub`,
         ariaLabel: `Open ${githubPage.repo} on GitHub`,
         state: 'closed',
@@ -1640,27 +1706,28 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       },
     };
   };
-  const railItems: RailItem[] = railEntries(
-    {
-      // Files reads the session's folder on this computer.
-      files: Boolean(cwd),
-      changes: Boolean(cwd && isRepo),
-      terminal: true,
-      // Only while a dev server runs in the session, or the tab is open; with the browser on, always: it opens any page.
-      web: showWeb || browserAway || ((serverOffers.length > 0 || browserPreview) && webAllowed),
-      // Ask forks the session in its own tool: another provider's only when it can.
-      ask: canAsk || ask.open,
-      agents: agents.length > 0 || agentsState.open,
-      commands: backgroundCommands.length > 0 || commandsState.open,
-      note: note !== null || showNote,
-      mods: modPanes.map((p) => p.id),
-      apps: cwd ? railApps.filter((id) => (id === RAIL_GITHUB ? githubPage !== null : editors.some((e) => e.id === id))) : [],
-    },
-    railHidden,
-    railOrder,
-  ).map((entry) => (entry.kind === 'divider' ? 'divider' : entry.kind === 'app' ? railApp(entry.id) : railTool(entry.id)));
+  const railAvailable: RailAvailable = {
+    // Files reads the session's folder on this computer.
+    files: Boolean(cwd),
+    changes: Boolean(cwd && isRepo),
+    terminal: true,
+    // Only while a dev server runs in the session, or the tab is open; with the browser on, always: it opens any page.
+    web: showWeb || browserAway || ((serverOffers.length > 0 || browserPreview) && webAllowed),
+    // Ask forks the session in its own tool: another provider's only when it can.
+    ask: canAsk || ask.open,
+    agents: agents.length > 0 || agentsState.open,
+    commands: backgroundCommands.length > 0 || commandsState.open,
+    note: note !== null || showNote,
+    mods: modPanes.map((p) => p.id),
+    apps: cwd ? railApps.filter((id) => (id === RAIL_GITHUB ? githubPage !== null : editors.some((e) => e.id === id))) : [],
+  };
+  const railItemsNow: RailItem[] = railEntries(railAvailable, railHidden, railOrder).map((entry) => (entry.kind === 'divider' ? 'divider' : entry.kind === 'app' ? railApp(entry.id) : railTool(entry.id)));
+  // The same array while the rail draws the same: the rail is memoised.
+  const railItems = useRailItems(railItemsNow);
   /** Hide panel: closes whatever the right side shows. */
-  const hidePanels = () => {
+  const hidePanels = useStableCallback(() => {
+    closePanelLauncher(sessionId);
+    useRightPanel.getState().setFull(sessionId, false);
     if (whyRequest) useWhy.getState().close();
     if (showChanges) closeChanges(sessionId);
     if (ask.open) closeAskHere();
@@ -1671,6 +1738,34 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (showWeb) useWebPreview.getState().hide(sessionId);
     if (terminalOnRight) useTerminals.getState().togglePanel(sessionId, false);
     for (const pane of modPanes) closeModPane(pane.id);
+  });
+  // The rail's panel button: Hide panel while the side shows something (the empty panel too), Show panel opens it empty.
+  const sideShows = right.open.length > 0 || whyRequest !== null || showLauncher;
+  const onPanelButton = useStableCallback(() => (sideShows ? hidePanels() : openPanelLauncher(sessionId)));
+  // The title bar's Tools panel button works on the active pane's side panel (not a pop-out's: it has no title bar).
+  const panelOwner = active && !inPopout;
+  useEffect(() => {
+    if (panelOwner) useLayout.setState({ toolsPanel: { shows: sideShows, toggle: onPanelButton } });
+  }, [panelOwner, sideShows, onPanelButton]);
+  useEffect(() => {
+    if (!panelOwner) return;
+    // Another pane may have taken it over in the same render: only clear what is still this pane's.
+    return () => {
+      if (useLayout.getState().toolsPanel?.toggle === onPanelButton) useLayout.setState({ toolsPanel: null });
+    };
+  }, [panelOwner, onPanelButton]);
+  /** What the empty side panel lists: the tools that apply, hidden ones too, with the rail's icons and shortcuts. */
+  const launcherRows = showLauncher
+    ? launcherEntries(railAvailable, railOrder).map((entry) => {
+        if (entry.kind === 'divider') return 'divider' as const;
+        const item = railTool(entry.id);
+        return { id: entry.id, icon: item.icon, name: railLabel(entry.id, {}, { name: railName(entry.id) }), kbd: item.kbd };
+      })
+    : [];
+  /** A pick in the empty panel: the tool opens in its place (the terminal where it docks); one already open stays. */
+  const pickFromLauncher = (id: RailToolId) => {
+    closePanelLauncher(sessionId);
+    if (launcherPick(railState(id))) railTool(id).onClick();
   };
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
@@ -1684,11 +1779,135 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         rightBlocked={terminalBlocked}
         viewWidth={bodyWidth}
         viewHeight={bodyHeight}
-        shared={terminalOnRight && (right.tabs || halfPanel) ? { width: panelWidth, setWidth: setRightWidth } : undefined}
+        // On the right it is the side panel's width, as every panel there, whether it is alone or not.
+        shared={terminalOnRight ? { width: panelWidth, setWidth: setRightWidth } : undefined}
       />
     </Suspense>
   );
 
+  // The message box and Changes are memoised: what they get stays the same from render to render unless what it says
+  // changed, so they don't render with every render of this view (a new message, a host update).
+  const boxSavedPrompts = useMemo(() => ({ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }), [options.projectActions, projectRoot, projectName]);
+  const boxLinks = useMemo(() => ({ sessionId, root: projectRoot }), [sessionId, projectRoot]);
+  const boxGithub = useMemo(() => ({ root: options.projectActions ? projectRoot : null }), [options.projectActions, projectRoot]);
+  const boxStatus = useMemo(() => <ModFooterChips sessionId={sessionId} profileId={profileId} />, [sessionId, profileId]);
+  const submitBox = useStableCallback((text: string, attachments: ImageAttachment[]) => send(toRun(text), attachments, openElsewhere, false, whileWorking));
+  const submitNow = useStableCallback((text: string, attachments: ImageAttachment[]) => send(toRun(text), attachments, false, false, 'now'));
+  const submitOther = useStableCallback((text: string, attachments: ImageAttachment[]) => send(toRun(text), attachments, false, false, otherMode));
+  const boxSecondary = useMemo(() => (canSendNow ? { shortcut: 'composer.send-now' as const, onSubmit: submitNow } : undefined), [canSendNow, submitNow]);
+  const boxOthers = useMemo(() => (canSendNow ? [{ shortcut: 'composer.send-other' as const, onSubmit: submitOther, steers: otherMode === 'steer' }] : undefined), [canSendNow, submitOther, otherMode]);
+  const recallQueued = useStableCallback(() => {
+    const last = lastQueued(upNext);
+    if (!last) return false;
+    upNextActions.edit(last);
+    return true;
+  });
+  // Drawn while the box renders, so not a stable callback: it changes with what Enter does while Claude works.
+  const queueControl = useCallback(
+    (box: SubmitApi) => (
+      <QueueButton
+        state={queueButtonState({ ...box, whileWorking })}
+        onAction={(action) => (action === 'send-now' ? box.submitSecondary() : action === whileWorking ? box.submit() : box.submitOther('composer.send-other'))}
+      />
+    ),
+    [whileWorking],
+  );
+  const interrupt = useStableCallback(() => void client?.call('session.interrupt', { sessionId }));
+  const askInBox = useStableCallback(askHere);
+  const openAskInBox = useStableCallback(() => void openAsk(client, sessionId));
+  const boxAsk = useMemo(() => (canAsk ? { onAsk: askInBox, onOpen: openAskInBox, open: ask.open, ready: ask.ready } : undefined), [canAsk, askInBox, openAskInBox, ask.open, ask.ready]);
+  const escapeBox = useStableCallback(() => {
+    // Esc after Reply leaves the message box and goes back to the catch-up.
+    if (useCatchUp.getState().replying !== sessionId) return false;
+    useCatchUp.getState().setReplying(null);
+    (document.activeElement as HTMLElement | null)?.blur();
+    return true;
+  });
+  const cycleMode = useStableCallback(() => {
+    if (!activeHost) return;
+    if (otherProvider && otherInfo?.modes.length) {
+      // The provider's own modes, in its order.
+      const modes = otherInfo.modes.map((m) => m.value);
+      const next = modes[(modes.indexOf(activeHost.permissionMode) + 1) % modes.length]!;
+      void client?.call('session.setPermissionMode', { sessionId, mode: next });
+    } else if (!otherProvider) void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) });
+  });
+  const canCycleMode = Boolean(activeHost && (otherProvider ? otherInfo?.modes.length : true));
+  const otherModels = otherReadiness?.models ?? NO_MODELS;
+  const hostState = host?.state;
+  const boxControls = useMemo(
+    () =>
+      otherProvider ? (
+        <ProviderSessionControls provider={otherProvider} profileId={otherProfileId} sessionId={sessionId} host={activeHost} models={otherModels} />
+      ) : activeHost ? (
+        <SessionControls host={activeHost} />
+      ) : !restart && (!registryLive || leftover) ? (
+        // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
+        // Why the last run failed is in the notice above the message box, where it has room.
+        <SavedSessionControls sessionId={sessionId} profileId={profileId} />
+      ) : (
+        <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-session-elsewhere>
+          {hostState === 'error' ? (
+            'Last run failed. Send a message to start it again.'
+          ) : registryLive ? (
+            `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Seshboard.`
+          ) : (
+            'Not running in Seshboard. Send a message to pick it up here.'
+          )}
+        </span>
+      ),
+    [otherProvider, otherProfileId, sessionId, activeHost, otherModels, restart, registryLive, leftover, profileId, hostState],
+  );
+  const openTools = useStableCallback(() => useOverlay.getState().show('tools'));
+  // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a ring, with every
+  // number in its tooltip.
+  const boxInfo = useMemo(
+    () =>
+      foldFooter ? null : otherProvider && !planUsage ? (
+        otherProfileId && (
+          <>
+            <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
+            <SessionCost sessionId={sessionId} profileId={otherProfileId} />
+          </>
+        )
+      ) : otherProvider ? (
+        // Codex's windows, and the session's cost from its rollout files.
+        otherProfileId && (
+          <>
+            <UsageBand profileId={otherProfileId} footer />
+            <SessionCost sessionId={sessionId} profileId={otherProfileId} />
+          </>
+        )
+      ) : (
+        <>
+          <UsageBand profileId={profileId} footer />
+          <SessionCost sessionId={sessionId} profileId={profileId} />
+        </>
+      ),
+    [foldFooter, otherProvider, planUsage, otherProfileId, sessionId, profileId],
+  );
+  const openUsageHere = useStableCallback(() => openUsage(otherProvider ? otherProfileId : profileId));
+  const boxUsage = useMemo(
+    () => (usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: openUsageHere } : null),
+    [usageLines, openUsageHere],
+  );
+  // Minimal mode: the header keeps the title, project and branch, and one action; usage and context show above the box
+  // only once one passes 80%.
+  const minimal = useMinimal();
+  const boxAlert = useMemo(() => minimalAlert(contextLive?.percent, usageLines), [contextLive, usageLines]);
+  const boxMeter = useMemo(
+    () =>
+      foldFooter ? (
+        <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />
+      ) : (
+        // Another provider's context shows once it reports it; Compact sends its /compact, as for Claude Code.
+        (!otherProvider || contextLive) && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
+      ),
+    [foldFooter, sessionId, contextLive, messages, compact, usageLines, otherProvider],
+  );
+  const closeChangesHere = useStableCallback(() => closeChanges(sessionId));
+  const changesShared = right.tabs || halfPanel;
+  const changesSharedWidth = useMemo(() => (changesShared ? { width: panelWidth, setWidth: setRightWidth } : undefined), [changesShared, panelWidth, setRightWidth]);
   return (
     // The session's column, then its rail of tools at the right edge, full height.
     <div className="flex h-full min-h-0" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
@@ -1702,12 +1921,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         data-pane={tiled ? sessionId : undefined}
         data-pane-active={tiled ? active : undefined}
       >
-        {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
-        {leading && !inPopout && <SidebarToggle />}
         {/* A pop-out's traffic lights sit over its header's left end (macOS); elsewhere the window has its own title bar. */}
         {inPopout && currentPlatform() === 'darwin' && <span className="w-11 shrink-0" aria-hidden />}
         {/* In a pane under 400px wide the header has no room for the icon: the title and the buttons come first. */}
-        {projectRoot && (
+        {projectRoot && !minimal && (
           <span className="flex shrink-0 @max-[400px]:hidden">
             <ProjectIcon project={project} root={projectRoot} size={22} />
           </span>
@@ -1723,21 +1940,28 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             <StepCrumb sessionId={sessionId} />
             {/* A session an orchestrator started: the way back to it. */}
             <OrchestratorCrumb sessionId={sessionId} />
-            {/* Whose session it is first, as on its sidebar row. */}
-            <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider ?? 'claude'}>
-              <ProviderMark session={{ provider: otherProvider ?? 'claude' }} size={12} />
-              <span className="@max-[860px]:sr-only">{PROVIDER_NAMES[otherProvider ?? 'claude']}</span>
-            </span>
-            <Sep />
-            <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
-              {live ? <StatusDot live={live} agent={agentName} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
-              <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
-                {statusLabel}
+            {/* Whose session it is first, as on its sidebar row. Minimal mode shows only the project and branch here; a
+                failure still says so. */}
+            {!minimal && (
+              <>
+                <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider ?? 'claude'}>
+                  <ProviderMark session={{ provider: otherProvider ?? 'claude' }} size={12} />
+                  <span className="@max-[860px]:sr-only">{PROVIDER_NAMES[otherProvider ?? 'claude']}</span>
+                </span>
+                <Sep />
+              </>
+            )}
+            {(!minimal || failed) && (
+              <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
+                {live ? <StatusDot live={live} agent={agentName} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
+                <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
+                  {statusLabel}
+                </span>
               </span>
-            </span>
+            )}
             {projectName && (
               <>
-                <Sep />
+                {(!minimal || failed) && <Sep />}
                 <span className="min-w-0 shrink truncate @max-[860px]:hidden" data-session-project={question ? 'question' : undefined}>
                   {projectName}
                 </span>
@@ -1792,6 +2016,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             busy={working}
             active={active}
             activity={gitActivity}
+            uncommitted={changesBase === 'uncommitted' && changes ? changes.files.length : null}
             isWorktree={isWorktree}
             projectBase={project ? projectPrBase(project.defaults) : null}
             onBranchMenu={() => setBranchMenuRequest((n) => n + 1)}
@@ -1807,6 +2032,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         <ModsChip sessionId={sessionId} profileId={profileId} />
         <MoreMenu
           sessionId={sessionId}
+          extra={minimal && !inPopout ? [{ label: 'Open in new window', icon: <AppWindow size={13} aria-hidden />, hint: formatKeys(keysFor('session.new-window')), data: { 'data-open-in-new-window': true }, onSelect: () => popOut(sessionId) }] : undefined}
           actions={actionsMenu}
           cwd={cwd}
           agents={{ total: agents.length, running: agentsRunning }}
@@ -1830,7 +2056,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               : null
           }
         />
-        {!inPopout ? (
+        {minimal && !inPopout ? null : !inPopout ? (
           <Button
             variant="quiet"
             iconOnly
@@ -1897,7 +2123,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
         {/* An expanded Changes panel takes the whole view; the conversation stays mounted (scroll position, drafts) but hidden. */}
         {/* So does the browser in Full: its page is drawn over the panel's slot, which then takes the conversation's room. */}
-        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (right.tab === 'web' && !whyRequest && browserPreview && web?.full && !terminalMaximized) || (right.tab === 'files' && !whyRequest && showFiles && filesState.full && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
+        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (right.tab === 'web' && !whyRequest && browserPreview && web?.full && !terminalMaximized) || (right.tab === 'files' && !whyRequest && showFiles && filesState.full && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') || sharedFullShows ? 'hidden' : 'flex'}`}>
           {findQuery !== null && !terminalMaximized && (
             <FindBar
               query={findQuery}
@@ -2025,7 +2251,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 </div>
               )}
               <div ref={tailRef}>
-                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} live={liveTurnInfo} />
+                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} live={liveTurnInfo} onGrow={followTheEnd} />
               </div>
               {/* Sticks to the bottom of the view while you read further up; takes no room at the end. */}
               {away && (
@@ -2251,10 +2477,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   draftKey={sessionId}
                   ultrathink={!otherProvider}
                   steers={whileWorking === 'steer'}
-                  savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
-                  links={{ sessionId, root: projectRoot }}
-                  github={{ root: options.projectActions ? projectRoot : null }}
-                  status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
+                  savedPrompts={boxSavedPrompts}
+                  links={boxLinks}
+                  github={boxGithub}
+                  status={boxStatus}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}
                   restored={restored !== null}
@@ -2282,100 +2508,23 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : `Messages go to ${agentName} now`} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
                       : undefined
                   }
-                  onSubmit={(text, attachments) => send(toRun(text), attachments, openElsewhere, false, whileWorking)}
-                  secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, 'now') } : undefined}
-                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, otherMode), steers: otherMode === 'steer' }] : undefined}
-                  onRecallQueued={() => {
-                    const last = lastQueued(upNext);
-                    if (!last) return false;
-                    upNextActions.edit(last);
-                    return true;
-                  }}
-                  submitControl={
-                    canSendNow
-                      ? (box) => (
-                          <QueueButton
-                            state={queueButtonState({ ...box, whileWorking })}
-                            onAction={(action) => (action === 'send-now' ? box.submitSecondary() : action === whileWorking ? box.submit() : box.submitOther('composer.send-other'))}
-                          />
-                        )
-                      : undefined
-                  }
-                  onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
-                  ask={!canAsk ? undefined : { onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
-                  onEscape={() => {
-                    // Esc after Reply leaves the message box and goes back to the catch-up.
-                    if (useCatchUp.getState().replying !== sessionId) return false;
-                    useCatchUp.getState().setReplying(null);
-                    (document.activeElement as HTMLElement | null)?.blur();
-                    return true;
-                  }}
-                  onCycleMode={
-                    activeHost && otherProvider && otherInfo?.modes.length
-                      ? () => {
-                          // The provider's own modes, in its order.
-                          const modes = otherInfo.modes.map((m) => m.value);
-                          const next = modes[(modes.indexOf(activeHost.permissionMode) + 1) % modes.length]!;
-                          void client?.call('session.setPermissionMode', { sessionId, mode: next });
-                        }
-                      : activeHost && !otherProvider ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
-                  }
-                  controls={
-                    otherProvider ? (
-                      <ProviderSessionControls provider={otherProvider} profileId={otherProfileId} sessionId={sessionId} host={activeHost} models={otherReadiness?.models ?? []} />
-                    ) : activeHost ? (
-                      <SessionControls host={activeHost} />
-                    ) : !restart && (!registryLive || leftover) ? (
-                      // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
-                      // Why the last run failed is in the notice above the message box, where it has room.
-                      <SavedSessionControls sessionId={sessionId} profileId={profileId} />
-                    ) : (
-                      <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-session-elsewhere>
-                        {host?.state === 'error' ? (
-                          'Last run failed. Send a message to start it again.'
-                        ) : registryLive ? (
-                          `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Seshboard.`
-                        ) : (
-                          'Not running in Seshboard. Send a message to pick it up here.'
-                        )}
-                      </span>
-                    )
-                  }
-                  tools={cwd && !readOnly ? () => useOverlay.getState().show('tools') : null}
-                  // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a
-                  // ring, with every number in its tooltip.
-                  info={
-                    foldFooter ? null : otherProvider && !planUsage ? (
-                      otherProfileId && (
-                        <>
-                          <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
-                          <SessionCost sessionId={sessionId} profileId={otherProfileId} />
-                        </>
-                      )
-                    ) : otherProvider ? (
-                      // Codex's windows, and the session's cost from its rollout files.
-                      otherProfileId && (
-                        <>
-                          <UsageBand profileId={otherProfileId} footer />
-                          <SessionCost sessionId={sessionId} profileId={otherProfileId} />
-                        </>
-                      )
-                    ) : (
-                      <>
-                        <UsageBand profileId={profileId} footer />
-                        <SessionCost sessionId={sessionId} profileId={profileId} />
-                      </>
-                    )
-                  }
-                  usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(otherProvider ? otherProfileId : profileId) } : null}
-                  meter={
-                    foldFooter ? (
-                      <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />
-                    ) : (
-                      // Another provider's context shows once it reports it; Compact sends its /compact, as for Claude Code.
-                      (!otherProvider || contextLive) && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
-                    )
-                  }
+                  onSubmit={submitBox}
+                  secondary={boxSecondary}
+                  others={boxOthers}
+                  onRecallQueued={recallQueued}
+                  submitControl={canSendNow ? queueControl : undefined}
+                  onInterrupt={interrupt}
+                  agent={agentName}
+                  reply={activeHost && !otherProvider ? activeHost.suggestion : null}
+                  ask={boxAsk}
+                  onEscape={escapeBox}
+                  onCycleMode={canCycleMode ? cycleMode : undefined}
+                  controls={boxControls}
+                  tools={cwd && !readOnly ? openTools : null}
+                  info={boxInfo}
+                  usage={boxUsage}
+                  meter={boxMeter}
+                  alert={boxAlert}
                 />
               </div>
               )}
@@ -2383,9 +2532,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           </div>
           {terminalShown && terminalDock === 'bottom' && terminalPanel}
         </div>
-        {/* Behind another tab on the right, the terminal steps out; its shells keep running and it comes back as it was. */}
-        {terminalShown && terminalDock === 'right' && (!terminalOnRight || right.tab === 'terminal') && terminalPanel}
+        {/* Behind another tab on the right, the terminal stays mounted but hidden, so it comes back as it was, without loading again. */}
+        {terminalShown && terminalDock === 'right' && (
+          <div className={!terminalOnRight || right.tab === 'terminal' ? 'contents' : 'hidden'} data-terminal-behind={terminalOnRight && right.tab !== 'terminal' ? '' : undefined}>
+            {terminalPanel}
+          </div>
+        )}
         {whyRequest && !terminalMaximized && <WhyPanel request={whyRequest} cwd={cwd} />}
+        {showLauncher && <PanelLauncher rows={launcherRows} width={panelWidth} onWidth={setRightWidth} full={sharedFull} onFull={setSharedFull} quiet={launcherQuiet} onPick={pickFromLauncher} onClose={() => closePanelLauncher(sessionId)} />}
         {!whyRequest && right.tab === 'changes' && cwd && !terminalMaximized && (
           <ChangesPanel
             sessionId={sessionId}
@@ -2394,9 +2548,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             base={changesBase}
             onBase={setChangesBase}
             onRefresh={refreshChanges}
-            onClose={() => closeChanges(sessionId)}
+            onClose={closeChangesHere}
             outside={catchUp?.signals.outOfScope}
-            shared={right.tabs || halfPanel ? { width: panelWidth, setWidth: setRightWidth } : undefined}
+            shared={changesSharedWidth}
           />
         )}
         {!whyRequest && right.tab === 'ask' && !terminalMaximized && (
@@ -2406,6 +2560,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             working={working}
             width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onAsk={askHere}
             onRetry={(threadId, item) => client && void retryAsk(client, sessionId, threadId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
             onQuote={(answer) => useDrafts.getState().requestQuote(sessionId, answer)}
@@ -2422,6 +2578,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             pane={frontPane}
             width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onClose={() => closeModPane(frontPane.id)}
             focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
           />
@@ -2438,6 +2596,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onStop={stopTask}
             width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onClose={() => closeAgents(sessionId)}
           />
         )}
@@ -2451,10 +2611,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onStop={stopTask}
             width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onClose={() => closeCommands(sessionId)}
           />
         )}
-        {!whyRequest && right.tab === 'note' && !terminalMaximized && <NotePanel sessionId={sessionId} note={note} width={panelWidth} onWidth={setRightWidth} onClose={() => closeNote(sessionId)} />}
+        {!whyRequest && right.tab === 'note' && !terminalMaximized && <NotePanel sessionId={sessionId} note={note} width={panelWidth} onWidth={setRightWidth} full={sharedFull} onFull={setSharedFull} onClose={() => closeNote(sessionId)} />}
         {!whyRequest && right.tab === 'files' && cwd && !terminalMaximized && (
           <PreviewOpenerContext.Provider value={openPreviewHere}>
             <FilesPanel sessionId={sessionId} cwd={cwd} width={panelWidth} onWidth={setRightWidth} changes={isRepo ? changes : null} changesBase={changesBase} writes={fileWrites} />
@@ -2472,7 +2634,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         )}
       </div>
     </div>
-    <ToolRail items={railItems} onHide={right.open.length > 0 || whyRequest ? hidePanels : null} />
+    <ToolRail items={railItems} />
     </div>
   );
 }

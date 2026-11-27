@@ -95,7 +95,7 @@ function RemindForm({ sessionIds, then }: { sessionIds: string[]; then?: () => v
               value={picked}
               min={toLocalInput(Date.now())}
               onChange={(e) => setPicked(e.target.value)}
-              className="mt-2 h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink"
+              className="field mt-2 h-7 w-full px-2.5 text-ui outline-none"
               data-remind-pick
             />
           )}
@@ -111,7 +111,7 @@ function RemindForm({ sessionIds, then }: { sessionIds: string[]; then?: () => v
               maxLength={SESSION_NOTE_MAX}
               onChange={(e) => setNote(e.target.value)}
               placeholder="What's left: push after review…"
-              className="h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink"
+              className="field h-7 w-full px-2.5 text-ui outline-none"
               data-remind-note
             />
           </div>

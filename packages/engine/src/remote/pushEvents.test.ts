@@ -36,6 +36,8 @@ describe('push wording', () => {
 
   it('lets a tool prompt be answered from the notification, but not a question or a plan', () => {
     expect(promptAnswers({ requestId: 'r1', toolName: 'Bash', input: { command: 'npm test' } })).toEqual({ requestId: 'r1', answers: true });
+    // An approval card is answered on the computer only.
+    expect(promptAnswers({ requestId: 'r9', toolName: 'mcp__seshboard__save_pipeline', input: {}, approval: { kind: 'pipeline', allowLabel: 'Save', lines: [], blocks: [], options: [], editor: null, draft: null } })).toEqual({ requestId: 'r9', answers: false });
     expect(promptAnswers({ requestId: 'r2', toolName: 'AskUserQuestion', input: {} })).toEqual({ requestId: 'r2', answers: false });
     expect(promptAnswers({ requestId: 'r3', toolName: 'ExitPlanMode', input: {} })).toEqual({ requestId: 'r3', answers: false });
     // Allow approves the whole command: one the line cuts short (or that was clipped) is answered in the app.
@@ -87,5 +89,19 @@ describe('pushTargets', () => {
 
   it('skips a device that has the app on screen', () => {
     expect(pushTargets(subs, 'needs-you', new Set(['phone']), known).map((s) => s.deviceId)).toEqual(['tablet']);
+  });
+
+  it('holds back the moments a device wants only while this computer is unused', () => {
+    const away = [
+      { deviceId: 'phone', needsYou: true, finished: true, onlyWhenAway: { needsYou: false, finished: true } },
+      { deviceId: 'tablet', needsYou: true, finished: true },
+    ];
+    const both = new Set(['phone', 'tablet']);
+    expect(pushTargets(away, 'finished', new Set(), both, true).map((s) => s.deviceId)).toEqual(['tablet']);
+    expect(pushTargets(away, 'finished', new Set(), both, false).map((s) => s.deviceId)).toEqual(['phone', 'tablet']);
+    expect(pushTargets(away, 'needs-you', new Set(), both, true).map((s) => s.deviceId)).toEqual(['phone', 'tablet']);
+    // A reminder follows finished turns unless the device says otherwise.
+    expect(pushTargets(away, 'reminder', new Set(), both, true).map((s) => s.deviceId)).toEqual(['tablet']);
+    expect(pushTargets([{ ...away[0]!, onlyWhenAway: { finished: true, reminders: false } }], 'reminder', new Set(), both, true).map((s) => s.deviceId)).toEqual(['phone']);
   });
 });

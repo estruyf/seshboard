@@ -119,7 +119,7 @@ export function ShortcutsSheet() {
               placeholder="Filter by action or key"
               aria-label="Filter by action or key"
               spellCheck={false}
-              className="h-7 w-64 rounded-md border border-edge bg-bg pr-2 pl-7 text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink/60"
+              className="field h-7 w-64 pr-2 pl-7 text-ui outline-none placeholder:text-faint"
               data-shortcut-filter
             />
           </label>

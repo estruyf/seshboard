@@ -23,6 +23,12 @@ describe('What another computer sends', () => {
     expect(checked).toEqual({ ok: true, value: { sessions: [session('s1')], prompts: [], runs: [] }, dropped: 5 });
   });
 
+  it('keeps the orchestrators this version can read', () => {
+    const orchestrator = { sessionId: 's1', createdAt: 1, workers: [{ sessionId: null, itemId: 'q1', title: 'Then this', startedAt: 2 }] };
+    const checked = checkSessions({ sessions: [session('s1')], prompts: [], orchestrators: [orchestrator, { sessionId: 's2' }] });
+    expect(checked).toMatchObject({ ok: true, value: { orchestrators: [{ sessionId: 's1', workers: [{ itemId: 'q1', title: 'Then this' }] }] }, dropped: 1 });
+  });
+
   it('refuses a list that isn’t one, and says where, without the data', () => {
     const checked = checkResult('sessions.list', { sessions: 'secret', prompts: [] });
     expect(checked).toEqual({ ok: false, issue: expect.stringMatching(/^sessions: /) });

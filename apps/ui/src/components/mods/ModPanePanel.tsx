@@ -1,4 +1,5 @@
 import { Puzzle, X } from 'lucide-react';
+import { PanelSize, sidePanelClass } from '../transcript/PanelSize.tsx';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import type { ModPane } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -16,6 +17,10 @@ interface ModPanePanelProps {
   sessionId: string;
   pane: ModPane;
   width: number;
+  /** Full: the panel takes the whole session area (`useRightPanel().full`). */
+  full?: boolean;
+  /** Picks Full or back; with it, the header shows the panel's size (Side, Half, Full). */
+  onFull?(full: boolean): void;
   onWidth(width: number): void;
   /** Other panels are open too: this row of tabs stands in for the title, with the panel's buttons on its right. */
   tabs?: (actions: ReactNode) => ReactNode;
@@ -30,7 +35,7 @@ interface ModPanePanelProps {
  * it when the mod allows that (`close_on_escape`), and the keyboard goes back to the message box; toasts wait while it
  * has the keyboard when the mod asks (`hold_toasts`).
  */
-export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, focusNonce }: ModPanePanelProps) {
+export function ModPanePanel({ sessionId, pane, width, onWidth, full = false, onFull, tabs, onClose, focusNonce }: ModPanePanelProps) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const asideRef = useRef<HTMLElement>(null);
@@ -103,7 +108,12 @@ export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, f
     onWidth(next);
   };
 
-  const actions = <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label={`Close ${pane.title}`} onClick={onClose} data-mod-pane-close />;
+  const actions = (
+    <>
+      {onFull && <PanelSize full={full} onChange={onFull} />}
+      <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label={`Close ${pane.title}`} onClick={onClose} data-mod-pane-close />
+    </>
+  );
   const source = (
     <p className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1 text-meta text-muted" data-mod-pane-source>
       <Puzzle size={11} className="shrink-0" aria-hidden />
@@ -119,12 +129,12 @@ export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, f
       onKeyDown={onKey}
       onFocus={onFocus}
       onBlur={onBlur}
-      className="relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
-      style={{ width }}
+      className={sidePanelClass(full)}
+      style={full ? undefined : { width }}
       data-mod-pane={pane.id}
       data-mod-frame={pane.plugin}
     >
-      <div
+      {!full && <div
         role="separator"
         aria-orientation="vertical"
         aria-label={`${pane.title} panel width`}
@@ -136,11 +146,11 @@ export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, f
         onKeyDown={resizeByKey}
         className="absolute inset-y-0 -left-0.5 z-10 w-1 cursor-col-resize hover:bg-accent-ink/40 focus-visible:bg-accent-ink/40"
         data-tooltip="Drag (or use ← →) to resize"
-      />
+      />}
       {tabs ? (
         tabs(actions)
       ) : (
-        <header className="flex h-10 shrink-0 items-center gap-2 px-3">
+        <header className="@container/toolbar flex h-10 shrink-0 items-center gap-2 px-3">
           <Puzzle size={14} aria-hidden className="shrink-0 text-muted" />
           <h2 className="min-w-0 flex-1 truncate text-ui font-semibold text-text">{pane.title}</h2>
           {actions}

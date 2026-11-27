@@ -184,6 +184,21 @@ const plainColors = (theme: ThemeRegistration): ThemeRegistration => ({
   tokenColors: theme.tokenColors?.map((rule) => ({ ...rule, settings: { ...rule.settings, fontStyle: undefined } })),
 });
 
+/**
+ * Code highlighting off (Settings › Theme): code in one colour, the theme's text, with comments in its faint colour and
+ * italic. Built from the active theme's tokens for each mode, so it follows any theme.
+ */
+export function plainSyntax(tokens: { text: string; faint: string }, mode: ThemeMode): InlineSyntaxTheme {
+  return {
+    name: `Plain ${mode}`,
+    type: mode,
+    tokenColors: [
+      { settings: { foreground: tokens.text } },
+      { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: tokens.faint, fontStyle: 'italic' } },
+    ],
+  };
+}
+
 let choice: SyntaxChoice = { light: null, dark: null };
 let current = { light: 'demotime-light', dark: 'demotime-dark' };
 
@@ -209,18 +224,21 @@ const loaded = new Set<string>();
 const cache = new SizedCache(4_000_000);
 const MAX_CODE = 50_000;
 
+/** A Shiki highlighter with Demo Time's syntax themes and no grammar yet. */
+async function newHighlighter(): Promise<HighlighterCore> {
+  const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, light, dark] = await Promise.all([
+    import('shiki/core'),
+    import('shiki/engine/javascript'),
+    // The Demo Time theme's syntax colours (github.com/estruyf/vscode-demo-time-theme), to match the app.
+    import('./themes/demotime-light.json'),
+    import('./themes/demotime-dark.json'),
+  ]);
+  const themes = [light.default, dark.default].map((t) => plainColors(t as unknown as ThemeRegistration));
+  return createHighlighterCore({ themes, langs: [], engine: createJavaScriptRegexEngine() });
+}
+
 function getHighlighter(): Promise<HighlighterCore> {
-  highlighter ??= (async () => {
-    const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, light, dark] = await Promise.all([
-      import('shiki/core'),
-      import('shiki/engine/javascript'),
-      // The Demo Time theme's syntax colours (github.com/estruyf/vscode-demo-time-theme), to match the app.
-      import('./themes/demotime-light.json'),
-      import('./themes/demotime-dark.json'),
-    ]);
-    const themes = [light.default, dark.default].map((t) => plainColors(t as unknown as ThemeRegistration));
-    return createHighlighterCore({ themes, langs: [], engine: createJavaScriptRegexEngine() });
-  })();
+  highlighter ??= newHighlighter();
   // A failed load (a chunk that didn't arrive) is tried again next time instead of failing forever.
   highlighter.catch(() => (highlighter = undefined));
   return highlighter;
@@ -233,6 +251,27 @@ async function ensureTheme(shiki: HighlighterCore, syntax: ThemeSyntax | null, m
     const module = await SYNTAX_THEMES[syntax as ShikiThemeName]();
     await shiki.loadTheme(module.default as ThemeRegistration);
   } else await shiki.loadTheme(inlineRegistration(syntax, id, mode));
+}
+
+/**
+ * A highlighter of its own for the file editor (Monaco), with the syntax themes in use loaded. Not the shared one:
+ * Monaco tokenizes line by line against the highlighter's current theme (`setTheme`), and every `codeToHtml` of a
+ * code block switches that theme, so sharing one would colour the editor's lines with the wrong theme. The grammar and
+ * theme modules are the same, so nothing more is downloaded. `ensure` loads a grammar; `themes` names the theme of each mode.
+ */
+export async function editorHighlighter(): Promise<{ shiki: HighlighterCore; ensure(grammar?: string): Promise<void>; themes(): { light: string; dark: string } }> {
+  const shiki = await newHighlighter();
+  const loadedHere = new Set<string>();
+  const ensure = async (grammar?: string) => {
+    if (grammar && !loadedHere.has(grammar)) {
+      const module = (await GRAMMARS[grammar]!()) as { default: Parameters<HighlighterCore['loadLanguage']>[0] };
+      await shiki.loadLanguage(module.default);
+      loadedHere.add(grammar);
+    }
+    await ensureTheme(shiki, choice.light, 'light', current.light);
+    await ensureTheme(shiki, choice.dark, 'dark', current.dark);
+  };
+  return { shiki, ensure, themes: () => ({ ...current }) };
 }
 
 /** Shiki, the grammar and both modes' syntax themes, loaded; then the HTML. */
@@ -293,4 +332,13 @@ export function languageFromPath(path: string): string | undefined {
   const ext = /\.([a-z0-9+]+)$/i.exec(path)?.[1]?.toLowerCase();
   if (/(^|\/)Dockerfile$/.test(path)) return 'docker';
   return ext;
+}
+
+/**
+ * The inner HTML of each line of Shiki's output, for a diff that draws its own rows: the lines are joined with `\n`
+ * inside `<code>`, each a `<span class="line">` of token spans (Shiki escapes the code, so no line holds a newline).
+ */
+export function highlightedLines(html: string): string[] {
+  const code = /<code[^>]*>([\s\S]*)<\/code>/.exec(html)?.[1] ?? '';
+  return code.split('\n').map((line) => line.replace(/^<span class="line">/, '').replace(/<\/span>$/, ''));
 }

@@ -6,7 +6,7 @@ sidebar:
 ---
 
 import Kbd from '../../../components/Kbd.astro';
-import { Aside, Steps } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
 An orchestrator is a session that hands work to other sessions instead of doing it. Send it a list of tasks, such as six bugs from this morning. It starts one session per task, each in its own worktree, and keeps track of them: which ones work, which ones wait for you, and which ones have a pull request ready.
@@ -38,6 +38,12 @@ While they run, you can keep talking to the orchestrator:
 - Give it more tasks. Each one becomes another session.
 
 When one of its sessions finishes, fails or waits for you, the orchestrator hears about it and tells you what matters in a line or two. These reports show in its conversation as quiet dashed rows, not as your messages. A turn you stopped yourself isn't reported.
+
+### On another computer
+
+Tell it "run the Windows checks on the Windows box", and it starts that session on a computer you paired in **Settings › Remote › Other computers**. The project there is found by its GitHub repository, so its folder can differ. That computer's own focus and usage limits apply, and the session shows under the orchestrator with the others. The orchestrator doesn't hear when a session on another computer finishes: ask it to check, or open the session. See [Seshboard tools in sessions](/sessions/seshboard-tools/#on-another-computer).
+
+An orchestrator can also run one of the project's [pipelines](/sessions/pipelines/) for a task, as a run of its own.
 
 ### Which agent runs a task
 
@@ -83,7 +89,7 @@ Run *Go to orchestrator* in the [command palette](/command-palette/) (<Kbd short
 
 - **Your focus limit and usage limits.** At your [focus limit](/focus-limit/) or a usage limit, a new session waits in the [queue](/new-session/queue/) and starts by itself once a slot frees or the limit resets. It still goes under its orchestrator then.
 - **Six working sessions** per orchestrator. It starts the next one when one finishes, so an orchestrator with the focus limit off can't start twenty at once.
-- **Only its own sessions.** An orchestrator can read and message only the sessions it started. A session that isn't an orchestrator has none of its tools.
+- **Only its own sessions.** An orchestrator can read and message only the sessions it started. A session that isn't an orchestrator has none of its tools, but it can still ask you to start a session: see [Seshboard tools in sessions](/sessions/seshboard-tools/).
 
 ## Orchestrator instructions
 
@@ -97,9 +103,14 @@ Ask me before you change CI.
 
 Rules about the code itself belong in the repository's own instructions file, such as `CLAUDE.md`. The instructions can be up to 16,000 characters, and sessions started from then on read them.
 
-<Aside>
-On your phone and on [another computer](/other-computers/), an orchestrator and its sessions show as sessions. The overview and **Run as › Orchestrator** are only on the computer that runs it, for now.
-</Aside>
+## On your phone and other computers
+
+An orchestrator runs on one computer, and you can start and follow it from your phone or from [another computer](/other-computers/). Both need this version of Seshboard on the computer that runs it.
+
+- **Start one.** In New session on the phone, **Run as** has **Orchestrator**, as on your computer: in the **Options** sheet on a phone, or in the chip next to Start in a wide window. In New session for another computer, pick the computer in **Run on**, then **Run as › Orchestrator**. Start becomes **Start orchestrator**, and the orchestrator runs on that computer.
+- **Its sessions** show under it, on the phone and in your sidebar.
+- **Its overview.** On the phone, tap the bar under its title for its sessions, by what needs you first, and tap one to open it. For another computer, the overview shows above its conversation, as it does here.
+- **The way back.** A session it started has a way back to the orchestrator: a bar under its title on the phone, and its orchestrator's name in its header for another computer.
 
 ## Related
 

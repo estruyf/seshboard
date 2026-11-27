@@ -1051,4 +1051,34 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE session_usage ADD COLUMN usd REAL;
   `,
+
+  // v66: Search adds only the new messages of a transcript that grew: how many it read, a hash of their uuids, and the
+  // row of the last one (indexed again with the next ones). Rows from before have none, and are indexed whole once.
+  `
+  ALTER TABLE transcript_indexed ADD COLUMN messages INTEGER;
+  ALTER TABLE transcript_indexed ADD COLUMN prefix TEXT;
+  ALTER TABLE transcript_indexed ADD COLUMN last_rowid INTEGER;
+  `,
+
+  // v67: The folder Seshboard started another provider's session in. Antigravity lists a session started in a worktree
+  // under `/`, so the sidebar puts it in the folder it was started in. Like the rest of owned_sessions, never dropped.
+  `
+  ALTER TABLE owned_sessions ADD COLUMN cwd TEXT;
+  `,
+
+  // v68: The order you gave a project's actions (dragged pills, the editor's list): their ids, as JSON, across yours,
+  // shared and global ones. Actions it doesn't name follow in the list's own order. A choice of yours: never dropped.
+  `
+  CREATE TABLE action_order (
+    project_id TEXT PRIMARY KEY,
+    ids        TEXT NOT NULL
+  );
+  `,
+
+  // v69: A trigger can move what it started to Done once it finishes (`done_when_finished`); `done_at` says it did, so
+  // a session you brought back from Done isn't moved there again.
+  `
+  ALTER TABLE triggers ADD COLUMN done_when_finished INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE trigger_events ADD COLUMN done_at INTEGER;
+  `,
 ];

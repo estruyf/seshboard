@@ -8,7 +8,11 @@ import { workerTitle } from '../../state/orchestrator.ts';
 import { useOrchestrators } from '../../state/orchestratorStore.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { rowStatus } from '../../state/sidebarRows.ts';
-import { stepRowLabel } from './rowLabel.ts';
+import { basename } from '../../lib/format.ts';
+import { useMinimal } from '../../state/preferencesStore.ts';
+import { useProjects } from '../../state/projectsStore.ts';
+import { rowLeading, stepRowLabel } from './rowLabel.ts';
+import { StatusIcon } from './StatusIcon.tsx';
 
 // The sidebar's pipelines tree (#179): the tile a run row has instead of a project icon, the chevron that opens a
 // parent, and a sub-session's row under it.
@@ -76,6 +80,9 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   tabbable,
   waitingFor,
   archived = false,
+  expanded,
+  childCount = 0,
+  onToggleTree,
   onClick,
   onMenu,
   onMiddleClick,
@@ -94,6 +101,13 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   waitingFor: string | null;
   /** Under an archived parent, in Archived. */
   archived?: boolean;
+  /**
+   * It has sub-sessions of its own (a session it started asked for more): whether they show, and how many. Missing:
+   * it has none, and the row has no chevron.
+   */
+  expanded?: boolean;
+  childCount?: number;
+  onToggleTree?(id: string): void;
   onClick(event: MouseEvent, data: SessionRowData): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
   onMiddleClick(data: SessionRowData): void;
@@ -101,8 +115,10 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   const runs = usePipelines((s) => s.runs);
   const step = useMemo(() => stepOfSession(runs.values(), data.id), [runs, data.id]);
   const status = rowStatus(data);
+  const minimal = useMinimal();
+  const projectName = useProjects((s) => s.projects.get(data.projectRoot)?.name) ?? basename(data.projectRoot);
   // A session an orchestrator just started has no transcript yet: it goes by the title its orchestrator gave it.
-  const startedTitle = useOrchestrators((s) => (data.summary ? null : workerTitle(s.orchestrators, data.id)));
+  const startedTitle = useOrchestrators((s) => (data.summary ? null : workerTitle(s.orchestrators, data.id, s.started)));
   const title = startedTitle ?? data.title;
   const meta = step ? stepMeta(step.state, step.row) : null;
   const tone = childTone(status, step?.row.status ?? null);
@@ -122,6 +138,7 @@ export const PipelineStepRow = memo(function PipelineStepRow({
         type="button"
         role="treeitem"
         aria-level={level}
+        aria-expanded={expanded}
         aria-posinset={position}
         aria-setsize={count}
         aria-selected={selected}
@@ -132,7 +149,9 @@ export const PipelineStepRow = memo(function PipelineStepRow({
         data-tree-child={data.summary?.parentId ?? ''}
         data-archived={archived || undefined}
         data-indexed={data.summary !== null}
-        data-tooltip={[title, line].filter(Boolean).join('\n')}
+        data-tree-parent={expanded}
+        data-tooltip={[title, line, projectName].filter(Boolean).join('\n')}
+        data-row-leading={rowLeading('pipeline-step', { minimal })}
         onClick={(e) => onClick(e, data)}
         onAuxClick={(e) => {
           if (e.button !== 1) return;
@@ -151,7 +170,8 @@ export const PipelineStepRow = memo(function PipelineStepRow({
         }}
         className={`relative flex w-full items-center gap-2 rounded-md pr-2.5 pl-2 text-left ${STEP_BUTTON[style]} ${surface}`}
       >
-        <span aria-hidden className={`size-2 shrink-0 rounded-full ${TONE_DOT[tone]}`} data-tree-dot={tone} />
+        {/* Its state at the left (rowLeading): Minimal mode's shape, or the coloured dot. */}
+        {minimal ? <StatusIcon status={status} variant="minimal" /> : <span aria-hidden className={`size-2 shrink-0 rounded-full ${TONE_DOT[tone]}`} data-tree-dot={tone} />}
         {style === 'compact' ? (
           <span className="flex min-w-0 flex-1 items-baseline gap-2">
             <span className={`min-w-0 shrink truncate text-ui ${emphasised ? 'font-semibold text-text' : 'text-text/85'}`}>{title}</span>
@@ -163,6 +183,7 @@ export const PipelineStepRow = memo(function PipelineStepRow({
             {line && <span className={`truncate text-meta leading-4 ${waitingFor ? 'font-medium text-warn' : 'text-faint'}`} data-tree-meta>{line}</span>}
           </span>
         )}
+        {expanded !== undefined && onToggleTree && <TreeChevron open={expanded} count={childCount} noun="session" onToggle={() => onToggleTree(data.id)} />}
       </button>
     </div>
   );

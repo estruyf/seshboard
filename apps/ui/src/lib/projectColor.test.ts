@@ -9,6 +9,11 @@ describe('letterColor', () => {
     expect(letterColor('switchboard')).toBe(letterColor('switchboard'));
     expect(letterColor('switchboard')).toMatch(/^hsl\(\d+ 45% 42%\)$/);
   });
+
+  it('falls back to the muted grey with Project colours off', () => {
+    expect(letterColor('switchboard', false)).toBe('var(--sb-muted)');
+    expect(letterColor('another', false)).toBe(letterColor('switchboard', false));
+  });
 });
 
 describe('accentFromPixels', () => {

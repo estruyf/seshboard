@@ -20,7 +20,7 @@ It shows tokens and shares, and what they would cost at API prices. Your plan is
 - Click your plan usage: the rings under a session's message box, the bars in [New session](/new-session/form/), or a profile's card on [Home](/sessions/home/). The view opens for that profile. The tooltip says *Click to see what used it*.
 - In the command palette: *Open usage*. It has no key by default.
 
-It opens in the window like Home. **Back** or <Kbd keys="escape" /> returns to where you were, and so does your mouse's back button.
+It opens in the window like Home. The close button (**×**) or <Kbd keys="escape" /> returns to where you were, and so does your mouse's back button.
 
 ## The header
 
@@ -34,7 +34,7 @@ It opens in the window like Home. **Back** or <Kbd keys="escape" /> returns to w
 | <Kbd shortcut="usage.limits" /> | Show Limits |
 | <Kbd shortcut="usage.tokens" /> | Show Tokens |
 | <Kbd keys="1" /> to <Kbd keys="4" /> | Pick a period |
-| <Kbd shortcut="usage.back" /> | Back to where you were |
+| <Kbd shortcut="usage.close" /> | Close Usage |
 
 ## Limits
 
@@ -134,7 +134,7 @@ With an API key, Amazon Bedrock or Google Vertex there are no plan limits, so no
 
 Seshboard shows what your tokens would cost at Anthropic's API prices. Your plan is not billed per token, so this is never a charge. It tells you what the same work would cost on the API.
 
-- **Your plan usage** under a session's message box and in [New session](/new-session/form/), after each window's %: *5h 38% ≈$4.10 · Week 52% ≈$61*. Hover a window for its estimate.
+- **Your plan usage** under a session's message box and in [New session](/new-session/form/): hover it for the estimate of each window, such as *≈$4.10* for the 5-hour window. The line itself keeps the session's cost, so effort, mode and the usage rings keep their room. When the line still doesn't fit, the session's cost goes first.
 - **A session's cost** next to Context under its message box: *Cost ≈$12.40*, everything the session used since it started, its agents included. A session on [another computer](/other-computers/) shows it too, as that computer counts it.
 - **The Limits cards**: each window's cost, such as *≈$4.10 at API prices*.
 - **The Tokens tab**: a **Cost (est.)** tile with the period's total, and a **Cost (est.)** column for each session, project, model, day or computer, also in the *N more* line. A model's panel says its cost, and **Show as table** under the chart has the cost of each hour or day.
@@ -159,7 +159,7 @@ Pick a [GitHub Copilot, Codex or Antigravity profile](/settings/other-agents/) i
 **Limits** shows what the agent reports, without periods, since its numbers are the account's now:
 
 - **GitHub Copilot**: **Premium requests**, with how many are left, how many you used of how many, and when they reset. Copilot counts them per account, for every session it runs, in Seshboard or elsewhere. An account billed per token in AI credits shows **AI credits** instead: what its sessions on this computer used in the last 30 days. One credit is US$0.01, and a session counts once it ends.
-- **OpenAI Codex**: its 5-hour and weekly windows, like Claude's, with the estimated cost of each. The same cost shows after the windows under a Codex session's message box.
+- **OpenAI Codex**: its 5-hour and weekly windows, like Claude's, with the estimated cost of each. The same cost shows in the usage tooltip under a Codex session's message box.
 - **Google Antigravity**: no limits Seshboard can read.
 
 **Tokens** works as for Claude: the agent's tokens by session, project, model and day, with the estimated cost. Copilot's cost is what it charged in AI credits. Codex's is at OpenAI's API prices. The session's cost also shows under its message box. Copilot writes its tokens when a session ends, so a running Copilot session counts once it stops.

@@ -66,13 +66,20 @@ export class CompanionServer {
   private readonly token = randomBytes(32).toString('hex');
   private readonly sockets = new Set<Socket>();
   private readonly rpcs = new Set<RpcServer<CompanionContract>>();
+  /** What each connection said it is in `hello` (`vscode`, `browser`). */
+  private readonly clientNames = new Map<RpcServer<CompanionContract>, string>();
   private failure: string | null = null;
 
   constructor(private readonly options: CompanionServerOptions) {}
 
-  /** Editors connected now (past `hello`). */
+  /** Editors connected now (past `hello`): every client but the browser extension. */
   get clients(): number {
-    return this.rpcs.size;
+    return this.rpcs.size - this.browsers;
+  }
+
+  /** Browser extensions connected now (one per browser, through its native messaging host). */
+  get browsers(): number {
+    return [...this.clientNames.values()].filter((name) => name === BROWSER_CLIENT).length;
   }
 
   get listening(): boolean {
@@ -124,6 +131,7 @@ export class CompanionServer {
   stop(): void {
     for (const rpc of this.rpcs) rpc.dispose();
     this.rpcs.clear();
+    this.clientNames.clear();
     for (const socket of this.sockets) socket.destroy();
     this.sockets.clear();
     this.server?.close();
@@ -193,7 +201,10 @@ export class CompanionServer {
       gated,
       {
         ...this.options.handlers,
-        hello: () => ({ protocol: COMPANION_PROTOCOL, app: { version: this.options.appVersion } }),
+        hello: ({ client }) => {
+          if (rpc) this.clientNames.set(rpc, client.name);
+          return { protocol: COMPANION_PROTOCOL, app: { version: this.options.appVersion } };
+        },
       },
       { onUnexpectedError: (method, error) => this.options.log('error', `Companion ${method} failed: ${error instanceof Error ? error.message : String(error)}`) },
     );
@@ -202,6 +213,7 @@ export class CompanionServer {
       this.sockets.delete(socket);
       if (rpc) {
         this.rpcs.delete(rpc);
+        this.clientNames.delete(rpc);
         rpc.dispose();
       }
     };
@@ -211,6 +223,9 @@ export class CompanionServer {
 }
 
 const windows = process.platform === 'win32';
+
+/** The name the browser extension's native messaging host says hello with. */
+export const BROWSER_CLIENT = 'browser';
 
 function alive(pid: number): boolean {
   try {

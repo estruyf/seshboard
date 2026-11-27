@@ -1,4 +1,4 @@
-import { withoutContext } from '@seshboard/protocol';
+import { parsePeerMessage, withoutContext } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 
 /** One tool call of a turn, as much of it as the catch-up needs. */
@@ -69,6 +69,9 @@ export function promptText(message: RawSessionMessage): string | null {
   const hasImage = blocks.some((b) => b.type === 'image');
   const trimmed = text.trimStart();
   if (trimmed.startsWith('<task-notification>') || /^(Another Claude session sent a message:\s*)?<agent-message from="/.test(trimmed)) return null;
+  // Another session's message asks for the turn's work, so it stands in for the prompt, without Claude Code's wrapper.
+  const peer = parsePeerMessage(trimmed);
+  if (peer) return peer.text || null;
   const command = tag(text, 'command-name');
   if (command) {
     const args = tag(text, 'command-args') ?? '';

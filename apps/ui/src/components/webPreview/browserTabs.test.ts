@@ -56,11 +56,13 @@ describe('switchTabProfile', () => {
 });
 
 describe('sameAddress', () => {
-  it('compares origin and path, ignoring #', () => {
+  it('compares origin, path and query, ignoring #', () => {
     expect(sameAddress('https://github.com/a/pull/1#files', 'https://github.com/a/pull/1')).toBe(true);
     expect(sameAddress('https://github.com/a/pull/1', 'https://github.com/a/pull/2')).toBe(false);
     expect(sameAddress('http://github.com/a', 'https://github.com/a')).toBe(false);
     expect(sameAddress(null, 'https://github.com/')).toBe(false);
+    expect(sameAddress('https://news.ycombinator.com/item?id=1', 'https://news.ycombinator.com/item?id=2')).toBe(false);
+    expect(sameAddress('https://news.ycombinator.com/item?id=1#c', 'https://news.ycombinator.com/item?id=1')).toBe(true);
   });
 });
 

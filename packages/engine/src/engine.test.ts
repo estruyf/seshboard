@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRpcClient, mergeFacts, messagePortTransport, ProfileDefaults, ProjectDefaults,type WorktreeFacts, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
+import { createRpcClient, mergeFacts, messagePortTransport, ProfileDefaults, ProjectDefaults,type WorktreeFacts, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate, type RpcClient } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine, type EngineOptions, type TrashScope } from './engine.ts';
 import { fakeAppServer, thread } from './providers/codex/codexFakes.ts';
@@ -109,6 +109,15 @@ function connect(extra: { worktreeFactsWaitMs?: number; trashed?: string[][]; tr
   });
   return { engine, client, dataDir, projectDir };
 }
+
+/** Waits for a condition the engine reaches on its own (a session that starts after git has made its worktree). */
+const until = async (check: () => Promise<boolean>, timeoutMs = 8_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error('timed out');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+};
 
 describe('engine over a MessagePort', () => {
   it('answers ping', async () => {
@@ -805,6 +814,8 @@ describe('engine over a MessagePort', () => {
     // A queued item keeps the branch as a ref; starting it makes the worktree from that branch.
     const { item } = await client.call('later.add', { draft: { cwd: repo, prompt: 'hi', workspace: 'worktree', baseRef: 'refs/heads/dev' } });
     await client.call('later.start', { id: item.id });
+    // The session opens first; Claude Code starts once git has made the worktree.
+    await until(async () => created.length === 1);
     const made = created.at(-1)!;
     expect(made.worktree).toBeUndefined();
     expect(made.cwd).toMatch(/[\\/]\.claude[\\/]worktrees[\\/][^\\/]+$/);
@@ -883,7 +894,7 @@ describe('engine over a MessagePort', () => {
     await client.call('projects.setDefaults', { root: dataDir, defaults: { ...(await defaultsOf()), planModeInstructions: '' } });
     expect(await defaultsOf()).not.toHaveProperty('planModeInstructions');
     // No session is an orchestrator yet.
-    expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [] });
+    expect(await client.call('orchestrator.list', {})).toEqual({ orchestrators: [], started: [] });
     await client.call('projects.remove', { root: dataDir });
     expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual([PARSER]);
   });
@@ -1113,6 +1124,13 @@ describe('engine over a MessagePort', () => {
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'lint' })).resolves.toMatchObject({ kind: 'terminal' });
     await client.call('actions.delete', { projectRoot: project, shared: true, id: 'lint' });
     expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['shared', 'greet']);
+    // You can move them: the order is yours, and a rename keeps the action's place.
+    changed.length = 0;
+    await client.call('actions.reorder', { projectRoot: project, ids: ['greet', 'shared'] });
+    expect(changed).toEqual([project]);
+    expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['greet', 'shared']);
+    await client.call('actions.save', { projectRoot: project, previousId: 'greet', action: { id: 'hello', name: 'Hello', command: 'echo hi' } });
+    expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['hello', 'shared']);
     await expect(client.call('actions.save', { projectRoot: null, shared: true, action: { id: 'x', name: 'X', command: 'x' } })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(changed).toContain(project);
   });
@@ -1258,6 +1276,118 @@ describe('engine over a MessagePort', () => {
   });
 });
 
+describe('git status for watching windows', () => {
+  it('sends a checkout\u2019s changes to a window until its last view of it stops watching', async () => {
+    const { client } = connect({ path: process.env.PATH ?? '' });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-git-watch-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'first']);
+    const seen: string[][] = [];
+    client.on('git.changed', (event) => event.cwd === repo && seen.push(event.changes?.files.map((f) => f.path) ?? []));
+    // Two panes of the window on the same folder: one watch, counted twice, and each pane gets a result.
+    await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
+    await vi.waitFor(() => expect(seen).toEqual([[]]));
+    await client.call('git.watch', { cwd: repo, base: 'uncommitted' });
+    await vi.waitFor(() => expect(seen).toEqual([[], []]));
+    await client.call('git.unwatch', { cwd: repo, base: 'uncommitted' });
+    writeFileSync(join(repo, 'new.txt'), 'hello\n');
+    const changes = await client.call('git.changes', { cwd: repo, base: 'uncommitted', fresh: true });
+    expect(changes.files.map((f) => f.path)).toEqual(['new.txt']);
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(['new.txt']));
+    // The last view stops: nothing more comes.
+    await client.call('git.unwatch', { cwd: repo, base: 'uncommitted' });
+    const count = seen.length;
+    writeFileSync(join(repo, 'other.txt'), 'hi\n');
+    await client.call('git.changes', { cwd: repo, base: 'uncommitted', fresh: true });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(seen.length).toBe(count);
+  });
+});
+
+describe('events each window gets', () => {
+  it('sends streamed text only to the views that watch the session, from the start of the reply, and only the events a port asks for', async () => {
+    let push: (text: string) => void = () => {};
+    const sdk: SdkRuntime = {
+      query: ({ prompt }) =>
+        ({
+          async *[Symbol.asyncIterator]() {
+            for await (const _message of prompt) {
+              yield { type: 'system', subtype: 'session_state_changed', state: 'running' };
+              yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', content_block: { type: 'text' } } };
+              for (;;) {
+                const text = await new Promise<string>((resolve) => (push = resolve));
+                if (text === '<idle>') {
+                  yield { type: 'system', subtype: 'session_state_changed', state: 'idle' };
+                  continue;
+                }
+                yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } };
+              }
+            }
+          },
+          interrupt: async () => {},
+          close: () => {},
+          setPermissionMode: async () => {},
+          setModel: async () => {},
+          supportedCommands: async () => [],
+          supportedModels: async () => [],
+        }) as never,
+      startup: async () => ({ query: () => ({}) as never, close: () => {} }) as never,
+    };
+    const { engine, client } = connect({ sdk });
+    // A second window, and main's notifier, which asks for a few events only.
+    const ports = [new MessageChannel(), new MessageChannel()];
+    const [other, main] = ports.map(({ port1, port2 }) => {
+      const detach = engine.attach(messagePortTransport(asDomPort(port1)));
+      const rpc = createRpcClient<Contract>(messagePortTransport(asDomPort(port2)));
+      cleanups.push(() => (rpc.dispose(), detach(), port1.close(), port2.close()));
+      return rpc;
+    }) as [RpcClient<Contract>, RpcClient<Contract>];
+    await main.call('events.only', { names: ['session.host', 'computers.event:sessions.changed'] });
+    const heard = { window: [] as string[], other: [] as string[], main: [] as string[], mainEvents: new Set<string>(), windowEvents: new Set<string>() };
+    client.on('session.stream', (d) => heard.window.push(`${d.kind}:${d.text}`));
+    other.on('session.stream', (d) => heard.other.push(`${d.kind}:${d.text}`));
+    main.on('session.stream', (d) => heard.main.push(`${d.kind}:${d.text}`));
+    for (const name of ['session.host', 'sessions.changed', 'profiles.changed'] as const) {
+      main.on(name, () => heard.mainEvents.add(name));
+      client.on(name, () => heard.windowEvents.add(name));
+    }
+
+    const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-stream-')));
+    cleanups.push(() => rmSync(folder, { recursive: true, force: true }));
+    const { sessionId } = await client.call('session.create', { cwd: folder, prompt: 'Write it' });
+    // Nothing streams yet: a watch starts clean.
+    await client.call('stream.watch', { sessionId });
+    await vi.waitFor(() => expect(heard.window).toEqual(['clear:']));
+    await vi.waitFor(() => expect(heard.mainEvents.has('session.host')).toBe(true));
+    push('Hello');
+    await vi.waitFor(() => expect(heard.window.join('')).toContain('Hello'));
+    // The other window opens the session mid-reply: it gets the reply from its start.
+    await other.call('stream.watch', { sessionId });
+    await vi.waitFor(() => expect(heard.other).toEqual(['clear:', 'text:Hello']));
+    push(' world');
+    await vi.waitFor(() => expect(heard.other.at(-1)).toBe('text: world'));
+    // It looks away: no more for it.
+    await other.call('stream.unwatch', { sessionId });
+    push('!');
+    await vi.waitFor(() => expect(heard.window.at(-1)).toBe('text:!'));
+    expect(heard.other.at(-1)).toBe('text: world');
+    // The turn ends: a watch after it gets a clean start and nothing of the old reply.
+    push('<idle>');
+    await vi.waitFor(async () => expect((await client.call('hosts.list', {})).hosts.find((h) => h.sessionId === sessionId)?.state).toBe('idle'));
+    heard.other.length = 0;
+    await other.call('stream.watch', { sessionId });
+    await vi.waitFor(() => expect(heard.other).toEqual(['clear:']));
+    // A window gets every event; main only those it asked for, and never streamed text.
+    await client.call('profiles.add', { name: 'Work', color: 'blue', configDir: join(folder, 'work-profile') }).catch(() => {});
+    await vi.waitFor(() => expect(heard.windowEvents.has('profiles.changed')).toBe(true));
+    // A round trip on main's port: anything sent to it before has arrived.
+    await main.call('system.ping', { sentAt: Date.now() });
+    expect(heard.main).toEqual([]);
+    expect([...heard.mainEvents]).toEqual(['session.host']);
+  });
+});
+
 describe('quick questions', () => {
   /** A session in /work/parser and one in the questions folder (known once the engine has a data folder). */
   function connectWithQuestion(sdk?: SdkRuntime) {
@@ -1322,13 +1452,6 @@ describe('Claude profiles', () => {
         .map((line) => JSON.stringify(line))
         .join('\n') + '\n',
     );
-  };
-  const until = async (check: () => Promise<boolean>, timeoutMs = 8_000) => {
-    const deadline = Date.now() + timeoutMs;
-    while (!(await check())) {
-      if (Date.now() > deadline) throw new Error('timed out');
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
   };
 
   it('lists, searches and runs sessions from two config folders, each with its own login', async () => {
@@ -1463,6 +1586,46 @@ describe('Claude profiles', () => {
     expect(created[0]!.worktree).toBeUndefined();
     expect(created[0]!.cwd).toBe(join(repo, '.claude', 'worktrees', 'from-dev'));
     expect((await git(created[0]!.cwd!, ['rev-parse', 'HEAD'])).trim()).toBe(dev);
+  });
+
+  it("fetches a new worktree's base while the prompt is written, so Start doesn't fetch it again", async () => {
+    const created: Array<{ cwd?: string; worktree?: string | null }> = [];
+    const { client } = connect({ sdk: fakeSdk(created), path: process.env.PATH ?? '' });
+    const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-prefetch-')));
+    cleanups.push(() => rmSync(scratch, { recursive: true, force: true }));
+    const origin = join(scratch, 'origin');
+    const repo = join(scratch, 'repo');
+    mkdirSync(origin);
+    const commit = (cwd: string, message: string) => git(cwd, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', message]);
+    await git(origin, ['init', '-q', '-b', 'dev']);
+    await commit(origin, 'first');
+    await git(scratch, ['clone', '-q', origin, repo]);
+    await client.call('projects.add', { path: repo });
+    await client.call('projects.setDefaults', { root: repo, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: 'dev' } });
+
+    await commit(origin, 'second');
+    const second = (await git(origin, ['rev-parse', 'HEAD'])).trim();
+    await client.call('worktree.prefetch', { cwd: repo, baseRef: 'fresh' });
+    await until(async () => (await git(repo, ['rev-parse', 'refs/remotes/origin/dev'])).trim() === second);
+
+    // Fresh enough: Start makes the worktree from what was fetched, without fetching (and finding the third commit).
+    await commit(origin, 'third');
+    await client.call('session.create', { cwd: repo, prompt: 'hi', worktree: { name: 'prefetched', baseRef: 'fresh' } });
+    await until(async () => created.length === 1);
+    expect((await git(created[0]!.cwd!, ['rev-parse', 'HEAD'])).trim()).toBe(second);
+  });
+
+  it('refuses a worktree name that is taken before the session opens', async () => {
+    const created: Array<{ cwd?: string; worktree?: string | null }> = [];
+    const { client } = connect({ sdk: fakeSdk(created), path: process.env.PATH ?? '' });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-taken-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'first']);
+    await client.call('projects.add', { path: repo });
+    mkdirSync(join(repo, '.claude', 'worktrees', 'taken'), { recursive: true });
+    await expect(client.call('session.create', { cwd: repo, prompt: 'hi', worktree: { name: 'taken', baseRef: { branch: 'main' } } })).rejects.toMatchObject({ code: 'GIT_FAILED' });
+    expect(created).toEqual([]);
   });
 
   it('switches the branch of a checkout, keeps uncommitted work and refuses while Claude works there', async () => {

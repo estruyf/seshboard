@@ -63,7 +63,7 @@ export function InstructionsEditor({
         maxLength={max}
         placeholder={placeholder}
         aria-label={label}
-        className="min-h-24 w-full min-w-0 resize-y rounded-md border border-border bg-bg px-2.5 py-2 text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink/60"
+        className="field min-h-24 w-full min-w-0 resize-y px-2.5 py-2 text-ui outline-none placeholder:text-faint"
         {...hooks('-input')}
       />
       <div className="flex min-w-0 flex-wrap items-center gap-2">

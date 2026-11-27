@@ -251,7 +251,7 @@ export function CleanupPeriodDialog({
                 options={options}
                 disabled={!!p.error}
                 onChange={(next) => setChoice((c) => ({ ...c, [p.profileId]: next === DEFAULT_CHOICE ? null : Number(next) }))}
-                className="h-7 shrink-0 rounded-md border border-edge px-2.5 text-ui"
+                className="field h-7 shrink-0 px-2.5 text-ui"
                 dataAttrs={{ 'data-cleanup-days': p.profileId }}
               />
             </li>

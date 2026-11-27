@@ -21,7 +21,7 @@ import { ProviderOffer, ProviderReady } from './ProviderSetup.tsx';
 import { offersToMake, suggestedName } from './providerOffer.ts';
 import { PROFILE_DOT } from './ProfileBadge.tsx';
 
-export const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60';
+export const field = 'field h-7 min-w-0 px-2 text-ui outline-none';
 
 const slug = (name: string) =>
   name

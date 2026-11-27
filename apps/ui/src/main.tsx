@@ -6,6 +6,7 @@ import { BrowserPopoutApp } from './components/popout/BrowserPopoutApp.tsx';
 import { PopoutApp } from './components/popout/PopoutApp.tsx';
 import { QuickStartApp } from './components/quickStart/QuickStartApp.tsx';
 import { KEEPS_SELECTION, SELECTABLE } from './lib/selectable.ts';
+import { watchWindowActivity } from './lib/windowActivity.ts';
 import { browserPopoutSession, menuBarWindow, popoutSession, quickStartWindow } from './state/popoutsStore.ts';
 import { receiveSessionView } from './state/sessionView.ts';
 import './styles.css';
@@ -34,6 +35,15 @@ window.addEventListener(
   },
   true,
 );
+
+// Infinite animations (spinners, pulses, the working panel) pause while this window is in the background (styles.css).
+watchWindowActivity({ bridge: window.seshboard, win: window, doc: document });
+
+// `data-full-screen` on <html> while the window is in full screen, for the `full-screen:` variant (styles.css): the
+// traffic lights hide there, so headers that leave room for them start at the edge.
+const setFullScreen = (on: boolean) => (on ? root.setAttribute('data-full-screen', '') : root.removeAttribute('data-full-screen'));
+setFullScreen(window.seshboard?.fullScreen ?? false);
+window.seshboard?.onFullScreen?.(setFullScreen);
 
 // The quick start panel's window is see-through around the panel (styles.css).
 if (quickStartWindow) root.setAttribute('data-quick-start-window', '');

@@ -75,7 +75,7 @@ export function SectionHeader({ children, tone = 'neutral', count, as, level = 2
   );
   const heading = 'flex min-w-0 items-center gap-1.5';
   return (
-    <div className={`flex min-w-0 items-center gap-1.5 text-meta font-semibold tracking-wider uppercase ${TONE[tone]} ${className}`} {...rest}>
+    <div className={`flex min-w-0 items-center gap-1.5 text-meta font-semibold tracking-wider uppercase ${TONE[tone]} ${className}`} data-section-tone={tone} {...rest}>
       {as === 'h2' ? (
         <h2 id={headingId} className={`${heading} ${toggle ? 'h-full flex-1' : ''}`}>
           {content}

@@ -29,6 +29,7 @@ interface Row {
   interval_min: number;
   state_labels_json: string;
   assign_on_pickup: number;
+  done_when_finished: number;
   paused: number;
   paused_reason: string | null;
   failures: number;
@@ -57,6 +58,7 @@ interface EventRow {
   item_id: string | null;
   label: string | null;
   reassigned_to: string | null;
+  done_at: number | null;
   created_at: number;
   started_at: number | null;
 }
@@ -98,11 +100,11 @@ export class TriggerStore {
       one: db.prepare('SELECT * FROM triggers WHERE id = ?'),
       upsert: db.prepare(`
         INSERT INTO triggers (id, project_root, name, source_json, prompt, draft_json, start_json, max_at_once, max_waiting, interval_min, state_labels_json,
-          assign_on_pickup, paused, paused_reason, failures, last_error, blocked_until, last_checked_at, seeded_at, seen_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          assign_on_pickup, done_when_finished, paused, paused_reason, failures, last_error, blocked_until, last_checked_at, seeded_at, seen_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET project_root = excluded.project_root, name = excluded.name, source_json = excluded.source_json,
           prompt = excluded.prompt, draft_json = excluded.draft_json, start_json = excluded.start_json, max_at_once = excluded.max_at_once, max_waiting = excluded.max_waiting,
-          interval_min = excluded.interval_min, state_labels_json = excluded.state_labels_json, assign_on_pickup = excluded.assign_on_pickup,
+          interval_min = excluded.interval_min, state_labels_json = excluded.state_labels_json, assign_on_pickup = excluded.assign_on_pickup, done_when_finished = excluded.done_when_finished,
           paused = excluded.paused, paused_reason = excluded.paused_reason, failures = excluded.failures, last_error = excluded.last_error,
           blocked_until = excluded.blocked_until, last_checked_at = excluded.last_checked_at, seeded_at = excluded.seeded_at,
           seen_json = excluded.seen_json, created_at = excluded.created_at, updated_at = excluded.updated_at`),
@@ -125,9 +127,10 @@ export class TriggerStore {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL)
         ON CONFLICT (trigger_id, key) DO UPDATE SET id = excluded.id, kind = excluded.kind, title = excluded.title, url = excluded.url,
           fields_json = excluded.fields_json, context = excluded.context, status = excluded.status, reason = excluded.reason, session_id = NULL,
-          run_id = NULL, item_id = NULL, label = NULL, reassigned_to = NULL, created_at = excluded.created_at, started_at = NULL`),
+          run_id = NULL, item_id = NULL, label = NULL, reassigned_to = NULL, done_at = NULL, created_at = excluded.created_at, started_at = NULL`),
       setStatus: db.prepare('UPDATE trigger_events SET status = ?, reason = ?, session_id = COALESCE(?, session_id), run_id = COALESCE(?, run_id), item_id = ?, started_at = COALESCE(?, started_at) WHERE id = ?'),
       setLabel: db.prepare('UPDATE trigger_events SET label = ? WHERE id = ?'),
+      setDone: db.prepare('UPDATE trigger_events SET done_at = ? WHERE id = ?'),
       setReassigned: db.prepare('UPDATE trigger_events SET reassigned_to = ? WHERE id = ?'),
       setFields: db.prepare('UPDATE trigger_events SET fields_json = ? WHERE id = ?'),
       prune: db.prepare(`
@@ -207,6 +210,7 @@ export class TriggerStore {
       this.statements.insertEvent.run(event.id, event.triggerId, event.key, event.kind, event.title, event.url, JSON.stringify(event.fields), context, event.status, event.reason, event.createdAt);
       this.statements.setStatus.run(event.status, event.reason, event.sessionId, event.runId, event.itemId, event.startedAt, event.id);
       if (event.label) this.statements.setLabel.run(event.label, event.id);
+      if (event.doneAt !== null) this.statements.setDone.run(event.doneAt, event.id);
     }
     return this.get(parsed.id)!;
   }
@@ -303,6 +307,11 @@ export class TriggerStore {
     this.statements.setLabel.run(label, id);
   }
 
+  /** Seshboard moved the event's session (or run) to Done at `at`. */
+  setDone(id: string, at: number): void {
+    this.statements.setDone.run(at, id);
+  }
+
   setReassigned(id: string, login: string | null): void {
     this.statements.setReassigned.run(login, id);
   }
@@ -347,6 +356,7 @@ export class TriggerStore {
       trigger.intervalMinutes,
       JSON.stringify(trigger.stateLabels),
       trigger.assignOnPickUp ? 1 : 0,
+      trigger.doneWhenFinished ? 1 : 0,
       trigger.paused ? 1 : 0,
       trigger.pausedReason,
       trigger.failures,
@@ -386,6 +396,7 @@ function toTrigger(row: Row): Trigger | null {
     intervalMinutes: row.interval_min,
     stateLabels: labels.success ? labels.data : StateLabels.parse({}),
     assignOnPickUp: row.assign_on_pickup === 1,
+    doneWhenFinished: row.done_when_finished === 1,
     paused: row.paused === 1,
     pausedReason: row.paused_reason,
     failures: row.failures,
@@ -416,6 +427,7 @@ function toEvent(row: EventRow): StoredEvent | null {
     itemId: row.item_id,
     label: row.label,
     reassignedTo: row.reassigned_to,
+    doneAt: row.done_at,
     createdAt: row.created_at,
     startedAt: row.started_at,
   });

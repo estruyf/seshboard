@@ -309,7 +309,7 @@ export type SidebarListRow =
   | { kind: 'queue'; entry: QueueEntry }
   | { kind: 'archived'; count: number; open: boolean }
   /** Grouped by project (`sidebarProjectRows.ts`): a project's header, with how many sessions it holds. */
-  | { kind: 'project'; key: string; name: string; remote: { computerId: string; computerName: string; offline: boolean } | null; count: number; open: boolean; first: boolean }
+  | { kind: 'project'; key: string; name: string; remote: { computerId: string; computerName: string; projectId: string; offline: boolean } | null; count: number; open: boolean; first: boolean }
   /** Under a folded project: what is in it ("1 needs you · 2 working"). */
   | { kind: 'project-summary'; key: string; parts: ProjectSummaryPart[] }
   /** Over a project's queued prompts. */

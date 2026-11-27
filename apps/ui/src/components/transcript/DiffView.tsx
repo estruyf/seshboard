@@ -1,5 +1,6 @@
 import { diffLines } from 'diff';
 import { memo, useMemo, useState } from 'react';
+import { useHighlightedLines } from './useHighlightedLines.ts';
 
 export interface DiffLine {
   kind: 'add' | 'del' | 'same';
@@ -38,9 +39,32 @@ export function computeDiff(before: string, after: string, context = 2): Array<D
 const COLLAPSED_LINES = 14;
 
 /** Inline diff for Edit/MultiEdit/Write cards, collapsed to the first lines until expanded. */
-export const DiffView = memo(function DiffView({ hunks, truncated }: { hunks: Array<{ before: string; after: string }>; truncated?: boolean }) {
+export const DiffView = memo(function DiffView({
+  hunks,
+  truncated,
+  language,
+  syntaxKey = '',
+}: {
+  hunks: Array<{ before: string; after: string }>;
+  truncated?: boolean;
+  /** The file's language (`languageFromPath`): its lines in the theme's code colours. Without one, plain text. */
+  language?: string;
+  /** The theme store's syntax key, so the lines highlight again when the code colours change. */
+  syntaxKey?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
   const rows = useMemo(() => hunks.flatMap((h, i) => [...(i > 0 ? [{ kind: 'gap' as const, count: 0 }] : []), ...computeDiff(h.before, h.after)]), [hunks]);
+  const codeRows = useMemo(() => {
+    const index = new Map<number, number>();
+    const texts: string[] = [];
+    rows.forEach((row, i) => {
+      if (row.kind === 'gap') return;
+      index.set(i, texts.length);
+      texts.push(row.text);
+    });
+    return { index, texts };
+  }, [rows]);
+  const lineHtml = useHighlightedLines(codeRows.texts, language, syntaxKey);
   const added = rows.filter((r) => r.kind === 'add').length;
   const removed = rows.filter((r) => r.kind === 'del').length;
   const visible = expanded ? rows : rows.slice(0, COLLAPSED_LINES);
@@ -56,17 +80,23 @@ export const DiffView = memo(function DiffView({ hunks, truncated }: { hunks: Ar
           ) : (
             <div
               key={i}
+              data-diff-kind={row.kind}
               className={`flex whitespace-pre ${row.kind === 'add' ? 'bg-diff-added text-text' : row.kind === 'del' ? 'bg-diff-removed text-text/80' : 'text-muted'}`}
             >
               <span className={`w-5 shrink-0 text-center select-none ${row.kind === 'add' ? 'text-ok' : row.kind === 'del' ? 'text-error' : 'text-faint'}`}>
                 {row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' '}
               </span>
-              <span className="pr-3">{row.text || ' '}</span>
+              {lineHtml && codeRows.index.has(i) && row.text ? (
+                // Shiki escapes the code; the HTML is spans with colour variables only.
+                <span className="shiki pr-3" dangerouslySetInnerHTML={{ __html: lineHtml[codeRows.index.get(i)!]! }} />
+              ) : (
+                <span className="pr-3">{row.text || ' '}</span>
+              )}
             </div>
           ),
         )}
       </div>
-      <div className="flex items-center gap-3 border-t border-border bg-sidebar px-3 py-1 text-meta text-muted">
+      <div className="flex items-center gap-3 border-t border-border bg-sidebar px-3 py-1 text-meta text-muted" data-diff-counts>
         <span className="text-ok">
           +{added}
           <span className="sr-only"> lines added,</span>

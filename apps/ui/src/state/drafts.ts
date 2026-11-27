@@ -110,9 +110,47 @@ export function draftList(drafts: Readonly<Record<string, Draft>>): DraftItem[] 
     .filter(([, draft]) => draft.counted && hasContent(draft))
     .sort(([, a], [, b]) => b.updatedAt - a.updatedAt)
     .map(([key, draft]): DraftItem => {
-      const base = { key, preview: draftPreview(draftText(draft)) || (draft.attachments.length ? imagesOnly(draft.attachments.length) : chipsSummary(draft.context ?? [])), updatedAt: draft.updatedAt };
+      const base = { key, preview: previewOfDraft(draft), updatedAt: draft.updatedAt };
       return isNewDraftKey(key) ? { ...base, kind: 'new', root: draftRoot(key) } : { ...base, kind: 'session', sessionId: key };
     });
+}
+
+/** The start of a draft as the sidebar, the Unsent list and ⌘P show it (its text, else its images or chips). */
+export function previewOfDraft(draft: Draft): string {
+  return draftPreview(draftText(draft)) || (draft.attachments.length ? imagesOnly(draft.attachments.length) : chipsSummary(draft.context ?? []));
+}
+
+/** The preview of a draft that counts as unsent, or null: what a session's row shows. A string, so a row that selects it re-renders only when its own text changes. */
+export function countedPreview(draft: Draft | undefined): string | null {
+  return draft && draft.counted && hasContent(draft) ? previewOfDraft(draft) : null;
+}
+
+/**
+ * Whether a draft that counts is listed as unsent: a New session prompt always, a session's draft while the app knows the
+ * session (or before its first list has come in). One rule for the Unsent list and its count.
+ */
+export function isListedDraft(key: string, known: { has(id: string): boolean }, loaded: boolean): boolean {
+  return isNewDraftKey(key) || known.has(key) || !loaded;
+}
+
+/** How many unsent messages there are, from the keys of the drafts that count (`draftKeysSignature`): the length of the Unsent list. */
+export function countUnsent(keys: readonly string[], known: { has(id: string): boolean }, loaded: boolean): number {
+  return keys.filter((key) => key !== '' && isListedDraft(key, known, loaded)).length;
+}
+
+/**
+ * The keys of the drafts that count, as one string: a view that only counts them (the footer, the quit prompt) does not
+ * re-render when a draft's text changes.
+ */
+export function draftKeysSignature(drafts: Readonly<Record<string, Draft>>): string {
+  let keys = '';
+  for (const key in drafts) if (drafts[key]!.counted && hasContent(drafts[key]!)) keys += `${key}\u0001`;
+  return keys;
+}
+
+/** `draftListSignature` for the New session prompts only: what the + button's pen reads, so a keystroke in a session's box does not reach it. */
+export function newDraftListSignature(drafts: Readonly<Record<string, Draft>>): string {
+  return draftListSignature(Object.fromEntries(Object.entries(drafts).filter(([key]) => isNewDraftKey(key))));
 }
 
 /**
@@ -192,7 +230,7 @@ function parseContext(value: unknown): ContextItem[] {
     else if (raw.kind === 'session' && typeof raw.sessionId === 'string' && raw.sessionId && typeof raw.label === 'string' && raw.label.trim()) out.push({ kind: 'session', sessionId: raw.sessionId, label: raw.label });
     else if (raw.kind === 'github' && (raw.type === 'issue' || raw.type === 'pr') && Number.isInteger(raw.number) && (raw.number as number) > 0 && typeof raw.repo === 'string' && /^[\w.-]+\/[\w.-]+$/.test(raw.repo) && typeof raw.title === 'string' && typeof raw.url === 'string' && raw.url.startsWith('https://github.com/'))
       out.push({ kind: 'github', type: raw.type, number: raw.number as number, repo: raw.repo, title: raw.title, url: raw.url });
-    else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste' || raw.source === 'checks' || raw.source === 'review' || raw.source === 'element' || raw.source === 'file' || raw.source === 'search')) {
+    else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste' || raw.source === 'checks' || raw.source === 'review' || raw.source === 'element' || raw.source === 'file' || raw.source === 'search' || raw.source === 'page' || raw.source === 'console')) {
       out.push({
         kind: 'text',
         source: raw.source,

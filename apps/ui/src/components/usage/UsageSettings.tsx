@@ -29,14 +29,14 @@ export function UsageSettings() {
       </div>
       <Toggle
         label="Show estimated cost"
-        detail="What your tokens would cost at API prices: after the 5-hour and weekly bars, next to Context under a session's message box, and in the Usage view. Your plan is not billed per token, so this is never a charge."
+        detail="What your tokens would cost at API prices: with the 5-hour and weekly limits, next to Context under a session's message box, and in the Usage view. Your plan is not billed per token, so this is never a charge."
         checked={prefs.showCost}
         attr="data-show-cost"
         onChange={(showCost) => update({ showCost })}
       />
       <Toggle
         label="Show it on the usage bars"
-        detail="The estimate after the 5-hour and weekly bars under the message box and in New session. Turn it off to keep the estimate in the Usage view and next to Context."
+        detail="The estimate for the 5-hour and weekly windows, when you point at the usage under the message box and in New session. Turn it off to keep the estimate in the Usage view and next to Context."
         checked={prefs.showBarCost}
         disabled={!prefs.showCost}
         attr="data-show-bar-cost"
@@ -54,7 +54,7 @@ export function UsageSettings() {
           options={CURRENCY_OPTIONS}
           disabled={!prefs.showCost}
           menuWidth={220}
-          className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+          className="field h-7 shrink-0 px-2.5 text-ui outline-none"
           dataAttrs={{ 'data-cost-currency': true }}
         />
       </div>
@@ -91,7 +91,7 @@ export function LargeContextSettings() {
             onChange={(percent) => update({ percent: Number(percent) })}
             options={PERCENT_OPTIONS}
             disabled={off}
-            className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+            className="field h-7 shrink-0 px-2.5 text-ui outline-none"
             dataAttrs={{ 'data-large-context-percent': true }}
           />
         </div>

@@ -11,7 +11,7 @@ import { Select } from '../ui/Select.tsx';
 import { copyableSections, indexMeterText, relativeTo } from './memoryUi.ts';
 import { useMemoryFile } from './useMemoryList.ts';
 
-const field = 'h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
+const field = 'field h-7 w-full px-2.5 text-ui outline-none';
 const PREVIEW_DELAY_MS = 200;
 
 /**

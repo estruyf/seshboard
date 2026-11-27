@@ -6,12 +6,14 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { buildDockTilePlugin, swiftArchs } from './dockTile.mjs';
 
 /** @param {import('electron-builder').AfterPackContext} context */
 export default async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') return;
   const appName = context.packager.appInfo.productFilename;
-  const frameworks = join(context.appOutDir, `${appName}.app`, 'Contents', 'Frameworks');
+  const app = join(context.appOutDir, `${appName}.app`);
+  const frameworks = join(app, 'Contents', 'Frameworks');
   for (const entry of readdirSync(frameworks)) {
     if (!entry.endsWith('.app')) continue;
     const plist = join(frameworks, entry, 'Contents', 'Info.plist');
@@ -19,4 +21,5 @@ export default async function afterPack(context) {
     // "Seshboard Helper (GPU).app" → "Seshboard Helper (GPU)"
     execFileSync('plutil', ['-replace', 'CFBundleName', '-string', entry.slice(0, -'.app'.length), plist]);
   }
+  buildDockTilePlugin(app, { version: context.packager.appInfo.version, appId: context.packager.appInfo.id, archs: swiftArchs(context.arch) });
 }

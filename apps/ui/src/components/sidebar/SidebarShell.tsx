@@ -7,18 +7,16 @@ import { currentRemoteTreeRuns } from '../../state/useRemoteRows.ts';
 import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, snapFromCollapsed, snapWidth, stepState, type SidebarSnap } from '../../state/sidebarWidth.ts';
 import { Sidebar } from './Sidebar.tsx';
-import { SidebarRail } from './SidebarRail.tsx';
 
 // The sidebar's order (⌃⇥, ⌘P) nests pipelines' sub-sessions under their runs: it reads them from the pipelines store.
 provideTreeRuns(() => usePipelines.getState().runs.values());
-provideStarted(() => startedBy(useOrchestrators.getState().orchestrators));
+provideStarted(() => startedBy(useOrchestrators.getState().orchestrators, useOrchestrators.getState().started));
 // Other computers' runs too, from their last lists.
 provideRemoteTreeRuns(currentRemoteTreeRuns);
 
 /**
- * The sidebar's right edge (the window's left edge while it is closed). Dragging snaps between open,
- * the rail and closed as you go (`snapWidth`); ← and → step through the same states (`stepState`);
- * a double-click opens it at the default width.
+ * The panel's right edge (the nav rail's right edge while it is closed). Dragging snaps between open and closed as you
+ * go (`snapWidth`); ← and → step through the same states (`stepState`); a double-click opens it at the default width.
  */
 function SidebarResizeHandle({ fitted, onDragging }: { fitted: SidebarSnap; onDragging(dragging: boolean): void }) {
   const { state, width: shown } = fitted;
@@ -36,7 +34,7 @@ function SidebarResizeHandle({ fitted, onDragging }: { fitted: SidebarSnap; onDr
     const startX = event.clientX;
     // From where the edge is on screen, which a small window may have narrowed.
     const startShown = shown;
-    // Dragged out of the rail (or from the window's edge), it opens at a width you had before.
+    // Dragged out from closed, it opens at a width you had before.
     const collapsed = state !== 'open';
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
@@ -72,12 +70,12 @@ function SidebarResizeHandle({ fitted, onDragging }: { fitted: SidebarSnap; onDr
       tabIndex={0}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
+      aria-label="Resize panel"
       aria-valuenow={shown}
       aria-valuemin={0}
       aria-valuemax={SIDEBAR_MAX_WIDTH}
-      aria-valuetext={state === 'open' ? `${shown} pixels` : state === 'minimal' ? 'Minimal' : 'Closed'}
-      data-tooltip={state === 'closed' ? 'Drag to show the sidebar' : 'Drag to resize, double-click to reset'}
+      aria-valuetext={state === 'open' ? `${shown} pixels` : 'Closed'}
+      data-tooltip={state === 'closed' ? 'Drag to show the panel' : 'Drag to resize, double-click to reset'}
       className={`no-drag absolute inset-y-0 z-20 w-1.5 cursor-col-resize outline-none hover:bg-accent/40 focus-visible:bg-accent-ink/60 ${state === 'closed' ? 'left-0' : '-right-[3px]'}`}
       data-sidebar-resize
     />
@@ -85,13 +83,13 @@ function SidebarResizeHandle({ fitted, onDragging }: { fitted: SidebarSnap; onDr
 }
 
 /**
- * The sidebar in its three states: open (the full list, at the width you dragged it to), minimal (the
- * 80px rail) or closed (nothing, the session view takes the window). Changing state eases the width
- * over 150ms (none with reduced motion), except while dragging the open edge, which follows the pointer.
+ * The panel beside the nav rail (the sessions list, or the Browser's tabs), open at the width you dragged it to or
+ * closed (nothing, the view takes the room). Changing state eases the width over 150ms (none with reduced motion),
+ * except while dragging the open edge, which follows the pointer.
  */
 export function SidebarShell({ inert = false }: { inert?: boolean }) {
   const saved = useSidebar((s) => s.state);
-  // In a small window (or zoomed in) the sidebar narrows, or shows as the rail, so the session view
+  // In a small window (or zoomed in) the panel narrows, or closes, so the session view
   // keeps its room; the saved state and width come back as the window grows.
   const fitted = useShownSidebar();
   const state = fitted.state;
@@ -108,7 +106,7 @@ export function SidebarShell({ inert = false }: { inert?: boolean }) {
       data-sidebar-dragging={dragging || undefined}
     >
       <div className="h-full overflow-hidden">
-        {state === 'open' ? <Sidebar /> : state === 'minimal' ? <SidebarRail /> : null}
+        {state === 'open' ? <Sidebar /> : null}
       </div>
       <SidebarResizeHandle fitted={fitted} onDragging={setDragging} />
     </div>

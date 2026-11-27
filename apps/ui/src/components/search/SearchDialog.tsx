@@ -200,7 +200,7 @@ export function SearchDialog() {
           onChange={setMemoryScope}
           options={projectOptions}
           menuWidth={220}
-          className="flex h-6 items-center gap-1 rounded-md border border-edge bg-bg px-2 text-meta text-text"
+          className="field flex h-6 items-center gap-1 px-2 text-meta"
           dataAttrs={{ 'data-search-memory-scope': true }}
         />
       </div>

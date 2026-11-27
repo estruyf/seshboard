@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import {
   SKIM_MARKS_PROMPT,
   ORCHESTRATOR_TOKEN_ENV,
@@ -31,6 +31,11 @@ import {
   type Contract,
   type HookableComponent,
   type HandlerContext,
+  type ComputerEvent,
+  SESSION_TOOL_PREFIX,
+  type MethodName,
+  type ParamsOf,
+  type ResultOf,
   type LiveSession,
   type Handlers,
   type LogEntry,
@@ -70,12 +75,15 @@ import {
   type CatchUp,
   type QueuedMessage,
   type StreamDelta,
+  nextStreamBlock,
+  type StreamBlock,
   type PermissionDecision,
   type PermissionRequest,
   type PromptScope,
   accountKey,
   accountTag,
   type ClaudeWorktreeRequest,
+  type WorktreeRequest,
   focusSessions,
   projectOf,
   type LaterItem,
@@ -105,16 +113,18 @@ import {
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
-import { findCheckout, githubPage } from './git/remotes.ts';
+import { TranscriptCache } from './claude/transcriptCache.ts';
+import { findCheckout, githubPage, githubRepo, githubRepos } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSeshboard } from './git/githubStar.ts';
-import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { baseBranch, checkoutFacts, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { diffImages } from './git/diffImages.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { WorktreeFactsRunner } from './git/worktreeFacts.ts';
 import { fetchPullRequests, ignoredFiles, measureSize, readWorktrees, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
+import { FRESH_MS, GitStatusHub } from './git/gitStatusHub.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
@@ -123,7 +133,9 @@ import { SavedPromptStore } from './prompts/savedPromptStore.ts';
 import { GithubService } from './git/github.ts';
 import { FORK_READ_ONLY, GithubOriginStore } from './git/githubOrigins.ts';
 import { checkoutPullRequest as checkoutPullRequest_, PrCheckoutError } from './git/prCheckout.ts';
-import { makeWorktree, makeWorktreeFrom, WorktreeFromError } from './git/worktreeFrom.ts';
+import { releaseBranch } from './git/releaseBranch.ts';
+import { makeWorktree, makeWorktreeFrom, worktreePath, WorktreeFromError, type WorktreeOptions } from './git/worktreeFrom.ts';
+import { BaseFetches } from './git/baseFetches.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { QueueAutoStarter } from './later/autoStart.ts';
 import { ScheduleStore } from './schedules/scheduleStore.ts';
@@ -212,8 +224,11 @@ import { RemoteHub } from './remote/remoteHub.ts';
 import { NO_GLOBAL_MODEL, type GlobalModel } from './remote/remoteView.ts';
 import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
+import { SessionTools } from './sessionTools/sessionTools.ts';
 import { FileIndex } from './system/files.ts';
 import { readPreview, readPreviewImage } from './system/filePreview.ts';
+import { writeFileContent } from './system/fileWrite.ts';
+import { IconThemes } from './system/iconThemes.ts';
 import { grep } from './system/grep.ts';
 import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
@@ -351,6 +366,8 @@ export interface DemoUsage {
   autoPicks?: Array<{ configDir: string; sessionId: string | null; pick: AutoPick; routingModel: string; tokens: TokenCounts }>;
   /** Catch-up cards for the demo sessions, as if their turns had just finished. */
   catchUps?: CatchUp[];
+  /** Demo sessions a paired device started from afar, for Activity's Started by (the smoke test). */
+  remoteStarts?: Array<{ sessionId: string; deviceId: string; deviceName: string }>;
   /**
    * A file the screenshot tour writes to show a usage limit on one session, only for its picture: `{ sessionId, kind,
    * resetsAt, held }` sets it (with `held` messages in its Up next), anything else (or no file) clears it.
@@ -427,7 +444,7 @@ export interface Engine {
    * a turn, `idle` ends it with `outcome`, `closed` takes it away. `needs-you` holds a made-up permission prompt, which
    * goes when the session moves on, or when Allow or Deny answers it (the menu bar's Allow).
    */
-  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; apiRetry?: ApiRetry | null; fast?: { blocked: string | null; on?: boolean } }): void;
+  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; apiRetry?: ApiRetry | null; fast?: { blocked: string | null; on?: boolean }; suggestion?: string | null }): void;
   /**
    * The smoke test (`stubQueueStarts` only): while on, `session.create` starts a stand-in session (`smokeQueueHost`)
    * instead of Claude Code, and records what it got. For the menu bar's new work.
@@ -470,6 +487,11 @@ export interface Engine {
    * tools as its agent would. Starts are stand-ins too, so no prompt reaches an agent.
    */
   smokeOrchestrator(call: { sessionId: string; projectRoot: string; tool?: string; args?: Record<string, unknown> }): Promise<{ text: string; error?: boolean } | null>;
+  /**
+   * The smoke test (`stubQueueStarts` only): a stand-in session calls one of its `seshboard` tools, as its MCP server
+   * would (docs/seshboard-tools.md). The answer goes to `smoke-session-tools.jsonl` in the data folder.
+   */
+  smokeSessionTool(call: { sessionId: string; tool: string; args: Record<string, unknown> }): Promise<void>;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
   /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
@@ -478,6 +500,8 @@ export interface Engine {
   setAppUpdate(update: RemoteAppUpdate): void;
   /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
   setForeground(foreground: boolean): void;
+  /** Whether someone uses this computer now, from main: paired phones get the moments they want only while you're away when not. */
+  setPresent(present: boolean): void;
   /**
    * The smoke run's mods step (`SESHBOARD_SMOKE_MODS`): adds a throwaway profile whose sessions load the test mod,
    * starts a session there with the mod's own `/smoke-ping` (answered without the model), and writes its id and
@@ -525,17 +549,41 @@ export function createEngine(options: EngineOptions): Engine {
   let looseEnds: LooseEndsWatcher | null = null;
   /** Remote, when this engine offers it. */
   let remote: RemoteHub | null = null;
+  /** Whether someone uses this computer, as main last said (`setPresent`); false until it does. */
+  let presentNow = false;
   /** Other computers this app paired with, when this engine can keep a key for them. */
   let computers: ComputerHub | null = null;
+  /** The tools wait for another computer's events (a clone's progress) here. */
+  const computerEventWaiters = new Set<(event: ComputerEvent) => void>();
   /** The sidebar's scope in the window that reported focus last, so a phone lists what the sidebar lists. */
   let sidebarScope: 'switchboard' | 'all' = 'switchboard';
   /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
   let scanCompleteHook: () => void = () => {};
+  /** Set once reminders exist: a session's state changed, so a snoozed one that works or needs you drops its reminder. */
+  let breakThroughHook: () => void = () => {};
   /** Set once memory search exists: every memory change (Seshboard's or a watcher's) re-indexes the files that changed. */
   let memoryChangedHook: () => void = () => {};
   let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The broadcast events a connection asked for (`events.only`); a connection that never asked gets them all. */
+  const eventFilters = new WeakMap<HandlerContext<Contract>, ReadonlySet<string>>();
+  /** The sessions whose `session.stream` a connection watches (`stream.watch`). */
+  const streamWatches = new WeakMap<HandlerContext<Contract>, Set<string>>();
+  /** What each session is writing now, so a view that starts watching mid-reply gets it whole. */
+  const streamBlocks = new Map<string, StreamBlock>();
   const broadcast: RpcServer<Contract>['emit'] = (name, payload) => {
-    for (const server of servers) server.emit(name, payload);
+    if (name === 'session.stream') {
+      // Only to the views that show the session's streaming text: about 30 a second while a reply streams.
+      const { sessionId } = payload as StreamDelta;
+      for (const server of servers) if (streamWatches.get(server.context)?.has(sessionId)) server.emit(name, payload);
+    } else {
+      // Another computer's events can be asked for one by one (`computers.event:sessions.changed`): its streamed text
+      // is one of them.
+      const sub = name === 'computers.event' ? `computers.event:${(payload as { name: string }).name}` : null;
+      for (const server of servers) {
+        const only = eventFilters.get(server.context);
+        if (!only || only.has(name) || (sub !== null && only.has(sub))) server.emit(name, payload);
+      }
+    }
     if (name === 'sessions.changed' || name === 'sessions.live' || name === 'session.host' || name === 'session.permission' || name === 'session.permissionResolved') {
       companion?.sessionsChanged();
       remote?.sessionsChanged();
@@ -557,6 +605,8 @@ export function createEngine(options: EngineOptions): Engine {
     if (name === 'session.ask') remote?.askEvent(payload as AskEvent);
     // Pipeline runs are part of a phone's list, and what they say is a push.
     if (name === 'runs.changed' || name === 'runs.removed') remote?.sessionsChanged();
+    // So are the orchestrators: a start, a queued one and a pull request change the overview there.
+    if (name === 'orchestrator.changed') remote?.sessionsChanged();
     if (name === 'runs.notice') remote?.runNotice((payload as { notice: PipelineNotice }).notice);
     if (name === 'usage.changed') {
       const { profileId, usage } = payload as { profileId: string; usage: UsageSnapshot | null };
@@ -578,12 +628,28 @@ export function createEngine(options: EngineOptions): Engine {
   });
   // The SDK's transcript readers take the folder from process.env.CLAUDE_CONFIG_DIR: one folder at a time.
   const lane = new ConfigDirLane();
+  /** Parsed transcripts, shared by every reader (the open transcript, search, catch-up, the phone, links). */
+  const transcriptCache = new TranscriptCache();
+  /**
+   * Git status per checkout, shared by every view, card and the palette (`gitStatusHub.ts`): one look at a time, pushed
+   * to watching windows, looked at again when something may have changed.
+   */
+  const gitStatus = new GitStatusHub({
+    topLevel,
+    facts: (root) => checkoutFacts(root, root),
+    list: (root, base, facts) => listChanges(root, base, facts),
+    gitDir: (root) => git(root, ['rev-parse', '--absolute-git-dir']).then((dir) => dir.trim() || null, () => null),
+  });
+  /** A session wrote to its transcript or ended a turn: its checkout may have changed (set once the sessions' folders are known). */
+  let touchGit: (sessionId: string) => void = () => {};
+  /** A session's transcript file, from the session index once it exists. */
+  let transcriptPath: (sessionId: string) => string | null = () => null;
   const sdkSources = new Map<string, SessionSource>();
   const sourceFor = (profile: ProfileRuntime): SessionSource => {
     if (options.sessionSource && profile.id === BUILTIN_PROFILE_ID) return options.sessionSource;
     const key = `${profile.id}\0${profile.configDir}`;
     let found = sdkSources.get(key);
-    if (!found) sdkSources.set(key, (found = sdkSessionSource((fn) => lane.run(profile.envDir, fn))));
+    if (!found) sdkSources.set(key, (found = sdkSessionSource((fn) => lane.run(profile.envDir, fn), { cache: transcriptCache, pathOf: (id) => transcriptPath(id) })));
     return found;
   };
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
@@ -632,9 +698,15 @@ export function createEngine(options: EngineOptions): Engine {
     () => providerProfiles.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })),
     (id) => ephemeral.has(id),
     (id) => providerNotes.list(id),
+    (id) => startedFolders.get(id),
   );
   /** What another provider's sessions showed but their files don't have (Copilot's slash command answers). */
   const providerNotes = new ProviderNotes(cache.db);
+  /** The folder each provider session started here was started in (`owned_sessions.cwd`). */
+  const startedFolders = new Map(
+    (cache.db.prepare('SELECT id, cwd FROM owned_sessions WHERE cwd IS NOT NULL').all() as Array<{ id: string; cwd: string }>).map((r) => [r.id, r.cwd]),
+  );
+  const markStartedIn = cache.db.prepare('UPDATE owned_sessions SET cwd = ? WHERE id = ?');
   /** What `providers.detect` found, asked once per run (it starts each provider's CLI for a moment); Check again asks again. */
   let detected: Promise<ProviderDetection[]> | null = null;
   const detectProviders = (refresh: boolean) => {
@@ -693,6 +765,20 @@ export function createEngine(options: EngineOptions): Engine {
     if (needed) throw trustNeededError(needed);
   }
   const projectDefaultBranch = (cwd: string) => projects.defaultsOf(resolver.resolve(cwd).root).defaultBranch;
+  /** Fetches of the branch new worktrees start from, shared by New session's prefetch and the start (`createSession`). */
+  const baseFetches = new BaseFetches();
+  /**
+   * The remote branch a new worktree in `cwd` from `baseRef` fetches before git makes it (as `createSession` does), or
+   * null when it fetches none here: a pull request's, a local branch's, or one Claude Code makes itself.
+   */
+  const worktreeFetchFor = async (cwd: string, baseRef: WorktreeRequest['baseRef']): Promise<{ root: string; remote: string; branch: string } | null> => {
+    const root = resolver.resolve(cwd).root;
+    if (typeof baseRef === 'object') return baseRef.remote && !baseRef.pullRequest ? { root, remote: baseRef.remote, branch: baseRef.branch } : null;
+    const branch = baseRef === 'fresh' ? projectDefaultBranch(cwd) : null;
+    if (!branch) return null;
+    const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
+    return remotes.includes('origin') ? { root, remote: 'origin', branch } : null;
+  };
   // Every base branch question (changes, worktrees, branches, pull requests) asks the project first.
   setProjectDefaultBranch(projectDefaultBranch);
   // --- Clone from GitHub: Settings › Projects ----------------------------------------------------------------------
@@ -749,13 +835,22 @@ export function createEngine(options: EngineOptions): Engine {
       scheduleSearchSync();
       if (change.complete) scanCompleteHook();
     },
-    onTranscriptChanged: (id) => transcripts.changed(id),
+    onTranscriptChanged: (id) => {
+      transcripts.changed(id);
+      touchGit(id);
+    },
   });
+  transcriptPath = (id) => sessions.transcriptFile(id);
   // Full-text search: indexed in the background, a little after anything changes.
   const search = new SearchIndex(
     cache.db,
     source,
-    () => sessions.snapshot().sessions.map((s) => ({ id: s.id, version: `${s.updatedAt}:${s.fileSize ?? ''}` })),
+    () =>
+      sessions.snapshot().sessions.map((s) => {
+        // The latest, also while the sidebar waits for it: a turn's end is indexed at once.
+        const latest = sessions.latestActivity(s.id) ?? s;
+        return { id: s.id, version: `${latest.updatedAt}:${latest.fileSize ?? ''}`, writtenAt: sessions.writtenAt(s.id) };
+      }),
     log,
     (id, messages) => links.transcriptRead(id, messages),
   );
@@ -834,6 +929,7 @@ export function createEngine(options: EngineOptions): Engine {
         onChange: () => {
           recordHostProcesses?.();
           broadcast('sessions.live', { live: liveList() });
+          breakThroughHook();
           void autoStarter?.check();
           runner?.check();
         },
@@ -886,6 +982,13 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** Transcript subscriptions per connection, so `transcript.unwatch` and disconnects can clean up. */
   const subscriptions = new WeakMap<HandlerContext<Contract>, Map<string, () => void>>();
+  /** How many views of a window watch each checkout (`git.watch`). */
+  const gitWatchCounts = new WeakMap<HandlerContext<Contract>, Map<string, number>>();
+  const countsFor = (context: HandlerContext<Contract>) => {
+    let counts = gitWatchCounts.get(context);
+    if (!counts) gitWatchCounts.set(context, (counts = new Map()));
+    return counts;
+  };
   const subscriptionsFor = (context: HandlerContext<Contract>) => {
     let map = subscriptions.get(context);
     if (!map) {
@@ -938,6 +1041,8 @@ export function createEngine(options: EngineOptions): Engine {
   const files = new FileIndex();
   /** The search running for each `searchId` (one per window), so a newer one can cancel it. */
   const grepSearches = new Map<string, AbortController>();
+  // VS Code's file icon themes for the Files tree, read from the editors' extensions folders.
+  const iconThemes = new IconThemes();
   /**
    * Throws NOT_FOUND unless `cwd` is a folder Seshboard knows: a session's folder (indexed, live or started here) or a
    * project's root. The Files panel lists and searches only those, never any folder a caller names.
@@ -949,6 +1054,18 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.list().hosts.some((h) => h.cwd === cwd) ||
       listProjects().some((p) => p.root === cwd);
     if (!known) throw new RpcError('NOT_FOUND', `Not a session's folder or a project: ${cwd}`);
+  }
+  /** Every folder Seshboard knows (as `assertKnownFolder` checks), for a save to be inside one of. */
+  function knownFolders(): string[] {
+    const folders = new Set<string>();
+    for (const s of sessions.snapshot().sessions) {
+      if (s.cwd) folders.add(s.cwd);
+      if (s.projectRoot) folders.add(s.projectRoot);
+    }
+    for (const l of liveList()) if (l.cwd) folders.add(l.cwd);
+    for (const h of hosts.list().hosts) folders.add(h.cwd);
+    for (const p of listProjects()) folders.add(p.root);
+    return [...folders];
   }
 
   const sdk = options.sdk ?? (() => import('@anthropic-ai/claude-agent-sdk'));
@@ -1003,8 +1120,8 @@ export function createEngine(options: EngineOptions): Engine {
    */
   /** The last plan usage a provider's driver reported (Codex's windows), for the cost of its windows. */
   const providerSnapshots = new Map<string, UsageSnapshot | null>();
-  const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
-    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh);
+  const planUsage = async (profileId: string, refresh: boolean, maxAgeMs?: number): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
+    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh, maxAgeMs);
     const driver = providerProfiles.adapter(profileId)?.driver;
     if (!driver?.planUsage) return null;
     if (providerUsageWatch.get(profileId)?.driver !== driver) {
@@ -1156,9 +1273,20 @@ export function createEngine(options: EngineOptions): Engine {
    */
   const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onNotice' | 'onRetract' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
     onInfo: (info) => {
-      if (info.state === 'idle') transcripts.settled(info.sessionId);
+      // While this app runs a turn, the live messages show it: the file is read once the turn ends or waits for you.
+      transcripts.running(info.sessionId, info.state === 'running' || info.state === 'starting');
+      // A turn that ended, or a session that closed or failed, writes nothing more.
+      if (info.state === 'idle' || info.state === 'closed' || info.state === 'error') streamBlocks.delete(info.sessionId);
+      if (info.state === 'idle') {
+        touchGit(info.sessionId);
+        transcripts.settled(info.sessionId);
+        // The turn's messages are searchable now, not once the session has been quiet for a while.
+        search.settled(info.sessionId);
+        scheduleSearchSync();
+      }
       awake.update(info.sessionId, info);
       broadcast('session.host', withAwake(info));
+      breakThroughHook();
       catchUpOnInfo(info);
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
@@ -1168,8 +1296,15 @@ export function createEngine(options: EngineOptions): Engine {
       runner?.onHost(info);
       runner?.check();
     },
-    onStream: (delta) => broadcast('session.stream', delta),
+    onStream: (delta) => {
+      const block = nextStreamBlock(streamBlocks.get(delta.sessionId), delta);
+      if (block) streamBlocks.set(delta.sessionId, block);
+      else streamBlocks.delete(delta.sessionId);
+      broadcast('session.stream', delta);
+    },
     onMessages: (id, messages, held) => {
+      // Copilot's and Codex's sessions write no Claude transcript: their messages say the checkout may have changed.
+      touchGit(id);
       transcripts.pushLive(id, messages, held);
       catchUp.messages(id, messages);
     },
@@ -1284,8 +1419,9 @@ export function createEngine(options: EngineOptions): Engine {
     // A call works on the address it opens, or the session's page: with no page yet, the call itself says so.
     where: async (sessionId, tool, args) => {
       if (tool === 'open') return { url: String(args.url ?? ''), profile: typeof args.profileName === 'string' ? args.profileName : null };
-      const where = await options.browser?.({ sessionId, tool: 'where', args: {} });
-      return { url: where?.url ?? null, profile: browserProfileName(where?.profileId) };
+      // With a ref, main also names the element, so a card can say what the call clicks or types into.
+      const where = await options.browser?.({ sessionId, tool: 'where', args: typeof args.ref === 'string' ? { ref: args.ref } : {} });
+      return { url: where?.url ?? null, profile: browserProfileName(where?.profileId), target: where?.target ?? null };
     },
     sites: browserSitesOf,
     // Main starts the server with the scripts flag while Settings › Browser › Allow scripts in pages is on.
@@ -1298,7 +1434,7 @@ export function createEngine(options: EngineOptions): Engine {
   // The orchestrator (docs/orchestrator.md): a session that hands work to other sessions. Its tools reach this bridge
   // from whatever agent runs it; a start goes through the same holds as a scheduled run.
   const orchestratorStore = new OrchestratorStore(cache.db);
-  const orchestratorsChanged = () => broadcast('orchestrator.changed', { orchestrators: orchestrator.infos() });
+  const orchestratorsChanged = () => broadcast('orchestrator.changed', { orchestrators: orchestrator.infos(), started: orchestrator.startedChildren() });
   /** The profiles a session can start with, the project's own first: Claude Code's, and providers that can start sessions. */
   const orchestratorAgents = (projectRoot: string): OrchestratorAgent[] => {
     const startable = new Set<string>(providerCatalog(providerOptions).filter((p) => p.canStart).map((p) => p.id));
@@ -1313,7 +1449,8 @@ export function createEngine(options: EngineOptions): Engine {
   const smokeOrchestratorLog = join(options.dataDir, 'smoke-orchestrator.jsonl');
   const orchestrator = new Orchestrator({
     store: orchestratorStore,
-    session: (id) => sessions.get(id) ?? null,
+    // A session started a moment ago may not be listed yet: its folder's project, from the host that runs it.
+    session: (id) => sessions.get(id) ?? hostSession(id),
     defaults: (root) => projects.defaultsOf(root),
     profileDefaults: (profileId) => profiles.defaultsOf(profileId),
     globals: () => currentGlobalModel(),
@@ -1351,6 +1488,7 @@ export function createEngine(options: EngineOptions): Engine {
       runStore.setParent(sessionId, orchestratorId, null);
       sessions.republish(sessionId);
     },
+    askStart: (sessionId, ask) => hosts.askStart(sessionId, ask),
     status: (id) => {
       const state = (hosts.list().hosts.find((h) => h.sessionId === id) ?? smokeHosts.get(id))?.state ?? liveList().find((l) => l.sessionId === id)?.status;
       return state === 'running' || state === 'starting' ? 'working' : state === 'needs-you' ? 'needsYou' : state === 'error' ? 'failed' : state ? 'idle' : null;
@@ -1376,10 +1514,127 @@ export function createEngine(options: EngineOptions): Engine {
     },
     changed: orchestratorsChanged,
     log,
+    // `computers` is set up later on; until then, and without Remote, there are none.
+    computers: {
+      list: () => (computers?.status().computers ?? []).map((c) => ({ id: c.id, name: c.name, connected: c.state === 'connected', features: c.features ?? [] })),
+      call: (computerId, method, params) => requireComputers().call(computerId, method, params),
+      next: (computerId, name, match, timeoutMs) =>
+        new Promise((resolve) => {
+          const waiter = (event: ComputerEvent) => {
+            if (event.computerId !== computerId || event.name !== name || !match(event.payload)) return;
+            clearTimeout(timer);
+            computerEventWaiters.delete(waiter);
+            resolve(event.payload);
+          };
+          const timer = setTimeout(() => {
+            computerEventWaiters.delete(waiter);
+            resolve(null);
+          }, timeoutMs);
+          computerEventWaiters.add(waiter);
+        }),
+    },
+    askBrings: async (sessionId, computer, repo, lines) =>
+      (
+        await hosts.askApproval(sessionId, {
+          tool: `${SESSION_TOOL_PREFIX}start_session`,
+          input: { computer, repo },
+          title: `wants to start a session in ${repo} on ${computer}, which brings its own settings`,
+          description: 'The clone is done. These run in its sessions without asking, as New session there would warn.',
+          card: { kind: 'clone', allowLabel: 'Start session', lines: lines.map(([text, detail]) => ({ text, detail, depth: 0 })), blocks: [], options: [], editor: null, draft: null },
+        })
+      ).allowed,
+    localProject: async (root) => ({ name: listProjects().find((p) => p.root === root)?.name ?? root.split(/[\\/]/).filter(Boolean).pop() ?? root, repos: await githubRepos(root) }),
   });
   let orchestratorBase: McpStdioServer | null = null;
-  const orchestratorBridge = new OrchestratorBridge({ run: (sessionId, tool, args) => orchestrator.run(sessionId, tool, args), isOrchestrator: (id) => orchestrator.isOrchestrator(id), log });
+  /** Terminals a tool waits on (run_action): told when the run ends, with its output. */
+  const terminalWaiters = new Map<string, (info: TerminalInfo, run: { output: string; stopped: boolean }) => void>();
+  /**
+   * The `seshboard` server's tools (docs/seshboard-tools.md): each wraps one of the engine's own RPCs (`callRpc`, set
+   * once the handlers exist), and what saves or starts asks you on an approval card in the session first.
+   */
+  const sessionTools = new SessionTools({
+    session: (id) => {
+      const summary = sessions.get(id) ?? null;
+      // A session started a moment ago has no summary yet (nor the smoke test's stand-ins): its folder, from its host.
+      const host = [...hosts.list().hosts, ...smokeHosts.values()].find((h) => h.sessionId === id);
+      const projectRoot = summary?.projectRoot ?? (host?.cwd ? resolver.resolve(host.cwd).root : null);
+      if (!projectRoot) return null;
+      return { projectRoot, cwd: summary?.cwd ?? host?.cwd ?? null, profileId: summary?.profileId ?? null, title: summary?.title ?? 'This session' };
+    },
+    projects: () => listProjects().map((p) => ({ root: p.root, name: p.name })),
+    call: (method, params) => {
+      if (!callRpc) throw new Error('Seshboard is still starting. Try again in a moment.');
+      return callRpc(method, params);
+    },
+    ask: (sessionId, ask) => hosts.askApproval(sessionId, ask),
+    startChild: (sessionId, args) => orchestrator.startChild(sessionId, args),
+    listComputers: (sessionId) => orchestrator.listComputers(sessionId),
+    draftFor: (sessionId, args) => orchestrator.draftFor(sessionId, args),
+    queueChild: (parentId, draft, title) => orchestrator.queueChild(parentId, draft, title),
+    findSessions: async (root, query, limit) => {
+      const inProject = sessions
+        .snapshot()
+        .sessions.filter((s) => s.projectRoot === root)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+      if (!query) return inProject.slice(0, limit).map((s) => ({ id: s.id, title: s.title, updatedAt: s.updatedAt }));
+      const byId = new Map(inProject.map((s) => [s.id, s]));
+      const found: string[] = [];
+      for (const hit of search.search(query, 300, [...byId.keys()])) if (!found.includes(hit.sessionId)) found.push(hit.sessionId);
+      return found.slice(0, limit).map((id) => ({ id, title: byId.get(id)!.title, updatedAt: byId.get(id)!.updatedAt }));
+    },
+    catchUp: (id) => catchUpStore.get(id),
+    brief: async (from, id, label) => {
+      await links.warm(id);
+      return links.expand(from, writeStub(label, id));
+    },
+    notify: (sessionId, text, needsYou) => remote?.pushNote(sessionId, text, needsYou) ?? false,
+    runAction: async (sessionId, projectRoot, cwd, id) => {
+      const result = await callRpc!('actions.run', { sessionId, projectRoot, cwd, id });
+      if (result.kind !== 'terminal') return { exitCode: 0, stopped: false, output: 'Sent to the session as a prompt.' };
+      return new Promise((resolve) => terminalWaiters.set(result.terminalId, (info, run) => resolve({ exitCode: info.exitCode ?? null, stopped: run.stopped, output: run.output.slice(-8_000) })));
+    },
+    handOff: async (parentId, cwd, prompt, title, profileId) => {
+      const mode = hosts.list().hosts.find((h) => h.sessionId === parentId)?.permissionMode ?? 'default';
+      const { sessionId } = await createSession({ cwd, prompt, attachments: [], model: null, permissionMode: mode === 'bypassPermissions' ? 'default' : mode, effort: null, worktree: null, profileId: profileId && profiles.has(profileId) ? profileId : null, checkoutBranch: null });
+      pendingTitles.set(sessionId, title);
+      applyTitles([sessionId]);
+      orchestrator.child(sessionId, parentId, title);
+      return sessionId;
+    },
+    mergedWorktrees: async (root) => {
+      if (!resolver.resolve(root).gitDir) return [];
+      const listing = await readWorktrees(root, { sessions: sessionPlaces() });
+      await worktreeFacts.fill(root, listing);
+      const list = mergeFacts(listing.list, worktreeFacts.known(listing.list.worktrees));
+      const working = new Set(hosts.list().hosts.filter((h) => h.state === 'running' || h.state === 'starting' || h.state === 'needs-you').map((h) => h.sessionId));
+      return list.worktrees.filter((w) => !w.isMain && !w.isLocked && !w.missing && w.merged && w.uncommitted === 0 && !w.sessions.some((id) => working.has(id))).map((w) => ({ path: w.path, branch: w.branch }));
+    },
+    labels: async (root) => {
+      const out = await ghIn(['label', 'list', '--json', 'name', '--limit', '200'], root);
+      if (out.code !== 0) return [];
+      return (JSON.parse(out.stdout) as Array<{ name: string }>).map((l) => l.name);
+    },
+    now: () => Date.now(),
+    log,
+  });
+  /** One of the engine's own RPCs, called from inside it as a window would: the params are checked by the contract. */
+  let callRpc: (<M extends MethodName<Contract>>(method: M, params: ParamsOf<Contract, M>) => Promise<ResultOf<Contract, M>>) | null = null;
+  const orchestratorBridge = new OrchestratorBridge({
+    run: (sessionId, tool, args) => orchestrator.run(sessionId, tool, args),
+    tool: (sessionId, tool, args, asOrchestrator) => sessionTools.run(sessionId, tool, args, asOrchestrator),
+    isOrchestrator: (id) => orchestrator.isOrchestrator(id),
+    log,
+  });
   const orchestratorServer = (sessionId: () => string | null) => (orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId) : Promise.resolve(null));
+  /** Every other session's `seshboard` server: the same script, with only start_session (which asks you first) and list_computers. */
+  const sessionsServer = (sessionId: () => string | null, cwd: string | null) =>
+    orchestratorBase ? orchestratorBridge.serverFor(orchestratorBase, sessionId, 'session', cwd ? (projects.defaultsOf(addedProjectOfCwd(cwd) ?? resolver.resolve(cwd).root).sessionTools ?? 'all') : 'all') : Promise.resolve(null);
+  const hostSession = (id: string) => {
+    const cwd = hosts.list().hosts.find((h) => h.sessionId === id)?.cwd;
+    if (!cwd) return null;
+    const projectRoot = resolver.resolve(cwd).root;
+    return { projectRoot, profileId: providerProfileOf(id) ?? profiles.forProject(projectRoot) };
+  };
   /** The smoke test calls a tool as the session's own server would: with a token the bridge gave out for that session. */
   const smokeOrchestratorToken = async (sessionId: string) => (await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId)).env[ORCHESTRATOR_TOKEN_ENV] ?? '';
   const hosts = new RoutedHostManager({
@@ -1439,6 +1694,7 @@ export function createEngine(options: EngineOptions): Engine {
     autoAnswer: (request) => runner?.autoAnswer(request) ?? null,
     browserServer,
     orchestratorServer,
+    sessionsServer,
     isOrchestrator: (id) => orchestrator.isOrchestrator(id),
     appendSystemFor: (id) => orchestrator.systemTextFor(id),
     planModeInstructionsFor: (cwd) => projects.defaultsOf(addedProjectOfCwd(cwd) ?? resolver.resolve(cwd).root).planModeInstructions?.trim() || null,
@@ -1479,6 +1735,7 @@ export function createEngine(options: EngineOptions): Engine {
     providers: () => providerProfiles.adapters(),
     browserServer,
     orchestratorServer,
+    sessionsServer,
     isOrchestrator: (id) => orchestrator.isOrchestrator(id),
     appendSystemFor: (id) => orchestrator.systemTextFor(id),
     appendSystem: () => (skimMarksOn ? SKIM_MARKS_PROMPT : null),
@@ -1493,6 +1750,11 @@ export function createEngine(options: EngineOptions): Engine {
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
     ...hostEvents,
+    onCreated: (id, cwd) => {
+      hostEvents.onCreated(id);
+      startedFolders.set(id, cwd);
+      markStartedIn.run(cwd, id);
+    },
     log,
   });
   // Every way to a session goes through `hosts`: a provider's sessions are routed to their own hosts from here on.
@@ -1516,6 +1778,7 @@ export function createEngine(options: EngineOptions): Engine {
     if (JSON.stringify(next) === JSON.stringify(providerLive)) return;
     providerLive = next;
     broadcast('sessions.live', { live: liveList() });
+    breakThroughHook();
     void autoStarter?.check();
     runner?.check();
   };
@@ -1672,15 +1935,20 @@ export function createEngine(options: EngineOptions): Engine {
   });
   /** Where a session works now: its process's folder (a worktree once it has one), else what its transcript says. */
   const sessionCwd = (id: string) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null;
+  touchGit = (id) => {
+    const cwd = sessionCwd(id);
+    if (cwd) gitStatus.touch(cwd);
+  };
   const catchUpStore = new CatchUpStore(cache.db);
   for (const card of options.demoUsage?.catchUps ?? []) catchUpStore.save(card);
+  for (const start of options.demoUsage?.remoteStarts ?? []) cache.db.prepare('INSERT OR REPLACE INTO remote_session_origins (session_id, device_id, device_name, started_at) VALUES (?, ?, ?, ?)').run(start.sessionId, start.deviceId, start.deviceName, Date.now());
   const catchUp = new CatchUpService({
     store: catchUpStore,
     transcript: (id) => source.messages(id),
     cwd: (id) => sessionCwd(id),
     profileOf: sessionProfile,
     agentOf: (id) => agentName(providerAdapterOf(id)?.id),
-    changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
+    changes: (cwd) => gitStatus.changes(cwd, 'uncommitted').catch(() => null),
     summarize: (profileId, sessionId, input, system) => summarizer.ask(profileId, sessionId, input, system),
     useModel: () => catchUpSummaries,
     emit: (sessionId, card) => broadcast('catchup.changed', { sessionId, catchUp: card }),
@@ -1713,7 +1981,11 @@ export function createEngine(options: EngineOptions): Engine {
     onChange: (list) => broadcast('terminals.changed', { terminals: list }),
     onExit: (info, run) => {
       reportRun(info, run);
+      terminalWaiters.get(info.id)?.(info, run);
+      terminalWaiters.delete(info.id);
       signInEnded(info);
+      // A command run there (a commit, a pull, a switch) may have changed the checkout.
+      gitStatus.touch(info.cwd);
     },
     log,
   });
@@ -1807,6 +2079,22 @@ export function createEngine(options: EngineOptions): Engine {
     }));
     return focusSessions({ hosts: hostMap, live, sessions: summaries, permissions: hosts.list().permissions, countExternal: queueFocus.countExternal }).length;
   };
+  /**
+   * Where a queued or triggered draft starts: a worktree with a made-up name, or the current checkout on its branch. A
+   * draft with a pull request (a trigger's review) gets the pull request's code: a worktree from its latest commit, or
+   * `gh pr checkout` here, and keeps where it came from, as New session from a pull request does.
+   */
+  const draftWorkspace = (draft: Pick<LaterDraft, 'workspace' | 'baseRef' | 'branch' | 'pullRequest'>) => {
+    const pr = draft.pullRequest ?? null;
+    const inWorktree = draft.workspace === 'worktree';
+    return {
+      // A review starts even when the branch is checked out elsewhere (the session that wrote it, an earlier review).
+      worktree: inWorktree ? { name: randomWorktreeName(), baseRef: pr ? { branch: pr.branch, pullRequest: pr.number, fork: pr.fork ?? false, ifTaken: 'ownBranch' as const } : worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
+      checkoutBranch: inWorktree || pr ? null : (draft.branch ?? null),
+      ...(pr && !inWorktree ? { checkoutPullRequest: { number: pr.number, repo: pr.repo } } : {}),
+      ...(pr ? { github: { type: 'pr' as const, repo: pr.repo, number: pr.number, readOnly: false } } : {}),
+    };
+  };
   /** The usage limit a queued item's profile is at: its own profile, else its project's. */
   const queueLimit = (item: LaterItem) => limits.of(item.profileId && profiles.has(item.profileId) ? item.profileId : folderProfile(item.cwd));
   /** Starts a queued item, as Start does and as an item that starts by itself does. */
@@ -1820,10 +2108,9 @@ export function createEngine(options: EngineOptions): Engine {
         model: item.model,
         permissionMode: item.permissionMode,
         effort: item.effort,
-        worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(item.baseRef) } : null,
         profileId: item.profileId,
         // A queued prompt on Auto is routed now, when it starts, not when it was added.
-        checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
+        ...draftWorkspace(item),
       },
       // An orchestrator's start that waited: the project's instructions go with it, as with one that started at once.
       { appendSystem: orchestrator.itemInstructions(item.id) },
@@ -1869,7 +2156,7 @@ export function createEngine(options: EngineOptions): Engine {
    * A stand-in session this app "runs" (`stubQueueStarts` only): the smoke test drives one through a turn, and the
    * screenshots' demo shows a session queued items start after (`DemoUsage.queueHosts`).
    */
-  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, apiRetry, fast }) => {
+  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, apiRetry, fast, suggestion }) => {
     if (!options.stubQueueStarts) return;
     const before = smokeHosts.get(sessionId);
     const info: HostInfo = {
@@ -1893,6 +2180,8 @@ export function createEngine(options: EngineOptions): Engine {
       state,
       ...(compacting !== undefined ? { compacting } : {}),
       ...(apiRetry !== undefined ? { apiRetry: apiRetry ?? undefined } : {}),
+      // Claude Code's guess at the next message, as a real host reports it after a turn.
+      ...(suggestion !== undefined ? { suggestion: suggestion ?? undefined } : {}),
       // A model that has fast mode, whatever this computer's Claude Code lists.
       ...(fast ? { model: SMOKE_FAST_MODEL.value, fastModeBlocked: fast.blocked, ...(fast.on ? { fastMode: 'on' as const } : {}) } : {}),
       promptedAt: state === 'running' ? Date.now() : (before?.promptedAt ?? null),
@@ -2016,9 +2305,8 @@ export function createEngine(options: EngineOptions): Engine {
       model: draft.model ?? null,
       permissionMode: draft.permissionMode ?? 'default',
       effort: draft.effort ?? null,
-      worktree: draft.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
       profileId: draft.profileId && profiles.has(draft.profileId) ? draft.profileId : null,
-      checkoutBranch: draft.workspace === 'worktree' ? null : (draft.branch ?? null),
+      ...draftWorkspace(draft),
     });
     pendingTitles.set(sessionId, title);
     applyTitles([sessionId]);
@@ -2042,11 +2330,40 @@ export function createEngine(options: EngineOptions): Engine {
    */
   const smokeTriggerStarts = join(options.dataDir, 'smoke-trigger-starts.jsonl');
   const ghIn = async (args: string[], cwd: string, timeout?: number) => runGh(defaultGh(), args, { cwd, env: (await shell.ready).env, ...(timeout ? { timeout } : {}) });
+  /**
+   * Lets the branch of a worktree a trigger made go once its work is Done, so a later review of the same pull request
+   * checks the branch out instead of making its own. The folder and its changes stay; a busy folder is left alone.
+   */
+  const releaseTriggerBranch = async (folder: string) => {
+    const result = await releaseBranch(folder, sessionActivity());
+    if ('released' in result) {
+      worktreeFacts.invalidate([folder]);
+      log('info', `Triggers: let ${result.released} go in ${folder}`);
+    } else if (result.skipped !== 'MAIN' && result.skipped !== 'DETACHED') log('info', `Triggers: kept the branch in ${folder}: ${result.reason}`);
+  };
   triggerWatcher = new TriggerWatcher({
     store: triggers,
     gh: ghIn,
     folderExists: (cwd) => !!statSafe(cwd)?.isDirectory(),
     sessionState: scheduledState,
+    lastActivity: (id) => sessions.get(id)?.updatedAt ?? null,
+    // As Done in the sidebar (`sessions.setFlags`, `runs.archive`): the state label comes off, its checks stop being followed.
+    markDone: (target) => {
+      try {
+        const states = 'runId' in target && runner ? runner.archive(target.runId, true) : [];
+        const ids = 'sessionId' in target ? (sessions.setFlags(target.sessionId, { archived: true }), [target.sessionId]) : states.map((s) => s.run.id);
+        for (const id of ids) {
+          triggerWatcher?.released(id);
+          checksWatcher.release(id);
+        }
+        if (!target.worktree) return;
+        // A run made its worktree when its folder isn't the project's; a session's is the folder it worked in.
+        const folders = 'sessionId' in target ? [sessionCwd(target.sessionId)] : states.filter((s) => resolve(s.run.cwd) !== resolve(s.run.projectRoot)).map((s) => s.run.cwd);
+        for (const folder of new Set(folders)) if (folder) void releaseTriggerBranch(folder);
+      } catch (error) {
+        log('warn', `Triggers: couldn't move to Done: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
     // A pull request the session opened, or one on its branch that is still open or merged.
     sessionPr: (id) => linkStore.prsOf(id).find((pr) => pr.state !== 'closed') ?? null,
     queued: (itemId) => !!later.get(itemId),
@@ -2683,6 +3000,12 @@ export function createEngine(options: EngineOptions): Engine {
     return activity;
   };
 
+  /** Started from a selection in another session: it goes under that one in the sidebar, as a session it asked for would. */
+  const underParent = (sessionId: string, parentId: string | undefined) => {
+    if (!parentId || parentId === sessionId || !sessions.get(parentId)) return;
+    runStore.setParent(sessionId, parentId, null);
+    sessions.republish(sessionId);
+  };
   /** Starts a new session: New session's `session.create`, and a queued item starting (`later.start`). */
   type CreateSessionParams = Parameters<Handlers<Contract>['session.create']>[0];
   /** `smokeStubCreate`: the starts the smoke test asked for, while it is on. */
@@ -2693,9 +3016,10 @@ export function createEngine(options: EngineOptions): Engine {
     const orchestratorRoot = params.orchestrator ? resolver.resolve(params.cwd).root : null;
     if (stubCreate && options.stubQueueStarts) {
       const sessionId = `smoke-new-${randomUUID()}`;
-      appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null, fastMode: params.fastMode ?? false })}\n`);
+      appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null, fastMode: params.fastMode ?? false, parentSessionId: params.parentSessionId ?? null })}\n`);
       standInHost({ sessionId, cwd: params.cwd, state: 'running', ...(params.fastMode ? { fast: { blocked: null, on: true } } : {}) });
       if (orchestratorRoot) orchestrator.mark(sessionId, orchestratorRoot);
+      underParent(sessionId, params.parentSessionId);
       return { sessionId };
     }
     // A profile of another provider (the project's, or the one picked) starts that provider: its own model and mode.
@@ -2720,7 +3044,7 @@ export function createEngine(options: EngineOptions): Engine {
     }
     // Before a branch is switched or a worktree made, so starting again after the question doesn't do it twice.
     assertTrusted(params.cwd);
-    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, orchestrator: _orchestrator, ...create } = params;
+    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, orchestrator: _orchestrator, parentSessionId: _parent, ...create } = params;
     // Claude Code's profile, checked before any git step, so a missing one never leaves a branch switched.
     const profileId = provider === 'claude' ? requireProfile(chosenProfile ?? folderProfile(params.cwd)) : chosen!;
     if (checkoutBranch) {
@@ -2749,31 +3073,60 @@ export function createEngine(options: EngineOptions): Engine {
     let cwd = params.cwd;
     let worktree: ClaudeWorktreeRequest | null = null;
     let setupBranch: string | undefined;
-    const made = async (make: (root: string, env: Record<string, string>) => Promise<{ path: string; branch: string }>) => {
+    /** Where the worktree made here goes, and its branch: known before git runs, so the session can open first. */
+    let planned: { path: string; branch: string } | null = null;
+    const made = (make: (root: string, options: WorktreeOptions) => Promise<{ path: string; branch: string }>): Promise<{ path: string; branch: string }> => {
+      const root = resolver.resolve(params.cwd).root;
+      const path = worktreePath(root, asked!.name);
+      // Said at once, before the session opens, as git would say it after.
+      if (existsSync(path)) throw new RpcError('GIT_FAILED', `There is a worktree named ${asked!.name} already. Give this one another name.`);
+      const base = asked!.baseRef;
+      planned = { path, branch: typeof base === 'object' && base.pullRequest ? base.branch : `worktree-${asked!.name}` };
+      const done = (async () => {
+        const env = (await shell.ready).env;
+        // The fetch New session started while you wrote the prompt, joined or skipped when it is fresh (`worktree.prefetch`).
+        const result = await make(root, { env, fetchBranch: (remote, branch) => baseFetches.ensure(root, remote, branch, env) });
+        setupBranch = result.branch;
+        return result;
+      })();
+      // Whoever waits for it says what went wrong.
+      done.catch(() => {});
+      return done;
+    };
+    /** The worktree being made in the background: Claude Code's session opens meanwhile, and starts in it once it is there. */
+    let preparing: Promise<{ path: string; branch: string }> | null = null;
+    if (asked && typeof asked.baseRef === 'object') {
+      const base = asked.baseRef;
+      preparing = made((root, options) => makeWorktreeFrom(root, asked.name, base, options));
+    } else if (asked && asked.baseRef === 'fresh' && projectDefaultBranch(params.cwd)) {
+      // A project that names its own default branch starts fresh worktrees from origin's copy of it, not from origin's HEAD.
+      const branch = projectDefaultBranch(params.cwd)!;
+      preparing = made(async (root, options) => {
+        const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
+        return makeWorktreeFrom(root, asked.name, { branch, ...(remotes.includes('origin') ? { remote: 'origin' } : {}) }, options);
+      });
+    } else if (asked && provider !== 'claude') {
+      const baseRef = asked.baseRef as ClaudeWorktreeRequest['baseRef'];
+      preparing = made((root, options) => makeWorktree(root, asked.name, baseRef, options));
+    } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
+    if (preparing && provider !== 'claude') {
+      // Another provider's session starts in its folder, so it waits for the worktree here.
       try {
-        const done = await make(resolver.resolve(params.cwd).root, (await shell.ready).env);
-        cwd = done.path;
-        setupBranch = done.branch;
+        cwd = (await preparing).path;
       } catch (error) {
         if (error instanceof WorktreeFromError) throw new RpcError('GIT_FAILED', error.message);
         throw error;
       }
-    };
-    if (asked && typeof asked.baseRef === 'object') {
-      const base = asked.baseRef;
-      await made((root, env) => makeWorktreeFrom(root, asked.name, base, { env }));
-    } else if (asked && asked.baseRef === 'fresh' && projectDefaultBranch(params.cwd)) {
-      // A project that names its own default branch starts fresh worktrees from origin's copy of it, not from origin's HEAD.
-      const branch = projectDefaultBranch(params.cwd)!;
-      await made(async (root, env) => {
-        const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
-        return makeWorktreeFrom(root, asked.name, { branch, ...(remotes.includes('origin') ? { remote: 'origin' } : {}) }, { env });
-      });
-    } else if (asked && provider !== 'claude') {
-      const baseRef = asked.baseRef as ClaudeWorktreeRequest['baseRef'];
-      await made((root, env) => makeWorktree(root, asked.name, baseRef, { env }));
-    } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
-    const worktreeSetupFor = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
+      preparing = null;
+    }
+    const prepared = preparing;
+    const worktreeSetupFor = asked
+      ? async (id: string) => {
+          // A worktree that couldn't be made has nothing to set up: the session says why.
+          if (prepared && !(await prepared.then(() => true, () => false))) return;
+          await worktreeSetup(id, params.cwd, asked.name, setupBranch)?.();
+        }
+      : undefined;
     // An orchestrator is one before its first message goes, so its first tool call already finds it.
     const setup = orchestratorRoot
       ? (id: string) => {
@@ -2799,14 +3152,18 @@ export function createEngine(options: EngineOptions): Engine {
         const effort = route.ok && !create.effort ? route.effort : null;
         return { model: route.ok ? route.model : null, effort, autoPick: autoPickOf(route.ok ? { ...route, effort } : { ...route, model: null, effort: null }) };
       };
-      sessionId = await hosts.create({ ...create, ...own, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
+      const prepare = prepared ? prepared.then((done) => ({ cwd: done.path })) : undefined;
+      sessionId = await hosts.create({ ...create, ...own, cwd, worktree, profileId, ...(prepare ? { prepare } : {}), ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
     }
     if (origin) {
       // Where it works on the pull request (the checkout's top folder, as git status reports it), and on which branch.
-      const top = await topLevel(cwd).catch(() => cwd);
-      const branch = setupBranch ?? (checkoutPullRequest ? (await listBranches(cwd).catch(() => ({ current: null }))).current : null);
+      // A worktree made here is its own top folder, on the branch it was planned with, so that needs no wait for git.
+      const where = planned as { path: string; branch: string } | null;
+      const top = where ? where.path : await topLevel(cwd).catch(() => cwd);
+      const branch = where ? where.branch : checkoutPullRequest ? (await listBranches(cwd).catch(() => ({ current: null }))).current : null;
       githubOrigins.save(sessionId, origin, { cwd: top, branch });
     }
+    underParent(sessionId, params.parentSessionId);
     return { sessionId };
   };
 
@@ -2822,6 +3179,13 @@ export function createEngine(options: EngineOptions): Engine {
       sources: () => ({ summaries: sessions.snapshot().sessions.filter((s) => !isOtherProviderSession(s)), live: liveList(), ...hosts.list(), kept: keptSessions() }),
       archiveAfterDays: () => retention.archiveAfterDays,
       windows: () => servers.size,
+      // The browser extension's list of projects: the ones on disk, most recently active first.
+      projects: () =>
+        listProjects()
+          .filter((p) => p.exists)
+          .sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0))
+          .map((p) => ({ root: p.root, name: p.name })),
+      checkoutOf: (repo) => findCheckout(listProjects().filter((p) => p.exists).map((p) => p.root), repo),
       respond: async (requestId, decision, acceptEdits) => {
         const sessionId = hosts.list().permissions.find((p) => p.requestId === requestId)?.sessionId;
         hosts.respond(requestId, decision);
@@ -2856,6 +3220,8 @@ export function createEngine(options: EngineOptions): Engine {
       ...(options.remote.runAppUpdate ? { runAppUpdate: options.remote.runAppUpdate } : {}),
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list(), kept: keptSessions() }),
       triggerSessions: () => triggers.sessions(),
+      orchestrators: () => orchestrator.infos(),
+      startedChildren: () => orchestrator.startedChildren(),
       archiveAfterDays: () => retention.archiveAfterDays,
       scope: () => sidebarScope,
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
@@ -2913,8 +3279,8 @@ export function createEngine(options: EngineOptions): Engine {
         const models = await driver.models().catch(() => []);
         return { problem: null, models: models.map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })) };
       },
-      create: (root, prompt, choice, images) =>
-        createSession({
+      create: async (root, prompt, choice, images, orchestrator, title) => {
+        const created = await createSession({
           cwd: root,
           prompt,
           attachments: images,
@@ -2924,7 +3290,16 @@ export function createEngine(options: EngineOptions): Engine {
           worktree: choice.worktree ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(choice.baseRef) } : null,
           profileId: choice.profileId,
           checkoutBranch: choice.checkoutBranch,
-        }),
+          ...(orchestrator ? { orchestrator: true } : {}),
+        });
+        // A session on another computer asked for it, with a title: set the way an orchestrator's starts get theirs.
+        if (title) {
+          pendingTitles.set(created.sessionId, title);
+          applyTitles([created.sessionId]);
+        }
+        return created;
+      },
+      repoOf: (root) => githubRepo(root),
       // The remote branches and what `fresh` starts from go with them, for a new worktree's Branch from.
       branches: async (root) => {
         if (!resolver.resolve(root).gitDir) return { current: null, branches: [], checkedOutElsewhere: [], remoteBranches: [], remote: null, baseBranch: null };
@@ -2970,7 +3345,7 @@ export function createEngine(options: EngineOptions): Engine {
         const cwd = sessionCwd(sessionId);
         if (!cwd) return null;
         try {
-          return await listChanges(cwd, 'uncommitted');
+          return await gitStatus.changes(cwd, 'uncommitted');
         } catch (error) {
           throw new RpcError('GIT_FAILED', (error as Error).message);
         }
@@ -2992,6 +3367,8 @@ export function createEngine(options: EngineOptions): Engine {
           return await commitAll(cwd, message, (await shell.ready).env);
         } catch (error) {
           throw new RpcError('GIT_FAILED', (error as Error).message);
+        } finally {
+          gitStatus.touch(cwd);
         }
       },
       clonePlan: (url, name) => clones.plan(url, name),
@@ -3020,6 +3397,7 @@ export function createEngine(options: EngineOptions): Engine {
       onFromDevice: (event) => broadcast('remote.fromDevice', event),
       log,
     });
+    remote.setPresent(presentNow);
     void remote.start();
   }
 
@@ -3028,7 +3406,10 @@ export function createEngine(options: EngineOptions): Engine {
       db: cache.db,
       deviceKey: options.remote.deviceKey,
       onStatus: (status) => broadcast('computers.changed', status),
-      onEvent: (event) => broadcast('computers.event', event),
+      onEvent: (event) => {
+        broadcast('computers.event', event);
+        for (const waiter of [...computerEventWaiters]) waiter(event);
+      },
       log,
     });
     void computers.start().catch((error: Error) => log('warn', `Other computers: ${error.message}`));
@@ -3114,6 +3495,10 @@ export function createEngine(options: EngineOptions): Engine {
     broadcast('sessions.remindersDue', { reminders });
     remote?.pushReminders(reminders);
   };
+  // Working, needing you or failing for less than a minute drops a reminder too (the timer alone could miss it).
+  breakThroughHook = () => {
+    if (sessions.snoozed().length) checkReminders();
+  };
   const reminderTimer = setInterval(checkReminders, 60_000);
   reminderTimer.unref?.();
 
@@ -3178,7 +3563,8 @@ export function createEngine(options: EngineOptions): Engine {
   looseEnds = new LooseEndsWatcher(
     {
       repos: looseEndRepos,
-      facts: async (root) => repoFacts(root, { env: (await shell.ready).env, pullRequests: pullRequestsFor(root, false) }),
+      // A checkout a session view watches was looked at moments ago: its count of changed files is reused.
+      facts: async (root) => repoFacts(root, { env: (await shell.ready).env, pullRequests: pullRequestsFor(root, false), uncommitted: (path) => gitStatus.fresh(path, 'uncommitted', 30_000)?.files.length ?? null }),
       ownerOf: looseEndsOwner,
       merged: moveMerged,
       emit: (map) => broadcast('sessions.looseEnds', { looseEnds: Object.fromEntries([...map].map(([owner, ends]) => [owner, [...ends]])) }),
@@ -3237,6 +3623,7 @@ export function createEngine(options: EngineOptions): Engine {
     providerForks.forget(sessionId);
     pinnedTabs.forget(sessionId);
     owned.delete(sessionId);
+    startedFolders.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
     unmarkContinued.run(sessionId);
@@ -3291,6 +3678,9 @@ export function createEngine(options: EngineOptions): Engine {
     cleanupInBackground();
   };
   scanCompleteHook = () => {
+    // Once, at the first full scan: every later change says `complete` too. Reminders are checked every minute after,
+    // and a snoozed session's reminder drops as soon as it works or needs you (`breakThroughHook`).
+    scanCompleteHook = () => {};
     // Pinned tabs of sessions this computer no longer knows go once, at the first full scan of a run.
     if (!scanned) {
       const gone = pinnedTabs.prune((id) => sessions.get(id) !== undefined);
@@ -3581,11 +3971,15 @@ export function createEngine(options: EngineOptions): Engine {
       questions.assertNotProject(root);
       // The orchestrator's and plan mode's instructions have their own editors: a save that doesn't name them (the
       // defaults editor, Save as project default) keeps them, and an empty text takes them away.
-      const { orchestratorInstructions: named, planModeInstructions: namedPlan, ...rest } = defaults;
+      const { orchestratorInstructions: named, planModeInstructions: namedPlan, sessionTools: namedTools, ...rest } = defaults;
       const saved = projects.defaultsOf(root);
       const instructions = (named === undefined ? saved.orchestratorInstructions : named)?.trim();
       const planInstructions = (namedPlan === undefined ? saved.planModeInstructions : namedPlan)?.trim();
-      projects.setDefaults(root, { ...rest, ...(instructions ? { orchestratorInstructions: instructions } : {}), ...(planInstructions ? { planModeInstructions: planInstructions } : {}) });
+      // The same for which tools its sessions get: only the setting's own control names it.
+      const toolSet = namedTools ?? saved.sessionTools;
+      projects.setDefaults(root, { ...rest, ...(instructions ? { orchestratorInstructions: instructions } : {}), ...(planInstructions ? { planModeInstructions: planInstructions } : {}), ...(toolSet === 'sessions' ? { sessionTools: 'sessions' as const } : {}) });
+      // Its default branch is the base branch git status compares with.
+      gitStatus.settingsChanged();
       return {};
     },
     'projects.reorder': ({ roots }) => {
@@ -3638,6 +4032,24 @@ export function createEngine(options: EngineOptions): Engine {
       const image = await transcripts.image(sessionId, imageId);
       if (!image) throw new RpcError('NOT_FOUND', 'Image not found in this transcript');
       return image;
+    },
+    'events.only': ({ names }, context) => {
+      eventFilters.set(context, new Set(names));
+      return {};
+    },
+    'stream.watch': ({ sessionId }, context) => {
+      let watched = streamWatches.get(context);
+      if (!watched) streamWatches.set(context, (watched = new Set()));
+      watched.add(sessionId);
+      // From a clean start, whatever this window had: then a reply already under way, whole.
+      context.emit('session.stream', { sessionId, kind: 'clear', text: '' });
+      const block = streamBlocks.get(sessionId);
+      if (block) context.emit('session.stream', { sessionId, kind: block.kind, text: block.text });
+      return {};
+    },
+    'stream.unwatch': ({ sessionId }, context) => {
+      streamWatches.get(context)?.delete(sessionId);
+      return {};
     },
     'transcript.watch': ({ sessionId }, context) => {
       const map = subscriptionsFor(context);
@@ -3892,11 +4304,26 @@ export function createEngine(options: EngineOptions): Engine {
       if (statSafe(cwd)?.isDirectory()) void hosts.prewarm(cwd, profile, effort).catch((error: Error) => log('debug', `Pre-warm failed: ${error.message}`));
       return {};
     },
+    'worktree.prefetch': async ({ cwd, baseRef }) => {
+      if (!statSafe(cwd)?.isDirectory() || !resolver.resolve(cwd).gitDir) return {};
+      try {
+        // Nothing runs in a cloned repository before its trust question is answered.
+        assertTrusted(cwd);
+      } catch {
+        return {};
+      }
+      const target = await worktreeFetchFor(cwd, baseRef);
+      if (target) {
+        const env = (await shell.ready).env;
+        void baseFetches.ensure(target.root, target.remote, target.branch, env);
+      }
+      return {};
+    },
     'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),
-    'usage.get': async ({ refresh, profileId }) => {
+    'usage.get': async ({ refresh, profileId, maxAgeMs }) => {
       // Plan usage is Claude Code's, and a provider's whose driver reports windows of its own (Codex's rate limits).
       // Copilot's premium requests are `providers.quota`.
-      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh);
+      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh, maxAgeMs);
       if (!usage) throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId!)]} has premium requests, not plan usage`);
       return usage;
     },
@@ -3919,7 +4346,7 @@ export function createEngine(options: EngineOptions): Engine {
     'fs.folders': ({ path, prefix }) => listFolders(path, prefix),
     'files.search': async ({ cwd, query, limit }) => ({ files: await files.search(cwd, query, limit) }),
     'files.resolve': async ({ cwd, paths }) => ({ paths: await files.resolve(cwd, paths) }),
-    'files.read': ({ path }) => readPreview(path),
+    'files.read': ({ path, raw }) => readPreview(path, { raw }),
     'files.list': ({ cwd }) => {
       assertKnownFolder(cwd);
       return files.listAll(cwd);
@@ -3939,6 +4366,10 @@ export function createEngine(options: EngineOptions): Engine {
       }
     },
     'files.image': ({ path }) => readPreviewImage(path),
+    'files.write': (request) => writeFileContent(request, knownFolders()),
+    'fileIcons.themes': () => ({ themes: iconThemes.list() }),
+    'fileIcons.theme': ({ id }) => ({ theme: iconThemes.load(id) }),
+    'fileIcons.icons': async ({ id, icons }) => ({ icons: await iconThemes.icons(id, icons) }),
     'editors.list': async () => {
       const editors = detectEditors(await editorEnv());
       const stored = appState.get(defaultEditorKey);
@@ -4002,6 +4433,13 @@ export function createEngine(options: EngineOptions): Engine {
         if (!projectRoot) throw new RpcError('INVALID_PARAMS', 'A shared action needs its project');
         actions.saveShared(projectRoot, action, previousId);
       } else actions.save(projectRoot, action, previousId);
+      // A renamed action keeps its place among the pills.
+      if (previousId && previousId !== action.id) actions.renameInOrder(projectRoot, previousId, action.id);
+      broadcast('actions.changed', { root: projectRoot });
+      return {};
+    },
+    'actions.reorder': ({ projectRoot, ids }) => {
+      actions.setOrder(projectRoot, ids);
       broadcast('actions.changed', { root: projectRoot });
       return {};
     },
@@ -4077,7 +4515,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (item.autoStart && item.waitFor.kind === 'slot') autoStarter?.armForLimit(item.id);
       return { item };
     },
-    'orchestrator.list': () => ({ orchestrators: orchestrator.infos() }),
+    'orchestrator.list': () => ({ orchestrators: orchestrator.infos(), started: orchestrator.startedChildren() }),
     'later.start': async ({ id }) => {
       const item = later.get(id);
       if (!item) throw new RpcError('NOT_FOUND', 'That item is no longer in the queue');
@@ -4244,12 +4682,41 @@ export function createEngine(options: EngineOptions): Engine {
       syncMemorySearch(10_000);
       return { memories: memorySearch.bySession(sessionId) };
     },
-    'git.changes': async ({ cwd, base }) => {
+    'git.changes': async ({ cwd, base, fresh }) => {
       try {
-        return await listChanges(cwd, base);
+        return await gitStatus.changes(cwd, base, fresh ? 0 : FRESH_MS);
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
       }
+    },
+    // One watch per checkout and window, counted: two panes of a window on the same folder share it, and it ends
+    // when the last of them stops watching.
+    'git.watch': ({ cwd, base }, context) => {
+      const map = subscriptionsFor(context);
+      const key = `git\0${base}\0${cwd}`;
+      const count = (gitWatchCounts.get(context)?.get(key) ?? 0) + 1;
+      countsFor(context).set(key, count);
+      if (count === 1) map.set(key, gitStatus.watch(cwd, base, (changes, error) => context.emit('git.changed', { cwd, base, changes, error })));
+      // Another view of the window on the same folder: it gets the current result too (a fresh one costs no git).
+      else
+        void gitStatus.changes(cwd, base).then(
+          (changes) => context.emit('git.changed', { cwd, base, changes, error: null }),
+          (error: Error) => context.emit('git.changed', { cwd, base, changes: null, error: error.message }),
+        );
+      return {};
+    },
+    'git.unwatch': ({ cwd, base }, context) => {
+      const map = subscriptionsFor(context);
+      const key = `git\0${base}\0${cwd}`;
+      const count = (gitWatchCounts.get(context)?.get(key) ?? 0) - 1;
+      if (count > 0) {
+        countsFor(context).set(key, count);
+        return {};
+      }
+      gitWatchCounts.get(context)?.delete(key);
+      map.get(key)?.();
+      map.delete(key);
+      return {};
     },
     'git.diff': async ({ cwd, base, path }) => {
       try {
@@ -4282,6 +4749,8 @@ export function createEngine(options: EngineOptions): Engine {
         return { current: (await listBranches(cwd)).current };
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(cwd);
       }
     },
     'git.github': async ({ cwd }) => (resolver.resolve(cwd).gitDir ? githubPage(cwd) : null),
@@ -4290,6 +4759,8 @@ export function createEngine(options: EngineOptions): Engine {
         await stage(cwd, paths, staged);
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(cwd);
       }
       return {};
     },
@@ -4299,6 +4770,8 @@ export function createEngine(options: EngineOptions): Engine {
         if (untracked.length) await trash(untracked, { repoRoot: root });
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(cwd);
       }
       return {};
     },
@@ -4328,6 +4801,8 @@ export function createEngine(options: EngineOptions): Engine {
         return await worktreeStatus(cwd);
       } catch (error) {
         throw new RpcError(error instanceof DivergedError ? 'DIVERGED' : 'GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(cwd);
       }
     },
     'git.commit': async ({ sessionId, cwd, message }) => {
@@ -4465,6 +4940,8 @@ export function createEngine(options: EngineOptions): Engine {
         await removeWorktree(status, deleteBranch);
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
+      } finally {
+        gitStatus.touch(status.root);
       }
       return { terminalId: null };
     },
@@ -4796,7 +5273,7 @@ export function createEngine(options: EngineOptions): Engine {
       companion?.received(deliveryId, error);
       return {};
     },
-    'companion.status': () => companion?.status() ?? { listening: false, clients: 0, error: null },
+    'companion.status': () => companion?.status() ?? { listening: false, clients: 0, browsers: 0, error: null },
     'catchup.get': ({ sessionId }) => ({ catchUp: catchUp.get(sessionId) }),
     'catchup.list': () => ({ catchUps: catchUp.list() }),
     'catchup.build': async ({ sessionId }) => {
@@ -4951,6 +5428,15 @@ export function createEngine(options: EngineOptions): Engine {
     },
   };
 
+  // The tools call the handlers as a window would, with no window to send events to.
+  const ownContext: HandlerContext<Contract> = { emit: () => {}, onDispose: () => {} };
+  callRpc = async (method, params) => {
+    const parsed = contract.requests[method].params.safeParse(params);
+    if (!parsed.success) throw new RpcError('INVALID_PARAMS', parsed.error.issues.map((i) => `${i.path.join('.') || 'params'}: ${i.message}`).join('; '));
+    const handler = (handlers as unknown as Record<string, (p: unknown, c: HandlerContext<Contract>) => unknown>)[method]!;
+    return (await handler(parsed.data, ownContext)) as ResultOf<Contract, typeof method>;
+  };
+
   return {
     attach(transport) {
       const server = serveRpc(contract, transport, handlers, {
@@ -5008,6 +5494,8 @@ export function createEngine(options: EngineOptions): Engine {
     wake: () => {
       scheduler.wake();
       checkReminders();
+      // Plan usage moved on while it slept (the 5-hour window may have reset).
+      for (const monitor of usageMonitors.values()) monitor.nudge();
     },
     advanceScheduleClock: (ms) => {
       if (!options.stubQueueStarts) return;
@@ -5033,6 +5521,12 @@ export function createEngine(options: EngineOptions): Engine {
     setOrchestratorServer: (server) => {
       orchestratorBase = server;
     },
+    smokeSessionTool: async ({ sessionId, tool, args }) => {
+      if (!options.stubQueueStarts) return;
+      const server = await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId, 'session');
+      const result = await orchestratorBridge.handle({ id: 0, token: server.env[ORCHESTRATOR_TOKEN_ENV] ?? '', tool, args });
+      appendFileSync(join(options.dataDir, 'smoke-session-tools.jsonl'), `${JSON.stringify({ sessionId, tool, result })}\n`);
+    },
     smokeOrchestrator: async ({ sessionId, projectRoot, tool, args }) => {
       if (!options.stubQueueStarts) return null;
       if (!orchestrator.isOrchestrator(sessionId)) orchestrator.mark(sessionId, projectRoot);
@@ -5041,7 +5535,12 @@ export function createEngine(options: EngineOptions): Engine {
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setAppUpdate: (update) => remote?.setAppUpdate(update),
+    setPresent: (present) => {
+      presentNow = present;
+      remote?.setPresent(present);
+    },
     setForeground: (foreground) => {
+      gitStatus.setForeground(foreground);
       checksWatcher.setForeground(foreground);
       looseEnds?.setForeground(foreground);
       foregroundNow = foreground;
@@ -5075,6 +5574,8 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      search.stop();
+      gitStatus.stop();
       browserBridge.close();
       orchestratorBridge.close();
       clearInterval(providerLiveTimer);

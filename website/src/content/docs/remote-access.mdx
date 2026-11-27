@@ -23,6 +23,7 @@ On your phone you can:
 - stop Claude's turn, mark a session as read or done, with a swipe;
 - start a new session in one of the projects you added in Seshboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
 - start a [pipeline](/sessions/pipelines/) and follow its steps;
+- start an [orchestrator](/sessions/orchestrator/) and follow the sessions it starts;
 - get a notification when a session needs you or finishes.
 
 Everything else stays on your computer: the terminal, pushing and pull requests outside a pipeline's Push step, memory, settings, managing profiles and file attachments.
@@ -125,17 +126,15 @@ Seshboard listens on port 47615. If another app uses it, the card says so and of
 
 ## Who is connected now
 
-<Screenshot name="connected-devices" alt="The bottom of the sidebar with Connected to this Mac and a green 2: Sam's iPhone and Safari on Studio laptop, each with since when. Next to it, the details of Sam's iPhone: Connected since, Last action, Paired 3 days ago, the address it came through, Remote settings and Revoke…" />
+<Screenshot name="connected-devices" alt="The Computers menu next to the rail with Connected to this Mac and a green 2: Sam's iPhone and Safari on Studio laptop, each with since when. Next to it, the details of Sam's iPhone: Connected since, Last action, Paired 3 days ago, the address it came through, Remote settings and Revoke…" />
 
-While Remote is on, **<Os mac="Connected to this Mac" windows="Connected to this PC" />** at the bottom of the sidebar lists the phones, browsers and computers connected right now, with since when. It sits right above [**Computers**](/other-computers/#filter-by-computer): one is who reaches into this computer, the other is where you reach out. Click the header to fold it, and the gear to open Settings → Remote.
+While Remote is on, **<Os mac="Connected to this Mac" windows="Connected to this PC" />** in the **Computers** menu on the [rail](/sessions/rail/) lists the phones, browsers and computers connected right now, with since when. Rest the pointer on **Computers**, or click it. A green dot on it says Remote is on. The menu has it right above [**Computers**](/other-computers/#filter-by-computer): one is who reaches into this computer, the other is where you reach out. Click the header to fold it, and the gear to open Settings → Remote.
 
 - **Click a device** to see its details: since when it is connected, its last action, such as **Sent a prompt in Needs review sort** or **Answered Allow Bash in tideline**, when it was paired, and the address it came through. Click the session's name to open it. The last action is kept until Seshboard quits; before that, it says **No actions yet**.
 - **Revoke** shows when you point at a device or move to it with <Kbd keys="tab" />. It asks first, then disconnects the device at once. It has to pair again to come back. <Kbd keys="escape" /> cancels.
 - **A new connection** shows a toast, such as **Sam's iPhone connected**, with **Revoke** in case it wasn't you. It shows once a day per device, and not right after you paired it.
 - **Nobody connected**: a quiet line, **Remote on · nobody connected**, says Remote is on. To hide it, turn off **Show in the sidebar when nobody is connected** in Settings → Remote.
 - **Remote can't start**: the line turns orange. Click it to see why in Settings → Remote.
-
-With the sidebar collapsed, a phone icon with a green count shows how many devices are connected. Point at it for their names, or click it for the details, with **Revoke…** for each.
 
 ## Your sessions
 
@@ -267,6 +266,12 @@ To send images or files with a message, tap the paperclip button next to the mes
 
 A notification says when a run waits for you, stops or is done. Pipelines are set up in Seshboard on your computer, in Settings › Pipelines.
 
+## Orchestrators
+
+In **New session**, **Run as** has **Orchestrator**, as on your computer: in the **Options** sheet on a phone. **Start session** becomes **Start orchestrator**, and the [orchestrator](/sessions/orchestrator/) runs on your computer. The sessions it starts show under it in the list.
+
+In an orchestrator, tap the bar under its title, such as **2 working · 1 waiting on you**, for its sessions by what needs you first: **Waiting on you**, **Working**, **Queued**, **Ready for review** and **Idle**. Tap one to open it. A session it started has a bar under its title that goes back to the orchestrator. This needs this version of Seshboard on your computer.
+
 ## Ask about this session
 
 **Ask about this session** in a session's **⋯** menu on a phone, or **Ask** in its header in a wide window, opens [Ask about this session](/sessions/ask/), as on your computer: ask Claude what changed, which files it touched or why it took an approach, while it keeps working. Nothing is added to the conversation. On a phone it opens as a sheet, in a wide window on the right, in the place of **Changes**.
@@ -284,7 +289,7 @@ The file button in a session's header, and **Changes** on its catch-up, open wha
 
 Tap **New session** on Home, or in the drawer. In a wide window, pick a project from the row of tiles (swipe for more), then type what Claude should do. With more than one computer, **Run on** above the tiles picks the computer it starts on (see [More than one computer](#more-than-one-computer)). Under the box, chips show the project's defaults: the model, the effort, the permission mode, and **This folder** or **New worktree**. Click one to change it for this session only.
 
-On a phone, New session is simpler. The round **×** at the top closes it. The project is one row: tap it to pick another in **Pick a project**, with a filter when you have many. Under the box, one **Options** row sums up the choices, such as *Personal · Default model · Auto* and *This folder on dev · one session*. What you changed from the project's defaults shows in the accent colour. Tap the row for the **Options** sheet, with **Run as** (when you have pipelines), the profile, model, effort, mode, workspace and branch as rows, and **Reset to** the project's defaults. **Start session** floats at the bottom, dimmed until you type.
+On a phone, New session is simpler. The round **×** at the top closes it. The project is one row: tap it to pick another in **Pick a project**, with a filter when you have many. Under the box, one **Options** row sums up the choices, such as *Personal · Default model · Auto* and *This folder on dev · one session*. What you changed from the project's defaults shows in the accent colour. Tap the row for the **Options** sheet, with **Run as** (a pipeline or **Orchestrator**), the profile, model, effort, mode, workspace and branch as rows, and **Reset to** the project's defaults. **Start session** floats at the bottom, dimmed until you type.
 
 With **This folder**, the branch chip shows the branch checked out in the project's folder. Pick another local branch and Seshboard checks it out before the session starts. Git keeps your uncommitted changes, or refuses when they conflict; then the session doesn't start and the app says why. A branch checked out in another worktree isn't listed.
 
@@ -349,7 +354,17 @@ The tab's icon is your computer's [app icon](/settings/#app-icon), with **Use it
 
 ## Notifications
 
-Your phone can tell you when a session needs you or finishes, also when the page is closed. After you pair, a card offers **Turn on** (in a wide window, a strip above the sessions does). Later, on a phone, tap **Notifications** in Home's **⋯** menu to turn them on or off, or open **All settings** for **Push notifications** and **Only when it needs me**. In a wide window, open **Notifications** in the **⋯** menu and turn **Needs you** and **Finished** on or off. Nothing comes while Seshboard Remote is open in front of you.
+Your phone can tell you when a session needs you or finishes, also when the page is closed. After you pair, a card offers **Turn on** (in a wide window, a strip above the sessions does). Later, on a phone, tap **Notifications** in Home's **⋯** menu to turn them on or off, or open **All settings** for **Push notifications**. In a wide window, open **Notifications** in the **⋯** menu. Nothing comes while Seshboard Remote is open in front of you.
+
+### While you use your computer
+
+**Needs you** and **Finished** each have **Away**, **Always** or **Off**:
+
+- **Away** (the default): a notification only comes when you haven't used your computer's keyboard or mouse for 5 minutes, or when it is locked or asleep. While you work at it, your phone stays quiet.
+- **Always**: every time, also while you use your computer.
+- **Off**: never for that moment.
+
+A computer with an older Seshboard sends them even while you use it. The settings name it: update Seshboard there to get Away.
 
 <Aside type="note" title="On an iPhone or iPad">
 Notifications only work when Seshboard Remote is on your Home Screen. In Safari, tap Share, then **Add to Home Screen**. Open it from there and turn notifications on. iPhones don't show buttons on notifications: tap one to open the session.
@@ -377,7 +392,7 @@ With more than one computer, each one is in the list, and your phone uses the th
 On a phone, **Settings** in the drawer, or **All settings** in Home's **⋯** menu, opens the Settings page. The round back button at the top goes back.
 
 - **Appearance**: **Theme** (**Auto**, **Dark** or **Light**), the **Colours** with **Sync now** (see [Theme](#theme)), and **Text size**: **Default**, **Large** or **Larger**.
-- **Notifications**: **Push notifications**, when Claude needs you or finishes, and **Only when it needs me**.
+- **Notifications**: **Push notifications**, when Claude needs you or finishes, and **Away**, **Always** or **Off** for **Needs you** and **Finished**. See [While you use your computer](#while-you-use-your-computer).
 - **Computers**: each paired computer, with a check on the one on screen. Tap another to switch to it. **Pair another computer** pairs one more.
 - **Disconnect from** your computer (or **Connect to** it), and **Forget this computer…**.
 - **About**: the version of the remote app, and of Seshboard on your computer.

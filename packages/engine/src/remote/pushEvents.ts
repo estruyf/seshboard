@@ -31,8 +31,9 @@ export interface PushPayload {
  * there is room to read it. So does a tool prompt whose line doesn't show all of what it asks (a command over more
  * than one line, or too long for it): Allow would approve what the notification left out.
  */
-export function promptAnswers(request: Pick<PermissionRequest, 'requestId' | 'toolName' | 'input' | 'truncated'>): { requestId: string; answers: boolean } {
-  if (request.toolName === 'AskUserQuestion' || request.toolName === 'ExitPlanMode' || request.truncated) return { requestId: request.requestId, answers: false };
+export function promptAnswers(request: Pick<PermissionRequest, 'requestId' | 'toolName' | 'input' | 'truncated' | 'approval'>): { requestId: string; answers: boolean } {
+  // An approval card is answered on the computer only, for now (docs/seshboard-tools.md).
+  if (request.toolName === 'AskUserQuestion' || request.toolName === 'ExitPlanMode' || request.truncated || request.approval) return { requestId: request.requestId, answers: false };
   const line = toolLine(request);
   return { requestId: request.requestId, answers: short(line) === line.trim() };
 }
@@ -84,9 +85,27 @@ export class TurnEnds {
   }
 }
 
-/** Which devices get a push: subscribed to that kind, and without the app open on screen right now. */
-export function pushTargets<T extends { deviceId: string; needsYou: boolean; finished: boolean; reminders?: boolean }>(subscriptions: readonly T[], kind: PushPayload['kind'], visible: ReadonlySet<string>, known: ReadonlySet<string>): T[] {
+/** The moments a device can hold back while someone uses this computer (`push.subscribe`'s `onlyWhenAway`). */
+export type OnlyWhenAway = {
+  needsYou?: boolean;
+  finished?: boolean;
+  reminders?: boolean;
+};
+
+/**
+ * Which devices get a push: subscribed to that kind, without the app open on screen right now, and, for a moment the
+ * device holds back while you're here (`onlyWhenAway`), only while this computer is unused (`present` false).
+ */
+export function pushTargets<T extends { deviceId: string; needsYou: boolean; finished: boolean; reminders?: boolean; onlyWhenAway?: OnlyWhenAway }>(
+  subscriptions: readonly T[],
+  kind: PushPayload['kind'],
+  visible: ReadonlySet<string>,
+  known: ReadonlySet<string>,
+  present = false,
+): T[] {
   // A phone from before has no reminders setting: it gets them with finished turns.
   const wants = (s: T) => (kind === 'needs-you' ? s.needsYou : kind === 'reminder' ? (s.reminders ?? s.finished) : s.finished);
-  return subscriptions.filter((s) => known.has(s.deviceId) && !visible.has(s.deviceId) && wants(s));
+  // A reminder held back follows finished turns, as it does for the switch. A phone from before holds nothing back.
+  const held = (s: T) => (kind === 'needs-you' ? s.onlyWhenAway?.needsYou : kind === 'reminder' ? (s.onlyWhenAway?.reminders ?? s.onlyWhenAway?.finished) : s.onlyWhenAway?.finished) === true;
+  return subscriptions.filter((s) => known.has(s.deviceId) && !visible.has(s.deviceId) && wants(s) && !(present && held(s)));
 }

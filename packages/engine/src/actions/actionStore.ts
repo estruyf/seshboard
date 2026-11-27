@@ -27,6 +27,27 @@ const trustKey = (action: Pick<ProjectAction, 'type' | 'command' | 'runOnWorktre
 /** Where an action's keys go in the shared file: these first, then anything else it had. */
 const ENTRY_ORDER = ['id', 'name', 'icon', 'type', 'command', 'cwd', 'confirm', 'shortcut', 'runOnWorktreeCreate', 'sendOutput'] as const;
 
+/**
+ * The actions in the order you gave them: the ones `order` names first, in its order, then the rest as they were
+ * (an action added since goes at the end). Ids it names that are gone are skipped.
+ */
+export function orderActions<T extends { id: string }>(actions: readonly T[], order: readonly string[]): T[] {
+  if (order.length === 0) return [...actions];
+  const rank = new Map(order.map((id, i) => [id, i]));
+  const named = actions.filter((a) => rank.has(a.id)).sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+  return [...named, ...actions.filter((a) => !rank.has(a.id))];
+}
+
+/** A stored order, or none when it can't be read. */
+function parseOrder(json: string): string[] {
+  try {
+    const ids: unknown = JSON.parse(json);
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 /** The id of a shared entry: its own, else made from its name. */
 const sharedId = (raw: Record<string, unknown>, index: number) => (typeof raw.id === 'string' ? raw.id : slugify(String(raw.name ?? `action-${index + 1}`)));
 
@@ -170,6 +191,9 @@ export class ActionStore {
       count: db.prepare("SELECT COUNT(*) AS n FROM project_actions WHERE COALESCE(project_id, '') = ?"),
       trusted: db.prepare('SELECT 1 FROM trusted_commands WHERE project_id = ? AND command_hash = ?'),
       trust: db.prepare('INSERT OR IGNORE INTO trusted_commands (project_id, command_hash, trusted_at) VALUES (?, ?, ?)'),
+      order: db.prepare('SELECT ids FROM action_order WHERE project_id = ?'),
+      orders: db.prepare('SELECT project_id, ids FROM action_order'),
+      setOrder: db.prepare('INSERT INTO action_order (project_id, ids) VALUES (?, ?) ON CONFLICT (project_id) DO UPDATE SET ids = excluded.ids'),
     };
   }
 
@@ -218,7 +242,31 @@ export class ActionStore {
     for (const entry of this.own(null)) merged.set(entry.action.id, { ...entry.action, scope: 'global', trusted: ActionStore.trustedOwn(entry) });
     for (const action of shared.actions) merged.set(action.id, { ...action, scope: 'shared', trusted: this.isTrusted(projectRoot, action) });
     for (const entry of this.own(projectRoot)) merged.set(entry.action.id, { ...entry.action, scope: 'project', trusted: ActionStore.trustedOwn(entry) });
-    return { actions: [...merged.values()], sharedFile: shared.file, errors: shared.errors };
+    return { actions: orderActions([...merged.values()], this.order(projectRoot)), sharedFile: shared.file, errors: shared.errors };
+  }
+
+  /** The order you gave the project's actions (their ids), empty when you haven't moved any. */
+  order(projectRoot: string): string[] {
+    const row = this.statements.order.get(projectRoot) as { ids: string } | undefined;
+    return row ? parseOrder(row.ids) : [];
+  }
+
+  /** Keeps the order of the project's actions, by id (each once). */
+  setOrder(projectRoot: string, ids: readonly string[]): void {
+    this.statements.setOrder.run(projectRoot, JSON.stringify([...new Set(ids)]));
+  }
+
+  /**
+   * An action renamed from `from` to `to` keeps its place: in the project's order, or in every project's for a global
+   * action (`projectRoot` null).
+   */
+  renameInOrder(projectRoot: string | null, from: string, to: string): void {
+    if (from === to) return;
+    const rows = projectRoot === null ? (this.statements.orders.all() as unknown as Array<{ project_id: string; ids: string }>) : [{ project_id: projectRoot, ids: JSON.stringify(this.order(projectRoot)) }];
+    for (const row of rows) {
+      const ids = parseOrder(row.ids);
+      if (ids.includes(from)) this.setOrder(row.project_id, ids.map((id) => (id === from ? to : id)));
+    }
   }
 
   /** Saves one of your actions at the end of its scope (or in place). Saving from the editor approves it: you've seen the command. */

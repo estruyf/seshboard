@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRemoteRowId, parseRemoteRowId, remoteRowId, sameRemote, selectionOf } from './remoteSelection.ts';
+import { browserOwnerOf, isRemoteRowId, parseRemoteRowId, remoteRowId, sameRemote, selectionOf } from './remoteSelection.ts';
 
 describe('the selection', () => {
   it('keeps a remote session as its computer and id', () => {
@@ -27,5 +27,18 @@ describe('the selection', () => {
     expect(sameRemote({ computerId: 'c', sessionId: 's' }, { computerId: 'c', sessionId: 's' })).toBe(true);
     expect(sameRemote({ computerId: 'c', sessionId: 's' }, { computerId: 'd', sessionId: 's' })).toBe(false);
     expect(sameRemote(null, { computerId: 'c', sessionId: 's' })).toBe(false);
+  });
+});
+
+describe('whose browser', () => {
+  it('is the session here, or the remote session by its row id', () => {
+    expect(browserOwnerOf('a0000000-0000-4000-8000-000000000001')).toBe('a0000000-0000-4000-8000-000000000001');
+    expect(browserOwnerOf('remote:mac:a0000000-0000-4000-8000-000000000005')).toBe('remote:mac:a0000000-0000-4000-8000-000000000005');
+  });
+
+  it('is nobody for a run row, here or there, and for no pane', () => {
+    expect(browserOwnerOf('run-123')).toBeNull();
+    expect(browserOwnerOf('remote:mac:run-123')).toBeNull();
+    expect(browserOwnerOf(null)).toBeNull();
   });
 });

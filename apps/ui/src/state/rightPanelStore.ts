@@ -22,6 +22,23 @@ const write = (key: string, value: string) => {
   }
 };
 
+// Half or side is a preference, not a window's layout: kept in localStorage, so it survives a restart and a new
+// window starts with it.
+const readSizing = (): PanelSizing => {
+  try {
+    return localStorage.getItem(SIZING_KEY) === 'half' ? 'half' : 'side';
+  } catch {
+    return 'side';
+  }
+};
+const writeSizing = (sizing: PanelSizing) => {
+  try {
+    localStorage.setItem(SIZING_KEY, sizing);
+  } catch {
+    // Remembering is a convenience.
+  }
+};
+
 /**
  * The right side's tab (when two or more of its panels are open) per session, and the panels' width per window. A
  * session that has not picked a tab starts on the one picked last in this window.
@@ -36,6 +53,12 @@ interface RightPanelLayout {
   /** Side: the dragged `width`. Half: half the session area, whatever the window's width (`panelWidthFor`). */
   sizing: PanelSizing;
   setSizing(sizing: PanelSizing): void;
+  /**
+   * The sessions whose side panel takes the whole session area (Full), for the panels without a Full of their own
+   * (the empty panel, Ask, Agents, Commands, Note and mods' panes). Changes, Files and the browser keep theirs.
+   */
+  full: ReadonlySet<string>;
+  setFull(owner: string, full: boolean): void;
   /** `owner` is the session, or the window's own terminal. */
   setTab(owner: string, tab: RightTab): void;
   /** Dragging the edge (or a resize key) is Side again, at that width. */
@@ -46,11 +69,20 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
   tab: readTab(read(TAB_KEY)),
   tabs: new Map(),
   width: clampAskWidth(Number(read(WIDTH_KEY)), window.innerWidth),
-  sizing: read(SIZING_KEY) === 'half' ? 'half' : 'side',
+  sizing: readSizing(),
   setSizing: (sizing) => {
-    write(SIZING_KEY, sizing);
+    writeSizing(sizing);
     set({ sizing });
   },
+  full: new Set(),
+  setFull: (owner, full) =>
+    set((s) => {
+      if (s.full.has(owner) === full) return s;
+      const next = new Set(s.full);
+      if (full) next.add(owner);
+      else next.delete(owner);
+      return { full: next };
+    }),
   setTab: (owner, tab) => {
     write(TAB_KEY, tab);
     set((s) => ({ tab, tabs: new Map(s.tabs).set(owner, tab) }));
@@ -58,7 +90,7 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
   setWidth: (width) => {
     const next = clampAskWidth(width, window.innerWidth);
     write(WIDTH_KEY, String(next));
-    write(SIZING_KEY, 'side');
+    writeSizing('side');
     set({ width: next, sizing: 'side' });
   },
 }));
@@ -68,6 +100,11 @@ export const frontTab = (owner: string): RightTab => {
   const { tabs, tab } = useRightPanel.getState();
   return tabs.get(owner) ?? tab;
 };
+
+/** The session's side panel takes the whole session area (Full), for the panels that share it. */
+export function useSidePanelFull(owner: string): boolean {
+  return useRightPanel((s) => s.full.has(owner));
+}
 
 /** The tab in front in a session, as it shows it. */
 export function useRightTab(owner: string): RightTab {

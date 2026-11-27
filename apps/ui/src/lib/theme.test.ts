@@ -243,7 +243,7 @@ async function syntaxOf(syntax: ThemeSyntax | undefined, mode: ThemeMode) {
 
 describe('built-in themes', () => {
   it('ship in picker order with Demo Time first', () => {
-    expect(BUILT_IN_THEMES.map((b) => b.id)).toEqual(['demo-time', 'catppuccin', 'nord', 'solarized', 'graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon']);
+    expect(BUILT_IN_THEMES.map((b) => b.id)).toEqual(['demo-time', 'black-and-white', 'catppuccin', 'nord', 'solarized', 'graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon']);
   });
 
   it.each(BUILT_IN_THEMES.map((b) => [b.id, b.raw] as const))('%s parses, has its modes and keeps text readable', (id, raw) => {
@@ -265,10 +265,54 @@ describe('built-in themes', () => {
     }
   });
 
+  it.each(BUILT_IN_THEMES.map((b) => [b.id, b.raw] as const))('%s draws field edges at 3:1 on every surface (WCAG 1.4.11)', (id, raw) => {
+    const resolved = resolveTheme(raw as ThemeFile);
+    for (const mode of THEME_MODES) {
+      const t = resolved[mode].tokens;
+      for (const surface of ['bg', 'card', 'sidebar', 'popover'] as const) expect(contrastOf(t['field-border'], t[surface]), `${id} ${mode} field-border on ${surface}`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it('Demo Time keeps every pair readable, code included', async () => {
     const resolved = resolveTheme(DEMO_TIME);
     const syntax = { light: await syntaxOf(undefined, 'light'), dark: await syntaxOf(undefined, 'dark') };
     expect(contrastIssues(DEMO_TIME, resolved, syntax, AA)).toEqual([]);
+  });
+
+  it("Black and white keeps every pair readable with Demo Time's code colours, and faint text at 3:1", async () => {
+    const theme = BUILT_IN_THEMES.find((b) => b.id === 'black-and-white')!.raw as ThemeFile;
+    const resolved = resolveTheme(theme);
+    // No code colours of its own: Code highlighting (Settings › Theme) decides between colour and one colour.
+    expect([theme.light!.syntax, theme.dark!.syntax]).toEqual([undefined, undefined]);
+    const syntax = { light: await syntaxOf(undefined, 'light'), dark: await syntaxOf(undefined, 'dark') };
+    expect(contrastIssues(theme, resolved, syntax, AA)).toEqual([]);
+    for (const mode of THEME_MODES) expect(contrastOf(resolved[mode].tokens.faint, resolved[mode].tokens.bg), `${mode} faint`).toBeGreaterThanOrEqual(3);
+    expect([resolved.dark.tokens.bg, resolved.light.tokens.bg]).toEqual(['#111111', '#ffffff']);
+  });
+
+  it('Black and white, light, keeps its panels apart: by their fill, or by a border at 1.3:1 against both', () => {
+    const t = resolveTheme(BUILT_IN_THEMES.find((b) => b.id === 'black-and-white')!.raw as ThemeFile).light.tokens;
+    const apart = (a: string, b: string) => contrastOf(a, b) >= 1.05 || (contrastOf(t.border, a) >= 1.3 && contrastOf(t.border, b) >= 1.3);
+    // The conversation and the sidebar; the conversation and a side panel (the sidebar's surface); a panel and its header.
+    expect(contrastOf(t.bg, t.sidebar), 'conversation and sidebar').toBeGreaterThanOrEqual(1.05);
+    expect(apart(t.bg, t.sidebar), 'conversation and side panel').toBe(true);
+    expect(apart(t.sidebar, t.sidebar), 'side panel and its header').toBe(true);
+    expect([t.bg, t.sidebar, t.card, t.selected, t.border, t['overlay-border']]).toEqual(['#ffffff', '#f5f5f5', '#ffffff', '#e8e8e8', '#d4d4d4', '#c8c8c8']);
+  });
+
+  it('Black and white keeps muted and faint text at 4.5:1 on every surface, and the rail icons at 3:1', () => {
+    const resolved = resolveTheme(BUILT_IN_THEMES.find((b) => b.id === 'black-and-white')!.raw as ThemeFile);
+    for (const mode of THEME_MODES) {
+      const t = resolved[mode].tokens;
+      // The canvas, the sidebar, cards and the message box, and your prompts (the selected tone, opaque here).
+      for (const surface of ['bg', 'sidebar', 'card', 'popover', 'selected'] as const) {
+        for (const ink of ['muted', 'faint'] as const) expect(contrastOf(t[ink], t[surface]), `${mode} ${ink} on ${surface}`).toBeGreaterThanOrEqual(AA);
+      }
+      // The rail of tools sits on the canvas; its icons are muted, the one in front the text colour.
+      expect(contrastOf(t.muted, t.bg), `${mode} rail icon`).toBeGreaterThanOrEqual(3);
+      expect(contrastOf(t.text, t.selected), `${mode} rail icon in front`).toBeGreaterThanOrEqual(3);
+    }
+    expect([resolved.dark.tokens.sidebar, resolved.dark.tokens.card, resolved.dark.tokens.selected, resolved.dark.tokens.muted, resolved.dark.tokens.faint]).toEqual(['#161616', '#1c1c1c', '#262626', '#b0b0b0', '#8f8f8f']);
   });
 
   it.each(['graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon'])('%s, made for the app icon, keeps every pair readable, code included', async (id) => {

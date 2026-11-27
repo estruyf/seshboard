@@ -17,6 +17,8 @@ export interface MenuItem {
   checked?: boolean;
   /** A check item that turns something on or off (`menuitemcheckbox`): a box before the label shows `checked`. */
   checkbox?: boolean;
+  /** Picking it leaves the menu open (several checks in a row: Customize the rail). */
+  keepOpen?: boolean;
   /**
    * Why it can't be picked now. The item stays focusable (`aria-disabled`), so the reason can be read: it is the item's
    * description and its tooltip.
@@ -240,7 +242,7 @@ export function Menu({
                 onMouseEnter={leaveSub}
                 onClick={() => {
                   if (entry.disabledReason) return;
-                  onClose();
+                  if (!entry.keepOpen) onClose();
                   entry.onSelect();
                 }}
                 onContextMenu={

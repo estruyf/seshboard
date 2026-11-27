@@ -153,6 +153,14 @@ export const locateScript = (ref: string) => `(() => {
   return { x, y, name, covered: !!at && at !== el && !el.contains(at) && !(at.shadowRoot && at.contains(el)) };
 })()`;
 
+/** An element's name by its ref, as `locateScript` names it, without scrolling to it; null when the ref is gone. */
+export const nameScript = (ref: string) => `(() => {
+  const el = globalThis.__seshboardRefs?.get(${JSON.stringify(ref)});
+  if (!el || !el.isConnected) return null;
+  const label = el.labels?.[0]?.innerText;
+  return (el.getAttribute('aria-label') || el.innerText || label || el.getAttribute('placeholder') || el.getAttribute('title') || el.value || el.getAttribute('name') || el.tagName.toLowerCase()).replace(/\\s+/g, ' ').trim().slice(0, 80);
+})()`;
+
 /** Focuses a field by its ref and selects what it holds, so typing replaces it. False when the ref is gone. */
 export const focusScript = (ref: string) => `(() => {
   const el = globalThis.__seshboardRefs?.get(${JSON.stringify(ref)});

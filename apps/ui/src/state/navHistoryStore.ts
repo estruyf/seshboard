@@ -82,6 +82,16 @@ function show(place: NavPlace) {
   }
 }
 
+/** There is a place back (-1) or forward (1) that can still be shown. */
+export const canGoInHistory = (history: NavHistory, direction: 1 | -1): boolean => step(history, direction, usable) !== null;
+
+/** Whether Back (-1) or Forward (1) has somewhere to go: the title bar's buttons and the palette's commands. */
+export function useCanGoInHistory(direction: 1 | -1): boolean {
+  const history = useNavHistory((s) => s.history);
+  // A session or project that went away changes this too, but rarely: the next visit or step settles it.
+  return canGoInHistory(history, direction);
+}
+
 /** Back (-1) or forward (1) through the places shown, as the mouse's back and forward buttons do. */
 export function goInHistory(direction: 1 | -1): void {
   if (step(useNavHistory.getState().history, direction, usable) === null) return;

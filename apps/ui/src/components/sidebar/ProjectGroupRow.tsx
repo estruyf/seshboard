@@ -1,9 +1,11 @@
 import { ChevronRight, Ellipsis, Plus } from 'lucide-react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import type { ProjectState, SidebarListRow } from '../../state/sidebarRows.ts';
+import { useMinimal } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { ComputerChip } from '../computers/ComputerChip.tsx';
+import { newSessionOn } from '../computers/remoteActions.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
 
@@ -16,7 +18,8 @@ export function StateDot({ state, className = '' }: { state: ProjectState; class
 
 /**
  * A project's header while the sidebar groups by project: a chevron, its icon, its name and how many sessions it holds.
- * Under the pointer (or with focus inside) the count gives way to New session in the project and its menu. It is a
+ * Under the pointer (or with focus inside) the count gives way to New session in the project and its menu. A project on
+ * another computer has no menu here, and its + opens New session on that computer (none while it is offline). It is a
  * treeitem: ← folds it, → unfolds it, a click or the chevron folds it, ⌥-click folds every project.
  */
 export function ProjectGroupRow({
@@ -32,12 +35,16 @@ export function ProjectGroupRow({
   onMenu: ((key: string, at: { x: number; y: number }) => void) | null;
 }) {
   const project = useProjects((s) => (row.remote ? undefined : s.projects.get(row.key)));
-  const local = !row.remote;
+  const minimal = useMinimal();
+  // The + shows for this computer's projects and for another computer's while it is connected.
+  const canStart = !row.remote?.offline;
   const below = (el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
     return { x: rect.left, y: rect.bottom + 2 };
   };
+  const newLabel = `New session in ${row.name}${row.remote ? ` on ${row.remote.computerName}` : ''}`;
   const newHere = () => {
+    if (row.remote) return newSessionOn(row.remote.computerId, row.remote.projectId);
     useProjects.getState().startIn(row.key);
     useSessions.getState().openNewSession();
   };
@@ -74,14 +81,15 @@ export function ProjectGroupRow({
         data-sidebar-project-folded={row.open ? undefined : true}
       >
         <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${row.open ? 'rotate-90' : ''}`} aria-hidden />
-        <ProjectIcon project={project} root={row.key} size={18} name={row.remote ? row.name : undefined} remote={row.remote?.computerId ?? false} />
+        {/* The project's own icon (its letter without one), grey with Project colours off. Minimal mode keeps the name only. */}
+        {!minimal && <ProjectIcon project={project} root={row.key} size={18} name={row.remote ? row.name : undefined} remote={row.remote?.computerId ?? false} />}
         <span className="min-w-0 flex-1 truncate text-body font-semibold text-text">{row.name}</span>
         {row.remote && <ComputerChip name={row.remote.computerName} computerId={row.remote.computerId} offline={row.remote.offline} />}
         {/* The count, or the project's two buttons while the pointer is on the row or focus is inside it. */}
-        <span className={`shrink-0 pr-1 text-ui text-faint tabular-nums ${local ? 'group-hover/project:hidden group-focus-within/project:hidden' : ''}`} data-sidebar-project-count>
+        <span className={`shrink-0 pr-1 text-ui text-faint tabular-nums ${canStart ? 'group-hover/project:hidden group-focus-within/project:hidden' : ''}`} data-sidebar-project-count>
           {row.count}
         </span>
-        {local && (
+        {canStart && (
           <span className="hidden shrink-0 items-center gap-0.5 group-hover/project:flex group-focus-within/project:flex">
             <Button
               variant="quiet"
@@ -89,8 +97,8 @@ export function ProjectGroupRow({
               iconOnly
               tabIndex={-1}
               icon={<Plus size={14} aria-hidden />}
-              aria-label={`New session in ${row.name}`}
-              data-tooltip={`New session in ${row.name}`}
+              aria-label={newLabel}
+              data-tooltip={newLabel}
               data-sidebar-project-new
               onClick={(event) => {
                 event.stopPropagation();

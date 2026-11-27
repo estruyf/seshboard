@@ -8,6 +8,8 @@ describe('previewKeyAction', () => {
   it('reloads the page on ⌘R and Ctrl+R', () => {
     expect(previewKeyAction(key('r', { meta: true }), 'darwin')).toBe('reload');
     expect(previewKeyAction(key('R', { control: true }), 'win32')).toBe('reload');
+    expect(previewKeyAction(key('R', { meta: true, shift: true }), 'darwin')).toBe('hard-reload');
+    expect(previewKeyAction(key('r', { control: true, shift: true }), 'linux')).toBe('hard-reload');
   });
 
   it("hands the app's keys over and keeps editing keys in the page", () => {
@@ -237,7 +239,7 @@ describe('pageMenuEntries', () => {
   const page = { browser: true, back: true, forward: false, session: false };
 
   it('offers back, forward and reload on the page itself, then Inspect', () => {
-    expect(ids(pageMenuEntries(params, page))).toEqual(['back', 'forward', 'reload', '-', 'inspect']);
+    expect(ids(pageMenuEntries(params, page))).toEqual(['back', 'forward', 'reload', 'hard-reload', '-', 'inspect']);
     expect(pageMenuEntries(params, page)[1]).toMatchObject({ id: 'forward', enabled: false });
   });
 
@@ -250,9 +252,17 @@ describe('pageMenuEntries', () => {
 
   it("offers a session's page the selection and the element for its message", () => {
     const session = { ...page, session: true };
-    expect(ids(pageMenuEntries(params, session))).toEqual(['back', 'forward', 'reload', '-', 'add-element', '-', 'inspect']);
+    expect(ids(pageMenuEntries(params, session))).toEqual(['back', 'forward', 'reload', 'hard-reload', '-', 'add-element', '-', 'inspect']);
     expect(ids(pageMenuEntries({ ...params, selectionText: 'hello' }, session))).toEqual(['copy', '-', 'quote', 'add-element', '-', 'inspect']);
-    expect(ids(pageMenuEntries({ ...params, selectionText: '  ' }, session))).toEqual(['back', 'forward', 'reload', '-', 'add-element', '-', 'inspect']);
+    expect(ids(pageMenuEntries({ ...params, selectionText: '  ' }, session))).toEqual(['back', 'forward', 'reload', 'hard-reload', '-', 'add-element', '-', 'inspect']);
+  });
+
+  it('offers the site actions of the page, before the message entries', () => {
+    const start = [{ action: 'github-pr', label: 'Start session from this pull request' }, { action: 'site-1', label: 'Review with the checklist' }];
+    expect(ids(pageMenuEntries(params, { ...page, start }))).toEqual(['back', 'forward', 'reload', 'hard-reload', '-', 'start-session', 'start-session', '-', 'inspect']);
+    expect(pageMenuEntries(params, { ...page, start })[6]).toMatchObject({ id: 'start-session', label: 'Review with the checklist', action: 'site-1' });
+    expect(ids(pageMenuEntries({ ...params, selectionText: 'hello' }, { ...page, session: true, start: start.slice(0, 1) }))).toEqual(['copy', '-', 'start-session', '-', 'quote', 'add-element', '-', 'inspect']);
+    expect(ids(pageMenuEntries(params, { ...page, start: [] }))).toEqual(['back', 'forward', 'reload', 'hard-reload', '-', 'inspect']);
   });
 
   it('offers spelling, then editing in a field, as the field allows', () => {

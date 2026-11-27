@@ -1,4 +1,4 @@
-import { issueQuery, STATE_LABEL_COLORS, STATE_LABEL_DESCRIPTIONS, STATE_LABEL_KEYS, type IssueItem, type StateLabelKey, type TriggerSource } from '@seshboard/protocol';
+import { issueQuery, STATE_LABEL_COLORS, STATE_LABEL_DESCRIPTIONS, type IssueItem, type StateLabelKey, type TriggerSource } from '@seshboard/protocol';
 import { json, readFailure, type GhRun, type SourceRead } from './gh.ts';
 
 /**
@@ -31,23 +31,26 @@ export async function readIssues(gh: GhRun, root: string, source: TriggerSource)
   return { ok: true, value: issues };
 }
 
-/** `owner/name` from an issue's link. */
-export const repoOfIssueUrl = (url: string) => /github\.com\/([^/]+)\/([^/]+)\/issues\//i.exec(url);
+/** `owner/name` from an issue's or pull request's link. */
+export const repoOfIssueUrl = (url: string) => /github\.com\/([^/]+)\/([^/]+)\/(?:issues|pull)\//i.exec(url);
 
-/** Who opened each issue, to the repository (`OWNER`, `MEMBER`, `COLLABORATOR`, `NONE`, …), in one GraphQL call. */
-export async function readAssociations(gh: GhRun, root: string, issues: readonly IssueItem[]): Promise<SourceRead<Map<number, string>>> {
+/**
+ * Who opened each issue (or pull request, with `kind`), to the repository (`OWNER`, `MEMBER`, `COLLABORATOR`, `NONE`,
+ * …), in one GraphQL call.
+ */
+export async function readAssociations(gh: GhRun, root: string, items: ReadonlyArray<{ number: number; url: string }>, kind: 'issue' | 'pullRequest' = 'issue'): Promise<SourceRead<Map<number, string>>> {
   const out = new Map<number, string>();
-  const where = issues.length ? repoOfIssueUrl(issues[0]!.url) : null;
+  const where = items.length ? repoOfIssueUrl(items[0]!.url) : null;
   if (!where) return { ok: true, value: out };
-  const fields = issues.map((i) => `i${i.number}: issue(number: ${i.number}) { authorAssociation }`).join('\n');
+  const fields = items.map((i) => `i${i.number}: ${kind}(number: ${i.number}) { authorAssociation }`).join('\n');
   const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {\n${fields}\n} }`;
   const result = await gh(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${where[1]}`, '-f', `name=${where[2]}`], root, 20_000);
   if (result.code !== 0 || result.missing) return readFailure(result);
   const data = (json(result.stdout) as { data?: { repository?: Record<string, { authorAssociation?: unknown } | null> | null } } | null)?.data?.repository;
   if (!data) return { ok: false, message: "gh's answer didn't read", rateLimited: false };
-  for (const issue of issues) {
-    const association = data[`i${issue.number}`]?.authorAssociation;
-    if (typeof association === 'string') out.set(issue.number, association);
+  for (const item of items) {
+    const association = data[`i${item.number}`]?.authorAssociation;
+    if (typeof association === 'string') out.set(item.number, association);
   }
   return { ok: true, value: out };
 }
@@ -79,7 +82,7 @@ export async function readCollaborators(gh: GhRun, root: string): Promise<number
   return Number.isInteger(count) ? count : null;
 }
 
-/** One `gh issue edit`: the state label, the trigger's label and the assignee in one call. */
+/** One `gh issue edit` (or `gh pr edit`): the state label, the trigger's label and the assignee in one call. */
 export async function editIssue(gh: GhRun, root: string, args: string[]): Promise<SourceRead<null>> {
   const result = await gh(args, root, 20_000);
   return result.code === 0 && !result.missing ? { ok: true, value: null } : readFailure(result);
@@ -89,12 +92,12 @@ export async function editIssue(gh: GhRun, root: string, args: string[]): Promis
  * Makes the state labels the repository doesn't have yet, in their colours. Labels that are there keep theirs. Says
  * why when it can't (no right to make labels).
  */
-export async function ensureStateLabels(gh: GhRun, root: string, names: Record<StateLabelKey, string>): Promise<SourceRead<null>> {
+export async function ensureStateLabels(gh: GhRun, root: string, names: Record<StateLabelKey, string>, keys: readonly StateLabelKey[]): Promise<SourceRead<null>> {
   const listed = await gh(['label', 'list', '--json', 'name', '--limit', '500'], root, 15_000);
   if (listed.code !== 0 || listed.missing) return readFailure(listed);
   const raw = json(listed.stdout);
   const have = new Set((Array.isArray(raw) ? raw : []).flatMap((l) => (typeof (l as { name?: unknown })?.name === 'string' ? [(l as { name: string }).name.toLowerCase()] : [])));
-  for (const key of STATE_LABEL_KEYS) {
+  for (const key of keys) {
     if (have.has(names[key].toLowerCase())) continue;
     const made = await gh(['label', 'create', names[key], '--color', STATE_LABEL_COLORS[key], '--description', STATE_LABEL_DESCRIPTIONS[key]], root, 15_000);
     // Made meanwhile (another computer): fine.

@@ -6,7 +6,6 @@ import { useComputers } from '../../state/computersStore.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
 import { RemoteTriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -52,7 +51,6 @@ export function RemoteRunRowPane({ client, computer, state, pane }: { client: Rp
   return (
     <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-remote-run-row={run.id} data-remote-computer={computer.id}>
       <header className={`${PANE_HEADER} ${remoteLine(pane)}`} data-scrolled={!edge.atTop || undefined} {...paneHeader(pane)}>
-        {pane.leading && <SidebarToggle />}
         <span className="flex size-[22px] shrink-0 items-center justify-center rounded-md bg-pipeline/15 @max-[400px]:hidden">
           <ListTree size={14} className="text-pipeline" aria-hidden />
         </span>

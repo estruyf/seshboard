@@ -57,9 +57,10 @@ export function filterFiles(files: readonly string[], filter: string): Set<strin
 
 /**
  * The rows the tree shows: open folders show what is in them. With a filter, only the files that match show, with the
- * folders they are in, all open, so typing finds a file without opening folders by hand.
+ * folders they are in, all open, so typing finds a file without opening folders by hand. `closed` holds the folders
+ * closed by hand while the filter is on.
  */
-export function visibleRows(root: FileTreeNode, open: ReadonlySet<string>, filter = '', files?: readonly string[]): FileTreeRow[] {
+export function visibleRows(root: FileTreeNode, open: ReadonlySet<string>, filter = '', files?: readonly string[], closed: ReadonlySet<string> = new Set()): FileTreeRow[] {
   const query = filter.trim();
   let keep: Set<string> | null = null;
   if (query) {
@@ -74,7 +75,7 @@ export function visibleRows(root: FileTreeNode, open: ReadonlySet<string>, filte
   const walk = (node: FileTreeNode, depth: number) => {
     for (const child of node.children) {
       if (keep && !keep.has(child.path)) continue;
-      const isOpen = child.dir && (keep !== null || open.has(child.path));
+      const isOpen = child.dir && (keep !== null ? !closed.has(child.path) : open.has(child.path));
       rows.push({ path: child.path, name: child.name, depth, dir: child.dir, open: isOpen });
       if (isOpen) walk(child, depth + 1);
     }

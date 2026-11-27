@@ -95,3 +95,96 @@ export function stepRowLabel(row: { title: string; parent: string | null; meta: 
   if (row.status) parts.push(STATUS_LABEL[row.status]);
   return parts.join(', ');
 }
+
+/** How Minimal mode marks a row's state: by shape, so it reads without colour. A failure keeps its red badge. */
+export type MinimalMark = 'dot' | 'spinner' | 'ring' | 'error' | 'none';
+
+/** The state names Minimal mode's marks say, as their `aria-label` and tooltip. */
+export const MINIMAL_STATE_LABEL: Record<Exclude<RowStatus, null>, string> = {
+  'needs-you': 'Needs you',
+  running: 'Working',
+  background: 'Working in the background',
+  unread: 'To review',
+  error: 'Failed',
+  idle: 'Open',
+};
+
+/**
+ * Minimal mode's mark for a state: a filled dot for needs you, a turning arc while it works, a ring to review, the
+ * red badge for a failure, and nothing (an empty slot, so titles line up) when it is open or done.
+ */
+export function minimalMark(status: RowStatus): { mark: MinimalMark; label: string | null } {
+  switch (status) {
+    case 'needs-you':
+      return { mark: 'dot', label: MINIMAL_STATE_LABEL[status] };
+    case 'running':
+    case 'background':
+      return { mark: 'spinner', label: MINIMAL_STATE_LABEL[status] };
+    case 'unread':
+      return { mark: 'ring', label: MINIMAL_STATE_LABEL[status] };
+    case 'error':
+      return { mark: 'error', label: MINIMAL_STATE_LABEL[status] };
+    case 'idle':
+    case null:
+      return { mark: 'none', label: null };
+  }
+}
+
+/**
+ * The tooltip of a one-line row in Minimal mode: the title, then everything the second line and the marks would have
+ * said (what it waits for, project, branch, computer, what is open, note, reminder, why it is done, a usage limit,
+ * the profile, the folder). Empty parts are left out.
+ */
+export function minimalRowTooltip(row: {
+  title: string;
+  waitingFor?: string | null;
+  project?: string | null;
+  branch?: string | null;
+  computer?: string | null;
+  terminal?: boolean;
+  tabs?: number;
+  note?: string | null;
+  reminder?: string | null;
+  done?: string | null;
+  limit?: string | null;
+  profile?: string | null;
+  cwd?: string | null;
+}): string {
+  const tabs = row.tabs ?? 0;
+  const open = [row.terminal ? 'a terminal' : null, tabs > 0 ? `${tabs} browser ${tabs === 1 ? 'tab' : 'tabs'}` : null].filter(Boolean);
+  return [
+    row.title || 'Untitled session',
+    row.waitingFor,
+    [row.project, row.branch].filter(Boolean).join(' · ') || null,
+    row.computer ? `On ${row.computer}` : null,
+    open.length ? `Open: ${open.join(', ')}` : null,
+    row.note ? `Note: ${row.note}` : null,
+    row.reminder,
+    row.done,
+    row.limit,
+    row.profile ? `Profile: ${row.profile}` : null,
+    row.cwd,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** The kinds of row the sidebar lists, for what sits at their left edge (`rowLeading`). */
+export type SidebarRowKind = 'session' | 'run' | 'queue' | 'pipeline-step';
+
+/**
+ * What a row shows at its left edge: its state mark, an empty slot of the same width, or its project's tile (a run row:
+ * the pipeline's). Minimal mode has no project markers on any row: sessions and steps show their state, queued
+ * prompts an empty slot (their header says what they are), so every title starts at the same place. Full mode is as
+ * it was: the project's tile, and a step's state.
+ */
+export function rowLeading(kind: SidebarRowKind, { minimal }: { minimal: boolean }): 'state' | 'empty' | 'project' {
+  if (kind === 'pipeline-step') return 'state';
+  if (!minimal) return 'project';
+  return kind === 'queue' ? 'empty' : 'state';
+}
+
+/** A queued prompt's tooltip: the prompt (cut at 300 characters), then its project and when it was queued. */
+export function queueRowTooltip(prompt: string, project: string, queued: string): string {
+  return [prompt.length > 300 ? `${prompt.slice(0, 299)}…` : prompt, `${project} · queued ${queued}`].join('\n');
+}

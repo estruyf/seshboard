@@ -1,5 +1,6 @@
 import { ViewHeader } from '../ViewHeader.tsx';
-import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { openSidePanelOnStart } from '../../state/sidePanelOnStart.ts';
+import { ChevronDown, Clock, CornerDownRight, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, remoteOnlyBranches, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useProvider, useProviderReadiness, useProviders } from '../../state/providersStore.ts';
@@ -43,7 +44,8 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { markKept, useSessions } from '../../state/sessionsStore.ts';
 import { inScope } from '../../state/sidebarRows.ts';
 import { PromptChips } from '../savedPrompts/PromptChips.tsx';
 import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
@@ -82,6 +84,8 @@ import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { linkNoticeText } from './linkNotice.ts';
 import { startFromGithub, useGithubStart, type GithubStartRequest } from '../../state/githubStartStore.ts';
+import { usePrefetchBase } from './usePrefetchBase.ts';
+import { useStartUnder } from '../../state/startUnderStore.ts';
 import { currentCheckoutBlocked, forkCaution, linkBanner, NO_AUTOSTART, otherRepository, prBranch, readOnlyFork, startNote, startPrompt, takenWorktreeNames, uniqueWorktreeName, worktreeNameFor } from '../github/githubStart.ts';
 import { chipItem, reasonLine } from '../github/githubText.ts';
 import { activityByProject, latestBranches, orderProjects, tileStatus } from './projectTiles.ts';
@@ -89,7 +93,7 @@ import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
+import { carriedPicks, DEFAULTS_KEY, globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
 /**
@@ -115,11 +119,11 @@ function LocalNewSession() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const sessions = useSessions((s) => s.sessions);
+  const baseRows = useRows((s) => s.rows);
   const select = useSessions((s) => s.select);
   const models = useHosts((s) => s.models);
   const commandsVersion = useHosts((s) => s.commandsVersion);
   const focusRequest = useSessions((s) => s.newSessionRequest);
-  const hosts = useHosts((s) => s.hosts);
   const live = useSessions((s) => s.live);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
@@ -166,8 +170,8 @@ function LocalNewSession() {
   /** The project whose profile was just set from the hint's link: the hint says it now comes from its defaults. */
   const [profileSavedFor, setProfileSavedFor] = useState<string | null>(null);
   /**
-   * A profile asked for when New session opened (Copilot is ready's Start): picking a project or a draft loading after
-   * it doesn't undo it, until another profile is picked.
+   * A profile picked by hand, or asked for when New session opened (Copilot is ready's Start): picking a project or a
+   * draft loading after it doesn't undo it, until another profile is picked.
    */
   const pinnedProfile = useRef<string | null>(null);
   // A provider profile's (GitHub Copilot's) own model and mode, picked here for this session. Null until picked: the
@@ -204,6 +208,16 @@ function LocalNewSession() {
    * `undefined` while nothing was changed, so changes made before a folder is picked (`null`) count too.
    */
   const touchedFor = useRef<string | null | undefined>(undefined);
+  /** The choices set by hand in this visit (see `carriedPicks`): picking another project keeps them over its defaults. */
+  const picked = useRef<Partial<Choices>>({});
+  /** Another provider's model, effort or mode was picked by hand: picking another project keeps them too. */
+  const providerPicked = useRef(false);
+  /** Something else chose the folder and the choices (a link, a queued item, a schedule): earlier picks no longer apply. */
+  const forgetPicks = () => {
+    picked.current = {};
+    providerPicked.current = false;
+    pinnedProfile.current = null;
+  };
   /** A `seshboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
   const folderFromLink = useRef(useClone.getState().form !== null);
   const linkRequest = useLinks((s) => s.newSession);
@@ -212,6 +226,8 @@ function LocalNewSession() {
   const presets = useRef(0);
   /** The prompt came from a link and hasn't been sent or cleared: its length, to say so under the message box. */
   const [linkPrompt, setLinkPrompt] = useState<number | null>(null);
+  /** The link's prompt came from a site action in the browser, not a `seshboard://` link. */
+  const [linkPromptFrom, setLinkPromptFrom] = useState<'browser' | undefined>(undefined);
   /** A link's `repo`: being looked up, or not found among your checkouts. */
   const [linkRepo, setLinkRepo] = useState<{ repo: string; state: 'looking' | 'missing' } | null>(null);
   /** The link named no folder: rather than guess, the folder is left empty and the picker opens. */
@@ -249,6 +265,8 @@ function LocalNewSession() {
   const [queueAuto, setQueueAuto] = useState<boolean | null>(null);
   /** Opened with Start after this one…: the session it follows. Add to queue leads while Wait for still says it. */
   const [startAfterId, setStartAfterId] = useState<string | null>(null);
+  /** Start session from a selection: the session the text came from, which the new one goes under once it starts. */
+  const [parent, setParent] = useState<{ sessionId: string; label: string } | null>(null);
   const startAfterRequest = useStartAfter((s) => s.request);
   const waitMenu = useMenu();
   /** Start anyway in Start's menu sends what is in the box, without asking again. */
@@ -259,8 +277,9 @@ function LocalNewSession() {
    */
   const [fromGithub, setFromGithub] = useState<{ request: GithubStartRequest; issue: GithubIssueDetail | null; pr: GithubPrDetail | null; error: string | null; loading: boolean } | null>(null);
   const githubRequest = useGithubStart((s) => s.request);
+  const startUnderRequest = useStartUnder((s) => s.request);
   /** A link's issue or pull request, waiting for the link's folder (a `repo` is looked up first). */
-  const [linkGithub, setLinkGithub] = useState<{ type: 'issue' | 'pr'; ref: string; prompt: string | null; autostart: boolean } | null>(null);
+  const [linkGithub, setLinkGithub] = useState<{ type: 'issue' | 'pr'; ref: string; prompt: string | null; autostart: boolean; from?: 'browser' } | null>(null);
   // Clone from GitHub: the form (kept in the store, so Run on can move it to another computer) and its clone here.
   const cloneEnabled = useCloneEnabled();
   const cloneForm = useClone((s) => s.form);
@@ -339,7 +358,7 @@ function LocalNewSession() {
   // The sessions the sidebar lists (sessions from other apps only when the scope shows them): the
   // tiles' status lines and "Pick up in" come from these.
   const kept = useKeptSessions();
-  const rows = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
+  const rows = useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
   const activity = useMemo(() => activityByProject(rows), [rows]);
   const ordered = useMemo(
     () => orderProjects(folders, projectOrder, (root) => Math.max(projects.get(root)?.lastActivity ?? 0, activity.get(root)?.lastActivity ?? 0) || null),
@@ -391,9 +410,11 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
     setPreset(undefined);
     setDraftPrompt('');
     touchedFor.current = undefined;
+    forgetPicks();
     forgetProviderChoices();
     setProfileOverride(null);
     setD(firstChoices());
@@ -457,6 +478,7 @@ function LocalNewSession() {
     // The store has already turned a project name into its folder.
     folderFromLink.current = true;
     touchedFor.current = undefined;
+    forgetPicks();
     forgetProviderChoices();
     setProfileOverride(null);
     setAddAsProject(true);
@@ -466,7 +488,7 @@ function LocalNewSession() {
     if (!link.cwd && !link.repo) setPickerRequest((n) => n + 1);
     // An issue or pull request: filled in once its folder is known (below), and never started on its own.
     const githubType = link.issue ? 'issue' : link.pr ? 'pr' : null;
-    setLinkGithub(githubType ? { type: githubType, ref: (link.issue ?? link.pr)!, prompt: link.prompt, autostart: link.autostart } : null);
+    setLinkGithub(githubType ? { type: githubType, ref: (link.issue ?? link.pr)!, prompt: link.prompt, autostart: link.autostart, from: link.from } : null);
     setFromGithub(null);
     if (githubType) {
       setPendingStart(null);
@@ -479,6 +501,7 @@ function LocalNewSession() {
       setPreset({ text: link.prompt, seq: ++presets.current });
       setDraftPrompt(link.prompt);
       setLinkPrompt(link.prompt.length);
+      setLinkPromptFrom(link.from);
     }
   }, [linkRequest]);
   // Start after this one…: the session's project (through `startIn`, above), Wait for that session, Start by itself on.
@@ -492,6 +515,18 @@ function LocalNewSession() {
     setQueueAuto(true);
     setStartAfterId(request.sessionId);
   }, [startAfterRequest]);
+  // Start session from a selection: the session's project (through `startIn`, above, in a new worktree), the text as the
+  // prompt with a link to the session, and the session to go under. Nothing starts until you press Start.
+  useEffect(() => {
+    if (!startUnderRequest) return;
+    const request = useStartUnder.getState().take();
+    if (!request) return;
+    if (fromLater || fromSchedule) leaveQueued();
+    setRestored(null);
+    setPreset({ text: request.text, context: [{ kind: 'session', sessionId: request.sessionId, label: request.label }], seq: ++presets.current });
+    setDraftPrompt(request.text);
+    setParent({ sessionId: request.sessionId, label: request.label });
+  }, [startUnderRequest]);
   // New session from an issue or pull request: its project, then (once gh has read it) the worktree, chip and prompt.
   // Like a link's, it never starts on its own.
   useEffect(() => {
@@ -501,6 +536,7 @@ function LocalNewSession() {
     if (fromLater || fromSchedule) leaveQueued();
     folderFromLink.current = true;
     touchedFor.current = undefined;
+    forgetPicks();
     forgetProviderChoices();
     setProfileOverride(null);
     setPendingStart(null);
@@ -567,6 +603,7 @@ function LocalNewSession() {
     folderFromLink.current = true;
     touchedFor.current = item.cwd;
     worktreeFor.current = null;
+    forgetPicks();
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
@@ -583,6 +620,7 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
   }, [laterRequest]);
   // Edit… on a schedule: its folder, choices and prompt, in a box of its own, until Save schedule (or leaving it).
   useEffect(() => {
@@ -594,6 +632,7 @@ function LocalNewSession() {
     folderFromLink.current = true;
     touchedFor.current = draft.cwd;
     worktreeFor.current = null;
+    forgetPicks();
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
@@ -610,6 +649,7 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
   }, [scheduleRequest]);
   // The command palette's prompt step, moved here with ⌘E: its folder, choices, profile and prompt.
   const handoff = usePaletteBus((s) => s.handoff);
@@ -622,6 +662,7 @@ function LocalNewSession() {
     folderFromLink.current = true;
     touchedFor.current = item.root;
     worktreeFor.current = null;
+    forgetPicks();
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
@@ -679,7 +720,7 @@ function LocalNewSession() {
   useEffect(() => {
     if (!linkGithub || !cwd || linkRepo) return;
     setLinkGithub(null);
-    startFromGithub({ root: cwd, type: linkGithub.type, ref: linkGithub.ref, item: null, link: { prompt: linkGithub.prompt, autostart: linkGithub.autostart } });
+    startFromGithub({ root: cwd, type: linkGithub.type, ref: linkGithub.ref, item: null, link: { prompt: linkGithub.prompt, autostart: linkGithub.autostart, from: linkGithub.from } });
   }, [linkGithub, cwd, linkRepo]);
   // Find a checkout of the link's repository among your projects and folders with sessions.
   const lookingFor = linkRepo?.state === 'looking' ? linkRepo.repo : null;
@@ -739,7 +780,8 @@ function LocalNewSession() {
     setRestored(draft.seeded ? null : draft);
     if (!draft.form) return;
     touchedFor.current = cwd;
-    setD(draft.form.choices);
+    // Choices set by hand before picking this project are newer than the ones kept with its prompt.
+    setD(question ? draft.form.choices : { ...draft.form.choices, ...picked.current });
     if (pinnedProfile.current === null) setProfileOverride(draft.form.profileId);
     setRunAsId(draft.form.runAs ?? null);
   };
@@ -754,8 +796,9 @@ function LocalNewSession() {
   // A new folder starts from its project's defaults (again when they arrive or change, until the user changes something).
   useEffect(() => {
     if (!loaded || touchedFor.current === cwd) return;
-    forgetProviderChoices();
-    const choices = firstChoices();
+    if (!providerPicked.current) forgetProviderChoices();
+    // What was set by hand goes over the defaults (a quick question keeps its own choices).
+    const choices = question ? firstChoices() : { ...firstChoices(), ...picked.current };
     setD(worktreeFor.current === cwd && !question ? { ...choices, workspace: 'worktree' } : choices);
   }, [loaded, cwd, defaultsKey, newSessionMode, newSessionModel, newSessionEffort, lastMode, autostarting, question, questionChoices]);
 
@@ -816,11 +859,13 @@ function LocalNewSession() {
   /** A choice made in another provider's chips: it stays when the project's defaults change, as `update`'s. */
   const pickForProvider = () => {
     touchedFor.current = cwd;
+    providerPicked.current = true;
     setSavedNote(null);
     setSwitched(null);
   };
   const update = (patch: Partial<Choices>) => {
     touchedFor.current = cwd;
+    if (!question) picked.current = { ...picked.current, ...carriedPicks(patch) };
     setSavedNote(null);
     setSwitched(null);
     setD((current) => ({ ...current, ...patch }));
@@ -843,18 +888,19 @@ function LocalNewSession() {
   };
   const changeFolder = (folder: string) => {
     touchedFor.current = undefined;
-    forgetProviderChoices();
+    if (!providerPicked.current) forgetProviderChoices();
     if (folder !== fromGithub?.request.root) setFromGithub(null);
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
-    // A profile asked for when New session opened (Start a Copilot session) stays through picking the project.
+    // A profile picked by hand, or asked for when New session opened (Start a Copilot session), stays through picking the project.
     if (pinnedProfile.current === null) setProfileOverride(null);
     setSwitched(null);
     setProfileSavedFor(null);
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
     setCwd(folder);
     setAddAsProject(true);
     // Quick question is never the folder New session opens on next time: ⌘N stays on your last project.
@@ -877,6 +923,7 @@ function LocalNewSession() {
 
   const canWorktree = options.git && (inspection?.isGitRepo ?? false) && !freshClone;
   const useWorktree = d.workspace === 'worktree' && canWorktree;
+  usePrefetchBase(client, cwd, useWorktree && !noWorktree, d.baseRef);
   const effectiveName = nameTouched ? worktreeName : suggestedName;
   const branch = inspection?.branch ?? (cwd ? (lastBranches.get(cwd) ?? null) : null);
   const folderBranches = useMemo(() => (cwd && inspection?.branch ? new Map(lastBranches).set(cwd, inspection.branch) : lastBranches), [lastBranches, cwd, inspection]);
@@ -1010,6 +1057,7 @@ function LocalNewSession() {
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
+    setParent(null);
   };
   /** Schedule… (or Save schedule): the prompt in the box with this folder and these choices, in the schedule dialog. */
   const openSchedule = () => {
@@ -1132,6 +1180,7 @@ function LocalNewSession() {
         github: fresh || noWorktree || noBranch ? undefined : githubStart(worktree),
         provider: runWith ? { model: runWithModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
         ...(asOrchestrator ? { orchestrator: true } : {}),
+        ...(parent ? { parentSessionId: parent.sessionId } : {}),
         // A link starts what it says, never at a higher price.
         ...(fastStart && !fromLink ? { fastMode: true } : {}),
       },
@@ -1141,6 +1190,7 @@ function LocalNewSession() {
         trust: (needed) => trustRepository(client, needed),
         addProject: (path) => client.call('projects.add', { path }).then(reloadProjects),
         keep: useDrafts.getState().keepFirstPrompt,
+        sidePanel: openSidePanelOnStart,
         open: (sessionId) => {
           // The next session is one session again, as after a pipeline's run.
           setOrchestrate(false);
@@ -1162,6 +1212,7 @@ function LocalNewSession() {
           }
           if (!fresh && worktree && !nameTouched) setSuggestedName(randomWorktreeName());
           setFastStart(false);
+          setParent(null);
           if (fromGithub) {
             setFromGithub(null);
             setNameTouched(false);
@@ -1196,7 +1247,7 @@ function LocalNewSession() {
    * its own model and mode, and says what it turned off that was on (a worktree, a pipeline), with the way back.
    */
   const pickProfile = (id: string) => {
-    pinnedProfile.current = null;
+    pinnedProfile.current = id;
     const to = profiles.find((p) => p.id === id)?.provider ?? 'claude';
     const supports = to === 'claude' ? [] : (catalog.find((p) => p.id === to)?.supports ?? []);
     setSwitched(
@@ -1310,7 +1361,20 @@ function LocalNewSession() {
       </span>
     ) : linkPrompt !== null ? (
       <Notice inline icon={<Link2 size={13} className="text-accent-ink" aria-hidden />} actions={clearButton('data-clear-link-prompt')} data-link-notice>
-        {pendingStart !== null ? 'Starting a session with the prompt from an external link…' : linkNoticeText(linkPrompt)}
+        {pendingStart !== null ? 'Starting a session with the prompt from an external link…' : linkNoticeText(linkPrompt, linkPromptFrom)}
+      </Notice>
+    ) : parent ? (
+      <Notice
+        inline
+        icon={<CornerDownRight size={13} className="text-accent-ink" aria-hidden />}
+        actions={
+          <Button variant="quiet" size="sm" onClick={() => setParent(null)} className="-my-1 shrink-0" data-clear-parent>
+            Remove
+          </Button>
+        }
+        data-parent-notice
+      >
+        Goes under {parent.label} in the sidebar.
       </Notice>
     ) : fromLater ? (
       <Notice
@@ -1480,7 +1544,7 @@ function LocalNewSession() {
       {/* The view is a container, so the sidebar and side panels count. Stacked, it scrolls; in columns, each column does. */}
       <div ref={viewRef} className="@container/new-session flex min-h-0 flex-1 flex-col overflow-y-auto @min-[860px]/new-session:overflow-hidden">
         <div className={NEW_SESSION_GRID} data-new-session-view data-new-session-layout={layoutMode}>
-          <aside aria-label="Projects" className="flex min-w-0 flex-col gap-2.5 @min-[860px]/new-session:row-span-2 @min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:row-span-1" data-new-session-projects>
+          <aside aria-label="Projects" className="flex min-w-0 flex-col gap-2.5 @min-[860px]/new-session:row-span-2 @min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:row-span-1 @min-[1200px]/new-session:justify-center-safe" data-new-session-projects>
             {/* With a paired computer: where Claude runs. */}
             <RunOnSwitch fill />
             {cloneForm ? (
@@ -1517,7 +1581,7 @@ function LocalNewSession() {
 
           {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onDone={(root) => root && changeFolder(root)} />}
 
-          <main className="flex min-w-0 flex-col gap-3.5 @min-[860px]/new-session:min-h-0 [@media(max-height:680px)]:@min-[860px]/new-session:overflow-y-auto">
+          <main className="flex min-w-0 flex-col gap-3.5 @min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:justify-center-safe [@media(max-height:680px)]:@min-[860px]/new-session:overflow-y-auto">
             {/* When stacked the projects come first and say what this is: the heading is for screen readers there. */}
             <div className="sr-only shrink-0 @min-[860px]/new-session:not-sr-only" data-new-session-heading>
               {/* The header names the view: here, where it runs. */}
@@ -1541,7 +1605,7 @@ function LocalNewSession() {
             <div className="grid shrink-0 gap-2" data-from-link-banner={fromGithub.request.link ? true : undefined}>
               {fromGithub.request.link && (
                 <Notice tone="info" icon={<GitBranch size={14} aria-hidden />}>
-                  {linkBanner(fromGithub.request.type, githubNumber)}
+                  {linkBanner(fromGithub.request.type, githubNumber, fromGithub.request.link.from)}
                 </Notice>
               )}
               {fromGithub.request.link?.autostart && (
@@ -1801,6 +1865,7 @@ function LocalNewSession() {
                         type="button"
                         className="shrink-0 text-link hover:underline"
                         onClick={() => {
+                          pinnedProfile.current = switched.back;
                           setProfileOverride(switched.back);
                           setSwitched(null);
                         }}

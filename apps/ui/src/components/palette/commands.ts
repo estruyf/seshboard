@@ -127,6 +127,8 @@ import {
   ZoomIn,
   ZoomOut,
   Search,
+  Leaf,
+  Code2,
 } from 'lucide-react';
 import type { BrowserAction } from '../../state/browserActions.ts';
 import type { ColorScheme, ConversationView, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
@@ -170,8 +172,12 @@ export interface PaletteApi {
   manageSessions(options?: { focus?: 'archive' | 'delete' }): void;
   setPreferences(patch: PreferencesPatch): void;
   setSidebar(state: SidebarState): void;
-  /** ⌘B: open, or collapsed as Settings says. */
+  /** ⌘B: open closes the panel, closed opens it. */
   toggleSidebar(): void;
+  /** Back (-1) or forward (1) through the places shown, as the title bar's buttons do. */
+  goInHistory(direction: 1 | -1): void;
+  /** The nav rail's menu: which items show, and Reset. */
+  customizeNavRail(): void;
   /** The next (1) or previous (-1) session in the sidebar's order. */
   goToSession(direction: 1 | -1): void;
   goToNextNeedsYou(): void;
@@ -241,6 +247,8 @@ export interface PaletteApi {
   searchInFiles(): void;
   toggleAgents(): void;
   toggleCommands(): void;
+  /** Opens the session's side panel with nothing in it, listing the tools to open there; with a tool there already, nothing changes. */
+  showSidePanel(): void;
   /** Opens the session's web preview in front, on the newest server running in it when none is open yet. */
   openWeb(): void;
   reloadWeb(): void;
@@ -464,10 +472,12 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'next-session', title: 'Next session', group: 'general', shortcut: keysFor('session.next'), icon: ChevronsDown, keywords: 'switch cycle down sidebar order', when: always, run: (api) => api.goToSession(1) },
   { id: 'previous-session', title: 'Previous session', group: 'general', shortcut: keysFor('session.previous'), icon: ChevronsUp, keywords: 'switch cycle up sidebar order back', when: always, run: (api) => api.goToSession(-1) },
   { id: 'next-needs-you', title: 'Go to next session that needs you', group: 'general', shortcut: keysFor('session.next-needs-you'), icon: BellRing, keywords: 'waiting permission question attention', when: always, run: (api) => api.goToNextNeedsYou() },
-  { id: 'toggle-sidebar', title: 'Toggle sidebar', group: 'general', shortcut: keysFor('sidebar.toggle'), icon: PanelLeft, keywords: 'hide show collapse rail', when: always, run: (api) => api.toggleSidebar() },
-  { id: 'sidebar-open', title: 'Open sidebar', group: 'general', icon: PanelLeftOpen, keywords: 'show expand', when: (ctx) => ctx.sidebar !== 'open', run: (api) => api.setSidebar('open') },
-  { id: 'sidebar-minimize', title: 'Minimize sidebar', group: 'general', icon: PanelLeftDashed, keywords: 'rail icons collapse narrow', when: (ctx) => ctx.sidebar !== 'minimal', run: (api) => api.setSidebar('minimal') },
-  { id: 'sidebar-close', title: 'Close sidebar', group: 'general', icon: PanelLeftClose, keywords: 'hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
+  { id: 'toggle-sidebar', title: 'Open or close the panel', group: 'general', shortcut: keysFor('sidebar.toggle'), icon: PanelLeft, keywords: 'sidebar toggle hide show collapse list', when: always, run: (api) => api.toggleSidebar() },
+  { id: 'sidebar-open', title: 'Open the panel', group: 'general', icon: PanelLeftOpen, keywords: 'sidebar show expand list', when: (ctx) => ctx.sidebar !== 'open', run: (api) => api.setSidebar('open') },
+  { id: 'sidebar-close', title: 'Close the panel', group: 'general', icon: PanelLeftClose, keywords: 'sidebar hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
+  { id: 'nav-back', title: 'Go back', group: 'general', icon: ArrowLeft, keywords: 'history previous place return', when: (ctx) => ctx.canGoBack, run: (api) => api.goInHistory(-1) },
+  { id: 'nav-forward', title: 'Go forward', group: 'general', icon: ArrowRight, keywords: 'history next place', when: (ctx) => ctx.canGoForward, run: (api) => api.goInHistory(1) },
+  { id: 'customize-nav-rail', title: 'Customize the rail…', group: 'general', icon: PanelLeftDashed, keywords: 'nav rail left views hide show order reorder icons', when: always, run: (api) => api.customizeNavRail() },
   { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: LayoutList, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
   { id: 'upcoming', title: 'Go to Upcoming', group: 'general', shortcut: keysFor('upcoming'), icon: CalendarClock, keywords: 'queue queued schedules scheduled runs planned later timeline week', when: (ctx) => ctx.view !== 'upcoming', run: (api) => api.openUpcoming('all') },
   { id: 'activity', title: 'Go to Activity', group: 'general', shortcut: keysFor('activity'), icon: Clock, keywords: 'what did i do today yesterday week history standup timesheet export summary day', when: (ctx) => ctx.view !== 'activity', run: (api) => api.openActivity() },
@@ -497,6 +507,25 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'sidebar view one line dense',
     when: always,
     run: (api, ctx) => api.setPreferences({ sidebarStyle: ctx.sidebarStyle === 'compact' ? 'standard' : 'compact' }),
+  },
+  {
+    id: 'minimal-mode',
+    title: (ctx) => (ctx.minimalMode ? 'Turn Minimal mode off' : 'Turn Minimal mode on'),
+    group: 'general',
+    icon: Leaf,
+    keywords: 'quiet calm minimalist less clutter one line chips badges counts borders',
+    shortcut: keysFor('view.minimal'),
+    when: always,
+    run: (api, ctx) => api.setPreferences({ minimalMode: !ctx.minimalMode }),
+  },
+  {
+    id: 'code-highlighting',
+    title: (ctx) => (ctx.codeHighlighting ? 'Turn code highlighting off' : 'Turn code highlighting on'),
+    group: 'general',
+    icon: Code2,
+    keywords: 'syntax colours colors code blocks diffs one colour monochrome',
+    when: always,
+    run: (api, ctx) => api.setPreferences({ codeHighlighting: !ctx.codeHighlighting }),
   },
   ...CONVERSATION_VIEWS.map(
     ({ value, label }): PaletteCommand => ({
@@ -621,6 +650,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'import-settings', title: 'Import settings…', group: 'general', icon: Download, keywords: 'backup restore move mac projects actions preferences', when: always, run: (api) => api.backup('import') },
   { id: 'connect-computer', title: 'Connect to another computer…', group: 'general', icon: Monitor, keywords: 'pair remote machine mac pc other computers sessions link', when: always, run: (api) => api.openSettings('remote') },
   { id: 'vscode-extension', title: 'VS Code extension', group: 'general', icon: SquareCode, keywords: 'companion cursor windsurf install marketplace settings', when: always, run: (api) => api.openSettings('vscode') },
+  { id: 'browser-extension', title: 'Browser extension', group: 'general', icon: AppWindow, keywords: 'chrome firefox edge brave web page selection connect install settings', when: always, run: (api) => api.openSettings('browserExtension') },
   { id: 'manage-sessions', title: 'Manage sessions', group: 'general', icon: Archive, keywords: 'archived archive done delete trash clean up old all sessions overview size disk', when: always, run: (api) => api.manageSessions() },
   {
     id: 'delete-archived-sessions',
@@ -924,12 +954,14 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'check-transcript', title: 'Check transcript…', group: 'session', icon: Stethoscope, keywords: 'diagnose empty missing messages error debug compacted', when: (ctx) => session(ctx) !== null && ctx.connected, run: (api) => api.checkTranscript() },
   { id: 'toggle-terminal', title: 'Toggle terminal', group: 'session', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: (ctx) => session(ctx) !== null, run: (api) => api.toggleTerminal() },
   { id: 'new-terminal-tab', title: 'New terminal tab', group: 'session', icon: Plus, keywords: 'shell', when: (ctx) => withCwd(ctx) && ctx.connected, run: (api) => api.newTerminalTab() },
+  { id: 'show-side-panel', title: 'Show side panel', group: 'session', icon: PanelRight, keywords: 'rail tools panel right open empty list', when: hasSession, run: (api) => api.showSidePanel() },
   { id: 'toggle-agents', title: 'Toggle agents', group: 'session', shortcut: keysFor('agents.toggle'), icon: Bot, keywords: 'subagents background panel', when: hasSession, run: (api) => api.toggleAgents() },
   { id: 'open-web-preview', title: 'Open web preview', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'browser localhost dev server site page', when: (ctx) => hasSession(ctx) && !ctx.browser && ctx.webPreview !== false, run: (api) => api.openWeb() },
   { id: 'reload-web-preview', title: 'Reload web preview', group: 'session', icon: RotateCw, keywords: 'refresh browser localhost dev server page', when: (ctx) => hasSession(ctx) && ctx.session!.web && !ctx.browser && ctx.webPreview !== false, run: (api) => api.reloadWeb() },
   { id: 'open-session-browser', title: 'Open browser', group: 'session', shortcut: keysFor('web.toggle'), icon: Globe, keywords: 'web preview page tab github pull request localhost dev server site', when: (ctx) => hasSession(ctx) && !!ctx.browser, run: (api) => api.openWeb() },
   { id: 'open-browser-in-new-window', title: 'Open browser in new window', group: 'session', icon: AppWindow, keywords: 'pop out popout detach separate window monitor screen display web page tabs', when: (ctx) => hasSession(ctx) && !!ctx.browser, run: (api) => api.openBrowserInNewWindow() },
-  { id: 'reload-browser-page', title: 'Reload page', group: 'session', icon: RotateCw, keywords: 'refresh browser web preview tab', when: (ctx) => hasSession(ctx) && ctx.session!.web && !!ctx.browser, run: (api) => api.reloadWeb() },
+  { id: 'reload-browser-page', title: 'Reload page', group: 'general', shortcut: keysFor('browser.reload'), icon: RotateCw, keywords: 'refresh browser web preview tab', when: onLoadedPage, run: (api) => api.browserAction('reload') },
+  { id: 'browser-hard-reload', title: 'Hard reload page', group: 'general', shortcut: keysFor('browser.hard-reload'), icon: RotateCw, keywords: 'refresh browser web preview tab cache force empty clear', when: onLoadedPage, run: (api) => api.browserAction('hard-reload') },
   { id: 'browser-new-tab', title: 'New tab', group: 'general', shortcut: keysFor('browser.new-tab'), icon: Plus, keywords: 'browser web page open', when: (ctx) => !!ctx.browser && (ctx.view === 'browser' || hasSession(ctx)), run: (api) => api.newBrowserTab() },
   { id: 'browser-bookmark', title: 'Bookmark this page', group: 'general', shortcut: keysFor('browser.bookmark'), icon: Bookmark, keywords: 'bookmark save link star folder browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.url === true && !ctx.browserPage.bookmarked, run: (api) => api.bookmarkPage() },
   { id: 'browser-bookmark-edit', title: 'Edit bookmark', group: 'general', shortcut: keysFor('browser.bookmark'), icon: Bookmark, keywords: 'bookmark rename folder remove browser web', when: (ctx) => !!ctx.browser && ctx.browserPage?.bookmarked === true, run: (api) => api.bookmarkPage() },

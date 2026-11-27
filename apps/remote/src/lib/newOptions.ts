@@ -38,7 +38,12 @@ export interface SummaryInput {
   base?: string | null;
   /** The pipeline Run as picked; null for one session. */
   pipeline: string | null;
+  /** Run as › Orchestrator: the session hands the tasks to sessions it starts. */
+  orchestrator?: boolean;
 }
+
+/** The last part of the second line: what Run as picked, when it isn't a pipeline. */
+const runAsPart = (orchestrator: boolean | undefined): SummaryPart => (orchestrator ? { text: 'orchestrator', changed: true } : { text: 'one session', changed: false });
 
 export function optionsSummary(input: SummaryInput): OptionsSummary {
   const { choice, defaults } = input;
@@ -53,7 +58,7 @@ export function optionsSummary(input: SummaryInput): OptionsSummary {
     ? [{ text: `Runs as ${input.pipeline}`, changed: true }]
     : [
         choice.worktree ? { text: input.base ? `New worktree from ${input.base}` : 'New worktree', changed: choice.worktree !== defaults.worktree || choice.baseRef !== defaults.baseRef } : { text: input.branch ? `This folder on ${input.branch}` : 'This folder', changed: choice.worktree !== defaults.worktree || input.branchPicked },
-        { text: 'one session', changed: false },
+        runAsPart(input.orchestrator),
       ];
   const line = (parts: SummaryPart[]) => parts.map((p) => p.text).join(' · ');
   return { first, second, label: `${line(first)}, ${line(second)}` };
@@ -63,7 +68,7 @@ export function optionsSummary(input: SummaryInput): OptionsSummary {
  * The Options row with another provider (GitHub Copilot): who runs it, its model and its mode. It works in the
  * project's folder as it is: worktrees, branches and pipelines are Claude Code's.
  */
-export function providerSummary({ provider, model, mode }: { provider: string; model: string; mode: string }): OptionsSummary {
+export function providerSummary({ provider, model, mode, orchestrator }: { provider: string; model: string; mode: string; orchestrator?: boolean }): OptionsSummary {
   const first: SummaryPart[] = [
     { text: provider, changed: true },
     { text: model, changed: false },
@@ -71,7 +76,7 @@ export function providerSummary({ provider, model, mode }: { provider: string; m
   ];
   const second: SummaryPart[] = [
     { text: 'This folder', changed: false },
-    { text: 'one session', changed: false },
+    runAsPart(orchestrator),
   ];
   const line = (parts: SummaryPart[]) => parts.map((p) => p.text).join(' · ');
   return { first, second, label: `${line(first)}, ${line(second)}` };

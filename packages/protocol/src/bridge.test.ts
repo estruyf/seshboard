@@ -28,16 +28,46 @@ describe('updateChannel preference', () => {
   });
 });
 
-describe('sidebarCollapsed preference', () => {
-  it('collapses to the minimal rail by default', () => {
-    expect(DEFAULT_PREFERENCES.sidebarCollapsed).toBe('minimal');
+describe('dockActivity preference', () => {
+  it('is Light by default, and keeps Off, Light and Smooth', () => {
+    expect(DEFAULT_PREFERENCES.dockActivity).toBe('light');
+    for (const mode of ['off', 'light', 'smooth'] as const) expect(sanitizePreferences({ dockActivity: mode })).toEqual({ dockActivity: mode });
+    expect(sanitizePreferences({ dockActivity: 'fast' })).toEqual({});
   });
 
-  it('keeps minimal and closed, and drops anything else', () => {
-    expect(sanitizePreferences({ sidebarCollapsed: 'closed' })).toEqual({ sidebarCollapsed: 'closed' });
-    expect(sanitizePreferences({ sidebarCollapsed: 'minimal' })).toEqual({ sidebarCollapsed: 'minimal' });
-    expect(sanitizePreferences({ sidebarCollapsed: 'hidden' })).toEqual({});
-    expect(sanitizePreferences({ sidebarCollapsed: 1 })).toEqual({});
+  it('turns the old switch into a mode: on is Light, off is Off', () => {
+    expect(sanitizePreferences({ dockActivity: true })).toEqual({ dockActivity: 'light' });
+    expect(sanitizePreferences({ dockActivity: false })).toEqual({ dockActivity: 'off' });
+  });
+});
+
+describe('sidebarCollapsed preference (removed)', () => {
+  it('is gone: an old file with it still loads, without the key', () => {
+    expect('sidebarCollapsed' in DEFAULT_PREFERENCES).toBe(false);
+    expect(sanitizePreferences({ sidebarCollapsed: 'minimal', sidebarStyle: 'compact' })).toEqual({ sidebarStyle: 'compact' });
+    expect(sanitizePreferences({ sidebarCollapsed: 'closed' })).toEqual({});
+  });
+});
+
+describe('nav rail preferences', () => {
+  it('shows every item in the default order by default', () => {
+    expect(DEFAULT_PREFERENCES.navRailOrder).toEqual(['home', 'sessions', 'upcoming', 'activity', 'browser', 'projects', 'computers', 'running']);
+    expect(DEFAULT_PREFERENCES.navRailHidden).toEqual([]);
+  });
+
+  it('keeps the known items hidden from the rail, once each, in the default order', () => {
+    expect(sanitizePreferences({ navRailHidden: ['activity', 'home', 'activity', 'settings', 'nope', 3] })).toEqual({ navRailHidden: ['home', 'activity'] });
+    expect(sanitizePreferences({ navRailHidden: 'home' })).toEqual({});
+  });
+
+  it("keeps the rail's order with every item once, a missing one at its own place", () => {
+    expect(sanitizePreferences({ navRailOrder: ['browser', 'home', 'sessions', 'upcoming', 'activity', 'projects', 'computers', 'running'] })).toEqual({
+      navRailOrder: ['browser', 'home', 'sessions', 'upcoming', 'activity', 'projects', 'computers', 'running'],
+    });
+    expect(sanitizePreferences({ navRailOrder: ['activity', 'home', 'new', 'settings', 'activity'] })).toEqual({
+      navRailOrder: ['activity', 'sessions', 'upcoming', 'home', 'browser', 'projects', 'computers', 'running'],
+    });
+    expect(sanitizePreferences({ navRailOrder: 'home' })).toEqual({});
   });
 });
 
@@ -114,6 +144,35 @@ describe('fileLinkClick preference', () => {
     expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'reveal' }) }.fileLinkClick).toBe('switchboard');
     const editor = { ...DEFAULT_PREFERENCES, fileLinkClick: 'editor' as const };
     expect({ ...editor, ...sanitizePreferences(mergePreferences(editor, { fileLinkClick: 'reveal' })) }.fileLinkClick).toBe('editor');
+  });
+});
+
+describe('minimal mode, code highlighting and project colours', () => {
+  it('default to everything shown, in colour', () => {
+    expect(DEFAULT_PREFERENCES.minimalMode).toBe(false);
+    expect(DEFAULT_PREFERENCES.codeHighlighting).toBe(true);
+    expect(DEFAULT_PREFERENCES.projectColors).toBe(true);
+  });
+
+  it('keep on and off, and drop anything else', () => {
+    for (const key of ['minimalMode', 'codeHighlighting', 'projectColors'] as const) {
+      expect(sanitizePreferences({ [key]: true })).toEqual({ [key]: true });
+      expect(sanitizePreferences({ [key]: false })).toEqual({ [key]: false });
+      expect(sanitizePreferences({ [key]: 'on' })).toEqual({});
+      expect(sanitizePreferences({ [key]: 1 })).toEqual({});
+    }
+  });
+
+  it('keeps the last colour theme as a theme id', () => {
+    expect(DEFAULT_PREFERENCES.colorThemeId).toBe('demo-time');
+    expect(sanitizePreferences({ colorThemeId: 'nord' })).toEqual({ colorThemeId: 'nord' });
+    expect(sanitizePreferences({ colorThemeId: 3 })).toEqual({});
+  });
+
+  it('take their defaults in a file saved before they existed', () => {
+    const old = { colorScheme: 'dark', themeId: 'nord' };
+    const prefs = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(old) };
+    expect([prefs.minimalMode, prefs.codeHighlighting, prefs.projectColors]).toEqual([false, true, true]);
   });
 });
 

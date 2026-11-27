@@ -38,6 +38,7 @@ import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
@@ -290,7 +291,7 @@ const SCOPE_LABEL: Record<ListedAction['scope'], string> = { project: 'This proj
 
 /** Actions: the project's actions (yours, shared and global), each opening the editor; New action starts one. */
 export function ProjectActionsTab({ root }: { root: string }) {
-  const { actions, sharedFile, errors, reload } = useProjectActionList(root);
+  const { actions, sharedFile, errors, reload, reorder } = useProjectActionList(root);
   const [editing, setEditing] = useState<{ action: ListedAction | null } | null>(null);
   const [status, flash] = useFlash();
   return (
@@ -345,6 +346,7 @@ export function ProjectActionsTab({ root }: { root: string }) {
           initialAction={editing.action}
           initial={editing.action ? null : {}}
           onChanged={reload}
+          onReorder={reorder}
           onSaved={(_saved, _previous, another) => {
             if (!another) setEditing(null);
             flash('Action saved');
@@ -413,7 +415,7 @@ function NameField({ project }: { project: ProjectInfo }) {
         placeholder={folder}
         aria-label="Name"
         aria-busy={saving || undefined}
-        className="h-8 w-72 max-w-full min-w-0 rounded-md border border-border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+        className="field h-8 w-72 max-w-full min-w-0 px-2.5 text-ui outline-none"
         data-project-name-input
       />
       {error && (
@@ -496,7 +498,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         <SettingRow label="Claude profile">
           <Select
             label="Claude profile"
-            className="h-8 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60"
+            className="field h-8 min-w-0 px-2 text-ui outline-none"
             value={project.profileId ?? ''}
             onChange={(value) => void projectActions.setProfile(project.root, value || null)}
             options={[{ value: '', label: `Default${fallback ? ` (${fallback.name})` : ''}` }, ...startable.map((p) => ({ value: p.id, label: startLabel(p, catalog), hint: p.account?.email ?? undefined }))]}
@@ -536,6 +538,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         >
           <BrowserSitesEditor
             sites={project.defaults.browserScriptSites ?? []}
+            anySite
             inputLabel="Site to allow scripts on"
             onSave={async (browserScriptSites) => {
               if (!client) return;
@@ -562,6 +565,27 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
             await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, orchestratorInstructions } });
             reload();
           }}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Seshboard tools in sessions"
+        hint="What the seshboard tools let this project's sessions do. Start sessions: start one here or on another computer, start later, read other sessions and notify you. With automation: also set up pipelines, triggers, schedules and project actions, and run them. Each save or start asks you first. Fewer tools leave more context for agents without tool search. Applies to sessions started from now on."
+        data-project-session-tools
+      >
+        <SegmentedControl
+          mode="radio"
+          label="Seshboard tools in sessions"
+          value={project.defaults.sessionTools ?? 'all'}
+          segments={[
+            { value: 'sessions', label: 'Start sessions' },
+            { value: 'all', label: 'With automation' },
+          ]}
+          onChange={async (sessionTools) => {
+            if (!client) return;
+            await client.call('projects.setDefaults', { root: project.root, defaults: { ...project.defaults, sessionTools } });
+            reload();
+          }}
+          data-project-session-tools-choice
         />
       </SettingRow>
       <SettingRow

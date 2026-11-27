@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { basename } from '../lib/format.ts';
 import { useFocus } from './focusGate.ts';
-import { useHosts } from './hostsStore.ts';
 import { useKeptSessions } from './keptSessions.ts';
 import { startQueued, useLater } from './laterStore.ts';
 import { usePreferences } from './preferencesStore.ts';
@@ -12,19 +11,18 @@ import { limitOf } from '../lib/usageLimit.ts';
 import { useMinute } from '../components/focus/useMinute.ts';
 import { useLimits } from './limitsStore.ts';
 import { useProfiles } from './profilesStore.ts';
-import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
+import { useRows } from './rowsStore.ts';
+import { markKept, useSessions, type SessionRowData } from './sessionsStore.ts';
 import { inScope } from './sidebarRows.ts';
 import { useSidebarSections } from './sidebarSectionsStore.ts';
 import { toast } from './toastStore.ts';
 
 /** The sessions the sidebar lists, live state included: what "busy" is measured against, so the queue agrees with the sidebar. */
 export function useListedRows(): SessionRowData[] {
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
+  const baseRows = useRows((s) => s.rows);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const kept = useKeptSessions();
-  return useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
+  return useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
 }
 
 /** A project's name for a folder: its own name, else the folder's. */

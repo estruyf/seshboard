@@ -1,4 +1,5 @@
 import aluminium from './aluminium.json';
+import blackAndWhite from './black-and-white.json';
 import catppuccin from './catppuccin.json';
 import demoTime from './demo-time.json';
 import forest from './forest.json';
@@ -20,6 +21,7 @@ import solarized from './solarized.json';
  */
 export const BUILT_IN_THEMES: ReadonlyArray<{ id: string; raw: unknown }> = [
   { id: 'demo-time', raw: demoTime },
+  { id: 'black-and-white', raw: blackAndWhite },
   { id: 'catppuccin', raw: catppuccin },
   { id: 'nord', raw: nord },
   { id: 'solarized', raw: solarized },

@@ -51,6 +51,12 @@ export const REMOTE_FEATURE_CLONE = 'projects.clone';
 export const REMOTE_FEATURE_PUSH_KEY = 'push.vapid';
 
 /**
+ * In `hello`'s `features`: `push.subscribe` takes `onlyWhenAway`, so the moments it names wait while someone uses this
+ * computer (no keyboard or mouse for 5 minutes, locked or asleep counts as away).
+ */
+export const REMOTE_FEATURE_PUSH_AWAY = 'push.away';
+
+/**
  * In `hello`'s `features`: `usage.sessionCost` and `usage.windowCosts` answer, and `usage.tokens` rows carry their
  * `cost`, so a session there and the plan windows show their estimated API cost here.
  */
@@ -98,6 +104,12 @@ export const REMOTE_FEATURE_FILES = 'files.read';
 
 /** In `hello`'s `features`: `session.commands` answers, so the / menu of another computer's session lists its skills and commands. */
 export const REMOTE_FEATURE_COMMANDS = 'session.commands';
+
+/**
+ * In `hello`'s `features`: `session.create` takes `orchestrator`, so New session there offers Run as › Orchestrator.
+ * The sessions an orchestrator starts sit under it (`RemoteSession.parentId`) on any computer.
+ */
+export const REMOTE_FEATURE_ORCHESTRATOR = 'session.orchestrator';
 
 /**
  * The most text of a file `files.read` sends (1 MB) and the largest image `files.image` sends (2.5 MB, 3.4 MB as

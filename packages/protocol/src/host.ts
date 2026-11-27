@@ -158,10 +158,17 @@ export const SessionHostInfo = z.object({
    * comes. Missing: it isn't.
    */
   apiRetry: ApiRetry.optional(),
+  /**
+   * Claude Code's guess at your next message, after a turn ("go", "yes, run the tests"): the message box offers it as
+   * a quick reply. Gone once the next turn starts. Missing: none (the first turn, plan mode, near a usage limit).
+   */
+  suggestion: z.string().optional(),
   /** Auto picked the model this session started on (null or missing: it didn't). */
   autoPick: AutoPick.nullable().optional(),
   /** Auto is still picking the model this session starts on; your first message waits for it. */
   autoChoosing: z.boolean().optional(),
+  /** Seshboard is still making the new session's worktree; Claude Code starts in it once it is there. Missing: it isn't. */
+  preparing: z.boolean().optional(),
   /** Its profile is at a plan usage limit: what is queued waits, and new sessions in the profile wait too. */
   usageLimit: UsageLimitHit.nullable().optional(),
   /**
@@ -175,6 +182,65 @@ export const SessionHostInfo = z.object({
   providerUsage: z.object({ amount: z.number(), unit: z.string() }).optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
+
+/**
+ * Seshboard's approval card (docs/seshboard-tools.md): a tool on a session's `seshboard` server wants to save or start
+ * something. The card shows what matters for its kind, in full, and you allow, deny or open it in the editor.
+ */
+export const APPROVAL_KINDS = ['pipeline', 'trigger', 'schedule', 'action', 'pause', 'delete', 'run', 'later', 'worktrees', 'handOff', 'clone'] as const;
+export const APPROVAL_EDITORS = ['pipeline', 'trigger', 'schedule', 'action'] as const;
+export type ApprovalEditor = (typeof APPROVAL_EDITORS)[number];
+export const ApprovalCard = z.object({
+  kind: z.enum(APPROVAL_KINDS),
+  /** The main button: "Save", "Run", "Delete". */
+  allowLabel: z.string().max(40),
+  /** The preview, one line each; `depth` indents a line under the one before (a pipeline's steps). */
+  lines: z.array(z.object({ text: z.string().max(300), detail: z.string().max(300).nullable(), depth: z.number().int().min(0).max(3) })).max(60),
+  /** Text shown in full, never cut: a prompt, a command, a filter written by the agent. */
+  blocks: z.array(z.object({ label: z.string().max(80), text: z.string().max(40_000) })).max(12),
+  /** Choices that change what is saved, each unticked unless `checked`: what goes without you, or watches at once. */
+  options: z.array(z.object({ key: z.string().max(60), label: z.string().max(200), detail: z.string().max(300).nullable(), checked: z.boolean() })).max(12),
+  /** Open in editor: the editor it opens, filled in with `draft`. Null: none. */
+  editor: z.enum(APPROVAL_EDITORS).nullable(),
+  /** What the editor opens with: the draft as the save RPC takes it, plus its project. */
+  draft: z.json().nullable(),
+});
+export type ApprovalCard = z.infer<typeof ApprovalCard>;
+
+/** How you answered an approval card: the options you ticked, or what the editor saved (`saved`). Sent as `updatedInput`. */
+export interface ApprovalReply {
+  options?: Record<string, boolean>;
+  /** Open in editor: you saved it there; its id and name. */
+  saved?: { id: string; name: string };
+}
+
+/**
+ * A tool asks on an approval card: its full name (`mcp__seshboard__save_pipeline`), its input, and the card. `title`
+ * goes after the agent's name, which the host that runs the session puts first ("wants to save a pipeline: …").
+ */
+export interface ApprovalAsk {
+  tool: string;
+  input: Record<string, unknown>;
+  title: string;
+  description: string;
+  card: ApprovalCard;
+}
+
+/** Your answer: allowed with what you ticked or saved, or denied with what you typed instead (`message`). */
+export interface ApprovalAnswer {
+  allowed: boolean;
+  message: string | null;
+  reply: ApprovalReply;
+}
+
+/** Reads an approval card's answer from the decision's `updatedInput`, whatever came. */
+export function approvalReplyOf(input: unknown): ApprovalReply {
+  const record = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  const options: Record<string, boolean> = {};
+  if (record.options && typeof record.options === 'object') for (const [key, value] of Object.entries(record.options)) if (typeof value === 'boolean') options[key] = value;
+  const saved = record.saved && typeof record.saved === 'object' ? (record.saved as Record<string, unknown>) : null;
+  return { options, ...(saved && typeof saved.id === 'string' ? { saved: { id: saved.id, name: typeof saved.name === 'string' ? saved.name : saved.id } } : {}) };
+}
 
 export const PermissionRequest = z.object({
   requestId: z.string(),
@@ -193,9 +259,13 @@ export const PermissionRequest = z.object({
   alwaysLabel: z.string().nullable(),
   /** The card also offers "Allow for this session" (the browser tools' cards): kept in memory until the engine restarts. */
   sessionAllow: z.boolean().optional(),
+  /** What the call does, in words, for the line under the title (a browser card's "Click “Sign in”"); the input otherwise. */
+  detail: z.string().optional(),
   /** Set when a subagent asked. */
   agentId: z.string().nullable(),
   createdAt: z.number(),
+  /** Seshboard's approval card for one of its own tools: the card shows this instead of the tool's input. */
+  approval: ApprovalCard.optional(),
 });
 export type PermissionRequest = z.infer<typeof PermissionRequest>;
 
@@ -269,6 +339,12 @@ export const WorktreeBranchBase = z.object({
   pullRequest: z.number().int().positive().optional(),
   /** The pull request is from a fork: its branch isn't on this repository's remote, so the worktree tracks nothing. */
   fork: z.boolean().optional(),
+  /**
+   * A pull request's branch checked out in another folder (the session that wrote it, an earlier review): `ownBranch`
+   * makes the worktree a branch of its own from the pull request's latest commit, tracking nothing, instead of refusing.
+   * A trigger's review asks for it: a push from there doesn't update the pull request.
+   */
+  ifTaken: z.literal('ownBranch').optional(),
 });
 export type WorktreeBranchBase = z.infer<typeof WorktreeBranchBase>;
 
@@ -317,3 +393,45 @@ export const EditorInfo = z.object({
   icon: z.string().optional(),
 });
 export type EditorInfo = z.infer<typeof EditorInfo>;
+
+/** A file icon theme an editor (VS Code, Cursor, …) has installed (`fileIcons.themes`). */
+export const FileIconThemeInfo = z.object({
+  /** `publisher.extension/theme`, what the `fileIconTheme` preference saves. */
+  id: z.string(),
+  label: z.string(),
+  /** The editor it was found in, such as "VS Code". */
+  editor: z.string(),
+});
+export type FileIconThemeInfo = z.infer<typeof FileIconThemeInfo>;
+
+const IconMap = z.record(z.string(), z.string());
+
+/**
+ * Which icon a file or folder gets, as VS Code's icon themes say it: icon ids by file name, extension (without the
+ * dot, `test.ts` before `ts`), folder name and language. Names are in lower case.
+ */
+export const FileIconAssociations = z.object({
+  file: z.string().optional(),
+  folder: z.string().optional(),
+  folderExpanded: z.string().optional(),
+  fileExtensions: IconMap.optional(),
+  fileNames: IconMap.optional(),
+  folderNames: IconMap.optional(),
+  folderNamesExpanded: IconMap.optional(),
+  languageIds: IconMap.optional(),
+});
+export type FileIconAssociations = z.infer<typeof FileIconAssociations>;
+
+/** A loaded file icon theme (`fileIcons.theme`); the icons themselves come from `fileIcons.icons`. */
+export const FileIconTheme = z.object({
+  id: z.string(),
+  label: z.string(),
+  /** The theme shows open and closed folder icons in place of the arrows, as VS Code does with it. */
+  hidesExplorerArrows: z.boolean(),
+  base: FileIconAssociations,
+  /** What changes in light mode. */
+  light: FileIconAssociations.nullable(),
+  /** The language of a file, by extension (without the dot) and by name, both in lower case. */
+  languages: z.object({ extensions: IconMap, fileNames: IconMap }),
+});
+export type FileIconTheme = z.infer<typeof FileIconTheme>;

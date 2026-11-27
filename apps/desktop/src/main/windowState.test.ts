@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, sanitizeWindowState, WindowStateStore } from './windowState.ts';
+import { fitsWhereSaved, placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, sanitizeWindowState, WindowStateStore } from './windowState.ts';
 
 const MIN = { width: 900, height: 560 };
 const LAPTOP = { x: 0, y: 25, width: 1512, height: 920 };
@@ -54,6 +54,18 @@ describe('placeWindow', () => {
 
   it('never restores below the minimum size', () => {
     expect(placeWindow({ x: 10, y: 40, width: 200, height: 100 }, [LAPTOP], MIN)).toEqual({ x: 10, y: 40, width: 900, height: 560 });
+  });
+});
+
+describe('fitsWhereSaved', () => {
+  it('is true when the window opens exactly where it was', () => {
+    expect(fitsWhereSaved({ x: 1800, y: -300, width: 1600, height: 1000 }, [LAPTOP, EXTERNAL], MIN)).toBe(true);
+    expect(fitsWhereSaved({ x: 10, y: 40, width: 200, height: 100 }, [LAPTOP], MIN)).toBe(true);
+  });
+
+  it('is false while its display is missing or smaller, so the window waits for it', () => {
+    expect(fitsWhereSaved({ x: 1800, y: -300, width: 1600, height: 1000 }, [LAPTOP], MIN)).toBe(false);
+    expect(fitsWhereSaved({ x: 1300, y: 100, width: 1200, height: 800 }, [LAPTOP], MIN)).toBe(false);
   });
 });
 

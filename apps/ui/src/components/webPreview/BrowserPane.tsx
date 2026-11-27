@@ -1,8 +1,8 @@
-import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, SquareDashedMousePointer, Star, Trash2, UserRound, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AppWindow, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Code, Copy, Ellipsis, ExternalLink, Globe, History, Link, LogOut, Pencil, Pin, Plus, RotateCw, Search, Smartphone, SquareDashedMousePointer, SquarePen, Star, Trash2, UserRound, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type RefObject, type MouseEvent, type ReactNode } from 'react';
-import { addressBarUrl, browserNavigation, copiedAddress, type BrowserHistoryEntry, loadErrorText, shortUrl, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
+import { addressBarUrl, browserNavigation, copiedAddress, siteActionsFor, type BrowserHistoryEntry, loadErrorText, shortUrl, type SiteAction, webPageUrl, WEB_PREVIEW_PHONE_WIDTH } from '@seshboard/protocol/client';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
-import { askClearData, askRename, copyAddress, findInPage, pickElement, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
+import { askClearData, askRename, copyAddress, findInPage, pickElement, reloadPage, toggleDevTools, toggleMute, zoomPage } from '../../state/browserActions.ts';
 import { popOutBrowser } from '../../state/browserWindow.ts';
 import { browserPopoutSession } from '../../state/popoutsStore.ts';
 import { bookmarkPage, useBookmarkOf } from '../../state/browserBookmarksStore.ts';
@@ -12,12 +12,10 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useWebPreview } from '../../state/webPreviewStore.ts';
-import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Popover } from '../ui/Popover.tsx';
-import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { addressSuggestions, autoPick, type AddressSuggestion } from './addressSuggestions.ts';
 import { tabMenu } from './tabMenu.tsx';
 import { ProfileMark, ProfileSwitch, profileSwitchMenu, useNewTabMenu } from './ProfileMenus.tsx';
@@ -80,7 +78,12 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
   const listId = useId();
   const tabId = tab?.id ?? null;
   const bookmarked = useBookmarkOf(tab) !== undefined;
+  // The site actions offered on this page (Settings › Browser › Site actions): the bar offers a session from it.
+  const siteActions = usePreferences((s) => s.prefs.siteActions);
+  const offered = useMemo(() => (browser && tab?.url ? siteActionsFor(tab.url, siteActions) : []), [browser, tab?.url, siteActions]);
   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
+  const [startMenu, setStartMenu] = useState<{ x: number; y: number } | null>(null);
+  const startFrom = (action: SiteAction) => tab?.url && window.seshboard?.startFromPage({ url: tab.url, action: action.id, title: tab.title, selection: '' });
   // The suggestions under the address bar (the browser on): open while typing, and the row picked with ↑↓ (null: the
   // first one if Enter should open it, `autoPick`; -1: what was typed).
   const [listOpen, setListOpen] = useState(false);
@@ -191,7 +194,8 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
     setDraft(field.value.slice(0, start) + field.value.slice(end));
     setRefused(null);
   };
-  const reload = () => tab && previewPage(tab.id)?.reload(tab.url);
+  /** Loads the page again; `hard` (Shift-click, ⌘⇧R) skips the cache. */
+  const reload = (hard = false) => tab && reloadPage(tab, hard);
   const failure = tab?.url ? page.failure : null;
   const covered = !tab?.url || !!failure || page.crashed;
   const typed = draft ?? '';
@@ -209,7 +213,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
         {page.loading ? (
           <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Stop loading" onClick={() => tab && previewPage(tab.id)?.stop()} data-web-preview-stop="" />
         ) : (
-          <Button variant="quiet" size="sm" iconOnly icon={<RotateCw size={12} aria-hidden />} aria-label="Reload" disabled={!tab?.url} onClick={reload} data-web-preview-reload="" />
+          <Button variant="quiet" size="sm" iconOnly icon={<RotateCw size={12} aria-hidden />} aria-label="Reload" shortcut="browser.reload" disabled={!tab?.url} onClick={(event) => reload(event.shiftKey)} data-web-preview-reload="" />
         )}
         {/* The address keeps room to type in a narrow panel: Pin, the star and Open in browser go to ⋯ (`NARROW_HIDDEN`), the sizes to one button, and Forward (in the palette and on the mouse) goes. */}
         <form onSubmit={go} className="relative mx-1 min-w-20 flex-1">
@@ -260,13 +264,45 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
             aria-controls={showList ? listId : undefined}
             aria-activedescendant={showList && highlighted >= 0 ? `${listId}-${highlighted}` : undefined}
             aria-keyshortcuts={browser ? formatKeys(keysFor('browser.address')) : undefined}
-            className={`h-7 w-full rounded-md border bg-card px-2 font-mono text-ui text-text outline-none placeholder:text-faint focus:border-link ${browser && tab?.url ? 'pl-7' : ''} ${refused ? 'border-error' : 'border-edge'}`}
+            className={`field h-7 w-full bg-card px-2 font-mono text-ui outline-none placeholder:text-faint ${browser && tab?.url ? 'pl-7' : ''} ${refused ? 'border-error' : ''}`}
             data-web-preview-address=""
             data-browser-address=""
             data-tab-id={tab?.id}
           />
           {showList && <SuggestionList id={listId} anchor={address} suggestions={suggestions} highlighted={highlighted} onPick={open} onHighlight={setPicked} onClose={closeList} />}
         </form>
+        {/* The page's site actions: New session in the main window, from this page (main checks the action again).
+            One runs at once, several open a menu. In a narrow panel only the icon shows. */}
+        {offered.length > 0 && (
+          <Button
+            size="sm"
+            icon={<SquarePen size={13} aria-hidden />}
+            aria-label={offered.length === 1 ? offered[0]!.name : 'Start session'}
+            data-tooltip={offered.length === 1 ? offered[0]!.name : undefined}
+            aria-haspopup={offered.length > 1 ? 'menu' : undefined}
+            aria-expanded={offered.length > 1 ? startMenu !== null : undefined}
+            onClick={(e) => {
+              if (offered.length === 1) return startFrom(offered[0]!);
+              const rect = e.currentTarget.getBoundingClientRect();
+              setStartMenu(startMenu ? null : { x: rect.left, y: rect.bottom + 4 });
+            }}
+            className="mr-1"
+            data-browser-start-session={offered.map((action) => action.id).join(' ')}
+          >
+            <span className={NARROW_HIDDEN}>Start session</span>
+            {offered.length > 1 && <ChevronDown size={12} aria-hidden />}
+          </Button>
+        )}
+        {startMenu && (
+          <Menu
+            x={startMenu.x}
+            y={startMenu.y}
+            width={260}
+            label="Start session"
+            entries={offered.map((action) => ({ label: action.name, icon: <SquarePen size={13} aria-hidden />, onSelect: () => startFrom(action), data: { 'data-browser-start-action': action.id } }))}
+            onClose={() => setStartMenu(null)}
+          />
+        )}
         {/* The tab's browser profile, and the way to move it to another. */}
         {browser && tab && <ProfileSwitch tab={tab} />}
         {browser && tab && (
@@ -396,7 +432,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
                   <p className="text-body text-text">Couldn't open this page</p>
                   <p className="text-meta text-muted">{loadErrorText(failure.description)}</p>
                   <div className="flex gap-2">
-                    <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={reload} data-web-preview-retry="">
+                    <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={() => reload()} data-web-preview-retry="">
                       Try again
                     </Button>
                     <Button size="sm" icon={<ExternalLink size={11} aria-hidden />} onClick={() => window.open(failure.url || tab!.url!, '_blank')}>
@@ -408,7 +444,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
                 <>
                   <p className="text-body text-text">Nothing is running at {shortUrl(failure.url || tab!.url!)}</p>
                   <p className="text-meta text-muted">{loadErrorText(failure.description)}</p>
-                  <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={reload} data-web-preview-retry="">
+                  <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={() => reload()} data-web-preview-retry="">
                     Retry
                   </Button>
                 </>
@@ -418,7 +454,7 @@ export function BrowserPane({ tab, tabs, onNewTab, offers = [], lead, trail, emp
           {page.crashed && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-sidebar px-6 text-center" data-web-preview-crashed="">
               <p className="text-body text-text">This page stopped</p>
-              <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={reload}>
+              <Button size="sm" icon={<RotateCw size={11} aria-hidden />} onClick={() => reload()}>
                 Reload
               </Button>
             </div>
@@ -632,6 +668,7 @@ function pageMenu(tab: BrowserTab, bookmarked: boolean): MenuEntry[] {
     { label: 'Rename tab…', icon: <Pencil size={13} aria-hidden />, onSelect: () => askRename(tab), data: { 'data-page-rename': true } },
     { label: 'Copy address', icon: <Copy size={13} aria-hidden />, disabled: blank, onSelect: () => copyAddress(tab) },
     'separator',
+    { label: 'Hard reload', icon: <RotateCw size={13} aria-hidden />, hint: formatKeys(keysFor('browser.hard-reload')), disabled: blank, onSelect: () => reloadPage(tab, true), data: { 'data-page-hard-reload': true } },
     { label: 'Find in page', icon: <Search size={13} aria-hidden />, disabled: blank, onSelect: () => findInPage(tab), data: { 'data-page-find': true } },
     { label: 'Zoom in', icon: <ZoomIn size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, 1) },
     { label: 'Zoom out', icon: <ZoomOut size={13} aria-hidden />, disabled: blank, onSelect: () => zoomPage(tab, -1) },
@@ -681,7 +718,7 @@ function FindBar({ tabId, focus, matches, active }: { tabId: string; focus: numb
         spellCheck={false}
         aria-label="Find in page"
         aria-invalid={none ? true : undefined}
-        className={`h-7 min-w-0 flex-1 rounded-md border bg-card px-2 text-ui text-text outline-none placeholder:text-faint focus:border-link ${none ? 'border-error' : 'border-edge'}`}
+        className={`field h-7 min-w-0 flex-1 bg-card px-2 text-ui outline-none placeholder:text-faint ${none ? 'border-error' : ''}`}
         data-browser-find-input=""
       />
       <span className="min-w-14 text-right text-meta text-muted tabular-nums" aria-live="polite" data-browser-find-count="">
@@ -689,7 +726,7 @@ function FindBar({ tabId, focus, matches, active }: { tabId: string; focus: numb
       </span>
       <Button variant="quiet" size="sm" iconOnly icon={<ChevronUp size={13} aria-hidden />} aria-label="Previous match" data-tooltip="Previous match" disabled={matches === 0} onClick={() => step('previous')} data-browser-find-previous="" />
       <Button variant="quiet" size="sm" iconOnly icon={<ChevronDown size={13} aria-hidden />} aria-label="Next match" data-tooltip="Next match" disabled={matches === 0} onClick={() => step('next')} data-browser-find-next="" />
-      <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Close find" data-tooltip="Close find" onClick={() => previewPage(tabId)?.closeFind()} data-browser-find-close="" />
+      <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} kbd="Esc" aria-label="Close find" onClick={() => previewPage(tabId)?.closeFind()} data-browser-find-close="" />
     </div>
   );
 }
@@ -711,7 +748,7 @@ export function TabIcon({ tab, size = 12 }: { tab: Pick<BrowserTab, 'favicon'>; 
   // Which icon failed to draw: a new one gets its chance.
   const [broken, setBroken] = useState<string | null>(null);
   if (!tab.favicon || broken === tab.favicon) return <Globe size={size} aria-hidden className="shrink-0 text-faint" />;
-  return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" onError={() => setBroken(tab.favicon)} />;
+  return <img src={tab.favicon} alt="" aria-hidden width={size} height={size} className="shrink-0 rounded-sm" data-favicon onError={() => setBroken(tab.favicon)} />;
 }
 
 /** An empty tab: the servers running in the session, or where to type, then favourites, bookmarks and closed tabs (the browser on). */
@@ -745,76 +782,4 @@ function EmptyTab({ tabId, owner, offers, browser }: { tabId: string; owner: str
   );
 }
 
-type PanelSizing = 'side' | 'half' | 'full';
-
-/** Side or Half for every panel on the right, Full for this one. */
-function choosePanelSize(value: PanelSizing, onChange: (full: boolean) => void): void {
-  if (value !== 'full') useRightPanel.getState().setSizing(value);
-  onChange(value === 'full');
-}
-
-const SIZE_LABEL: Record<PanelSizing, string> = { side: 'Side', half: 'Half', full: 'Full' };
-
-/**
- * The panel's sizes: beside the conversation at the width you dragged (Side), sharing the session area 50/50 (Half,
- * for every panel on the right, `useRightPanel().sizing`), or the whole session area (Full, this panel). In a narrow
- * toolbar, one button that names the size and opens the three, so the address bar keeps its room.
- */
-export function PanelSize({ full, onChange }: { full: boolean; onChange(full: boolean): void }) {
-  const sizing = useRightPanel((s) => s.sizing);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const value: PanelSizing = full ? 'full' : sizing;
-  const pick = (next: PanelSizing) => choosePanelSize(next, onChange);
-  return (
-    <>
-      <span className="contents @max-[420px]/toolbar:hidden">
-        <SegmentedControl
-          mode="radio"
-          size="sm"
-          label="Panel size"
-          value={value}
-          onChange={pick}
-          segments={(['side', 'half', 'full'] as const).map((size) => ({ value: size, label: SIZE_LABEL[size], data: { 'data-web-preview-size': size } }))}
-          className="ml-1"
-        />
-      </span>
-      <span className="hidden @max-[420px]/toolbar:contents">
-        <Button
-          variant="quiet"
-          size="sm"
-          aria-label={`Panel size: ${SIZE_LABEL[value]}`}
-          data-tooltip="Panel size"
-          aria-haspopup="menu"
-          aria-expanded={menu !== null}
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            setMenu(menu ? null : { x: rect.right - 140, y: rect.bottom + 4 });
-          }}
-          className="ml-0.5 shrink-0"
-          data-web-preview-size-menu={value}
-        >
-          {SIZE_LABEL[value]}
-          <ChevronDown size={11} aria-hidden />
-        </Button>
-      </span>
-      {menu && (
-        <Menu
-          x={menu.x}
-          y={menu.y}
-          label="Panel size"
-          entries={(['side', 'half', 'full'] as const).map((size) => ({ label: SIZE_LABEL[size], checked: value === size, onSelect: () => pick(size), data: { 'data-web-preview-size': size } }))}
-          onClose={() => setMenu(null)}
-        />
-      )}
-    </>
-  );
-}
-
-/** ‹ Conversation, on the left of the toolbar in Full. */
-export function BackToConversation({ onClick }: { onClick(): void }) {
-  return (
-    <Button variant="quiet" size="sm" icon={<ChevronLeft size={13} aria-hidden />} onClick={onClick} className="mr-1" data-web-preview-conversation="">
-      Conversation
-    </Button>
-  );
-}
+export { BackToConversation, PanelSize } from '../transcript/PanelSize.tsx';

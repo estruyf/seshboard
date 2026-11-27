@@ -61,6 +61,22 @@ describe('worktrees from a branch and from a pull request', () => {
     expect(existsSync(worktreePath(repo, 'pr-151'))).toBe(false);
   });
 
+  it('gives a pull request whose branch is checked out somewhere else a branch of its own, when asked', async () => {
+    await git(repo, ['switch', '-q', '-c', 'feat/issue-start']);
+    const made = await makeWorktreeFrom(repo, 'review-a', { branch: 'feat/issue-start', pullRequest: 151, ifTaken: 'ownBranch' });
+    expect(made).toEqual({ path: worktreePath(repo, 'review-a'), branch: 'review-151-review-a' });
+    expect((await git(made.path, ['rev-parse', 'HEAD'])).trim()).toBe(prHead);
+    expect(await git(made.path, ['rev-parse', '--abbrev-ref', '@{upstream}'], { allowExitCodes: [128] }).catch(() => '')).toBe('');
+    // The other folder keeps its branch; a second review gets its own too.
+    expect((await git(repo, ['branch', '--show-current'])).trim()).toBe('feat/issue-start');
+    const again = await makeWorktreeFrom(repo, 'review-b', { branch: 'feat/issue-start', pullRequest: 151, ifTaken: 'ownBranch' });
+    expect(again.branch).toBe('review-151-review-b');
+    // A free branch is still the pull request's own.
+    await git(repo, ['switch', '-q', 'main']);
+    const free = await makeWorktreeFrom(repo, 'review-c', { branch: 'feat/issue-start', pullRequest: 151, ifTaken: 'ownBranch' });
+    expect(free.branch).toBe('feat/issue-start');
+  });
+
   it('makes the worktrees Claude Code makes itself: from this commit, or fresh from origin\'s default branch', async () => {
     // The checkout is a commit ahead of origin, and origin's main a commit ahead of the copy here.
     await commit(repo, 'local work');

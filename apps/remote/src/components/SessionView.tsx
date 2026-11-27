@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { agentName, apiRetryLine, type ApiRetry, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_MOVE, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
+import { ArrowDown, ArrowUp, ChevronDown, Copy, CornerDownLeft, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
+import { agentName, apiRetryLine, type ApiRetry, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_FILES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_MOVE, REMOTE_FEATURE_QUEUE_SEND_NOW, REMOTE_FEATURE_SEND_ATTACHMENTS_ONLY, remoteOrchestratorOf, remoteOrchestratorOfWorker, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { useReceivedRetry } from '../lib/receivedRetry.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
+import { BackToOrchestrator, OrchestratorBar, OrchestratorSheet, overviewOf } from './OrchestratorParts.tsx';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { transcriptItems } from '../lib/steps.ts';
@@ -107,6 +108,12 @@ export function SessionView({
   const openFile = features.includes(REMOTE_FEATURE_FILES) ? setFile : null;
   const [pipelineSheet, setPipelineSheet] = useState(false);
   const listed = new Set(sessions.sessions.map((s) => s.id));
+  // The orchestrator this session is, with its overview, or the one that started it (docs/orchestrator.md).
+  const orchestrator = remoteOrchestratorOf(sessions.orchestrators, sessionId);
+  const overview = useMemo(() => (orchestrator ? overviewOf(orchestrator, sessions) : null), [orchestrator, sessions]);
+  const [overviewSheet, setOverviewSheet] = useState(false);
+  const startedBy = orchestrator ? null : remoteOrchestratorOfWorker(sessions.orchestrators, sessionId);
+  const startedByTitle = startedBy && listed.has(startedBy.sessionId) ? (sessions.sessions.find((s) => s.id === startedBy.sessionId)?.title ?? 'Orchestrator') : null;
   const runParentId = runs.step && !runs.parent ? (runs.step.state.run.parentSessionId ?? runs.step.state.run.id) : null;
   const canOpenParent = runParentId !== null && (listed.has(runParentId) || runs.step?.state.run.parentSessionId === null);
   const stepName = runs.step ? runs.step.state.run.pipeline.steps[runs.step.index]?.name : undefined;
@@ -414,6 +421,8 @@ export function SessionView({
               onParent={canOpenParent && onOpenSession ? () => onOpenSession(runParentId!) : null}
             />
           )}
+          {overview && <OrchestratorBar groups={overview} onOpen={() => setOverviewSheet(true)} />}
+          {startedBy && startedByTitle && onOpenSession && <BackToOrchestrator title={startedByTitle} onOpen={() => onOpenSession(startedBy.sessionId)} />}
           <Transcript
             messages={messages}
             results={results}
@@ -487,6 +496,7 @@ export function SessionView({
               disabled={!client}
               working={working}
               answering={Boolean(open)}
+              reply={session?.provider ? null : (session?.suggestion ?? null)}
               idle={idlePlaceholder}
               onStop={stop}
               onSend={async (text, images, files, mode) => {
@@ -506,6 +516,7 @@ export function SessionView({
           )}
         </div>
         {runSheet && runState && <RunSheet state={runState} client={client} canOpen={(id) => listed.has(id) && id !== sessionId} onOpenStep={(id) => onOpenSession?.(id)} onClose={() => setRunSheet(false)} />}
+        {overviewSheet && overview && <OrchestratorSheet groups={overview} canOpen={(id) => listed.has(id) && id !== sessionId && Boolean(onOpenSession)} onOpenSession={(id) => onOpenSession?.(id)} onClose={() => setOverviewSheet(false)} />}
         {pipelineSheet && session && <RunPipelineSheet client={client} projectId={session.projectId} sessionId={sessionId} onClose={() => setPipelineSheet(false)} />}
         {ask.open && !panelFits && <AskSheet client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
         {askPanel && <AskPanel client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
@@ -842,6 +853,7 @@ function Composer({
   disabled,
   working,
   answering,
+  reply,
   idle,
   onStop,
   onSend,
@@ -862,6 +874,8 @@ function Composer({
   disabled: boolean;
   working: boolean;
   answering: boolean;
+  /** Claude Code's guess at your next message after its turn ("go"): a chip over the empty box sends it. */
+  reply?: string | null;
   /** What the box says while Claude waits for you: a run's parent and a step the run waits on say what writing does. */
   idle?: string | undefined;
   onStop: () => void;
@@ -920,6 +934,35 @@ function Composer({
       setBusy(false);
     }
   };
+  // Only over an empty box after a turn, so it never covers or joins what you wrote.
+  const offered = reply?.trim() && !working && !answering && !disabled && !text && attachments.items.length === 0 ? reply.trim() : null;
+  const sendReply = async (message: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onSend(message, [], [], 'queue');
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "The message wasn't sent.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const replyChip = (className: string) =>
+    offered ? (
+      <div className={className}>
+        <button
+          type="button"
+          onClick={() => void sendReply(offered)}
+          disabled={busy}
+          aria-label={`Send suggested reply: ${offered}`}
+          className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full bg-text/6 px-3 py-1.5 text-ui text-text enabled:active:bg-selected disabled:opacity-50 pointer-fine:hover:bg-selected"
+          data-remote-quick-reply
+        >
+          <CornerDownLeft className="size-3.5 shrink-0 text-muted" aria-hidden />
+          <span className="truncate">{offered.replace(/\s+/g, ' ')}</span>
+        </button>
+      </div>
+    ) : null;
   const placeholder = disabled ? 'Sending waits for the connection' : answering ? 'Or tell Claude what to do instead' : working ? 'Add to Up next' : (idle ?? 'Message Claude');
   const sendLabel = answering ? 'Send instead' : working ? 'Add to Up next' : 'Send';
   const field = (className: string) => (
@@ -962,6 +1005,7 @@ function Composer({
         onDrop={attachments.dropProps.onDrop}
         data-remote-composer
       >
+        {replyChip('flex min-w-0 pb-2')}
         <AttachmentTray state={attachments} className="pb-2" />
         <div className={`flex flex-col rounded-[24px] border bg-card px-2.5 pt-1 pb-1.5 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${dragging ? 'border-accent-ink ring-4 ring-accent/20' : 'border-edge'}`}>
           {field('max-h-48 min-h-11 w-full resize-none bg-transparent px-1.5 py-2.5 text-body text-text outline-none [field-sizing:content] placeholder:text-faint')}
@@ -1019,6 +1063,7 @@ function Composer({
       onDragLeave={attachments.dropProps.onDragLeave}
       onDrop={attachments.dropProps.onDrop}
     >
+      {replyChip('mx-auto flex w-full max-w-3xl min-w-0 pb-2')}
       <AttachmentTray state={attachments} className="mx-auto w-full max-w-3xl pb-2" />
       <div className={`mx-auto flex w-full max-w-3xl items-end gap-2 rounded-xl border bg-card p-1.5 pl-1.5 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${dragging ? 'border-accent-ink ring-4 ring-accent/20' : 'border-edge'}`}>
         <AttachButton state={attachments} disabled={disabled || answering} title={answering ? 'Answer the prompt first' : undefined} />

@@ -41,6 +41,12 @@ const cspPlugin: Plugin = {
   ],
 };
 
+/**
+ * A build for the smoke test (`npm run smoke`, `smoke:demo`) counts renders (`apps/ui/src/lib/renderCounts.ts`) and lets the
+ * smoke driver reach the stores; every other build (dev, dist) compiles both out.
+ */
+const smokeBuild = /^smoke/.test(process.env.npm_lifecycle_event ?? '');
+
 export default defineConfig({
   main: {
     define: { __SESHBOARD_COMMIT__: JSON.stringify(shortCommit()) },
@@ -57,6 +63,8 @@ export default defineConfig({
           'browser-mcp': resolve(here, 'src/browserMcp/index.ts'),
           // The orchestrator MCP server an orchestrator's agent starts: its calls go to the engine the same way.
           'orchestrator-mcp': resolve(here, 'src/orchestratorMcp/index.ts'),
+          // The browser extension's native messaging host: copied out of the app when installed, so it takes no shared chunks.
+          'browser-host': resolve(here, 'src/browserHost/index.ts'),
         },
       },
     },
@@ -74,6 +82,7 @@ export default defineConfig({
   renderer: {
     root: resolve(here, '../ui'),
     plugins: [react(), tailwindcss(), cspPlugin],
+    define: { __RENDER_COUNTS__: JSON.stringify(smokeBuild) },
     build: {
       outDir: resolve(here, 'out/renderer'),
       // Smaller bundle parses faster at startup; main and engine stay readable for stack traces.

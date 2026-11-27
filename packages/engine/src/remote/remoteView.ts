@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
 import { skimMarks,
+  parsePeerMessage,
+  peerName,
   inheritedDefault,
   inheritedPermissionMode,
   isAbsolutePath,
   listedInMainList,
+  type OrchestratorInfo,
   type PipelineRunState,
   type RemoteRunState,
   type CatchUp,
@@ -13,6 +16,7 @@ import { skimMarks,
   type ProfileDefaults,
   type ProjectDefaults,
   type RemoteArchivedSession,
+  type RemoteOrchestrator,
   type RemoteBlock,
   type RemoteMessage,
   type RemotePrompt,
@@ -23,6 +27,7 @@ import { skimMarks,
   type RemoteTriggerOrigin,
   type TriggerSession,
   type SessionHostInfo,
+  type StartedChild,
   type TranscriptBlock,
   type TranscriptMessage,
   type RemoteUsageBreakdown,
@@ -56,6 +61,10 @@ export interface ListOptions {
   starters?: ReadonlyMap<string, string>;
   /** The sessions and runs triggers started (by session or run id): the bolt and "Started by …" on the phone too. */
   triggers?: readonly TriggerSession[];
+  /** Every orchestrator: those among the sessions listed go along, for their overview. */
+  orchestrators?: readonly OrchestratorInfo[];
+  /** The sessions other sessions started (start_session): under those from the start, as an orchestrator's are. */
+  started?: readonly StartedChild[];
   /** Providers whose sessions are read-only here (Codex), with the command that continues one (`{sessionId}` in it). */
   readOnlyProviders?: ReadonlyMap<string, string>;
   now?: number;
@@ -78,9 +87,22 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
   // A step's session sits under its run's parent before its transcript says so (a session still starting).
   const stepParent = new Map<string, string>();
   for (const { run, steps } of options.runs ?? []) for (const step of steps) if (step.sessionId) stepParent.set(step.sessionId, run.parentSessionId ?? run.id);
+  // So does a session an orchestrator or another session started, with the title it was given until it has its own.
+  const startedTitle = new Map<string, string>();
+  for (const child of options.started ?? []) {
+    stepParent.set(child.sessionId, child.parentId);
+    startedTitle.set(child.sessionId, child.title);
+  }
+  for (const o of options.orchestrators ?? []) {
+    for (const w of o.workers) {
+      if (!w.sessionId) continue;
+      stepParent.set(w.sessionId, o.sessionId);
+      startedTitle.set(w.sessionId, w.title);
+    }
+  }
   const sessions: RemoteSession[] = listed.map((s) => ({
     id: s.id,
-    title: s.title,
+    title: (flags.has(s.id) ? null : startedTitle.get(s.id)) ?? s.title,
     projectId: projectIdOf(s.projectRoot),
     projectName: options.projectNames.get(s.projectRoot) ?? lastSegment(s.projectRoot),
     branch: s.branch,
@@ -97,6 +119,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     auto: autoOf(running.get(s.id)),
     background: running.get(s.id)?.backgroundTasks ?? [],
     ...(running.get(s.id)?.apiRetry ? { apiRetry: running.get(s.id)!.apiRetry } : {}),
+    ...(running.get(s.id)?.suggestion ? { suggestion: running.get(s.id)!.suggestion } : {}),
     parentId: flags.get(s.id)?.parentId ?? stepParent.get(s.id) ?? null,
   }));
   // Who started it: the device that did, or the one that started what it sits under (a pipeline's step, an agent).
@@ -114,10 +137,19 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     const origin = origins.get(session.id);
     if (origin) session.trigger = origin;
   }
-  if (!options.runs) return { sessions, prompts };
+  const listedIds = new Set(sessions.map((s) => s.id));
+  const orchestrators = options.orchestrators ? { orchestrators: remoteOrchestrators(options.orchestrators, listedIds) } : {};
+  if (!options.runs) return { sessions, prompts, ...orchestrators };
   const now = options.now ?? Date.now();
-  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, origins, ...(sources.kept ? { kept: sources.kept } : {}) });
-  return { sessions, prompts, runs };
+  const runs = remoteRuns(options.runs, listedIds, { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, origins, ...(sources.kept ? { kept: sources.kept } : {}) });
+  return { sessions, prompts, runs, ...orchestrators };
+}
+
+/** The orchestrators whose session the phone lists, without their project's folder. */
+export function remoteOrchestrators(orchestrators: readonly OrchestratorInfo[], listed: ReadonlySet<string>): RemoteOrchestrator[] {
+  return orchestrators
+    .filter((o) => listed.has(o.sessionId))
+    .map((o) => ({ sessionId: o.sessionId, createdAt: o.createdAt, workers: o.workers.map((w) => ({ sessionId: w.sessionId, itemId: w.itemId, title: w.title, startedAt: w.startedAt, pr: w.pr ?? null })) }));
 }
 
 /** The most sessions in Done a phone gets. */
@@ -212,6 +244,7 @@ export const remotePrompt = (p: PermissionRequest): RemotePrompt => ({
   title: p.title,
   description: p.description,
   alwaysLabel: p.alwaysLabel,
+  ...(p.detail ? { detail: p.detail } : {}),
   createdAt: p.createdAt,
 });
 
@@ -260,6 +293,8 @@ function remoteTurn(role: RemoteMessage['role'], blocks: RemoteBlock[]): Pick<Re
   if (trimmed.startsWith('<task-notification>')) return notice(tag(trimmed, 'summary') ?? 'Background task finished');
   // The saved transcript puts a line before an agent's hand-back; the live stream sends the tag on its own.
   if (/^(Another Claude session sent a message:\s*)?<agent-message from="/.test(trimmed)) return notice('An agent reported back');
+  const peer = parsePeerMessage(trimmed);
+  if (peer) return { role, blocks: [{ type: 'text', text: `From another session, ${peerName(peer)}:\n\n${peer.text}` }] };
   const command = tag(text, 'command-name');
   if (command) {
     const args = tag(text, 'command-args') ?? '';

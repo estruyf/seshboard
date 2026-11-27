@@ -90,6 +90,29 @@ The specs, the role and every text the agent reads are in `packages/protocol/src
 
 Providers get the server and the text through `ProviderHosts` (`orchestratorServer`, `isOrchestrator`, `appendSystemFor`), and a driver reads the text as `DriverSessionConfig.instructions`. A provider's sessions end their turns through the same `onTurnEnd`, so they report back like Claude Code's.
 
+## Any session can ask to start one
+
+Every other session (not an orchestrator, not read-only) gets the `seshboard` server's tools ([seshboard-tools.md](seshboard-tools.md)), `start_session` among them: `mcp__seshboard__start_session`. It is the Claude Code desktop app's way of starting a session from a session, for a task the user asks for or a fix the agent noticed on the way.
+
+- **The same server script.** The bridge gives the session a token for the `session` role (`serverFor(base, id, 'session')`), and the script lists the `seshboard` tools when `SESHBOARD_ORCHESTRATOR_ROLE` is `session` (`toolsFor`). Its calls go to `SessionTools`, whose `start_session` is `Orchestrator.startChild`, never to `run`.
+- **You decide on a card.** `startChild` checks the arguments and plans the start as `start_session` does (`plan`: agent, model, mode, worktree), then asks in the session's permission card (`askStart` in `HostManager` and `ProviderHosts`, through `RoutedHostManager`). The card has Allow and Deny only, in every permission mode. The call waits for your answer, and the session shows Needs you while the card is open.
+- **Allowed,** it starts as an orchestrator's start would, behind the focus and usage limits (a held start waits in the queue), and goes under the asking session in the sidebar (`setParent`). It gets no instructions and reports back to no one: the asking session has no tools to follow it, and an update would cost it a turn. A queued start goes under its session once it starts; after a restart it still starts, but at the top level.
+- **The call's time limit.** The call stays open until you answer. Claude Code's limit for an MCP call is long. Codex stops a call after 60 seconds by default, so Seshboard's own servers get `tool_timeout_sec = 3600` there (`OWN_TOOL_TIMEOUT_SEC`). Copilot and Antigravity use their own limits: if a call times out first, your later Allow still starts the session.
+- **No prompt of the agent's own** before Seshboard's card: Claude Code has the tool in `allowedTools`, and Copilot and Antigravity let Seshboard's own servers through. Codex runs it under its approval policy, as it does the browser tools.
+
+### On another computer
+
+`start_session` takes an optional `computer`: a computer paired in Settings › Remote › Other computers ([remote-access.md](remote-access.md#other-computers)). The start goes there as New session's Run on does (`computers.call` → `session.create`). The logic is `Orchestrator.startOn`; the matching is pure, in `orchestrator/remoteStart.ts`.
+
+- **`list_computers`** (no card): each paired computer, whether it is connected, and the name of this project there, from its `projects.list`.
+- **The project there.** Folders differ between computers, so the GitHub repository decides: `projects.list` sends each project's `repo` (`githubRepo`: `origin`'s, else the first remote on GitHub), and `matchProject` compares it with this project's remotes (`githubRepos`). A project there with another repository never matches by its name. A name only counts where there is nothing to compare: this project has no GitHub remote, or that computer's Seshboard is too old to send `repo`.
+- **Not there: clone it.** When that computer can clone (`REMOTE_FEATURE_CLONE` in its `hello`) and Clone from GitHub is on there (`projects.clonePlan`), the same card offers it: "app, cloned there first into ~/Developer/app". Allowed, `projects.clone` runs there and the engine waits for its last `projects.cloneProgress` (`computers.next`). When the repository brings hooks, MCP servers, rules or plugins, a second card lists them (`askBrings`), as New session there asks before Start; denied, nothing starts in the clone.
+- **The card** names the computer and the project there ("Claude Code wants to start a session on mystic: seshboard"), with the title in its description. A computer that isn't connected, has no such project and can't clone it, or has no such agent is refused before the card.
+- **What goes there:** the project's id, the prompt, the title (`session.create`'s `title`, which that computer sets as it does an orchestrator's starts; an older one drops it), and only what the call named: `agent` as a profile's id from that computer's `options.get`, `model`, and `worktree` from `workspace`. The rest is that project's defaults there.
+- **Limits** are that computer's, as with Run on. The session is mine on that computer's chip (`mineOf` in `computerHub.ts`), and that computer shows this one as who started it.
+- **The link back.** `parentId` works within one computer only, so this computer keeps the new session as one the asking session started (`started`, keyed by its row id `remote:<computer>:<session>`, `remoteSessionKey`). The windows nest that computer's row under the asking session, as they nest a local one.
+- **An orchestrator** gets `computer` on its `start_session` and `list_computers`, to spread tasks across machines ("run the Windows smoke on the Windows box"). It starts there without a card, as its starts go, and the session joins its sessions (keyed by its row id). Its turns end on that computer, so no Session update comes, and `read_session` says it can't read it from here; `list_sessions` says where it runs.
+
 ## In the window
 
 - **New session:** Run as › **Orchestrator**. The chip is tinted as for a pipeline, Start says **Start orchestrator**, and the ▾ has no queue, schedule or trigger: an orchestrator starts now.
@@ -99,6 +122,7 @@ Providers get the server and the text through `ProviderHosts` (`orchestratorServ
 - **Session updates** in the orchestrator's conversation show as quiet dashed rows, not as prompts of yours.
 - **A project's Settings tab:** Orchestrator instructions, up to 16,000 characters. A save of the project's other defaults keeps them.
 - **The command palette:** *Go to orchestrator* opens the open session's project's orchestrator, or the newest one.
+- **The phone and other computers:** New session's Run as has Orchestrator where the computer says `REMOTE_FEATURE_ORCHESTRATOR` in `hello`. Start sends `session.create` with `orchestrator: true`, and that computer starts it through its own `createSession`. The sessions it starts sit under it there through `RemoteSession.parentId`. `sessions.list` sends the orchestrators among the sessions listed (`RemoteSessions.orchestrators`, without folders), and a new list goes out on `orchestrator.changed`. `remoteOverview` (`packages/protocol/src/remoteOrchestrator.ts`) groups them as the computer does. The phone shows a bar under the orchestrator's header that opens the overview in a sheet, and a bar back to it in a session it started (`OrchestratorParts.tsx`). Another computer shows the same card as here (`RemoteOrchestratorOverview`) and the way back in the header (`RemoteOrchestratorCrumb`).
 
 ## Engine
 
@@ -113,8 +137,6 @@ Providers get the server and the text through `ProviderHosts` (`orchestratorServ
 - **Ready for review and Landing by review state.** The overview's Ready for review is "has an open pull request and isn't working". Approved and queued-to-merge need the pull request's review decision from `gh`.
 - **Pause a project:** one switch that stops the orchestrator's sessions and holds its queue, schedules and triggers.
 - **Resolved:** marking a started session done from the overview, and by itself once its pull request merges.
-- **Starting a pipeline** as one of the orchestrator's tasks.
-- **Other computers and the phone:** the orchestrator's row and its sessions show there as sessions; the overview and Run as › Orchestrator don't yet.
 - **Codex**, checked against a real Codex CLI.
 - **The website's page and screenshots**, which wait for the release ([releasing.md](releasing.md)).
 
@@ -122,7 +144,7 @@ Providers get the server and the text through `ProviderHosts` (`orchestratorServ
 
 - `packages/protocol/src/orchestrator.test.ts`: the groups, the arguments, the texts and the update read back.
 - `packages/engine/src/orchestrator/orchestrator.test.ts`: the tools against a real SQLite file (starts, the queue, agents, limits, reports, instructions, deletes), the store across a restart, and the bridge.
-- `packages/engine/src/host/host.test.ts`, `providers/providerHosts.test.ts`: who gets the server and the text, at a start and at a resume.
+- `packages/engine/src/host/host.test.ts`, `providers/providerHosts.test.ts`: who gets the server and the text, at a start and at a resume, and the start card.
 - `apps/desktop/src/orchestratorMcp/server.test.ts`: the MCP server.
 - `apps/ui/src/state/orchestrator.test.ts`, `components/newSession/*.test.ts`: the overview's rows, the Start button and what `session.create` gets.
 - Smoke: `npm run smoke:demo -- --only "orchestrator"`.

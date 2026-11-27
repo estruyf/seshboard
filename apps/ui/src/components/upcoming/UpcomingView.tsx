@@ -1,4 +1,7 @@
 import { ViewHeader } from '../ViewHeader.tsx';
+import { createPortal } from 'react-dom';
+import { usePanelView } from '../../state/panelSlotStore.ts';
+import { PanelFilterList } from '../sidebar/PanelFilterList.tsx';
 import { CalendarClock, Check, ChevronDown, GripVertical, History, Info, ListEnd, MoreHorizontal, Pause, Play, Repeat, SkipForward } from 'lucide-react';
 import { describe, formatPast, pastRuns, SKIPPED_BY_YOU, upcomingRuns, type PastRun, type Schedule, type ScheduleLastRun, type UpcomingRun } from '@seshboard/protocol/client';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -84,6 +87,28 @@ export function UpcomingView() {
   const nothing = queue.entries.length === 0 && listedSchedules(schedules, now).length === 0 && history.length === 0 && allTriggers.length === 0 && reminders.length === 0;
 
   const nameOf = (cwd: string) => projectName(projectOf(cwd));
+  // The panel beside the nav rail, while it shows Upcoming: the same project filter as the chip, as a list.
+  const slot = usePanelView('upcoming');
+  const filterList = slot
+    ? createPortal(
+        <PanelFilterList
+          title="Upcoming"
+          hook="upcoming"
+          selected={project}
+          onPick={(root) => useUpcoming.getState().setProject(root)}
+          rows={counts.map((c) => ({
+            key: c.root,
+            name: projectName(c.root),
+            icon: <ProjectIcon project={projects.get(c.root)} root={c.root} size={14} />,
+            meta: `${c.queued} · ${c.schedules}`,
+            metaLabel: `${c.queued} queued, ${c.schedules} ${c.schedules === 1 ? 'schedule' : 'schedules'}`,
+          }))}
+          empty="Nothing queued or scheduled yet."
+          note="Counts are queued · schedules."
+        />,
+        slot,
+      )
+    : null;
   const openProjectMenu = () => {
     const box = chip.current!.getBoundingClientRect();
     const pick = (root: string | null) => () => useUpcoming.getState().setProject(root);
@@ -121,6 +146,7 @@ export function UpcomingView() {
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-upcoming>
+      {filterList}
       <ViewHeader title="Upcoming">
         <div className="no-drag ml-auto flex shrink-0 items-center gap-2">
           <Button icon={<ListEnd size={13} aria-hidden />} onClick={() => addToQueue(project)} data-upcoming-add-queue>

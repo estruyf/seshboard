@@ -15,6 +15,7 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
+import { openPanelLauncher } from '../../state/panelLauncherStore.ts';
 import { showWebPanel, useWebPreview } from '../../state/webPreviewStore.ts';
 import { currentPageTab, newBrowserTab, openBrowserView } from '../../state/browserViewStore.ts';
 import { toggleFavorite } from '../../state/browserFavoritesStore.ts';
@@ -56,6 +57,8 @@ import { toast, useToasts } from '../../state/toastStore.ts';
 import { lastLimit } from '../focus/focusLimit.ts';
 import { syncStep } from '../git/gitPlan.ts';
 import { manage } from '../sidebar/ProjectMenu.tsx';
+import { goInHistory } from '../../state/navHistoryStore.ts';
+import { useNavRailMenu } from '../../state/navRailStore.ts';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { openNoteEditor } from '../../state/noteEditorStore.ts';
 import { openRemindEditor } from '../../state/remindEditorStore.ts';
@@ -118,6 +121,8 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     setPreferences: (patch) => usePreferences.getState().update(patch),
     setSidebar: (state) => useSidebar.getState().setState(state),
     toggleSidebar: () => useSidebar.getState().toggle(),
+    goInHistory: (direction) => goInHistory(direction),
+    customizeNavRail: () => useNavRailMenu.getState().open(),
     goToSession: (direction) => goToAdjacentSession(direction),
     openSession: (sessionId) => useSessions.getState().select(sessionId),
     goToNextNeedsYou: () => goToNextNeedsYou(),
@@ -248,6 +253,11 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     toggleCommands: () => {
       const id = useSessions.getState().selectedId;
       if (id) toggleCommandsPanel(id, isChangesOpen(id) || isAskOpen(id) || isAgentsOpen(id));
+    },
+    // The session view clears it again when a tool is already on the side.
+    showSidePanel: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) openPanelLauncher(id);
     },
     openWeb: () => {
       const id = useSessions.getState().selectedId;

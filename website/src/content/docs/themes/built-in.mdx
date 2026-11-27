@@ -9,28 +9,57 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-A theme sets the colours of Seshboard: the app, the code blocks and diffs, and the terminal, for light and dark mode. Seshboard comes with thirteen themes, and you can [import your own](/themes/custom/).
+A theme sets the colours of Seshboard: the app, the code blocks and diffs, and the terminal, for light and dark mode. Seshboard comes with thirteen colour themes and a Black and white one, and you can [import your own](/themes/custom/). For a calmer window, [Minimal mode](#minimal-mode) shows less at once.
 
-<Screenshot name="settings-theme" alt="Settings open on Theme: the Appearance control, then a grid of theme cards, each with a light and a dark preview, its name and author, and a dashed card to drop a theme file on" eager />
+<Screenshot name="settings-theme" alt="Settings open on Theme: the Appearance section, then a grid of theme cards, each with a light and a dark preview, its name and author, and a dashed card to drop a theme file on" eager />
 
 ## Open it
 
-- Press <Kbd shortcut="settings" /> (or click the gear at the bottom of the sidebar) and choose **Theme**.
-- In the command palette (<Kbd shortcut="palette.commands" />), run *Theme: &lt;name&gt;* to switch to a theme, or *Appearance: Match System*, *Appearance: Light* or *Appearance: Dark* to change the mode. The palette only lists the choices you aren't using now.
+- Press <Kbd shortcut="settings" /> (or click the gear at the bottom of the rail) and choose **Theme**.
+- In the command palette (<Kbd shortcut="palette.commands" />), run *Theme: &lt;name&gt;* to switch to a theme, or *Appearance: Match System*, *Appearance: Light* or *Appearance: Dark* to change the mode, or *Turn Minimal mode on*. The palette only lists the choices you aren't using now.
+
+## Seshboard or Black and white
+
+**Appearance** at the top of Settings → Theme has three cards under **Theme**:
+
+- **Seshboard** (the default): colour for the state of sessions and for projects, in the theme you pick below.
+- **Black and white**: greys only, in dark mode.
+- **Black and white, light**: the same, on white.
+
+**Black and white** keeps colour only for what matters: red for errors and amber for what needs you. Links are underlined instead of coloured, and project and site icons show in greys. Code and diffs keep their colours: turn off [Code highlighting](#code-highlighting-and-project-colours) for those too. It goes well with [Minimal mode](#minimal-mode), but each works on its own. A **Black and white** [app icon](/settings/#app-icon) goes with it.
 
 ## Choose light or dark
 
-**Appearance** at the top of Settings → Theme has three choices:
+With **Seshboard** picked, **Light or dark** has three choices:
 
-- **Match System** (the default): follows <Os mac="macOS" windows="Windows" />, so Seshboard turns dark when your system does.
+- **Follow the system** (the default): follows <Os mac="macOS" windows="Windows" />, so Seshboard turns dark when your system does. The command palette calls it *Appearance: Match System*.
 - **Light**
 - **Dark**
 
-The terminal panel is always dark, in light mode too.
+The Black and white cards are a mode each, so they don't have this choice. The terminal panel is always dark, in light mode too.
+
+## Minimal mode
+
+**Minimal mode**, at the top of Settings → Theme, shows less at once for a calmer window:
+
+- Sessions in the sidebar take one line, and their state is a shape instead of a colour.
+- The message box keeps its options in one line, without its chips.
+- Icons have no counts on them.
+
+What it hides is still in tooltips and menus. Press <Kbd shortcut="view.minimal" /> to turn it on or off from anywhere, or run *Turn Minimal mode on* in the command palette. It works with every theme.
+
+Fields, dropdowns and text areas keep a clear edge in every theme, Minimal mode too: their edge stands out from what is behind them, and a field you click shows that it has focus.
+
+## Code highlighting and project colours
+
+Two switches under the themes change the colours in any theme:
+
+- **Code highlighting** (on by default) colours code and diffs by syntax, in the theme's code colours. Off, code is in one colour, and diffs strike removed lines through and put added lines in bold. The command palette has *Turn code highlighting off* and *Turn code highlighting on*.
+- **Project colours** (on by default) shows a project's colour on its tile and in the sidebar. Off, projects show their letter in grey.
 
 ## Pick a theme
 
-Click a theme card to use it. It applies at once, and a message in the corner says "Switched to &lt;name&gt;" with **Undo**, which takes you back to the theme you had.
+With **Seshboard** picked under Appearance, the cards below it are its themes. Click a theme card to use it. It applies at once, and a message in the corner says "Switched to &lt;name&gt;" with **Undo**, which takes you back to the theme you had.
 
 The working mark under a reply, the patch panel from the app icon, takes the theme's colours too. Its light is the theme's accent. Its cables are the app icon's in the themes named after an icon, and in Catppuccin, Nord and Solarized they come from the theme's own palette.
 
@@ -44,7 +73,7 @@ Each card shows the theme in light and dark mode, its name, and who made it, wit
 | Solarized | Solarized Light | Solarized Dark |
 
 <Aside title="Dark only">
-Nord has only a dark version, as the original does. Its card says **Dark only**. In light mode it shows Demo Time, and Settings says so under the cards: with Match System, light mode uses Demo Time.
+Nord has only a dark version, as the original does. Its card says **Dark only**. In light mode it shows Demo Time, and Settings says so under the cards: with Follow the system, light mode uses Demo Time.
 </Aside>
 
 ### Themes that match the app icons
@@ -67,7 +96,7 @@ See [Custom themes](/themes/custom/) for importing, exporting and editing theme 
 
 ## Settings
 
-Everything on this page is in [Settings → Theme](/settings/#theme). Your theme and appearance are part of the preferences you can [back up](/settings/backup/).
+Everything on this page is in [Settings → Theme](/settings/#theme). Your theme, appearance and these switches are part of the preferences you can [back up](/settings/backup/).
 
 A phone paired with [Remote](/remote-access/#theme) uses your theme too.
 

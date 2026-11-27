@@ -70,6 +70,14 @@ describe('runs in the list', () => {
     expect(childLine(merged.runs, tree.children.get('aa:parent')![1]!)).toMatchObject({ tone: 'needs-you' });
   });
 
+  it('lists a session a sub-session started under the top row too, after the one that started it', () => {
+    const merged = mergeSessions([{ id: 'aa', sessions: { sessions: [session('top'), session('mid', { parentId: 'top' }), session('pr-1', { parentId: 'mid', status: 'needs-you' }), session('pr-2', { parentId: 'mid' })], prompts: [] } }]);
+    const tree = listTree(merged.sessions, []);
+    expect(tree.roots.map((s) => s.id)).toEqual(['aa:top']);
+    expect(tree.children.get('aa:top')?.map((s) => s.id)).toEqual(['aa:mid', 'aa:pr-1', 'aa:pr-2']);
+    expect(tree.roots[0]).toMatchObject({ status: 'needs-you' });
+  });
+
   it('lists a run started from New session as a row of its own, with its steps under it', () => {
     const merged = mergeSessions([{ id: 'aa', sessions: { sessions: [session('row-plan', { parentId: 'row' })], prompts: [], runs: [run('row', null, { status: 'waiting', waitingFor: 'push', reason: 'Push waits for you.' })] } }]);
     expect(merged.sessions.find((s) => s.runRow)).toMatchObject({ id: 'aa:row', sessionId: 'row', status: 'needs-you', title: 'Add a toggle' });

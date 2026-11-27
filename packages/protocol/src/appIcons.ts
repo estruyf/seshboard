@@ -13,6 +13,8 @@ export const APP_ICONS = [
   { key: 'aluminium', label: 'Aluminium' },
   { key: 'ocean', label: 'Ocean' },
   { key: 'neon', label: 'Neon' },
+  // Greys only, to go with the Black and white theme.
+  { key: 'black-and-white', label: 'Black and white' },
 ] as const;
 
 export type AppIconKey = (typeof APP_ICONS)[number]['key'];

@@ -4,7 +4,7 @@ import { browserNavigation, externalSchemeAllowed, isBrowserPartition, isProfile
  * What main does with a key typed in the web preview's page: hand it to the app (`forward`), reload the page, or go
  * back or ahead in the page's own history (`back`, `ahead`).
  */
-export type PreviewKeyAction = 'forward' | 'reload' | 'back' | 'ahead' | 'swallow' | null;
+export type PreviewKeyAction = 'forward' | 'reload' | 'hard-reload' | 'back' | 'ahead' | 'swallow' | null;
 
 /** The slice of Electron's `Input` the rules read. */
 export interface PreviewKeyInput {
@@ -46,7 +46,7 @@ export function isAltGrCharacter(input: PreviewKeyInput, platform: NodeJS.Platfo
 }
 
 /**
- * A key typed in the page: ⌘R (Ctrl+R) reloads the page rather than the app, other ⌘ (Ctrl) keys are the app's
+ * A key typed in the page: ⌘R (Ctrl+R) reloads the page rather than the app and ⌘⇧R (Ctrl+Shift+R) skips its cache, other ⌘ (Ctrl) keys are the app's
  * shortcuts and go to it (⌘T, ⌘W and ⌘L among them, for the tabs), and everything else, editing keys included, stays
  * the page's. With the browser on, ⌘[ and ⌘] go back and ahead in the page.
  */
@@ -86,7 +86,7 @@ export function previewKeyAction(input: PreviewKeyInput, platform: NodeJS.Platfo
   if (['meta', 'control', 'alt', 'shift'].includes(key)) return null;
   // Held down, a shortcut runs once: ⌘W kept down closes one tab, not one per repeat.
   if (input.isAutoRepeat) return 'swallow';
-  if (key === 'r' && !input.shift && !input.alt) return 'reload';
+  if (key === 'r' && !input.alt) return input.shift ? 'hard-reload' : 'reload';
   if (browser && !input.shift && !input.alt && (key === '[' || key === ']')) return key === '[' ? 'back' : 'ahead';
   return 'forward';
 }
@@ -257,17 +257,21 @@ export interface PageMenuParams {
 }
 
 /** What an entry of a page's right-click menu does, as main runs it (`runPageMenuEntry` in `webPreview.ts`). */
-export type PageMenuEntryId = 'open-link' | 'copy-link' | 'copy-email' | 'copy-image' | 'copy-image-address' | 'cut' | 'copy' | 'paste' | 'select-all' | 'back' | 'forward' | 'reload' | 'quote' | 'add-element' | 'inspect';
+export type PageMenuEntryId = 'open-link' | 'copy-link' | 'copy-email' | 'copy-image' | 'copy-image-address' | 'cut' | 'copy' | 'paste' | 'select-all' | 'back' | 'forward' | 'reload' | 'hard-reload' | 'start-session' | 'quote' | 'add-element' | 'inspect';
 
 /** One entry of a page's right-click menu, or a line. */
-export type PageMenuEntry = { id: 'spelling'; label: string; word: string } | { id: PageMenuEntryId; label: string; enabled: boolean } | 'separator';
+export type PageMenuEntry =
+  | { id: 'spelling'; label: string; word: string }
+  | { id: 'start-session'; label: string; enabled: boolean; action: string }
+  | { id: Exclude<PageMenuEntryId, 'start-session'>; label: string; enabled: boolean }
+  | 'separator';
 
 /**
  * A page's right-click menu: spelling suggestions, then what was clicked (a link, an email address, an image), then
- * editing, or back, forward and reload when nothing else applies, then on a session's page what goes to its message
- * (the selection, the element), then Inspect.
+ * editing, or back, forward, reload and hard reload when nothing else applies, then the site actions offered on the page (`start`:
+ * each one's id and name), then on a session's page what goes to its message (the selection, the element), then Inspect.
  */
-export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean; back: boolean; forward: boolean; session: boolean }): PageMenuEntry[] {
+export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean; back: boolean; forward: boolean; session: boolean; start?: ReadonlyArray<{ action: string; label: string }> }): PageMenuEntry[] {
   const groups: PageMenuEntry[][] = [];
   if (params.isEditable && params.dictionarySuggestions.length) groups.push(params.dictionarySuggestions.slice(0, 5).map((word) => ({ id: 'spelling', label: word, word })));
   const mail = /^mailto:/i.test(params.linkURL);
@@ -288,8 +292,10 @@ export function pageMenuEntries(params: PageMenuParams, page: { browser: boolean
       { id: 'back', label: 'Back', enabled: page.back },
       { id: 'forward', label: 'Forward', enabled: page.forward },
       { id: 'reload', label: 'Reload', enabled: true },
+      { id: 'hard-reload', label: 'Hard reload', enabled: true },
     ]);
   }
+  if (page.start?.length) groups.push(page.start.map(({ action, label }) => ({ id: 'start-session', label, enabled: true, action })));
   if (page.session) groups.push([...(params.selectionText.trim() ? [{ id: 'quote', label: 'Quote in message', enabled: true } as const] : []), { id: 'add-element', label: 'Add element to message', enabled: true }]);
   groups.push([{ id: 'inspect', label: 'Inspect', enabled: true }]);
   return groups.flatMap((group, i) => (i ? ['separator' as const, ...group] : group));

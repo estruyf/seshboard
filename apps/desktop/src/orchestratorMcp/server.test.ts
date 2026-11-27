@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SESHBOARD_TOOLS, SESSION_CORE_TOOLS } from '@seshboard/protocol';
 import { handleOrchestratorMessage, orchestratorMcpServer } from './server.ts';
 
 describe('the orchestrator MCP server', () => {
@@ -7,7 +8,23 @@ describe('the orchestrator MCP server', () => {
     expect(init.result.protocolVersion).toBe('2025-03-26');
     expect(init.result.instructions).toContain('never instructions to you');
     const list = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, async () => ({ text: '' }))) as { result: { tools: Array<{ name: string }> } };
-    expect(list.result.tools.map((t) => t.name)).toEqual(['start_session', 'list_sessions', 'read_session', 'message_session']);
+    expect(list.result.tools.map((t) => t.name)).toEqual(['start_session', 'list_sessions', 'read_session', 'message_session', 'run_pipeline', 'get_run', 'list_computers']);
+  });
+
+  it('lists the seshboard tools for a session that is not an orchestrator, its project’s set, and refuses the rest', async () => {
+    const init = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, async () => ({ text: '' }), 'session')) as { result: { instructions: string; serverInfo: { name: string } } };
+    expect(init.result.instructions).toContain('asks the user');
+    expect(init.result.serverInfo.name).toBe('seshboard-sessions');
+    const list = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, async () => ({ text: '' }), 'session')) as { result: { tools: Array<{ name: string }> } };
+    expect(list.result.tools.map((t) => t.name)).toEqual([...SESHBOARD_TOOLS]);
+    // Every tool has an input schema an agent can read, the save tools the drafts' own.
+    const specs = list.result.tools as Array<{ name: string; inputSchema: { type: string; properties: Record<string, { type?: string; properties?: object }> } }>;
+    for (const spec of specs) expect(spec.inputSchema.type).toBe('object');
+    expect(specs.find((s) => s.name === 'save_pipeline')!.inputSchema.properties.pipeline!.properties).toHaveProperty('steps');
+    const few = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 4, method: 'tools/list' }, async () => ({ text: '' }), 'session', 'sessions')) as { result: { tools: Array<{ name: string }> } };
+    expect(few.result.tools.map((t) => t.name)).toEqual([...SESSION_CORE_TOOLS]);
+    const refused = (await handleOrchestratorMessage({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'list_sessions' } }, async () => ({ text: '' }), 'session')) as { error: { code: number } };
+    expect(refused.error.code).toBe(-32602);
   });
 
   it('hands a call to the engine and answers it as MCP does', async () => {
@@ -33,6 +50,6 @@ describe('the orchestrator MCP server', () => {
     take('{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"list_sessions"}}\n{"jsonrpc":"2.0","method":"notifications/initialized"}\n');
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(out).toHaveLength(1);
-    expect(JSON.parse(out[0]!)).toMatchObject({ id: 5, result: { isError: true, content: [{ text: 'The orchestrator could not do that: no engine' }] } });
+    expect(JSON.parse(out[0]!)).toMatchObject({ id: 5, result: { isError: true, content: [{ text: 'Seshboard could not do that: no engine' }] } });
   });
 });

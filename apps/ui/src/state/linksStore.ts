@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { DeepLink } from '@seshboard/protocol/bridge';
+import { openFavorite } from './browserViewStore.ts';
 import { projectByName } from './projectList.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
+import { useWebPreview } from './webPreviewStore.ts';
 
 export type NewSessionLink = Extract<DeepLink, { action: 'new-session' }> & { seq: number };
 
@@ -74,6 +76,17 @@ export const useLinks = create<LinksState>()((set, get) => ({
       if (!sessions.has(link.sessionId) && !live.has(link.sessionId)) return set({ seq, error: { message: `No session ${link.sessionId} on this Mac.`, seq } });
       set({ seq, error: null });
       select(link.sessionId);
+      return;
+    }
+    // A web page (a browser picker such as LinkLane sent it): a tab in the Browser view, the one already on that
+    // address if any, or with `session` a tab in that session's Browser panel. Main checked the browser is on.
+    if (link.action === 'open') {
+      set({ seq, error: null });
+      if (!link.sessionId) return openFavorite(link.url);
+      const { sessions, live, select } = useSessions.getState();
+      if (!sessions.has(link.sessionId) && !live.has(link.sessionId)) return set({ error: { message: `No session ${link.sessionId} on this Mac.`, seq } });
+      select(link.sessionId);
+      useWebPreview.getState().open(link.sessionId, link.url);
       return;
     }
     set({ seq, error: null, newSession: { ...link, seq } });

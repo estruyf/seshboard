@@ -1,15 +1,16 @@
-import { PanelRight } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { useThemes } from '../../state/themeStore.ts';
+import { memo, useInsertionEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { matches } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { RAIL_ORDER } from '@seshboard/protocol/bridge';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
 import { AppIcon } from '../AppIcon.tsx';
 import { GitHubIcon } from '../GitHubIcon.tsx';
 import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { Badged } from '../ui/Badged.tsx';
+import { sameRailItems } from './railItems.ts';
 import { moveRailButton, RAIL_GITHUB, RAIL_MENU, railGroup, sameRailGroup, stepRailButton, toggleRailApp, toggleRailTool, type RailAppId, type RailToolId, type RailToolState } from './toolRail.ts';
 
 /** One of the rail's buttons, as the session view resolves it. */
@@ -33,17 +34,50 @@ export interface RailButton {
 export type RailItem = RailButton | 'divider';
 
 /**
+ * The rail's items for this render, kept the same array while they draw the same (`sameRailItems`), so the memoised
+ * rail doesn't render with its view. Each button's click is a stable function that runs the latest item's handler.
+ */
+export function useRailItems(items: readonly RailItem[]): readonly RailItem[] {
+  const latest = useRef(items);
+  useInsertionEffect(() => {
+    latest.current = items;
+  });
+  const clicks = useRef(new Map<string, () => void>());
+  const kept = useRef<readonly RailItem[] | null>(null);
+  const next = items.map((item) => {
+    if (item === 'divider') return item;
+    let onClick = clicks.current.get(item.id);
+    if (!onClick) {
+      const id = item.id;
+      onClick = () => (latest.current.find((i) => i !== 'divider' && i.id === id) as RailButton | undefined)?.onClick();
+      clicks.current.set(id, onClick);
+    }
+    return { ...item, onClick };
+  });
+  // Kept during render on purpose: like useMemo, with the rail's own idea of equal.
+  if (kept.current && sameRailItems(kept.current, next)) return kept.current;
+  kept.current = next;
+  return next;
+}
+
+/**
  * The session's tools as a vertical toolbar at the right edge of its view (Changes, Terminal, Browser, Preview, Ask,
  * Agents, Commands and mods' panes). The tool in front has the selected fill and an accent mark on its left edge; an
  * open one behind it has an accent dot under its icon. Apps pinned from its menu (VS Code, Finder) come last, by their own
- * icons, and open the session's folder. Hide panel at the bottom closes whatever the side shows. A right-click picks
- * which tools and apps show. ↑ ↓ move between the buttons. Drag a button (or ⌥↑ ⌥↓ on it) to move it inside its group.
+ * icons, and open the session's folder. Show and Hide panel are on the title bar (`panelButton`, `layoutStore`). A
+ * right-click picks which tools and apps show. ↑ ↓ move between the buttons. Drag a button (or ⌥↑ ⌥↓ on it) to move it
+ * inside its group. Memoised: it renders again only when its items change (`useRailItems` keeps them the same while
+ * unchanged).
  */
-export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide: (() => void) | null }) {
+export const ToolRail = memo(function ToolRail({ items }: { items: readonly RailItem[] }) {
   const hidden = usePreferences((s) => s.prefs.railHidden);
+  // Minimal mode: grey icons, dots for counts, and no accent mark on the one in front.
+  const minimal = useMinimal();
+  const monochrome = useThemes((s) => s.active.entry.file.monochrome === true);
   const apps = usePreferences((s) => s.prefs.railApps);
   const editors = useHosts((s) => s.editors);
   const sizing = useRightPanel((s) => s.sizing);
+  const onNewSession = usePreferences((s) => s.prefs.sidePanelOnNewSession);
   const update = usePreferences((s) => s.update);
   const order = usePreferences((s) => s.prefs.railOrder);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -120,6 +154,8 @@ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide
     'separator',
     // Every panel on the right at half the session area, kept as the window resizes; dragging its edge is Side again.
     { label: 'Panels at half width', checkbox: true, checked: sizing === 'half', data: { 'data-rail-menu-half': true }, onSelect: () => useRightPanel.getState().setSizing(sizing === 'half' ? 'side' : 'half') },
+    // Settings › Conversation has both too: a session you start opens with the empty side panel beside it.
+    { label: 'Open panel in new sessions', checkbox: true, checked: onNewSession, data: { 'data-rail-menu-on-new': true }, onSelect: () => update({ sidePanelOnNewSession: !onNewSession }) },
     'separator',
     { label: 'Reset', data: { 'data-rail-menu-reset': true }, onSelect: () => update({ railHidden: [], railApps: [], railOrder: [...RAIL_ORDER] }) },
   ];
@@ -143,9 +179,10 @@ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide
       {...props.data}
     >
       {drag.markFor(key) && <span aria-hidden className={`pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-accent-ink ${drag.markFor(key) === 'before' ? '-top-[3px]' : '-bottom-[3px]'}`} data-rail-drop={drag.markFor(key)} />}
-      {props.state === 'front' && <span aria-hidden className="absolute inset-y-[9px] -left-1.5 w-0.5 rounded-full bg-accent-ink" />}
+      {/* Minimal mode and a monochrome theme (where the accent is the text colour) show the tool in front by its fill. */}
+      {props.state === 'front' && !minimal && !monochrome && <span aria-hidden className="absolute inset-y-[9px] -left-1.5 w-0.5 rounded-full bg-accent-ink" />}
       {props.icon}
-      {props.state === 'behind' && <span aria-hidden className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-accent-ink" data-rail-behind />}
+      {props.state === 'behind' && <span aria-hidden className={`absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full ${minimal ? 'bg-muted' : 'bg-accent-ink'}`} data-rail-behind />}
     </button>
   );
 
@@ -157,7 +194,8 @@ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide
       aria-orientation="vertical"
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
-      className="flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-l border-border/40 bg-bg py-2.5"
+      // The window's chrome, as the rail at its left edge: the conversation and its header keep the lighter surface.
+      className="flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-l border-border bg-chrome py-2.5"
       data-tool-rail
     >
       {items.map((item, i) => {
@@ -170,19 +208,13 @@ export function ToolRail({ items, onHide }: { items: readonly RailItem[]; onHide
           // An app opens elsewhere: a plain button, not a toggle.
           pressed: item.id.startsWith('app:') ? undefined : item.state === 'front',
           state: item.state,
-          icon: <Badged icon={item.icon} count={item.count} dot={item.dot ? 'link' : false} ring="bg" data={{ 'data-rail-badge': true }} />,
+          icon: <Badged icon={item.icon} count={item.count} dot={item.dot ? 'link' : false} ring="chrome" minimal={minimal} data={{ 'data-rail-badge': true }} />,
           data: { ...item.data, 'data-rail-tool': item.id },
           onClick: item.onClick,
           movable: railGroup(item.id) !== null,
         });
       })}
-      {onHide && (
-        <>
-          <span className="flex-1" aria-hidden />
-          {button('hide', ++index, { label: 'Hide panel', ariaLabel: 'Hide panel', icon: <PanelRight size={17} aria-hidden />, data: { 'data-rail-hide': true }, onClick: onHide })}
-        </>
-      )}
       {menu && <Menu x={menu.x} y={menu.y} width={230} label="Tools" entries={entries} onClose={() => setMenu(null)} />}
     </div>
   );
-}
+});

@@ -187,6 +187,16 @@
       "page": "sessions/files"
     },
     {
+      "id": "feature:file-icons",
+      "name": "File icons in Files from a VS Code icon theme",
+      "page": "sessions/files"
+    },
+    {
+      "id": "feature:changes-open-in-files",
+      "name": "Open a changed file in Files from Changes",
+      "page": "terminal-changes-git/changes"
+    },
+    {
       "id": "feature:files-lines-to-message",
       "name": "Selected lines of a file into the message",
       "page": "sessions/files"
@@ -239,6 +249,11 @@
     {
       "id": "shortcut:files.find",
       "name": "Find in the file",
+      "page": "sessions/files"
+    },
+    {
+      "id": "shortcut:files.save",
+      "name": "Save the file you are editing",
       "page": "sessions/files"
     },
     {
@@ -737,6 +752,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-browserExtension",
+      "name": "settings-browserExtension",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-remote",
       "name": "Settings: Remote",
       "page": "settings"
@@ -758,7 +778,7 @@
     },
     {
       "id": "palette:sidebar-close",
-      "name": "Close sidebar",
+      "name": "Close the panel",
       "page": "sessions/sidebar"
     },
     {
@@ -782,13 +802,8 @@
       "page": "settings"
     },
     {
-      "id": "palette:sidebar-minimize",
-      "name": "Minimize sidebar",
-      "page": "sessions/sidebar"
-    },
-    {
       "id": "palette:sidebar-open",
-      "name": "Open sidebar",
+      "name": "Open the panel",
       "page": "sessions/sidebar"
     },
     {
@@ -827,6 +842,21 @@
       "page": "terminal-changes-git/git"
     },
     {
+      "id": "palette:code-highlighting",
+      "name": "Turn code highlighting on or off",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "shortcut:view.minimal",
+      "name": "Turn Minimal mode on or off",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "palette:minimal-mode",
+      "name": "Turn Minimal mode on or off",
+      "page": "themes/built-in"
+    },
+    {
       "id": "palette:theme-dark",
       "name": "theme-dark",
       "page": "themes/built-in"
@@ -857,6 +887,11 @@
       "page": "sessions/agents"
     },
     {
+      "id": "palette:show-side-panel",
+      "name": "Show side panel",
+      "page": "sessions/tool-rail"
+    },
+    {
       "id": "palette:toggle-commands",
       "name": "Toggle commands",
       "page": "sessions/commands"
@@ -885,6 +920,16 @@
       "id": "palette:open-browser-in-new-window",
       "name": "Open browser in new window",
       "page": "browser/in-a-session"
+    },
+    {
+      "id": "feature:browser-start-session",
+      "name": "Start session on a GitHub pull request or issue in the browser: New session in a checkout of its repository, filled in from it",
+      "page": "browser/tabs-and-pages"
+    },
+    {
+      "id": "feature:browser-site-actions",
+      "name": "Site actions in Settings › Browser: turn off or change the GitHub ones, or add your own with the pages, a project and a prompt",
+      "page": "browser/tabs-and-pages"
     },
     {
       "id": "feature:browser-own-window",
@@ -948,12 +993,12 @@
     },
     {
       "id": "feature:browser-profiles",
-      "name": "Browser profiles: separate logins, site data and cache per profile (for a project or everywhere), a coloured mark on their tabs, the profile switcher after the address bar, New tab in a profile, Open in other profile, Reset profile… with what to forget, and agents' open with a profile",
+      "name": "Browser profiles: separate logins, site data and cache per profile (for a project or everywhere), a coloured mark on their tabs, the profile switcher after the address bar, New tab in a profile, Open in other profile, Reset profile… with what to forget, agents' open with a profile, and a Browser profiles button under the Browser's tabs that opens them in Settings",
       "page": "browser/profiles"
     },
     {
       "id": "settings:browser",
-      "name": "Settings › Browser: Allow Seshboard to control the browser, Allow scripts in pages, and browser profiles (shown while the browser is on)",
+      "name": "Settings › Browser: Allow Seshboard to control the browser, Allow scripts in pages, browser profiles and Site actions (shown while the browser is on)",
       "page": "browser/agents"
     },
     {
@@ -1177,6 +1222,21 @@
       "page": "browser/tabs-and-pages"
     },
     {
+      "id": "shortcut:browser.reload",
+      "name": "Reload the page",
+      "page": "browser/tabs-and-pages"
+    },
+    {
+      "id": "shortcut:browser.hard-reload",
+      "name": "Hard reload the page",
+      "page": "browser/tabs-and-pages"
+    },
+    {
+      "id": "palette:browser-hard-reload",
+      "name": "Hard reload page",
+      "page": "browser/tabs-and-pages"
+    },
+    {
       "id": "shortcut:browser.back",
       "name": "Back in the page",
       "page": "browser/tabs-and-pages"
@@ -1240,6 +1300,11 @@
       "id": "palette:vscode-extension",
       "name": "VS Code extension",
       "page": "vscode-companion"
+    },
+    {
+      "id": "palette:browser-extension",
+      "name": "Browser extension",
+      "page": "browser-extension"
     },
     {
       "id": "palette:worktrees",
@@ -1345,6 +1410,16 @@
       "id": "shortcut:composer.newline",
       "name": "composer.newline",
       "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.screenshot",
+      "name": "composer.screenshot",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.take-reply",
+      "name": "Put the suggested reply in the box",
+      "page": "sessions/conversation"
     },
     {
       "id": "shortcut:composer.next-blank",
@@ -1672,8 +1747,18 @@
       "page": "new-session/form"
     },
     {
+      "id": "shortcut:quickstart.clear-images",
+      "name": "quickstart.clear-images",
+      "page": "new-session/form"
+    },
+    {
       "id": "shortcut:quickstart.later",
       "name": "quickstart.later",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.screenshot",
+      "name": "quickstart.screenshot",
       "page": "new-session/form"
     },
     {
@@ -1978,7 +2063,7 @@
     },
     {
       "id": "feature:app-icon",
-      "name": "Settings: Theme: App icon (nine colourways, Use it on your phone too)",
+      "name": "Settings: Theme: App icon (ten colourways, Black and white among them, Use it on your phone too)",
       "page": "settings"
     },
     {
@@ -1988,7 +2073,7 @@
     },
     {
       "id": "feature:dock-activity",
-      "name": "Settings: Theme: App icon, Show when Claude is working (the Dock icon's jacks light up and light runs along its cables while a session works, macOS)",
+      "name": "Settings: Theme: App icon, Show when Claude is working: Off, Light or Smooth (the Dock icon's jacks light up and light runs along its cables while a session works, macOS; Light is the default and easy on the CPU, Smooth moves more smoothly and uses more)",
       "page": "settings"
     },
     {
@@ -2003,7 +2088,7 @@
     },
     {
       "id": "feature:quick-start",
-      "name": "Quick start: ⌃⌥Space (Ctrl+Alt+Space on Windows and Linux) in any app opens a panel over it: Needs you, your projects with ⌘1–⌘9, Quick question; a picked project becomes a token and the field takes the task, with its options (profile, model, effort, mode, this folder or a new worktree); ↩ starts it in the background, ⌘↩ starts it and opens Seshboard, ⌘K for Start in a new worktree, Change model, mode or profile, Attach the clipboard and Add to Later instead",
+      "name": "Quick start: ⌃⌥Space (Ctrl+Alt+Space on Windows and Linux) in any app opens a panel over it: Needs you, your projects with ⌘1–⌘9, Quick question; a picked project becomes a token and the field takes the task, with its options (profile, model, effort, mode, this folder or a new worktree); ↩ starts it in the background, ⌘↩ starts it and opens Seshboard, ⌘K for Start in a new worktree, Change model, mode or profile, Attach the clipboard, Take a screenshot (⌘⇧S; the Snipping Tool's picker on Windows, a screenshot tool on Linux) and Add to Later instead; the first screen lists Actions (Take a screenshot: pick an area as with ⌃⇧⌘4, the panel comes back with it attached and on the first project; then Take another screenshot and Remove all images, ⌘⇧⌫), Open Seshboard, Open the last session, Working sessions and Sessions to review (a list in the panel, filtered by what you type, Esc goes back), Needs you, Projects and More, all filtered by what you type; Esc goes back one step at a time (the task, out of a project or a list, then the typed text, then the panel), and the panel opens empty each time",
       "page": "new-session/form"
     },
     {
@@ -2039,6 +2124,11 @@
     {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
+      "page": "settings"
+    },
+    {
+      "id": "settings:browserExtension",
+      "name": "Settings: Browser extension",
       "page": "settings"
     },
     {
@@ -2142,6 +2232,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-push-away",
+      "name": "Remote app: Settings › Notifications, Needs you and Finished each Away, Always or Off (Away: no keyboard or mouse on the computer for 5 minutes, or it is locked or asleep)",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-quote",
       "name": "Remote app: Quote under a reply, and the Quote pill over selected text (also in Read)",
       "page": "remote-access"
@@ -2149,6 +2244,11 @@
     {
       "id": "feature:computers-changes",
       "name": "Other computers: Changes with each file's diff, and Commit there",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-rail",
+      "name": "Other computers: the rail of tools with Changes, Browser and Ask; links in the conversation open in the session's browser here",
       "page": "other-computers"
     },
     {
@@ -2527,6 +2627,11 @@
       "page": "projects/actions"
     },
     {
+      "id": "feature:action-order",
+      "name": "Drag project actions to change their order; the pills above the message box show as many as fit",
+      "page": "projects/actions"
+    },
+    {
       "id": "feature:action-pills",
       "name": "Action pills above the message box",
       "page": "projects/actions"
@@ -2587,6 +2692,11 @@
       "page": "sessions/agents"
     },
     {
+      "id": "feature:peer-messages",
+      "name": "Messages from other Claude sessions",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:agents-stop",
       "name": "Stop a background agent from the panel",
       "page": "sessions/agents"
@@ -2637,6 +2747,26 @@
       "page": "themes/built-in"
     },
     {
+      "id": "feature:minimal-mode",
+      "name": "Minimal mode: one-line sessions, state as a shape, the message box without its chips, no counts on icons, fields keep their edge",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:black-and-white-theme",
+      "name": "Black and white theme, light and dark",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:code-highlighting",
+      "name": "Code highlighting on or off: code in one colour, removed lines struck through and added lines in bold",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:project-colors",
+      "name": "Project colours on or off: projects in grey",
+      "page": "themes/built-in"
+    },
+    {
       "id": "feature:archive-closes-session",
       "name": "Marking a session done closes it",
       "page": "sessions/archived"
@@ -2645,6 +2775,16 @@
       "id": "feature:archive-draft-confirm",
       "name": "Mark done and discard the unsent message",
       "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "feature:quick-replies",
+      "name": "Suggested replies: after a turn, send the reply Claude Code expects with one click, or press Tab to put it in the box",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:escape-twice-to-stop",
+      "name": "Press Esc twice to stop the agent, or once with Settings › Conversation › Press Esc twice to stop turned off",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:archive-while-working",
@@ -2718,7 +2858,7 @@
     },
     {
       "id": "feature:usage-cost-estimate",
-      "name": "Estimated API cost after the 5-hour and weekly usage bars, in a currency you pick",
+      "name": "Estimated API cost of the 5-hour and weekly usage windows, in a currency you pick",
       "page": "usage"
     },
     {
@@ -2868,7 +3008,7 @@
     },
     {
       "id": "feature:provider-cli-updates",
-      "name": "GitHub Copilot CLI updates in Settings › About, while a Copilot profile exists: Check for Updates, Update (copilot update, or the Homebrew, npm or WinGet command), the toast for a new version, and checking automatically",
+      "name": "GitHub Copilot CLI, Codex CLI and Antigravity CLI updates in Settings › About, while a profile of that tool exists: Check for Updates, Update (copilot update, codex update, agy update, or the Homebrew, npm or WinGet command), the toast for a new version, and checking automatically",
       "page": "settings/updates"
     },
     {
@@ -2920,6 +3060,11 @@
       "id": "feature:ultrathink",
       "name": "Ultrathink: the word is coloured in the message box, and Ultrathink this turn on the effort chip adds it to the next message only",
       "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:composer-command-colour",
+      "name": "A slash command at the start of a message is coloured apart from the prompt after it",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:composer-tray",
@@ -3029,6 +3174,11 @@
     {
       "id": "feature:deep-link-new-session",
       "name": "seshboard://new-session",
+      "page": "links"
+    },
+    {
+      "id": "feature:deep-link-open",
+      "name": "seshboard://open: a web page in the Browser view or a session's Browser panel",
       "page": "links"
     },
     {
@@ -3263,7 +3413,7 @@
     },
     {
       "id": "feature:image-lightbox",
-      "name": "Images full size",
+      "name": "Images full size, in the conversation and attached to the message box, Quick start or the palette (a click on the thumbnail)",
       "page": "sessions/conversation"
     },
     {
@@ -3517,8 +3667,13 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:sidebar-quick-actions-new-here",
+      "name": "New session here: a + on a session row starts a session in its folder or worktree",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "feature:sidebar-quick-actions-setting",
-      "name": "Settings › Sidebar: Quick actions on hover, and Show (Done only or Read · Pin · Done)",
+      "name": "Settings › Sidebar: Quick actions on hover, and Show (Done only or New · Read · Pin · Done)",
       "page": "sessions/sidebar"
     },
     {
@@ -3528,8 +3683,8 @@
     },
     {
       "id": "feature:mouse-back-forward",
-      "name": "Back and forward with the mouse buttons",
-      "page": "sessions/sidebar"
+      "name": "Back and forward with the mouse buttons, the title bar's arrows or the palette",
+      "page": "sessions/rail"
     },
     {
       "id": "feature:multi-select",
@@ -4253,12 +4408,12 @@
     },
     {
       "id": "feature:sidebar-hidden",
-      "name": "Hidden sidebar and needs-you pill",
-      "page": "sessions/sidebar"
+      "name": "The panel closed: ⌘B, the title bar's Panel button or a click on Sessions in the nav rail, with what needs you as a count on Sessions",
+      "page": "sessions/rail"
     },
     {
       "id": "feature:sidebar-minimal-rail",
-      "name": "Minimal rail",
+      "name": "The 80px minimal rail is gone: the nav rail at the window's left edge takes its place, and a sidebar saved as minimal opens closed",
       "page": "sessions/sidebar"
     },
     {
@@ -4382,6 +4537,11 @@
       "page": "browser/agents"
     },
     {
+      "id": "feature:browser-scripts-any-site",
+      "name": "Any site in Scripts in pages: the agent runs scripts and reads requests on every site without asking",
+      "page": "browser/agents"
+    },
+    {
       "id": "feature:sidebar-view",
       "name": "The sidebar's View button: group by State or Project, sort Recent or Quickest to unblock, show Done and Compact rows",
       "page": "sessions/sidebar"
@@ -4400,6 +4560,21 @@
       "id": "feature:tool-rail-apps",
       "name": "Apps on the rail: right-click it and check VS Code, Finder, a terminal or GitHub under Open in, and a click on its icon opens the session's folder there (GitHub: its page)",
       "page": "sessions/tool-rail"
+    },
+    {
+      "id": "feature:side-panel-launcher",
+      "name": "Show panel in the title bar opens the side panel empty, with a list of the tools to open there and their shortcuts (hidden ones too)",
+      "page": "sessions/tool-rail"
+    },
+    {
+      "id": "feature:side-panel-size",
+      "name": "Every panel on the right, the empty one too, has Side, Half or Full in its header and resizes from its left edge; Settings › Conversation › Open the side panel in new sessions opens it with each session you start",
+      "page": "sessions/tool-rail"
+    },
+    {
+      "id": "shortcut:actions.move",
+      "name": "Move a project action",
+      "page": "projects/actions"
     },
     {
       "id": "shortcut:rail.move",
@@ -4430,11 +4605,6 @@
       "id": "feature:star-on-github",
       "name": "Star on GitHub",
       "page": "sessions/sidebar"
-    },
-    {
-      "id": "feature:sidebar-when-collapsed",
-      "name": "When collapsed: Minimal rail or Hidden",
-      "page": "settings"
     },
     {
       "id": "feature:slash-commands",
@@ -4720,6 +4890,11 @@
       "id": "feature:vscode-companion",
       "name": "VS Code companion extension",
       "page": "vscode-companion"
+    },
+    {
+      "id": "feature:browser-extension",
+      "name": "Browser extension for Chrome, Edge, Brave and Firefox: right-click to send the selected text or the page to a session, or start a session in the project a GitHub page belongs to; the popup lists the sessions waiting for you and sends the selection, the page's address, a screenshot and a local page's console errors to a session or project you search for, as chips and images in the message box",
+      "page": "browser-extension"
     },
     {
       "id": "feature:vscode-connection-status",
@@ -5037,8 +5212,8 @@
       "page": "usage"
     },
     {
-      "id": "shortcut:usage.back",
-      "name": "usage.back",
+      "id": "shortcut:usage.close",
+      "name": "usage.close",
       "page": "usage"
     },
     {
@@ -5172,6 +5347,11 @@
       "page": "sessions/activity"
     },
     {
+      "id": "feature:activity-started-by",
+      "name": "Activity: who started each session (a paired device with its ID, a trigger or a schedule), Started by with sessions, tokens and time per starter, tokens per session, and both in Export",
+      "page": "sessions/activity"
+    },
+    {
       "id": "feature:activity-score",
       "name": "Activity: each day's bar is an activity score against your typical day, stacked by time, turns and shipped, with a typical-day line and a tooltip per day",
       "page": "sessions/activity"
@@ -5228,7 +5408,7 @@
     },
     {
       "id": "feature:upcoming-rail",
-      "name": "Minimal sidebar: the Upcoming button with its count, green when an item is ready",
+      "name": "The nav rail: the Upcoming button with its count, yellow when an item is ready",
       "page": "sessions/upcoming"
     },
     {
@@ -5332,13 +5512,23 @@
       "page": "projects/triggers"
     },
     {
+      "id": "feature:trigger-reviews",
+      "name": "Reviews for you: a session on the pull request's branch for each pull request that asks for your review (or has a label, or both), from collaborators only, and again when it asks for a re-review; it reads the pull request, its comments and earlier reviews, and writes to GitHub only the state labels you turn on",
+      "page": "projects/triggers"
+    },
+    {
       "id": "feature:trigger-state-labels",
-      "name": "State labels on the issue, and Assign the issue to me when work starts",
+      "name": "State labels on the issue or pull request (working, needs input, pr open or reviewed, failed), and Assign the issue to me when work starts",
       "page": "projects/triggers"
     },
     {
       "id": "feature:trigger-limits",
       "name": "Sessions at a time (Runs at a time) and Events that may wait, with Start now and Start anyway",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-done-when-finished",
+      "name": "Mark done when it finishes: a triggered session that ends without an error, or a pipeline run that is done, goes to Done instead of To review (and stops counting toward the focus limit), and its worktree lets the branch go",
       "page": "projects/triggers"
     },
     {
@@ -5532,6 +5722,41 @@
       "page": "sessions/orchestrator"
     },
     {
+      "id": "feature:start-session-from-session",
+      "name": "Ask a session to start a session: any session (Claude Code, Copilot, Codex or Antigravity) can ask to start another for a separate task, when you ask it to or for a fix it noticed; you allow or deny it on a card, and the new session works in its own worktree, under the session that asked in the sidebar",
+      "page": "sessions/seshboard-tools"
+    },
+    {
+      "id": "feature:start-session-on-computer",
+      "name": "Ask a session to start a session on another computer: a session lists the paired computers and which have its project, and asks on a card that names the computer (\"start a session on mystic: seshboard\"); the project there is found by its GitHub repository, or cloned there first; that computer's own limits apply, and the session shows under the one that asked; an orchestrator spreads its tasks across computers the same way",
+      "page": "sessions/seshboard-tools"
+    },
+    {
+      "id": "feature:agent-automation",
+      "name": "Agents set up automation: a session saves a pipeline, trigger, schedule or project action you describe, after a card that shows every prompt and command in full, with Save, Open in editor and Deny; risky choices (open the pull request without me, run without stopping, state labels, issues from anyone) stay unticked unless you tick them; a new trigger is saved paused unless you tick Start watching now; it can also run pipelines and project actions, pause, resume and delete, check a trigger now and run a schedule now",
+      "page": "sessions/seshboard-tools"
+    },
+    {
+      "id": "feature:agent-helpers",
+      "name": "Help from sessions: a session sees the usage left, starts a task after the limit resets or at a time, finds and reads this project's earlier sessions, notifies your phone, hands off to a fresh session with a brief, and cleans up merged worktrees; starts and clean-ups ask you first",
+      "page": "sessions/seshboard-tools"
+    },
+    {
+      "id": "feature:project-session-tools",
+      "name": "Seshboard tools in sessions: a project's Settings tab picks whether its sessions get only the tools that start sessions, or the automation tools too",
+      "page": "projects/settings"
+    },
+    {
+      "id": "feature:remote-orchestrator",
+      "name": "Remote: Run as › Orchestrator in New session on the phone and for another computer starts that computer's project orchestrator there, with any agent; the sessions it starts show under it; its overview (Waiting on you, Working, Queued, Ready for review, Idle) opens from a bar under its title on the phone and shows above its conversation for another computer, with Open on each session and the way back from one",
+      "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:start-session-from-selection",
+      "name": "Start session from a selection: select text in a reply and pick Start session (or Start session from this in the message's menu) to open New session in the same project, in a new worktree, with the text as the prompt and a link to the session; the new session goes under it in the sidebar",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:orchestrator-instructions",
       "name": "Orchestrator instructions: a project's Settings tab keeps what its orchestrator and every session it starts read first",
       "page": "sessions/orchestrator"
@@ -5545,6 +5770,66 @@
       "id": "palette:go-to-orchestrator",
       "name": "Go to orchestrator",
       "page": "sessions/orchestrator"
+    },
+    {
+      "id": "feature:nav-rail",
+      "name": "The nav rail at the window's left edge: New session, Home, Sessions (with what needs you), Upcoming, Activity, Browser, Projects, Computers, Running and Settings, each with its list in the panel",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "feature:title-bar",
+      "name": "The title bar: Back and Forward, a search field that opens Go to, and the Panel, Tools panel and More buttons",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "feature:nav-rail-customize",
+      "name": "Customize the rail: right-click it (or More › Customize the rail…) to show or hide items, drag them or press ⌥↑ ⌥↓ to reorder, Reset to default",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "feature:nav-rail-peek",
+      "name": "With the panel closed, rest on Sessions in the nav rail (or press →) to peek at the sessions; a click opens one",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "feature:panel-filter",
+      "name": "The panel's header: Sessions, the project, View and a search button that shows the filter (Escape clears it)",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:nav-back",
+      "name": "Go back",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "palette:nav-forward",
+      "name": "Go forward",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "palette:customize-nav-rail",
+      "name": "Customize the rail…",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "shortcut:nav.back",
+      "name": "nav.back",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "shortcut:nav.forward",
+      "name": "nav.forward",
+      "page": "sessions/rail"
+    },
+    {
+      "id": "feature:nav-rail-projects",
+      "name": "Projects on the nav rail lists your projects in the panel, beside the project's page; Sessions switches the panel back",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:nav-rail-panels",
+      "name": "Every nav rail item but Home and Computers has its list in the panel: Upcoming and Activity filter by project there, Settings shows its sections, Running what counts; Computers is a menu on hover or click",
+      "page": "sessions/rail"
     }
   ]
 }

@@ -17,15 +17,16 @@ Each page in the [browser](/browser/overview/) has the same toolbar, whether it 
 From left to right:
 
 - **Back** and **Forward** go through the pages you visited. A narrow panel hides Forward; <Kbd shortcut="browser.forward" /> and your mouse's forward button still work.
-- **Reload** loads the page again, and turns into **Stop loading** while a page loads. A short line runs along the bottom of the toolbar while it loads.
+- **Reload** loads the page again, and turns into **Stop loading** while a page loads, a new tab's first page too. A short line runs along the bottom of the toolbar while it loads. Shift-click **Reload** for a hard reload (see [Reload a page](#reload-a-page)).
 - **The address bar**, with the link icon at its start (see below).
+- **Start session**, on a page a [site action](#start-a-session-from-a-page) is for, such as a GitHub pull request or issue.
 - **The profile switcher**, with the tab's [browser profile](/browser/profiles/).
 - **Pin tab** keeps the tab after a restart.
 - **The star** bookmarks the page (<Kbd shortcut="browser.bookmark" />), or edits its bookmark when it has one. See [Favourites and bookmarks](/browser/favourites-and-bookmarks/).
 - **The zoom**, such as `125%`, while the page is zoomed. Click it for 100%.
 - **Pick an element**, in a session's panel only. See [Send a page to the message](/browser/in-a-session/#send-a-page-to-the-message).
 - **Open in browser** opens the page in your usual browser.
-- **⋯** (**More for this page**) has the rest: **Pin tab**, **Bookmark this page…**, **Open in browser**, **Rename tab…**, **Copy address**, **Find in page**, **Zoom in**, **Zoom out**, **Actual size**, **Mute tab**, **Developer tools**, **Clear data for this site…** and **Clear all browsing data…**. In a session it also has **Open browser in new window**.
+- **⋯** (**More for this page**) has the rest: **Pin tab**, **Bookmark this page…**, **Open in browser**, **Rename tab…**, **Copy address**, **Hard reload**, **Find in page**, **Zoom in**, **Zoom out**, **Actual size**, **Mute tab**, **Developer tools**, **Clear data for this site…** and **Clear all browsing data…**. In a session it also has **Open browser in new window**.
 
 In a narrow panel, Pin, the star and Open in browser move into **⋯**, so the address keeps room to type.
 
@@ -36,6 +37,11 @@ Click it or press <Kbd shortcut="browser.address" />, then type an address, such
 - **Suggestions.** As you type, a list shows your open tabs (**Switch to tab**), your favourites and pages you opened before, matched on the address or the title. Pick one with <Kbd keys="arrowup|arrowdown" /> and <Kbd keys="enter" />, or click it. <Kbd keys="enter" /> opens the first suggestion when what you typed is the start of its address. <Kbd keys="escape" /> closes the list, and a second <Kbd keys="escape" /> puts the address back.
 - **Reload.** <Kbd keys="enter" /> on an address you didn't change loads the page again.
 - **Copy the address.** The link icon at the start of the bar copies the page's address in one click. The bar shows the address without `https://`, but copying from it takes the full address, so it pastes as a link in other apps. **Copy address** in a tab's menu and *Copy page address* in the palette do the same.
+
+## Reload a page
+
+- **Reload:** the **Reload** button, or <Kbd shortcut="browser.reload" />. The key reloads the page on screen in the Browser view or a session's Browser panel, wherever the focus is.
+- **Hard reload:** <Kbd shortcut="browser.hard-reload" />, Shift-click on **Reload**, **Hard reload** in **⋯** or in the page's right-click menu, or *Hard reload page* in the palette. It loads the page without the cache, so changed scripts and styles come back fresh.
 
 When a page can't load, the tab says **Couldn't open this page**, with **Try again** and **Open in browser**. A page that stops loads again by itself, or shows **This page stopped** with **Reload**.
 
@@ -66,7 +72,26 @@ The find bar shows how many matches there are, such as "2 of 7". <Kbd keys="ente
 
 ## Right-click in a page
 
-The page's own menu has what fits where you clicked: **Open link in new tab**, **Copy link address**, **Copy email address**, **Copy image**, **Copy image address**, spelling suggestions, cut, copy and paste, or **Back**, **Forward** and **Reload**. **Inspect** opens the developer tools on that element. In a session's panel, it also has **Quote in message** and **Add element to message**.
+The page's own menu has what fits where you clicked: **Open link in new tab**, **Copy link address**, **Copy email address**, **Copy image**, **Copy image address**, spelling suggestions, cut, copy and paste, or **Back**, **Forward**, **Reload** and **Hard reload**. On a page a [site action](#start-a-session-from-a-page) is for, it has that action too, such as **Start session from this pull request**. **Inspect** opens the developer tools on that element. In a session's panel, it also has **Quote in message** and **Add element to message**.
+
+## Start a session from a page
+
+On a GitHub pull request or issue, the toolbar shows **Start session**, and the page's right-click menu has **Start session from this pull request** or **Start session from this issue**. It opens New session in your checkout of that repository, in a new worktree, filled in from the pull request or issue. Type what you want, then start. Nothing starts on its own.
+
+These are site actions. With more than one for a page, **Start session** opens a menu of them. In a narrow panel, only its icon shows.
+
+### Site actions
+
+**Settings › Browser › Site actions** lists them. Each has a switch to turn it off, and **Edit**.
+
+- **The GitHub actions** are built in. **Edit** changes their name and their prompt, and the reset button next to it puts both back.
+- **Add site action** makes one of your own, for any site:
+  - **Name**: what the button and the menu say, such as "Investigate this error".
+  - **Pages**: the pages it shows on, such as `https://*.sentry.io/issues/*`.
+  - **Project**: where New session opens, or **Pick a folder each time**.
+  - **Prompt**: what fills the message box. It can use `{url}`, `{title}` and `{selection}`, and the GitHub actions also `{repo}` and `{number}`.
+
+The **×** on one of your own removes it.
 
 ## Downloads
 

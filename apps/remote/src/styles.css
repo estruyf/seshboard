@@ -315,12 +315,28 @@ body {
 .working-panel .jack-hole {
   fill: var(--sb-working-hole);
 }
+/*
+ * The lights over the free jacks are HTML, not SVG: only opacity and transform animate, so Chromium runs them on the
+ * compositor. .jack-light is the glow's square, centred on its jack; the lit dot is the middle share of it (its inset is set by the component, from JACK / GLOW).
+ */
+/* The glow of a jack on the panel's edge is clipped to the panel, as the SVG it replaced clipped it. */
+.working-panel {
+  overflow: hidden;
+}
+.working-panel .jack-light {
+  position: absolute;
+  opacity: 0;
+}
 .working-panel .jack-lit {
-  fill: var(--sb-working-lit);
+  position: absolute;
+  border-radius: 50%;
+  background: var(--sb-working-lit);
 }
 .working-panel .jack-glow {
-  fill: var(--sb-working-glow);
-  transform-box: fill-box;
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--sb-working-glow);
   transform-origin: center;
 }
 .working-panel .jack-plug-a {
@@ -334,9 +350,6 @@ body {
 }
 .working-panel .jack-plug-d {
   fill: var(--sb-working-plug-d);
-}
-.working-panel .jack-light {
-  opacity: 0;
 }
 .working-panel[data-working-state='working'] :is(.jack-light, .jack-glow) {
   animation-duration: var(--working-round);
@@ -372,7 +385,7 @@ body {
   opacity: 1;
 }
 .working-panel[data-working-state='waiting'] .jack-lit {
-  fill: var(--sb-warn);
+  background: var(--sb-warn);
 }
 .working-panel:not([data-working-state='working']) .jack-glow {
   visibility: hidden;

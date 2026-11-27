@@ -91,6 +91,8 @@ describe('wantsLabel', () => {
     expect(canAllow(request('a'))).toBe(true);
     expect(canAllow(request('a', { toolName: 'AskUserQuestion' }))).toBe(false);
     expect(canAllow(request('a', { toolName: 'ExitPlanMode' }))).toBe(false);
+    // An approval card needs its session's card: every prompt in full, the ticks, Open in editor.
+    expect(canAllow(request('a', { approval: { kind: 'pipeline', allowLabel: 'Save', lines: [], blocks: [], options: [], editor: null, draft: null } }))).toBe(false);
     expect(canAllow(null)).toBe(false);
   });
 });

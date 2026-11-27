@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { OrchestratorInfo } from '@seshboard/protocol/client';
+import type { OrchestratorInfo, StartedChild } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 
 // The orchestrators (docs/orchestrator.md). The engine keeps which sessions are orchestrators and what each started;
@@ -8,12 +8,17 @@ import { useEngineConnection } from '../engine/useEngine.ts';
 
 interface OrchestratorState {
   orchestrators: OrchestratorInfo[];
-  set(orchestrators: OrchestratorInfo[]): void;
+  /** Sessions other sessions started (start_session): they nest under those the same way. */
+  started: StartedChild[];
+  set(orchestrators: OrchestratorInfo[], started?: StartedChild[]): void;
 }
+
+const NONE: StartedChild[] = [];
 
 export const useOrchestrators = create<OrchestratorState>()((set) => ({
   orchestrators: [],
-  set: (orchestrators) => set({ orchestrators }),
+  started: NONE,
+  set: (orchestrators, started) => set({ orchestrators, started: started ?? NONE }),
 }));
 
 /** Loads the orchestrators once per connection and follows changes from every window. */
@@ -22,8 +27,8 @@ export function useOrchestratorSync(): void {
   const client = connection.status === 'connected' ? connection.client : null;
   useEffect(() => {
     if (!client) return;
-    const off = client.on('orchestrator.changed', ({ orchestrators }) => useOrchestrators.getState().set(orchestrators));
-    void client.call('orchestrator.list', {}).then(({ orchestrators }) => useOrchestrators.getState().set(orchestrators), () => {});
+    const off = client.on('orchestrator.changed', ({ orchestrators, started }) => useOrchestrators.getState().set(orchestrators, started));
+    void client.call('orchestrator.list', {}).then(({ orchestrators, started }) => useOrchestrators.getState().set(orchestrators, started), () => {});
     return off;
   }, [client]);
 }

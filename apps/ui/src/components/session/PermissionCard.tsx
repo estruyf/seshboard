@@ -1,6 +1,8 @@
-import { Check, CircleHelp, ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
+import { Check, CircleHelp, ClipboardList, MessageCircleQuestion, PencilLine, ShieldQuestion, SquareTerminal } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { agentName, midSentence, type PermissionDecision, type PermissionRequest } from '@seshboard/protocol/client';
+import { agentName, midSentence, type ApprovalCard, type PermissionDecision, type PermissionRequest } from '@seshboard/protocol/client';
+import { openApprovalEditor, useApprovalEditor } from '../../state/approvalEditorStore.ts';
+import { ApprovalBody } from './ApprovalCard.tsx';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useWhy } from '../../state/whyStore.ts';
@@ -11,12 +13,20 @@ import { CheckMark } from '../ui/Checkbox.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';
 import { toolSummary } from '../transcript/toolSummary.ts';
 import { cardKeyAction, OVERLAY_SELECTOR, waitingLabel, type CardKind, type KeyTarget } from './permissionKeys.ts';
-import { nextOpenQuestion } from './questionFlow.ts';
+import { nextOpenQuestion, toggleAnswer } from './questionFlow.ts';
+import { EMPTY_QUESTION_DRAFT, usePermissionDrafts } from '../../state/permissionDraftsStore.ts';
 
 /** Sends the answer; resolves to whether the engine took it (a failure shows under the card). */
 type Respond = (decision: PermissionDecision) => Promise<boolean>;
 
 const DECLINED = 'The user declined this action.';
+
+/** The feedback typed on a card, kept per request so it survives going to another session and back. */
+function useFeedbackDraft(requestId: string): [string, (text: string) => void] {
+  const feedback = usePermissionDrafts((s) => s.feedback.get(requestId) ?? '');
+  const setFeedback = usePermissionDrafts((s) => s.setFeedback);
+  return [feedback, (text) => setFeedback(requestId, text)];
+}
 
 function useRespond(request: PermissionRequest): { respond: Respond; busy: boolean; error: string | null } {
   const connection = useEngineConnection();
@@ -172,7 +182,7 @@ export function FeedbackField({ value, onChange, onSubmit, busy, agent = 'Claude
       }}
       placeholder={`Or tell ${midSentence(agent)} what to do instead…`}
       aria-label={`Or tell ${midSentence(agent)} what to do instead`}
-      className="h-8 w-full min-w-0 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
+      className="field h-8 w-full min-w-0 px-2.5 text-ui outline-none placeholder:text-faint"
     />
   );
 }
@@ -237,10 +247,11 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
   const { respond, busy, error } = useRespond(request);
   const agent = useAgentName(request.sessionId);
   const [showInput, setShowInput] = useState(false);
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useFeedbackDraft(request.requestId);
   const allowRef = useFocusIfIdle();
   const inputId = useId();
-  const { detail } = toolSummary(request.toolName, request.input, cwd);
+  // Seshboard's own cards say what the call does (a browser click names its element, not its ref).
+  const detail = request.detail ?? toolSummary(request.toolName, request.input, cwd).detail;
   const command = request.toolName === 'Bash' ? (request.input as { command?: string }).command : undefined;
   const allow = () => void respond({ behavior: 'allow' });
   const deny = () => void respond({ behavior: 'deny', message: feedback.trim() || DECLINED });
@@ -367,25 +378,22 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
   const agent = useAgentName(request.sessionId);
   const input = request.input as { questions?: Question[] };
   const questions = input.questions ?? [];
-  const [answers, setAnswers] = useState<Record<string, string[]>>({});
-  const [other, setOther] = useState<Record<string, string>>({});
-  // The question the number keys answer; it moves on as you pick and with Enter.
-  const [step, setStep] = useState(0);
+  // Kept in a store, not the card, so going to another session and back doesn't lose them.
+  // `step` is the question the number keys answer; it moves on as you pick and with Enter.
+  const { answers, other, step } = usePermissionDrafts((s) => s.questions.get(request.requestId) ?? EMPTY_QUESTION_DRAFT);
+  const update = usePermissionDrafts((s) => s.updateQuestion);
+  const setStep = (next: number) => update(request.requestId, () => ({ step: next }));
   const last = questions.length - 1;
   const current = questions[Math.min(step, last)];
 
   const toggle = (q: Question, label: string) =>
-    setAnswers((c) => {
-      const picked = c[q.question] ?? [];
-      const next = q.multiSelect ? (picked.includes(label) ? picked.filter((l) => l !== label) : [...picked, label]) : [label];
-      return { ...c, [q.question]: next };
-    });
+    update(request.requestId, (d) => ({ answers: { ...d.answers, [q.question]: toggleAnswer(d.answers[q.question] ?? [], label, q.multiSelect ?? false) } }));
 
   const final = (q: Question) => [...(answers[q.question] ?? []), ...(other[q.question]?.trim() ? [other[q.question]!.trim()] : [])];
   const complete = questions.every((q) => final(q).length > 0);
 
   const nextUnanswered = (from: number) => nextOpenQuestion(questions.map((q) => final(q).length > 0), from);
-  /** One way to answer, for a click and a number key. A single choice that is the first answer moves on; changing an answer, or a multi-select, stays. */
+  /** One way to answer, for a click and a number key. A single choice that is the first answer moves on; changing or clearing an answer, or a multi-select, stays. */
   const choose = (qi: number, q: Question, label: string) => {
     const first = final(q).length === 0;
     toggle(q, label);
@@ -486,10 +494,13 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
             )}
             <input
               value={other[q.question] ?? ''}
-              onChange={(e) => setOther((c) => ({ ...c, [q.question]: e.target.value }))}
+              onChange={(e) => {
+                const value = e.target.value;
+                update(request.requestId, (d) => ({ other: { ...d.other, [q.question]: value } }));
+              }}
               placeholder={q.multiSelect ? 'Something else (optional)' : 'Or type your own answer'}
               aria-label={`Your own answer to: ${q.question}`}
-              className="h-8 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
+              className="field h-8 px-2.5 text-ui outline-none placeholder:text-faint"
             />
             {isCurrent && q.multiSelect && nextUnanswered(qi) !== undefined && (
               <div>
@@ -518,11 +529,55 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
   );
 }
 
+/**
+ * Seshboard's approval card for one of its own tools (docs/seshboard-tools.md): Allow with the choices ticked, Open in
+ * editor where an editor fits (the card waits for what you save or close there), or Deny.
+ */
+function ApprovalPermission({ request, card, titleId, cardRef }: CardProps & { card: ApprovalCard }) {
+  const { respond, busy, error } = useRespond(request);
+  const agent = useAgentName(request.sessionId);
+  const [feedback, setFeedback] = useFeedbackDraft(request.requestId);
+  const [ticked, setTicked] = useState<Record<string, boolean>>(() => Object.fromEntries(card.options.map((o) => [o.key, o.checked])));
+  const editing = useApprovalEditor((s) => s.open?.requestId === request.requestId);
+  const allowRef = useFocusIfIdle();
+  const allow = () => void respond({ behavior: 'allow', updatedInput: { options: ticked } });
+  const deny = () => void respond({ behavior: 'deny', message: feedback.trim() || DECLINED });
+  useCardShortcuts(cardRef, 'tool', 0, busy || editing, { allow, deny });
+  return (
+    <div className="grid gap-2.5" data-approval-card={card.kind}>
+      <Header request={request} icon={<ShieldQuestion size={15} />} title={request.title ?? `${agent} wants to use Seshboard`} titleId={titleId} createdAt={request.createdAt} />
+      {request.description && <p className="text-ui text-muted">{request.description}</p>}
+      <ApprovalBody card={card} ticked={ticked} onTick={(key, on) => setTicked((t) => ({ ...t, [key]: on }))} />
+      {editing && <Notice tone="info">Open in the editor. Save there, or close it to deny.</Notice>}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button ref={allowRef} variant="primary" size="lg" shortcut="permission.allow" data-permission-allow disabled={busy || editing} onClick={allow}>
+          {card.allowLabel}
+        </Button>
+        {card.editor && card.draft !== null && (
+          <Button
+            size="lg"
+            icon={<PencilLine size={13} aria-hidden />}
+            disabled={busy || editing}
+            data-approval-editor
+            data-tooltip="Change it in the editor first. Saving there answers this card."
+            onClick={() => openApprovalEditor({ requestId: request.requestId, sessionId: request.sessionId, editor: card.editor!, draft: card.draft })}
+          >
+            Open in editor
+          </Button>
+        )}
+        <DenyButton label="Deny" busy={busy || editing} onClick={deny} />
+      </div>
+      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={deny} busy={busy || editing} agent={agent} />
+      <ErrorLine error={error} />
+    </div>
+  );
+}
+
 function PlanApproval({ request, titleId, cardRef }: CardProps) {
   const { respond, busy, error } = useRespond(request);
   const agent = useAgentName(request.sessionId);
   const connection = useEngineConnection();
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useFeedbackDraft(request.requestId);
   const plan = (request.input as { plan?: string }).plan ?? '';
   const approveWithEdits = async () => {
     // Only switch modes once the plan is really approved: a failed answer leaves the card up.
@@ -575,6 +630,8 @@ export function PermissionCard({ request, cwd }: { request: PermissionRequest; c
         <AskUserQuestion request={request} titleId={titleId} cardRef={cardRef} />
       ) : request.toolName === 'ExitPlanMode' ? (
         <PlanApproval request={request} titleId={titleId} cardRef={cardRef} />
+      ) : request.approval ? (
+        <ApprovalPermission request={request} card={request.approval} titleId={titleId} cardRef={cardRef} />
       ) : (
         <ToolPermission request={request} cwd={cwd} titleId={titleId} cardRef={cardRef} />
       )}

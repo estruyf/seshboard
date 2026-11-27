@@ -1,6 +1,6 @@
 ---
 title: Project settings
-description: The Claude profile and the choices new sessions in a project start with, the instructions its orchestrator and plan mode follow, and its name and icon in Seshboard.
+description: The Claude profile and the choices new sessions in a project start with, the instructions its orchestrator and plan mode follow, the Seshboard tools its sessions get, and its name and icon in Seshboard.
 sidebar:
   label: Settings tab
 ---
@@ -52,11 +52,20 @@ Two fields hold text that sessions in this project read when they start. Each sa
 - **Orchestrator instructions**: what the project's [orchestrator](/sessions/orchestrator/) and every session it starts read first, such as which branch to start from, how to check the work and what needs your go-ahead. Up to 16,000 characters. Rules about the code itself belong in the repository's own instructions file.
 - **Plan mode instructions**: replaces the steps Claude Code follows in [plan mode](/new-session/models-and-options/#permission-mode): what to read, what the plan lists and when to ask. Its read-only rules stay. Up to 8,000 characters, for Claude Code sessions only.
 
+### Seshboard tools in sessions
+
+Sessions in the project can [use Seshboard](/sessions/seshboard-tools/): start a session, set up a pipeline or a trigger, and more. **Seshboard tools in sessions** picks which tools they get:
+
+- **With automation** (the default): they can also set up and run pipelines, triggers, schedules and project actions.
+- **Start sessions**: they can start a session here or on another computer, start one later, read other sessions and notify you. Pipelines, triggers, schedules and actions are left out.
+
+Each save or start asks you first. Fewer tools leave more context for agents without tool search. The choice applies to sessions started from then on.
+
 ### Browser sites
 
 With the [browser](/browser/overview/) on, **Browser sites** lists the sites the agent can use in the session's browser without asking. Type a site, such as `app.example.com` or `*.example.com` (every subdomain), and click **Allow**. **Any site** lets the agent use every site without asking. **Always allow** on a browser permission card adds a site here.
 
-**Scripts in pages** lists the sites where the agent can run scripts and read requests without asking. It shows with **Allow scripts in pages** on in Settings › Browser, or while it has sites. See [Agents in the browser](/browser/agents/#browser-sites).
+**Scripts in pages** lists the sites where the agent can run scripts and read requests without asking. Check **Any site** to let it do that on every site without asking. It shows with **Allow scripts in pages** on in Settings › Browser, or while it has sites. See [Agents in the browser](/browser/agents/#browser-sites).
 
 ### Name, icon and folder
 

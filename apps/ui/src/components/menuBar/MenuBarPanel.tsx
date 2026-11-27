@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, Square } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react';
 import { isPaused, NOTIFICATION_PAUSES, pauseUntil, type NotificationPause } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { matches } from '../../lib/shortcuts.ts';
+import { ariaKeysFor, ariaShortcut, formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -15,7 +15,6 @@ import { ProfileBadge } from '../profiles/ProfileBadge.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { tileOf } from '../theme/AppIconSettings.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Kbd } from '../ui/Kbd.tsx';
 import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { useUsageLines } from '../UsageBand.tsx';
 import { menuBarRows, nextRow, SECTION_TITLES, type MenuBarRow, type MenuBarSection } from './menuBarModel.ts';
@@ -424,7 +423,7 @@ function ProjectPicker({ onPick }: { onPick(root: string): void }) {
         aria-expanded
         aria-controls="menubar-projects"
         aria-activedescendant={found[active] ? `menubar-project-${active}` : undefined}
-        className="mb-1 w-full rounded-md border border-edge bg-bg px-2 py-1 text-ui outline-none"
+        className="field mb-1 w-full px-2 py-1 text-ui outline-none"
       />
       <ul id="menubar-projects" role="listbox" aria-label="Projects" className="grid">
         {found.map((p, i) => (
@@ -464,9 +463,8 @@ function Footer({ innerEscape }: { innerEscape: RefObject<Set<() => void>> }) {
   const item = 'flex w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-ui hover:bg-border/45';
   return (
     <div className="grid" data-menubar-footer>
-      <button type="button" className={item} onClick={() => bridge()?.menuBarCommand('open')} data-menubar-open-app>
+      <button type="button" className={item} onClick={() => bridge()?.menuBarCommand('open')} data-tooltip="Open Seshboard" data-tooltip-kbd={formatKeys(keysFor('menubar.open'))} aria-keyshortcuts={ariaKeysFor('menubar.open')} data-menubar-open-app>
         <span className="flex-1">Open Seshboard</span>
-        <Kbd shortcut="menubar.open" tone="plain" />
       </button>
       <button type="button" className={item} onClick={() => setChoosing((open) => !open)} aria-expanded={choosing} data-menubar-pause>
         <span className="flex-1">{paused ? 'Notifications paused' : 'Pause notifications'}</span>
@@ -496,14 +494,15 @@ function Footer({ innerEscape }: { innerEscape: RefObject<Set<() => void>> }) {
           bridge()?.showInMain({ kind: 'settings', section: null });
           bridge()?.menuBarCommand('close');
         }}
+        data-tooltip="Settings"
+        data-tooltip-kbd={formatKeys(keysFor('settings'))}
+        aria-keyshortcuts={ariaKeysFor('settings')}
         data-menubar-settings
       >
         <span className="flex-1">Settings…</span>
-        <Kbd shortcut="settings" tone="plain" />
       </button>
-      <button type="button" className={item} onClick={() => bridge()?.menuBarCommand('quit')} data-menubar-quit>
+      <button type="button" className={item} onClick={() => bridge()?.menuBarCommand('quit')} data-tooltip="Quit Seshboard" data-tooltip-kbd={formatKeys('mod+q')} aria-keyshortcuts={ariaShortcut('mod+q')} data-menubar-quit>
         <span className="flex-1">Quit Seshboard</span>
-        <Kbd keys="mod+q" tone="plain" />
       </button>
     </div>
   );

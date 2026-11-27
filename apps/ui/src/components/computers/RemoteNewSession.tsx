@@ -1,7 +1,9 @@
 import { ViewHeader } from '../ViewHeader.tsx';
+import { openSidePanelOnStart } from '../../state/sidePanelOnStart.ts';
+import { remoteRowId } from '../../state/remoteSelection.ts';
 import { Folder, FolderDown, FolderGit2, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { AUTO_MODEL, bringsAnything, keptRunAs, modelWord, remoteBaseChoices, remoteBaseName, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_WORKTREE_BASE, runAsSteps, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, keptRunAs, modelWord, remoteBaseChoices, remoteBaseName, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_ORCHESTRATOR, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_WORKTREE_BASE, runAsSteps, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { letterColor } from '../../lib/projectColor.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -54,7 +56,8 @@ import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefault
  * focus limit are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
  * (`REMOTE_FEATURE_CLONE`), and the session starts in the clone there. Run as lists the pipelines the project can run
  * there (`REMOTE_FEATURE_PIPELINES`): picked, Start runs it on that computer with the prompt as its task, and its run
- * row opens here. In a new worktree, Branch from picks where it starts there (`REMOTE_FEATURE_WORKTREE_BASE`).
+ * row opens here. Run as › Orchestrator starts the session as that project's orchestrator there
+ * (`REMOTE_FEATURE_ORCHESTRATOR`). In a new worktree, Branch from picks where it starts there (`REMOTE_FEATURE_WORKTREE_BASE`).
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
@@ -249,6 +252,10 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   }, [client, computer.id, connected, takesPipelines, projectId]);
   // A pipeline's steps are Claude Code's (none with another provider), and a clone has no project to run in yet.
   const runAs = !provider && !cloneForm ? (pipelines.find((p) => p.id === runAsId) ?? null) : null;
+  // Run as › Orchestrator, on a computer that takes it: with any agent, as here, but not in a clone (Run as is hidden then).
+  const takesOrchestrator = computer.features.includes(REMOTE_FEATURE_ORCHESTRATOR);
+  const [orchestrate, setOrchestrate] = useState(false);
+  const asOrchestrator = takesOrchestrator && orchestrate && !cloning;
 
   const cloneBlocked = cloning && !canClone(cloneJob.plan) && cloneJob.stage !== 'running' ? (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, name).text : 'Paste a GitHub repository first')) : null;
   const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : providerBlocked ? providerBlocked : !prompt.trim() && !fill ? 'Type a message first' : null;
@@ -305,6 +312,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
           : {}),
         ...(inClone ? { worktree: false } : {}),
         ...(checkoutBranch && !fresh && !provider ? { checkoutBranch } : {}),
+        ...(asOrchestrator ? { orchestrator: true } : {}),
       });
       if (fresh) closeClone();
       clearRemoteDraft(draftKey);
@@ -312,10 +320,14 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       savedPrompts.sent(sentFill);
       setChanges({});
       setBranch(null);
+      // The next session is one session again, as here.
+      setOrchestrate(false);
       attachments.clear();
+      // Settings › Conversation › Open the side panel in new sessions, as for a session started here.
+      openSidePanelOnStart(remoteRowId({ computerId: computer.id, sessionId }));
       useComputers.getState().openSession({ computerId: computer.id, sessionId }, { starting: true });
     } catch (e) {
-      toast((e as Error).message, { body: runAs ? `The pipeline didn’t start on ${name}.` : `It didn’t start on ${name}.` });
+      toast((e as Error).message, { body: runAs ? `The pipeline didn’t start on ${name}.` : asOrchestrator ? `The orchestrator didn’t start on ${name}.` : `It didn’t start on ${name}.` });
     } finally {
       setStarting(false);
     }
@@ -324,7 +336,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   // Queue for later: the prompt waits in that computer's queue (Later) until someone starts it there. Images and files
   // can't wait with it, and a clone has nothing to queue in yet.
   const attached = attachments.images.length + attachments.files.length > 0;
-  const queueBlocked = blocked ?? (cloning ? 'Start a clone with Start' : runAs ? 'A pipeline starts now, not from the queue' : attached ? 'Images and files can’t wait in the queue' : null);
+  const queueBlocked = blocked ?? (cloning ? 'Start a clone with Start' : runAs ? 'A pipeline starts now, not from the queue' : asOrchestrator ? 'An orchestrator starts now, not from the queue' : attached ? 'Images and files can’t wait in the queue' : null);
   const queueLater = async () => {
     if (queueBlocked || starting || queuing || !client || !project) return;
     const sentFill = fill;
@@ -572,13 +584,24 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                   <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
-                  {pipelines.length > 0 && project && !cloning && (
-                    // Another provider's steps can't run a pipeline: the chip stays, with why.
-                    <span className="inline-flex" data-tooltip={provider ? `${provider.name} can’t run a pipeline yet` : undefined}>
-                      <RunAsChip pipelines={pipelines} value={provider ? null : runAs} onChange={setRunAsId} root={remoteProjectKey(computer.id, project.id)} openRequest={runAsMenu} disabled={starting || !connected || !!provider} editable={false} />
+                  {(pipelines.length > 0 || takesOrchestrator) && project && !cloning && (
+                    // Another provider's steps can't run a pipeline: the chip stays, with why. An orchestrator runs
+                    // with any agent, so where the computer takes one, only the pipelines are off.
+                    <span className="inline-flex" data-tooltip={provider && !takesOrchestrator ? `${provider.name} can’t run a pipeline yet` : undefined}>
+                      <RunAsChip
+                        pipelines={pipelines}
+                        value={provider ? null : runAs}
+                        onChange={setRunAsId}
+                        root={remoteProjectKey(computer.id, project.id)}
+                        openRequest={runAsMenu}
+                        disabled={starting || !connected || (!!provider && !takesOrchestrator)}
+                        editable={false}
+                        {...(takesOrchestrator ? { orchestrator: { on: asOrchestrator, onChange: setOrchestrate } } : {})}
+                        {...(provider && takesOrchestrator ? { noPipelines: `${provider.name} can’t run a pipeline yet` } : {})}
+                      />
                     </span>
                   )}
-                  {!runAs && (
+                  {!runAs && !asOrchestrator && (
                   <span className="flex" data-tooltip={!queuing ? (queueBlocked ?? `Wait in the queue on ${name}`) : undefined}>
                     <Button variant="secondary" size="lg" disabled={!!queueBlocked || starting || queuing} aria-busy={queuing || undefined} onClick={() => void queueLater()} className="disabled:pointer-events-none" data-remote-queue-later>
                       <span className="@max-[600px]/box:hidden">{queuing ? 'Queueing…' : 'Queue for later'}</span>
@@ -587,8 +610,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                   </span>
                   )}
                   <span className="flex" data-tooltip={!starting ? (blocked ?? undefined) : undefined}>
-                    <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting || attachments.reading} aria-busy={starting || undefined} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start={runAs ? 'pipeline' : 'session'}>
-                      {runAs ? (starting ? 'Starting the run…' : 'Run pipeline') : starting ? 'Starting…' : `Start on ${name}`}
+                    <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting || attachments.reading} aria-busy={starting || undefined} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start={runAs ? 'pipeline' : asOrchestrator ? 'orchestrator' : 'session'}>
+                      {runAs ? (starting ? 'Starting the run…' : 'Run pipeline') : starting ? 'Starting…' : asOrchestrator ? 'Start orchestrator' : `Start on ${name}`}
                     </Button>
                   </span>
                 </div>

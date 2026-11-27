@@ -113,6 +113,9 @@ export function nextUsageEntry(prev: UsageEntry | undefined, result: { usage: Us
   return { usage: null, error: null };
 }
 
+/** How old the engine's numbers may be for the window coming back into focus to leave them alone (each fetch starts a Claude Code process). */
+export const FOCUS_MAX_AGE_MS = 120_000;
+
 /** What a usage card says while it has no limits to show. */
 export function usageMessage(entry: UsageEntry | undefined): string {
   if (!entry) return 'Loading usage…';

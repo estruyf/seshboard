@@ -52,12 +52,17 @@ describe('sessionDays', () => {
       {
         messages: [{ session_id: 's', at: at('2026-11-02T09:30:00Z') }],
         prompts: [],
-        usage: [{ session_id: 's', hour: at('2026-11-02T09:00:00Z'), model: 'claude-opus-4-8', input: 1_000_000, output: 0, cache_read: 0, cache_write: 0, cache_write_1h: 0 }],
+        usage: [
+          { session_id: 's', hour: at('2026-11-02T09:00:00Z'), model: 'claude-opus-4-8', input: 1_000_000, output: 2_000, cache_read: 30_000, cache_write: 400, cache_write_1h: 100 },
+          { session_id: 's', hour: at('2026-11-02T09:00:00Z'), model: 'claude-haiku-4-5', input: 5, output: 0, cache_read: 0, cache_write: 0, cache_write_1h: 0 },
+        ],
       },
       clock,
       inRange,
     );
     expect(day!.costUsd).toBeGreaterThan(0);
+    // The 1-hour cache writes are a part of the cache writes: counted once.
+    expect(day!.tokens).toBe(1_032_405);
     expect(day!.hours[9]).toBe(1);
   });
 
@@ -79,7 +84,7 @@ describe('commits', () => {
 
   it('goes to the session with the nearest moment, and nowhere when none is near', () => {
     const base = at('2026-11-02T09:00:00Z');
-    const day = (sessionId: string, moments: number[]) => ({ day: '2026-11-02', sessionId, moments, firstAt: 0, lastAt: 0, activeMs: 0, hours: [], turns: 0, asks: [], costUsd: null });
+    const day = (sessionId: string, moments: number[]) => ({ day: '2026-11-02', sessionId, moments, firstAt: 0, lastAt: 0, activeMs: 0, hours: [], turns: 0, asks: [], costUsd: null, tokens: 0 });
     const a = day('a', [base, base + 2 * MINUTE]);
     const b = day('b', [base + 3 * MINUTE]);
     const commit = (hash: string, when: number) => ({ hash, at: when, subject: '', files: [] });
@@ -302,6 +307,36 @@ describe('ActivityService', () => {
     addMoment('s', at('2026-11-02T09:00:00Z'));
     prs.set('s', [{ repo: 'o/r', number: 253, url: 'https://github.com/o/r/pull/253', state: 'open', base: null, head: null, source: 'opened', seenAt: at('2026-11-02T09:30:00Z'), checkedAt: 0 }]);
     expect((await range())[0]!.prs).toEqual([{ number: 253, url: 'https://github.com/o/r/pull/253' }]);
+  });
+
+  it('says who started a session: a paired device, a trigger or a schedule, also for what sits under it', async () => {
+    const started = at('2026-11-02T08:00:00Z');
+    db.prepare("INSERT INTO remote_devices (id, name, kind, public_key, created_at, last_seen_at, revoked_at) VALUES ('phone-1', 'Ana\u2019s phone', 'phone', 'key', 0, NULL, NULL)").run();
+    db.prepare('INSERT INTO remote_session_origins (session_id, device_id, device_name, started_at) VALUES (?, ?, ?, ?)').run('from-phone', 'phone-1', 'Old name', started);
+    // A device that is gone keeps the name it had.
+    db.prepare('INSERT INTO remote_session_origins (session_id, device_id, device_name, started_at) VALUES (?, ?, ?, ?)').run('from-gone', 'gone-1', 'Bo\u2019s laptop', started);
+    // A pipeline run a device started: its steps sit under the run.
+    db.prepare('INSERT INTO remote_session_origins (session_id, device_id, device_name, started_at) VALUES (?, ?, ?, ?)').run('run-1', 'phone-1', 'Old name', started);
+    db.prepare("INSERT INTO trigger_sessions (session_id, trigger_id, event_id, trigger_name, kind, ref, url, at) VALUES ('from-trigger', 'trig-1', 'e1', 'Failed CI', 'run', 'ci', 'https://x', ?)").run(started);
+    db.prepare("INSERT INTO schedules (id, name, draft_json, rule_json, checked_at, created_at, updated_at) VALUES ('sched-1', 'Morning triage', '{}', '{}', 0, 0, 0)").run();
+    db.prepare("INSERT INTO schedule_runs (session_id, schedule_id, at) VALUES ('from-schedule', 'sched-1', ?)").run(started);
+    summaries.set('step', summary('step', { parentId: 'run-1' }));
+    summaries.set('sub', summary('sub', { parentId: 'from-trigger' }));
+    for (const id of ['mine', 'from-phone', 'from-gone', 'from-trigger', 'from-schedule', 'step', 'sub']) addMoment(id, at('2026-11-02T09:00:00Z'));
+    const by = new Map((await range()).map((e) => [e.sessionId, e.startedBy]));
+    expect(by.get('mine')).toBeNull();
+    expect(by.get('from-phone')).toEqual({ kind: 'device', id: 'phone-1', name: 'Ana\u2019s phone' });
+    expect(by.get('from-gone')).toEqual({ kind: 'device', id: 'gone-1', name: 'Bo\u2019s laptop' });
+    expect(by.get('step')).toEqual({ kind: 'device', id: 'phone-1', name: 'Ana\u2019s phone' });
+    expect(by.get('from-trigger')).toEqual({ kind: 'trigger', id: 'trig-1', name: 'Failed CI' });
+    expect(by.get('sub')).toEqual({ kind: 'trigger', id: 'trig-1', name: 'Failed CI' });
+    expect(by.get('from-schedule')).toEqual({ kind: 'schedule', id: 'sched-1', name: 'Morning triage' });
+  });
+
+  it('counts a session\'s tokens on its day', async () => {
+    addMoment('s', at('2026-11-02T09:10:00Z'));
+    db.prepare("INSERT INTO session_usage (scope, session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context) VALUES ('scope', 's', ?, 'claude-opus-4-8', 100, 20, 3000, 400, 0, 1, 0, 0)").run(at('2026-11-02T09:00:00Z'));
+    expect(await range()).toMatchObject([{ sessionId: 's', tokens: 3520 }]);
   });
 
   it('shows another provider\'s session on the day of its last activity', async () => {

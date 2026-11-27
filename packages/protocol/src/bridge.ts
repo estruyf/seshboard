@@ -15,6 +15,7 @@ import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./au
 import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
 import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
 import type { McpAppCsp } from "./visuals.ts";
+import { DEFAULT_SITE_ACTIONS, sanitizeSiteActions, type SiteAction } from "./sitePages.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
@@ -68,10 +69,10 @@ export const IpcChannel = {
   updateState: "seshboard:update-state",
   updateCommand: "seshboard:update-command",
   deepLink: "seshboard:deep-link",
+  startFromPage: "seshboard:start-from-page",
   getThemes: "seshboard:get-themes",
   themesChanged: "seshboard:themes-changed",
   themeCommand: "seshboard:theme-command",
-  windowButtons: "seshboard:window-buttons",
   focusWindow: "seshboard:focus-window",
   listSounds: "seshboard:list-sounds",
   appIcon: "seshboard:app-icon",
@@ -83,6 +84,7 @@ export const IpcChannel = {
   setOpenAtLogin: "seshboard:set-open-at-login",
   openLoginItemsSettings: "seshboard:open-login-items-settings",
   shellCommand: "seshboard:shell-command",
+  browserExtensionHost: "seshboard:browser-extension-host",
   keepAwakeStatus: "seshboard:keep-awake-status",
   getPopouts: "seshboard:get-popouts",
   popOut: "seshboard:pop-out",
@@ -105,6 +107,14 @@ export const IpcChannel = {
   showInMain: "seshboard:show-in-main",
   mainRequested: "seshboard:main-requested",
   popoutsChanged: "seshboard:popouts-changed",
+  /** Main to a window: it moved to or from the foreground (shown, not minimised, focused). */
+  windowActive: "seshboard:window-active",
+  getWindowActive: "seshboard:get-window-active",
+  windowShown: "seshboard:window-shown",
+  getWindowShown: "seshboard:get-window-shown",
+  /** Main to a window: it went into or out of full screen. */
+  windowFullScreen: "seshboard:window-full-screen",
+  getWindowFullScreen: "seshboard:get-window-full-screen",
   relayDrafts: "seshboard:relay-drafts",
   draftsRelayed: "seshboard:drafts-relayed",
   requestDrafts: "seshboard:request-drafts",
@@ -127,10 +137,17 @@ export const IpcChannel = {
   menuBarShown: "seshboard:menu-bar-shown",
   quickStartCommand: "seshboard:quick-start-command",
   quickStartPassClicks: "seshboard:quick-start-pass-clicks",
+  /** From the quick start panel: its field is mounted and can take the focus (lighter than the ready report). */
+  quickStartReady: "seshboard:quick-start-ready",
   quickStartShown: "seshboard:quick-start-shown",
   quickStartKey: "seshboard:quick-start-key",
   getQuickStartStatus: "seshboard:get-quick-start-status",
   quickStartStatus: "seshboard:quick-start-status",
+  /** From the quick start panel: hide it, let the person pick an area of the screen, and show it again. */
+  quickStartScreenshot: "seshboard:quick-start-screenshot",
+  openScreenRecordingSettings: "seshboard:open-screen-recording-settings",
+  /** From a message box: hide Seshboard, let the person pick an area of the screen, and bring the window back. */
+  takeScreenshot: "seshboard:take-screenshot",
 } as const;
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
@@ -160,6 +177,17 @@ export interface QuickStartStatus {
   shortcut: string;
   registered: boolean;
 }
+
+/**
+ * What Take a screenshot in the quick start panel came back with: the area picked (also on the clipboard, as ⌃⇧⌘4
+ * does), nothing when the picker was left with Esc, or why it failed. `screenAccess` is false when macOS hasn't given
+ * Seshboard Screen Recording: the picture then holds only the desktop, without the other apps' windows.
+ */
+export type QuickStartScreenshot =
+  | { kind: "image"; mediaType: "image/png" | "image/jpeg"; data: string; name: string; screenAccess: boolean }
+  | { kind: "cancelled" }
+  /** `screenAccess: false`: the picker wrote nothing because macOS hasn't given Seshboard Screen Recording. */
+  | { kind: "failed"; message: string; screenAccess?: false };
 
 /** A key the app menu would take in the quick start panel (⌘W, ⌘M…), handed to the page instead. */
 export interface QuickStartKey {
@@ -292,8 +320,6 @@ export type MainWindowRequest =
 export type ColorScheme = "system" | "light" | "dark";
 /** Sidebar rows: a large project icon beside three lines, three lines, or one line. */
 export type SidebarStyle = "large" | "standard" | "compact";
-/** What collapsing the sidebar (⌘B) does: the narrow rail of project icons, or hide it. */
-export type SidebarCollapsed = "minimal" | "closed";
 /** Tool calls in a conversation: one summary line per run (click for the steps), or every step. */
 export type ToolActivity = "summary" | "steps";
 /** How a conversation shows Claude's work: finished turns with less to read, or everything as written. */
@@ -335,6 +361,10 @@ const NEW_SESSION_MODEL_MAX = 200;
 export type WhileWorking = "queue" | "steer";
 /** After a usage limit stops a session: offer to resume when it resets (`ask`), or arm that straight away (`always`). */
 export type ResumeAtLimit = "ask" | "always";
+
+/** Settings › Theme › App icon › Show when Claude is working: not at all, a few frames a second, or smooth. */
+export const DOCK_ACTIVITY_MODES = ["off", "light", "smooth"] as const;
+export type DockActivityMode = (typeof DOCK_ACTIVITY_MODES)[number];
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
 /** How the sidebar groups its sessions: by state (Needs you, Working, To review, Open) or by project. */
@@ -344,6 +374,9 @@ export const RAIL_TOOLS = ["files", "changes", "terminal", "web", "ask", "agents
 export type RailTool = (typeof RAIL_TOOLS)[number];
 /** The rail's tools in their default order, as `railOrder` starts (the mods' panes keep their own place). */
 export const RAIL_ORDER: readonly Exclude<RailTool, "mods">[] = RAIL_TOOLS.filter((tool): tool is Exclude<RailTool, "mods"> => tool !== "mods");
+/** The nav rail's items at the window's left edge, in their default order. New session (first) and Settings (last) always show and don't move. */
+export const NAV_RAIL_ITEMS = ["home", "sessions", "upcoming", "activity", "browser", "projects", "computers", "running"] as const;
+export type NavRailItem = (typeof NAV_RAIL_ITEMS)[number];
 /** An editor id as `editors.list` gives it, for `railApps`. */
 const RAIL_APP_ID = /^[a-z0-9-]{1,40}$/;
 const RAIL_APPS_MAX = 20;
@@ -464,7 +497,6 @@ export const DEFAULT_MARK_READ_AFTER: MarkReadAfter = { enabled: true, seconds: 
 export interface Preferences {
   colorScheme: ColorScheme;
   sidebarStyle: SidebarStyle;
-  sidebarCollapsed: SidebarCollapsed;
   toolActivity: ToolActivity;
   conversationView: ConversationView;
   /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
@@ -477,6 +509,26 @@ export interface Preferences {
   turnDetails: TurnDetails;
   /** Settings › Conversation: "Fade inactive panes". Off, the panes other than the active one look the same as it; the active one keeps its line. */
   fadeInactivePanes: boolean;
+  /** Settings › Conversation: "Open the side panel in new sessions". A session you start opens with the empty side panel beside it. Off by default. */
+  sidePanelOnNewSession: boolean;
+  /**
+   * Settings › Theme: "Minimal mode" (⌘⇧.). On, the window shows less at once: sessions as one line with their state
+   * as a shape, the message box without its chips, no counts on icons, and no borders round cards. What it hides is
+   * still in tooltips and menus. Colours stay the theme's (Black and white is the theme without them). Off by default.
+   */
+  minimalMode: boolean;
+  /**
+   * Settings › Theme: "Code highlighting". On, code and diffs are coloured by syntax. Off, code is in one colour
+   * (comments faint), and diffs strike removed lines through and put added lines in bold, in every theme. On by default.
+   */
+  codeHighlighting: boolean;
+  /** Settings › Theme: "Project colours". Off, project tiles and letters show in grey. On by default. */
+  projectColors: boolean;
+  /**
+   * Settings › Theme: "File icons". The VS Code icon theme the Files tree draws its icons from, as
+   * `publisher.extension/theme` (`fileIcons.themes`). `""` is none: the tree shows no icons. None by default.
+   */
+  fileIconTheme: string;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
   /** Settings › Remote: "Show in the sidebar when nobody is connected", the quiet "Remote on · nobody connected" line. */
@@ -543,6 +595,11 @@ export interface Preferences {
   /** The colour theme: a built-in's id (`demo-time`, `github`…) or an imported theme's file name. */
   themeId: string;
   /**
+   * The last colour theme picked (any but Black and white): Settings › Theme › Seshboard goes back to it. Kept by the
+   * window whenever `themeId` changes to such a theme.
+   */
+  colorThemeId: string;
+  /**
    * Settings › Theme › App icon: the colourway of the icon in the Dock and the app switcher (macOS), or on the windows
    * and the taskbar. Main applies it at launch, before the first window. The bundle's own icon stays Graphite.
    */
@@ -550,10 +607,11 @@ export interface Preferences {
   /** Settings › Theme › App icon: "Use it on your phone too", the remote app's icon and its browser tab. Off is Graphite there. */
   appIconOnRemote: boolean;
   /**
-   * Settings › Theme › App icon: "Show when Claude is working" (macOS). On, the empty jacks of the Dock's icon light
-   * up in turn while a session works. On by default.
+   * Settings › Theme › App icon: "Show when Claude is working" (macOS). The empty jacks of the Dock's icon light up in
+   * turn while a session works: Light about three frames a second (the default), Smooth thirteen, which costs far
+   * more CPU. Older versions saved a boolean: on is Light, off is Off.
    */
-  dockActivity: boolean;
+  dockActivity: DockActivityMode;
   /**
    * Settings › General › Browser: "Allow browser". On (the default), any web page opens in tabs, beside a session and
    * in a Browser view of its own, with pinned tabs. Off, a session's preview shows only this computer's dev servers.
@@ -599,6 +657,16 @@ export interface Preferences {
   markReadAfter: MarkReadAfter;
   /** What Enter does in the message box while Claude is working (Settings › Conversation). */
   whileWorking: WhileWorking;
+  /**
+   * Settings › Conversation: "Press Esc twice to stop". On, the first Esc in the message box while the agent works
+   * only says that a second one stops it, so a stray Esc never stops a turn. Off, one Esc stops it. On by default.
+   */
+  escapeTwiceToStop: boolean;
+  /**
+   * Settings › Conversation: "Suggested replies". On, the message box offers Claude Code's guess at your next message
+   * after a turn, as a chip that sends it and grey text that Tab takes. On by default.
+   */
+  quickReplies: boolean;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
   /**
@@ -664,8 +732,17 @@ export interface Preferences {
   railHidden: RailTool[];
   /** The rail's tools in the order you dragged them to: every tool once, each group's in its own order. */
   railOrder: Exclude<RailTool, "mods">[];
+  /** The nav rail's items in the order you dragged them to: every item once. */
+  navRailOrder: NavRailItem[];
+  /** Items left off the nav rail (its right-click menu, or More › Customize the rail). They keep their shortcuts and palette commands. */
+  navRailHidden: NavRailItem[];
   /** Apps pinned to the rail (its right-click menu), by editor id (`editors.list`), top to bottom. A click opens the session's folder in one. */
   railApps: string[];
+  /**
+   * Settings › Browser › Site actions: Start session in the browser's address bar and page menu on the pages each names
+   * (`sitePages.ts`). The built-in GitHub ones come first unless you moved them; they can be turned off, never removed.
+   */
+  siteActions: SiteAction[];
   /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
   quickActions: boolean;
   /** Settings › Sidebar: which quick actions show ("Show"). Working rows keep Stop either way. */
@@ -685,7 +762,6 @@ export function modKey(profileId: string, name: string): string {
 export const DEFAULT_PREFERENCES: Preferences = {
   colorScheme: "system",
   sidebarStyle: "standard",
-  sidebarCollapsed: "minimal",
   toolActivity: "summary",
   conversationView: "skim",
   fileLinkClick: "switchboard",
@@ -693,6 +769,11 @@ export const DEFAULT_PREFERENCES: Preferences = {
   promptOutline: true,
   turnDetails: "duration",
   fadeInactivePanes: true,
+  sidePanelOnNewSession: false,
+  minimalMode: false,
+  codeHighlighting: true,
+  projectColors: true,
+  fileIconTheme: "",
   confirmQuit: true,
   remoteIdleLine: true,
   sessionScope: "switchboard",
@@ -714,9 +795,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   focusCountExternal: false,
   focusCountRemote: true,
   themeId: DEFAULT_THEME_ID,
+  colorThemeId: DEFAULT_THEME_ID,
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
-  dockActivity: true,
+  dockActivity: "light",
   browserEnabled: true,
   webPreview: true,
   browserIntro: "ask",
@@ -732,6 +814,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   doneOnMerge: true,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
   whileWorking: "queue",
+  escapeTwiceToStop: true,
+  quickReplies: true,
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
   activitySummaries: true,
@@ -751,7 +835,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarShowDone: true,
   railHidden: [],
   railOrder: [...RAIL_ORDER],
+  navRailOrder: [...NAV_RAIL_ITEMS],
+  navRailHidden: [],
   railApps: [],
+  siteActions: DEFAULT_SITE_ACTIONS.map((action) => ({ ...action })),
   quickActions: true,
   quickActionsShow: "all",
   githubStar: "ask",
@@ -864,8 +951,6 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.colorScheme = raw.colorScheme;
   if (oneOf(["large", "standard", "compact"] as const, raw.sidebarStyle))
     out.sidebarStyle = raw.sidebarStyle;
-  if (oneOf(["minimal", "closed"] as const, raw.sidebarCollapsed))
-    out.sidebarCollapsed = raw.sidebarCollapsed;
   if (oneOf(["summary", "steps"] as const, raw.toolActivity))
     out.toolActivity = raw.toolActivity;
   if (oneOf(["skim", "full"] as const, raw.conversationView))
@@ -882,6 +967,11 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
     out.turnDetails = raw.turnDetails;
   if (typeof raw.fadeInactivePanes === "boolean") out.fadeInactivePanes = raw.fadeInactivePanes;
+  if (typeof raw.sidePanelOnNewSession === "boolean") out.sidePanelOnNewSession = raw.sidePanelOnNewSession;
+  if (typeof raw.minimalMode === "boolean") out.minimalMode = raw.minimalMode;
+  if (typeof raw.codeHighlighting === "boolean") out.codeHighlighting = raw.codeHighlighting;
+  if (typeof raw.projectColors === "boolean") out.projectColors = raw.projectColors;
+  if (typeof raw.fileIconTheme === "string" && raw.fileIconTheme.length <= 500) out.fileIconTheme = raw.fileIconTheme.trim();
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
   if (typeof raw.remoteIdleLine === "boolean") out.remoteIdleLine = raw.remoteIdleLine;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))
@@ -926,9 +1016,12 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.focusCountRemote === "boolean")
     out.focusCountRemote = raw.focusCountRemote;
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
+  if (isThemeId(raw.colorThemeId)) out.colorThemeId = raw.colorThemeId;
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
-  if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
+  if (oneOf(DOCK_ACTIVITY_MODES, raw.dockActivity)) out.dockActivity = raw.dockActivity;
+  // Older versions saved a switch: on is Light, off is Off.
+  else if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity ? "light" : "off";
   if (typeof raw.browserEnabled === "boolean") out.browserEnabled = raw.browserEnabled;
   if (typeof raw.webPreview === "boolean") out.webPreview = raw.webPreview;
   if (oneOf(["ask", "done"] as const, raw.browserIntro)) out.browserIntro = raw.browserIntro;
@@ -954,6 +1047,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.markReadAfter = { enabled: reading.enabled, seconds };
   if (oneOf(["queue", "steer"] as const, raw.whileWorking))
     out.whileWorking = raw.whileWorking;
+  if (typeof raw.escapeTwiceToStop === "boolean") out.escapeTwiceToStop = raw.escapeTwiceToStop;
+  if (typeof raw.quickReplies === "boolean") out.quickReplies = raw.quickReplies;
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
@@ -986,8 +1081,16 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     const known = RAIL_ORDER.filter((tool) => (raw.railOrder as unknown[]).includes(tool)).sort((a, b) => (raw.railOrder as unknown[]).indexOf(a) - (raw.railOrder as unknown[]).indexOf(b));
     out.railOrder = RAIL_ORDER.reduce((order, tool) => (order.includes(tool) ? order : [...order.slice(0, RAIL_ORDER.indexOf(tool)), tool, ...order.slice(RAIL_ORDER.indexOf(tool))]), known);
   }
+  if (Array.isArray(raw.navRailHidden))
+    out.navRailHidden = NAV_RAIL_ITEMS.filter((item) => (raw.navRailHidden as unknown[]).includes(item));
+  // Every item once, as railOrder: the ones the list leaves out (an item added later) go where they are by default.
+  if (Array.isArray(raw.navRailOrder)) {
+    const known = NAV_RAIL_ITEMS.filter((item) => (raw.navRailOrder as unknown[]).includes(item)).sort((a, b) => (raw.navRailOrder as unknown[]).indexOf(a) - (raw.navRailOrder as unknown[]).indexOf(b));
+    out.navRailOrder = NAV_RAIL_ITEMS.reduce<NavRailItem[]>((order, item) => (order.includes(item) ? order : [...order.slice(0, NAV_RAIL_ITEMS.indexOf(item)), item, ...order.slice(NAV_RAIL_ITEMS.indexOf(item))]), known);
+  }
   if (Array.isArray(raw.railApps))
     out.railApps = [...new Set(raw.railApps.filter((id): id is string => typeof id === "string" && RAIL_APP_ID.test(id)))].slice(0, RAIL_APPS_MAX);
+  if (Array.isArray(raw.siteActions)) out.siteActions = sanitizeSiteActions(raw.siteActions);
   if (typeof raw.quickActions === "boolean") out.quickActions = raw.quickActions;
   if (oneOf(["archive", "all"] as const, raw.quickActionsShow))
     out.quickActionsShow = raw.quickActionsShow;
@@ -1108,8 +1211,28 @@ export type DeepLink =
        */
       issue?: string | null;
       pr?: string | null;
+      /** Opened from a page in the browser (its Start session), never from a `seshboard://` link: the banner says so. */
+      from?: "browser";
     }
-  | { action: "session"; sessionId: string };
+  | { action: "session"; sessionId: string }
+  | {
+      action: "open";
+      /** An http or https address, without a user name or password in it. */
+      url: string;
+      /** Open it in this session's Browser panel; null for the Browser view. */
+      sessionId: string | null;
+    };
+
+/** The browser's Start session, from the window to main: which site action, on which page. */
+export interface StartFromPageRequest {
+  url: string;
+  /** The site action's id. */
+  action: string;
+  /** The page's title, for `{title}`. */
+  title: string;
+  /** Text selected in the page (the page menu only), for `{selection}`. */
+  selection: string;
+}
 
 /** A link to act on, or why one was refused (shown briefly; nothing changes). */
 export type DeepLinkMessage = { link: DeepLink } | { error: string };
@@ -1220,13 +1343,13 @@ export interface SeshboardBridge {
   update(command: UpdateCommand): void;
   /** Saves the channel in Preferences and checks again right away. */
   setUpdateChannel(channel: UpdateChannel): void;
-  /**
-   * Where the window's traffic lights sit: `rail` tucks them into the 64px minimal sidebar, `default`
-   * puts them back. macOS only; elsewhere it does nothing.
-   */
-  setWindowButtons(position: "default" | "rail"): void;
   /** A `seshboard://` link was opened (main holds links until this window's renderer is ready). */
   onDeepLink(listener: (message: DeepLinkMessage) => void): () => void;
+  /**
+   * The browser's Start session: a site action (`Preferences.siteActions`) on a page. Main checks the action is on and
+   * offered on that address, then opens New session in the main window, filled in from it. Anything else does nothing.
+   */
+  startFromPage(request: StartFromPageRequest): void;
   /** Every theme, read once when the page loads (with the preferences), so the first paint has the right colours. */
   readonly themes: ThemeState;
   /** Fires after a theme is added, removed, or its file in the themes folder changes. */
@@ -1274,10 +1397,35 @@ export interface SeshboardBridge {
   openLoginItemsSettings(): void;
   /** How the `seshboard`, `sesh` and `switchboard` shell commands stand, or installs or removes them; answers how they stand afterwards. */
   shellCommand(action?: "install" | "remove"): Promise<ShellCommandResult>;
+  /**
+   * The browser extension's native messaging host (docs/browser-extension.md): which browsers are here and whether
+   * each one can start the host. `install` connects them, `remove` takes the host out again.
+   */
+  browserExtensionHost(action?: "install" | "remove"): Promise<BrowserExtensionHostResult>;
   /** Whether Keep awake is holding sleep off right now (on, and `caffeinate` or the sleep blocker is running). */
   keepAwakeStatus(): Promise<boolean>;
   /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
   readonly popout: string | null;
+  /**
+   * Whether this window is in the foreground (shown, not minimised, focused), read once when the page loads; then follow
+   * `onWindowActive`. Main knows it for sure, also while the keys are in a browser page of the window. The page pauses
+   * the animations that never end while it is not.
+   */
+  readonly windowActive: boolean;
+  onWindowActive(listener: (active: boolean) => void): () => void;
+  /**
+   * Whether this window can be seen now (shown and not minimised, focused or not): the preload keeps main's latest word,
+   * so one sent before the page asks isn't lost. Follow `onWindowShown`. A window out of sight stops getting the text
+   * Claude streams.
+   */
+  windowShown(): boolean;
+  onWindowShown(listener: (shown: boolean) => void): () => void;
+  /**
+   * Whether this window is in full screen, read once when the page loads; then follow `onFullScreen`. On macOS the
+   * traffic lights hide in full screen, so headers that leave room for them can start at the edge.
+   */
+  readonly fullScreen: boolean;
+  onFullScreen(listener: (fullScreen: boolean) => void): () => void;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
   readonly popouts: readonly string[];
   /** Fires in every window when a pop-out opens or closes. */
@@ -1341,12 +1489,29 @@ export interface SeshboardBridge {
    */
   quickStartPassClicks(pass: boolean): void;
   /**
-   * In the quick start panel: the global shortcut showed it. `keepDraft` is false when it was hidden long enough
-   * (5 minutes) for what was typed to go.
+   * From the quick start panel: its field is mounted and can take the focus. A press that made the panel waits for this
+   * before it shows the window.
+   */
+  quickStartReady(): void;
+  /**
+   * In the quick start panel: the global shortcut showed it. `keepDraft` is true only when a screenshot hid it a moment
+   * ago; otherwise it starts empty.
    */
   onQuickStartShown(listener: (keepDraft: boolean) => void): () => void;
   /** In the quick start panel: a key the app menu would have taken (⌘W, ⌘M…), handed to the panel. */
   onQuickStartKey(listener: (key: QuickStartKey) => void): () => void;
+  /**
+   * From the quick start panel: hides it, opens the system's area picker (Snipping Tool on Windows, a screenshot tool on Linux) and shows the panel
+   * again with its draft. The picture is also put on the clipboard.
+   */
+  quickStartScreenshot(): Promise<QuickStartScreenshot>;
+  /**
+   * From a message box: hides Seshboard (macOS) or this window, opens the system's area picker and brings this window
+   * back. The picture is also put on the clipboard.
+   */
+  takeScreenshot(): Promise<QuickStartScreenshot>;
+  /** Opens System Settings › Privacy & Security › Screen Recording (macOS). */
+  openScreenRecordingSettings(): void;
   /** How quick start's global shortcut stands (Settings › General says when another app has it). */
   quickStartStatus(): Promise<QuickStartStatus>;
   /** Fires in every window when the global shortcut is registered again (changed in Settings, or at launch). */
@@ -1437,6 +1602,19 @@ export interface ShellCommandState {
 }
 
 /** How the shell commands stand after a change, and why the change failed (null when it worked or was cancelled). */
+/** The browsers the extension's native messaging host is installed for. */
+export interface BrowserExtensionHostStatus {
+  /** This app installed the host: its files are in the app's data folder. */
+  installed: boolean;
+  /** The browsers found here, and whether each one starts this app's host. */
+  browsers: Array<{ id: string; name: string; family: "chromium" | "firefox"; found: boolean; registered: boolean }>;
+}
+
+export interface BrowserExtensionHostResult {
+  status: BrowserExtensionHostStatus;
+  error: string | null;
+}
+
 export interface ShellCommandResult {
   state: ShellCommandState;
   error: string | null;

@@ -1,4 +1,4 @@
-import { webContents, type BrowserWindow, type WebContents } from 'electron';
+import { Menu, webContents, type BrowserWindow, type WebContents } from 'electron';
 import { setFieldValue, until, waitInPage } from './pageDriver.ts';
 import { MOD_MODIFIER } from './smokeKeys.ts';
 
@@ -74,6 +74,19 @@ export async function runWebPreviewStep(win: BrowserWindow, deps: WebPreviewSmok
     if (!(await until(() => reloaded, 5_000))) return 'Enter on the untouched address did not reload the page';
     if (await js(`!!${q('[data-web-preview-refused]')}`)) return 'Enter on the untouched address was refused';
     if (!(await until(() => page.getTitle() === 'Smoke site', 10_000))) return `the page did not load again (title "${page.getTitle()}")`;
+
+    // View › Reload (⌘R) and Force Reload (⌘⇧R) with the focus in the app reload the page on screen, not the window.
+    await js('window.__smokeWindowKept = 1');
+    for (const id of ['reload', 'force-reload']) {
+      // A load still under way gives no new start: wait for the last one to end.
+      await until(() => !page.isLoading(), 10_000);
+      let again = false;
+      page.once('did-start-loading', () => (again = true));
+      Menu.getApplicationMenu()?.getMenuItemById(id)?.click(undefined, win, win.webContents);
+      if (!(await until(() => again, 5_000))) return `View › ${id === 'reload' ? 'Reload' : 'Force Reload'} did not reload the page`;
+      if (!(await until(() => page.getTitle() === 'Smoke site', 10_000))) return `the page did not load again after ${id} (title "${page.getTitle()}")`;
+      if (!(await js('window.__smokeWindowKept === 1'))) return `View › ${id} reloaded the window instead of the page`;
+    }
 
     // An outside link goes to the browser; the page stays.
     await page.executeJavaScript("document.getElementById('out').click()");

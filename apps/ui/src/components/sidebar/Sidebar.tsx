@@ -1,13 +1,10 @@
-import { currentPlatform } from '../../lib/platform.ts';
-import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, GitBranch, Globe, SquareTerminal, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, UserRound, Zap } from 'lucide-react';
 import type { SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, runOfParent as protocolRunOfParent, type CatchUp, type RunView } from '@seshboard/protocol/client';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
-import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
-import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
+import { useDraftPreview, useUnsentCount } from '../drafts/useUnsent.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
@@ -15,12 +12,14 @@ import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
-import { SidebarNav } from './SidebarNav.tsx';
 import { BrowserTabList } from './BrowserTabList.tsx';
-import { useSidebarList } from '../../state/browserViewStore.ts';
+import { useSidebarList, VIEW_LISTS } from '../../state/browserViewStore.ts';
+import { FocusList } from '../focus/FocusCounter.tsx';
+import { usePanelSlot } from '../../state/panelSlotStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useTabCount } from '../../state/webPreviewStore.ts';
 import { rowIndicators } from '../webPreview/browserTabs.ts';
+import { openBrowserProfiles } from '../webPreview/openBrowserProfiles.ts';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { useSidebarFolds } from '../../state/sidebarFoldsStore.ts';
 import { buildProjectRows, projectState } from '../../state/sidebarProjectRows.ts';
@@ -35,10 +34,14 @@ import { useLater } from '../../state/laterStore.ts';
 import { closedSections, isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { markKept, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { useStableCallback } from '../../lib/useStableCallback.ts';
+import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
+import { VirtualRows, type VirtualRowsHandle } from './VirtualRows.tsx';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
@@ -46,7 +49,6 @@ import { useDrafts } from '../../state/draftsStore.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, doneReason, doneReasonLabel, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, triageOrder, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
 import { NO_PICKS, pickGroup, rangePick, stepPick, togglePick, visiblePicks, type Picks } from '../../state/sessionPicks.ts';
-import { FocusCounter } from '../focus/FocusCounter.tsx';
 import type { MenuEntry } from '../Menu.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
@@ -63,11 +65,10 @@ import { ProjectGroupRow, ProjectSummaryLine, StateDot } from './ProjectGroupRow
 import { SidebarViewButton } from './SidebarViewButton.tsx';
 import { groupedByProject } from './sidebarView.ts';
 import { thisComputerName } from '../../lib/platform.ts';
-import { agentNameOf, sessionRowLabel } from './rowLabel.ts';
+import { agentNameOf, minimalRowTooltip, rowLeading, sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
 import { BrowserIntro } from './BrowserIntro.tsx';
-import { ComputersStrip } from '../computers/ComputersStrip.tsx';
-import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '../remote/ConnectedDevices.tsx';
+import { useDeviceAnnouncement } from '../remote/ConnectedDevices.tsx';
 import { ComputerChip, useComputerTint } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, markFromOthers, offlineLine, THIS_COMPUTER } from '../../state/remoteRows.ts';
@@ -149,12 +150,14 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
   const summary = headerSummary(row);
   const queue = row.kind === 'queue-header';
   const label = queue ? 'Queue' : GROUP_LABEL[row.group];
+  // Minimal mode: no colours and no count badges in the headers; the count is plain text after the name.
+  const minimal = useMinimal();
   return (
     // The row is taller than the label: it sits at the bottom, just above its sessions.
     <div className={`flex h-full items-end px-2.5 ${row.first ? 'pb-1' : 'pb-1.5'}`} {...(queue ? { 'data-queue-header': true } : {})}>
       <SectionHeader
-        tone={status ?? 'neutral'}
-        count={row.count}
+        tone={minimal ? 'neutral' : (status ?? 'neutral')}
+        count={minimal ? null : row.count}
         toggle={
           section
             ? {
@@ -170,7 +173,7 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
           (summary || selectAll) && (
             <>
               {summary && (
-                <span className={`ml-auto text-meta font-medium tracking-normal normal-case ${summary.tone === 'ok' ? 'text-ok' : 'text-unread'}`} data-section-summary={section ?? undefined}>
+                <span className={`ml-auto text-meta font-medium tracking-normal normal-case ${minimal ? 'text-faint' : summary.tone === 'ok' ? 'text-ok' : 'text-unread'}`} data-section-summary={section ?? undefined}>
                   {summary.text}
                 </span>
               )}
@@ -183,6 +186,7 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
       >
         {queue && <ListEnd size={12} className="shrink-0" aria-hidden />}
         {label}
+        {minimal && row.count > 0 && <span className="font-normal tracking-normal text-faint tabular-nums">{row.count}</span>}
       </SectionHeader>
     </div>
   );
@@ -191,9 +195,10 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
 /** The Done header, docked under the list while closed and in the list while open: the same toggle in both places. */
 function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: number; open: boolean; onToggle(): void; onMenu(at: { x: number; y: number }): void; action?: ReactNode }) {
   const days = usePreferences((s) => s.prefs.archiveAfterDays);
+  const minimal = useMinimal();
   return (
     <SectionHeader
-      count={count}
+      count={minimal ? null : count}
       toggle={{
         expanded: open,
         onToggle,
@@ -223,6 +228,7 @@ function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: numb
       className="h-[22px] flex-1"
     >
       Done
+      {minimal && count > 0 && <span className="font-normal tracking-normal text-faint tabular-nums">{count}</span>}
     </SectionHeader>
   );
 }
@@ -289,7 +295,7 @@ export const SessionRow = memo(function SessionRow({
   now,
   tabbable,
   waitingFor,
-  draft,
+  draft: shownDraft,
   review = null,
   outside = false,
   inProject = false,
@@ -318,8 +324,8 @@ export const SessionRow = memo(function SessionRow({
   tabbable: boolean;
   /** For a session waiting for you: what it asks for ("Permission: Bash", "Question"). */
   waitingFor: string | null;
-  /** The start of an unsent message typed here (one that counts), or null. */
-  draft: string | null;
+  /** The start of an unsent message typed here, when the list says so (null: none shown there). Left out, the row selects its own, so typing in one session re-renders that row only. */
+  draft?: string | null;
   /** Minutes its catch-up says a review takes, or null without one (or when it needs nothing from you). */
   review?: number | null;
   /** Its last turn changed files outside the plan (or what you asked for). */
@@ -339,7 +345,11 @@ export const SessionRow = memo(function SessionRow({
   /** Quick actions on hover (Settings › Sidebar): without it, the row has no buttons. */
   onQuickAction?(method: QuickActionMethod, data: SessionRowData): void;
 }) {
+  if (RENDER_COUNTS) countRender('SessionRow');
   const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
+  // The start of an unsent message typed here (one that counts), or null: selected by the row, so typing in one session re-renders that row only.
+  const ownDraft = useDraftPreview(data.id);
+  const draft = shownDraft === undefined ? ownDraft : shownDraft;
   const style = usePreferences((s) => s.prefs.sidebarStyle);
   const remote = data.remote ?? null;
   // Another computer's row takes its colour: the chip, the badge on the project's icon.
@@ -411,8 +421,10 @@ export const SessionRow = memo(function SessionRow({
   const profile = useRowProfile(data);
   // Under a project the state dot says it; the rail stays for a profile's colour.
   const statusRail = inProject ? null : (status && RAIL_TONE[status]) || (reminderText ? RAIL_TONE.unread : null);
-  const profileRail = profile ? PROFILE_DOT[profile.color] : null;
-  const railTone = profileRail ?? statusRail;
+  // Minimal mode has no rail: the mark before the title says the state by its shape.
+  const minimal = useMinimal();
+  const profileRail = profile && !minimal ? PROFILE_DOT[profile.color] : null;
+  const railTone = minimal ? null : (profileRail ?? statusRail);
   const rail = railTone && (
     <span
       className={`${railShape(!picked && (selected || beside))} ${railTone} ${archived && !selected ? 'opacity-50' : ''}`}
@@ -421,8 +433,8 @@ export const SessionRow = memo(function SessionRow({
     />
   );
   const pin = data.pinned && <Pin size={11} className="shrink-0 text-faint" aria-hidden />;
-  // With quick actions the steps toggle is the toolbar's first button, where the pointer already is; the chevron
-  // only shows while the pointer is elsewhere.
+  // With quick actions the steps toggle is the toolbar's last button, in the chevron's place, so a click aimed at the
+  // chevron never lands on Done. The chevron only shows while the pointer is elsewhere.
   const tree = expanded !== undefined && onToggleTree ? { open: expanded, count: childCount, onToggle: () => onToggleTree(data.id) } : undefined;
   const treeInActions = actions.length > 0 && tree !== undefined;
   const buttons = actions.length + (treeInActions ? 1 : 0);
@@ -560,6 +572,41 @@ export const SessionRow = memo(function SessionRow({
     ) : (
       row
     );
+
+  if (minimal) {
+    // Minimal mode: one line, the state as a shape, the title (bold only when it needs you) and the age. The project,
+    // branch, computer and what is open move to the tooltip.
+    const tooltip = minimalRowTooltip({
+      title: data.title,
+      waitingFor,
+      project: inProject ? null : projectName,
+      branch,
+      computer: remote ? (away ?? remote.computerName) : null,
+      terminal: terminalOpen,
+      tabs: tabCount,
+      note,
+      reminder: reminderText,
+      done: doneText,
+      limit: limitText,
+      profile: profile?.name ?? null,
+      cwd: data.summary?.cwd ?? null,
+    });
+    const tone = status === 'needs-you' ? 'font-semibold text-text' : selected ? 'text-text' : archived ? 'text-muted' : 'text-text/85';
+    return withActions(
+      // Tight on the left: the mark sits near the row's edge and the title right after it.
+      <button {...common} data-tooltip={tooltip} data-row-minimal style={roomStyle} className={`relative flex h-8 w-full items-center gap-1.5 rounded-md pr-2.5 pl-1.5 text-left text-meta ${surface} ${dim} ${room}`}>
+        {picking ? icon(14) : rowLeading(runRow ? 'run' : 'session', { minimal }) === 'state' ? <StatusIcon status={status} agent={agent} variant="minimal" /> : icon(14)}
+        <span className={`min-w-0 flex-1 truncate text-body ${tone}`} data-row-title>
+          {data.title}
+        </span>
+        {pin}
+        {pen}
+        {warning}
+        <span className={`shrink-0 text-meta text-faint tabular-nums ${hideForActions}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>
+        {chevron}
+      </button>,
+    );
+  }
 
   if (style === 'compact') {
     return withActions(
@@ -723,19 +770,28 @@ function useWaitingAnnouncement(rows: SessionRowData[], loaded: boolean): string
 }
 
 export function Sidebar() {
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
+  if (RENDER_COUNTS) countRender('Sidebar');
+  const baseRows = useRows((s) => s.rows);
+  const anySessions = useSessions((s) => s.sessions.size > 0);
   const waiting = useHosts((s) => s.permissions.size);
   const search = useSessions((s) => s.filter);
+  // The filter field shows from the header's button, and stays while it has text.
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterShown = filterOpen || search !== '';
+  const filterRef = useRef<HTMLInputElement>(null);
+  const filterId = useId();
+  const revealFilter = () => {
+    setFilterOpen(true);
+    requestAnimationFrame(() => filterRef.current?.focus());
+  };
+  const filterButton = () => document.querySelector<HTMLElement>('[data-sidebar-open] [data-filter-toggle]');
   const selectedId = useSessions((s) => s.selectedId);
   const paneIds = useSessions((s) => s.paneIds);
   const complete = useSessions((s) => s.complete);
   const loaded = useSessions((s) => s.loaded);
-  const view = useSessions((s) => s.view);
   // Settings is a sheet over the session, which stays selected in the list behind it.
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
-  const { setFilter: setSearch, select, setView } = useSessions.getState();
+  const { setFilter: setSearch, select } = useSessions.getState();
   const projectFilter = useProjects((s) => s.filter);
   const archivedOpen = useProjects((s) => s.archivedOpen);
   const queue = useQueue();
@@ -748,7 +804,8 @@ export function Sidebar() {
   const noProjects = useProjects((s) => s.loaded && addedProjects(s.projects).length === 0);
   const [picks, setPicks] = useState<Picks>(NO_PICKS);
   const now = useNow();
-  const sidebarStyle = usePreferences((s) => s.prefs.sidebarStyle);
+  // Minimal mode lists every row on one line, so the list measures them as Compact.
+  const sidebarStyle = usePreferences((s) => (s.prefs.minimalMode ? 'compact' : s.prefs.sidebarStyle));
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const updatePrefs = usePreferences((s) => s.update);
@@ -762,14 +819,12 @@ export function Sidebar() {
   const catchUps = useCatchUp((s) => s.cards);
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   const width = useSidebar((s) => s.width);
-  // Unsent messages: a pen (and the draft's start) on their rows, the count in the footer, a pen on + for New session's.
-  const unsent = useUnsent();
-  const draftPreviews = useMemo(() => new Map(unsent.flatMap((e) => (e.item.kind === 'session' ? [[e.item.sessionId, e.item.preview] as const] : []))), [unsent]);
-  const newDraft = useNewSessionDraft();
-  const remoteNewDraft = useRemoteNewSessionDraft();
+  // Unsent messages: a pen (and the draft's start) on their rows, the count in the footer (New session's pen is on the nav rail).
+  // Only the count: each row selects the start of its own draft (`useDraftPreview`), so a keystroke re-renders one row.
+  const unsentCount = useUnsentCount();
 
   const kept = useKeptSessions();
-  const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
+  const all = useMemo(() => markKept(baseRows, kept).filter((row) => inScope(row, scope)), [baseRows, kept, scope]);
   // Other computers' sessions sit in the same groups; the Computers filter can leave out any computer, this one too.
   // A computer set to Mine leaves out the others' sessions there (its chip's menu counts them); a search still finds
   // them, marked as theirs.
@@ -786,7 +841,9 @@ export function Sidebar() {
   const remoteRuns = useRemoteTreeRuns();
   // An orchestrator's sessions nest under it the same way (docs/orchestrator.md).
   const orchestrators = useOrchestrators((s) => s.orchestrators);
-  const started = useMemo(() => startedBy(orchestrators), [orchestrators]);
+  // So do the sessions other sessions started (start_session).
+  const startedChildren = useOrchestrators((s) => s.started);
+  const started = useMemo(() => startedBy(orchestrators, startedChildren), [orchestrators, startedChildren]);
   const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept, remoteRuns, started), [merged, runs, now, archiveAfterDays, kept, remoteRuns, started]);
   const openParents = usePipelineTree((s) => s.open);
   const { active, archived, snoozed } = useMemo(
@@ -923,7 +980,7 @@ export function Sidebar() {
   const headerSessions = useMemo(() => sessionsByHeader(rows), [rows]);
   const menus = useSessionMenu(order, () => setPicks(NO_PICKS));
   const { showMenu: setMenu, requestDelete: setDeleting, requestRename: setRenaming, flagAll } = menus;
-  const togglePicked = (id: string) => setPicks((p) => togglePick(p, id, selectedId, order));
+  const togglePicked = useStableCallback((id: string) => setPicks((p) => togglePick(p, id, selectedId, order)));
   /** "Select all" for a header while picking (Archived only while it's open, when its sessions are listed). */
   const selectAll = (group: HeaderKey) => {
     const ids = headerSessions.get(group) ?? [];
@@ -936,43 +993,10 @@ export function Sidebar() {
   // The bottom block's hairline shows only while sessions scroll under it.
   const listEdge = useScrollEdge(scrollRef);
   const archivedIndex = rows.findIndex((row) => row.kind === 'archived');
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => rowHeight(rows[i]!, sidebarStyle),
-    // Keyed by row, not index: archiving or unarchiving moves the headers without changing the count,
-    // and the virtualiser only recomputes positions when the count or this function changes.
-    getItemKey: useCallback((i: number) => {
-      const row = rows[i]!;
-      return row.kind === 'session'
-        ? row.data.id
-        : row.kind === 'group'
-          ? `group-${row.group}`
-          : row.kind === 'hidden'
-            ? `hidden-${row.group}`
-            : row.kind === 'queue'
-              ? `queue-${row.entry.item.id}`
-              : row.kind === 'queue-header'
-                ? 'queue-header'
-                : row.kind === 'project' || row.kind === 'project-summary' || row.kind === 'queue-label'
-                  ? `${row.kind}-${row.key}`
-                  : 'archived-header';
-    }, [rows]),
-    // The Archived header is always rendered, even far below the fold: it slides in from the dock and keeps focus.
-    rangeExtractor: useCallback(
-      (range: Range) => {
-        const indexes = defaultRangeExtractor(range);
-        return archivedIndex === -1 || indexes.includes(archivedIndex) ? indexes : [...indexes, archivedIndex].sort((a, b) => a - b);
-      },
-      [archivedIndex],
-    ),
-    overscan: 10,
-  });
-  // Row heights change with the sidebar style: the sizes are estimates, which the virtualiser only reads again when
-  // asked. New rows (and a header's height with its place: the first has less room above) need no call, because
-  // getItemKey changes with `rows` and that recomputes every position. Measuring on every change of `rows` too
-  // queued one more render per change, and a burst of new sessions ran into React's limit on nested updates.
-  useEffect(() => virtualizer.measure(), [sidebarStyle, virtualizer]);
+  // The virtualised list is its own component (`VirtualRows`): scrolling re-renders it, not the sidebar. The sidebar scrolls it through this.
+  const listHandle = useRef<VirtualRowsHandle>(null);
+  const virtualizer = useMemo(() => ({ scrollToIndex: (index: number, options?: { align?: 'start' | 'center' | 'end' | 'auto' }) => listHandle.current?.scrollToIndex(index, options) }), []);
+  const estimateRow = useCallback((row: SidebarListRow) => rowHeight(row, sidebarStyle), [sidebarStyle]);
 
   // Archived moves between the dock under the list and its place in the list, right under the last active row.
   // Opening, the header slides up from the dock (FLIP) while the list scrolls it near the top when it would land
@@ -1064,17 +1088,9 @@ export function Sidebar() {
     );
   }, [rows]);
 
-  // One Tab stop for the whole list: the selected row while it's rendered, else the first rendered one.
-  const virtualItems = virtualizer.getVirtualItems();
-  const renderedIds = virtualItems.flatMap((item) => {
-    const row = rows[item.index];
-    return row?.kind === 'session' ? [row.data.id] : [];
-  });
-  const tabStopId = listSelected && renderedIds.includes(listSelected) ? listSelected : (renderedIds[0] ?? null);
-  // With every project folded and no session on screen, the first project's header is the Tab stop.
-  const projectTabStop = tabStopId === null ? (virtualItems.map((item) => rows[item.index]).find((row) => row?.kind === 'project') as Extract<SidebarListRow, { kind: 'project' }> | undefined)?.key ?? null : null;
   // The queue has its own Tab stop: its first item.
   const firstQueued = queueEntries[0]?.item.id ?? null;
+  const firstReady = queueEntries.find((entry) => entry.state === 'ready')?.item.id ?? null;
 
   // The rail asked to show a section: scroll its header into view and focus it.
   const reveal = useSidebarSections((s) => s.reveal);
@@ -1095,7 +1111,7 @@ export function Sidebar() {
   };
 
   // ⌘-click adds a row to the selection, ⇧-click selects a range, ⌥-click opens it in the other pane.
-  const rowClick = (event: MouseEvent, data: SessionRowData) => {
+  const rowClick = useStableCallback((event: MouseEvent, data: SessionRowData) => {
     if (data.remote) {
       setPicks(NO_PICKS);
       // In Done there, it can't be read: a click reopens it, then opens it.
@@ -1109,7 +1125,7 @@ export function Sidebar() {
       if (event.altKey) useSessions.getState().openBeside(data.id);
       else select(data.id);
     }
-  };
+  });
 
   // ↑/↓ moves through visible sessions, like a native source list (⇧ extends the selection); ⌘A picks the
   // focused row's group; ⌘⌫ deletes the picked sessions, or the focused (else the selected) one; F2 renames it.
@@ -1181,7 +1197,7 @@ export function Sidebar() {
         scrollRef.current?.querySelector<HTMLElement>('[data-row-wrap]:hover > [data-session-id]')?.dataset.sessionId;
       const listed = rows.find((r) => r.kind === 'session' && r.data.id === id);
       if (listed?.kind !== 'session') return;
-      const action = quickActionForKey(quickKey, quickRowOf(listed.data, listed.archived, { hosted: isActiveHost(hosts.get(listed.data.id)), runs: runs.values() }));
+      const action = quickActionForKey(quickKey, quickRowOf(listed.data, listed.archived, { hosted: isActiveHost(useHosts.getState().hosts.get(listed.data.id)), runs: runs.values() }));
       if (!action) return;
       event.preventDefault();
       menus.quickAction(action.method, listed.data);
@@ -1323,16 +1339,16 @@ export function Sidebar() {
     setMenu({ ...at, label: `${picked.size} selected sessions`, entries });
   };
 
-  const sessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
+  const sessionMenu = useStableCallback((at: { x: number; y: number }, data: SessionRowData) => {
     if (multi && picked.has(data.id)) return pickedMenu(at);
     setPicks(NO_PICKS);
     menus.openSessionMenu(at, data);
-  };
+  });
 
   // Only open sessions the main list shows: a process idling elsewhere sits under Archived and
   // would make the count disagree with what's visible.
-  const middleClick = (data: SessionRowData) => menus.middleClick(data);
-  const quickAction = (method: QuickActionMethod, data: SessionRowData) => menus.quickAction(method, data);
+  const middleClick = useStableCallback((data: SessionRowData) => menus.middleClick(data));
+  const quickAction = useStableCallback((method: QuickActionMethod, data: SessionRowData) => menus.quickAction(method, data));
 
   // ⌘Z undoes the last quick action: in the sidebar, or with focus nowhere (the row a button archived has left the
   // list, taking focus with it). Never in a text field, where ⌘Z is the field's own.
@@ -1353,70 +1369,80 @@ export function Sidebar() {
   const openCount = useMemo(() => triageOrder(active).length, [active]);
   const waitingNotice = useWaitingAnnouncement(all, loaded);
   const deviceNotice = useDeviceAnnouncement();
-  const remoteFooterShown = useRemoteFooterShown();
-  const localWaiting = all.filter((row) => rowStatus(row) === 'needs-you').length;
   const browserPreview = usePreferences((s) => s.prefs.browserEnabled);
-  const showTabs = useSidebarList((s) => browserPreview && s.list === 'browser');
+  // What the panel lists, one per item on the nav rail. The sessions stay mounted under the others, hidden.
+  const list = useSidebarList((s) => (s.list === 'browser' && !browserPreview ? 'sessions' : s.list));
+  const showTabs = list === 'browser';
+  // Projects, Upcoming, Activity and Settings put their own list here (`usePanelSlot`).
+  const viewList = VIEW_LISTS.includes(list);
+  const otherList = list !== 'sessions' && !showTabs;
+  // The sessions' header and footer show with the sessions and the Browser's tabs only.
+  const notSessions = otherList || showTabs;
+  const minimal = useMinimal();
+  const setSlot = usePanelSlot((s) => s.setSlot);
 
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
     <aside aria-label="Sidebar" className="relative flex h-full shrink-0 flex-col bg-sidebar forced-colors:border-r" style={{ width }} data-sidebar-open>
-      {/* Traffic lights on the left (macOS); the bar doubles as a window drag handle. */}
-      <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24' : 'pl-4.5'}`}>
-        <span className="text-body font-semibold text-text/90">Seshboard</span>
+      {/* The panel's header: the list's name and, for the sessions, the project, the order and the filter. */}
+      <div className={`h-10 shrink-0 items-center gap-0.5 px-2 ${otherList ? 'hidden' : 'flex'}`} data-panel-header>
+        <h2 className="min-w-0 flex-1 truncate pl-1.5 text-ui font-semibold text-text">{showTabs ? 'Browser' : 'Sessions'}</h2>
+        {!showTabs && (
+          <>
+            {/* Minimal mode: the View menu holds the project filter too. */}
+            {!minimal && <ProjectFilter variant="header" counts={counts} sources={sourceSummaries} remoteProjects={remoteProjects} />}
+            <SidebarViewButton projects={projectKeys} withProjects={minimal} />
+            <Button
+              variant="quiet"
+              iconOnly
+              icon={<Search size={15} aria-hidden />}
+              aria-label="Filter sessions"
+              aria-expanded={filterShown}
+              aria-controls={filterId}
+              selected={filterShown}
+              onClick={() => (filterShown && search === '' ? setFilterOpen(false) : revealFilter())}
+              data-filter-toggle
+            />
+          </>
+        )}
       </div>
 
-      <SidebarNav now={now} needsYou={localWaiting} />
-
-      {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. The
-          Browser's tab list has no search or New session. */}
-      <div className={`items-center gap-1.5 px-3 pb-1.5 ${showTabs ? 'hidden' : 'flex'}`}>
-        {/* A real field on the darkest surface, so it reads as the place to type. */}
-        <label className="no-drag flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-bg px-2.5 text-faint focus-within:ring-1 focus-within:ring-accent-ink/50">
-          <Search size={14} className="shrink-0" aria-hidden />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search sessions"
-            aria-label="Search sessions by title, project or branch"
-            spellCheck={false}
-            className="h-full min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
-          />
-        </label>
-        {/* The sidebar's one primary action: a yellow fill, like every primary button. With an unsent New session
-            prompt it carries a pen, and opens New session on that prompt's project (or on the computer Run on last
-            picked, for a prompt typed for it). */}
-        <span className="no-drag relative flex shrink-0">
-          <Button
-            variant="primary"
-            size="lg"
-            iconOnly
-            icon={<Plus size={17} strokeWidth={2.4} aria-hidden />}
-            aria-label={newDraft ? newSessionDraftTooltip(newDraft.name) : remoteNewDraft ? remoteNewSessionDraftTooltip(remoteNewDraft.name) : 'New session'}
-            shortcut="session.new"
-            data-new-session
-            onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))}
-            className={`rounded-lg! ${view === 'new' ? 'ring-2 ring-accent/40 ring-offset-1 ring-offset-sidebar' : ''}`}
-          />
-          {newDraft ? (
-            <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />
-          ) : (
-            remoteNewDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-remote-new-session-draft={remoteNewDraft.computerId} />
-          )}
-        </span>
-      </div>
-
+      {/* The filter: shown from the header's button, and while it has text. Escape clears and hides it. */}
+      {!notSessions && filterShown && (
+        <div className="flex items-center px-3 pb-1.5" id={filterId}>
+          {/* A real field on the darkest surface, so it reads as the place to type. */}
+          <label className="no-drag flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-bg px-2.5 text-faint focus-within:ring-1 focus-within:ring-accent-ink/50">
+            <Search size={14} className="shrink-0" aria-hidden />
+            <input
+              ref={filterRef}
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Escape') return;
+                e.preventDefault();
+                e.stopPropagation();
+                setSearch('');
+                setFilterOpen(false);
+                filterButton()?.focus();
+              }}
+              placeholder="Filter sessions"
+              aria-label="Filter sessions by title, project or branch"
+              spellCheck={false}
+              className="h-full min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
+              data-session-filter
+            />
+          </label>
+        </div>
+      )}
 
       {/* With the browser on, Browser swaps the sessions for its tabs; the sessions stay mounted (their notices too). */}
-      <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-sessions>
-      {/* The project and, beside it, the order: by time and state, or what takes least to unblock first. */}
-      <ProjectFilter
-        counts={counts}
-        sources={sourceSummaries}
-        remoteProjects={remoteProjects}
-        trail={<SidebarViewButton projects={projectKeys} />}
-      />
+      {/* Behind another list the sessions stay laid out, invisible and out of reach, so the list keeps its rows and scroll. */}
+      <div
+        className={notSessions ? 'pointer-events-none invisible absolute inset-x-0 top-10 bottom-0 flex flex-col' : 'contents'}
+        aria-hidden={notSessions || undefined}
+        data-sidebar-sessions={notSessions ? 'hidden' : 'shown'}
+      >
       {noProjects && (
         <div className="mx-3 mb-2 grid justify-items-start gap-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-ui" data-sidebar-onboarding>
           <p className="font-medium text-text">Add a project</p>
@@ -1447,19 +1473,22 @@ export function Sidebar() {
                 Clear search
               </button>
             )}
-            {scope === 'switchboard' && sessions.size > 0 && (
+            {scope === 'switchboard' && anySessions && (
               <button type="button" onClick={() => updatePrefs({ sessionScope: 'all' })} className="text-link hover:underline">
                 Show sessions from other apps
               </button>
             )}
           </div>
         ) : (
-          // Virtualised: only rows near the viewport exist, so each item says where it sits in the whole list.
-          // A tree (#179): sessions are treeitems, a pipeline's parent opens to its sub-sessions. Being virtualised, the
-          // levels are told with aria-level rather than nested groups.
-          <div role="tree" aria-label="Sessions" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-            {virtualItems.map((item) => {
-              const row = rows[item.index]!;
+          <VirtualRows
+            rows={rows}
+            scrollRef={scrollRef}
+            handle={listHandle}
+            estimateSize={estimateRow}
+            measureKey={sidebarStyle}
+            archivedIndex={archivedIndex}
+            selectedId={listSelected}
+            renderRow={(item, row, { sessionId: tabStopId, projectKey: projectTabStop }) => {
               const isPicked = (r: SidebarListRow | undefined) => multi && r?.kind === 'session' && picked.has(r.data.id);
               // A run of picked rows shares one tinted block: rounded where the run starts and ends.
               const block = isPicked(row) && { top: !isPicked(rows[item.index - 1]), bottom: !isPicked(rows[item.index + 1]) };
@@ -1501,6 +1530,7 @@ export function Sidebar() {
                       now={now}
                       style={sidebarStyle}
                       tabbable={row.entry.item.id === firstQueued}
+                      firstReady={row.entry.item.id === firstReady}
                       mark={drag.markFor(row.entry.item.id)}
                       drag={drag.props(row.entry.item.id)}
                       onMenu={queueMenus.openMenu}
@@ -1515,7 +1545,11 @@ export function Sidebar() {
                       position={row.child.position}
                       count={row.child.count}
                       style={sidebarStyle}
-                      selected={row.data.id === listSelected}
+                      // A closed parent stands for its open sub-session, at every level of the tree.
+                      selected={row.data.id === listSelected || (row.parent?.open === false && forest.parentOf.get(listSelected ?? '') === row.data.id)}
+                      expanded={row.parent?.open}
+                      childCount={row.parent?.count}
+                      onToggleTree={toggleParent}
                       beside={listView === 'session' && row.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(row.data.id)}
                       tabbable={row.data.id === tabStopId}
                       waitingFor={waitingFor(row.data)}
@@ -1535,7 +1569,6 @@ export function Sidebar() {
                       now={now}
                       tabbable={row.data.id === tabStopId}
                       waitingFor={waitingFor(row.data)}
-                      draft={draftPreviews.get(row.data.id) ?? null}
                       review={reviewOf(catchUps.get(row.data.id))}
                       outside={(catchUps.get(row.data.id)?.signals.outOfScope.length ?? 0) > 0}
                       inProject={row.project !== undefined}
@@ -1557,8 +1590,8 @@ export function Sidebar() {
                   )}
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
         )}
       </div>
       {multi && (
@@ -1608,10 +1641,21 @@ export function Sidebar() {
       </div>
       </div>
       {showTabs && <BrowserTabList />}
+      {viewList && <div ref={setSlot} className="flex min-h-0 flex-1 flex-col" data-panel-view={list} data-panel-projects={list === 'projects' || undefined} />}
+      {list === 'running' && (
+        <div className="flex min-h-0 flex-1 flex-col" data-panel-running>
+          <div className="flex h-10 shrink-0 items-center px-2">
+            <h2 className="min-w-0 flex-1 truncate pl-1.5 text-ui font-semibold text-text">Running</h2>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <FocusList />
+          </div>
+        </div>
+      )}
 
-      {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines.
-          Under the Browser's tabs only Settings: the rest is about sessions (hidden, not gone, so it is as it was on the way back). */}
-      <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={(!showTabs && !listEdge.atBottom) || undefined} data-sidebar-bottom>
+      {/* One block under the list: Done, Star on GitHub and the footer, with space between them instead of lines. Under the
+          Browser's tabs only Browser profiles: the rest is about sessions (hidden, not gone, so it is as it was on the way back). */}
+      <div className={`edge-t shrink-0 flex-col gap-2 ${otherList ? 'hidden' : 'flex'}`} data-scrolled={(!showTabs && !listEdge.atBottom) || undefined} data-sidebar-bottom>
       <div className={showTabs ? 'hidden' : 'contents'} data-sidebar-session-footer>
       {/* Closed, Archived is docked under the list, so a short list never scrolls and a long one keeps it in sight. */}
       {archivedAt === 'dock' && (
@@ -1620,27 +1664,22 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* The remote footer: who is connected to this computer, then the computers you reach out to. */}
-      <ConnectedDevices />
-      <ComputersStrip localWaiting={localWaiting} joined={remoteFooterShown} />
-
       <BrowserIntro />
       <StarOnGithub sessions={all.length} />
       </div>
 
       <footer className="flex h-10 shrink-0 items-center gap-2 px-3 text-meta text-muted">
         <div className={showTabs ? 'hidden' : 'contents'}>
-        {/* The focus limit, while it's on: how many sessions are going, out of how many. */}
-        <FocusCounter />
         {/* The count opens every session, in Settings › Sessions. */}
         <button type="button" onClick={() => openSessionManager()} className="min-w-0 flex-1 truncate rounded text-left hover:text-text" data-tooltip="Manage sessions" data-footer-sessions>
           {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} running`}
           {running && <span data-footer-pipelines>{` · ${running}`}</span>}
           {queue.entries.length > 0 && <span data-footer-queued>{` · ${queue.entries.length} queued`}</span>}
-          {waiting > 0 && <span className="text-warn">{` · ${waiting} waiting`}</span>}
+          {waiting > 0 && <span className={minimal ? 'text-text' : 'text-warn'}>{` · ${waiting} waiting`}</span>}
           {!complete && loaded && ' · scanning…'}
         </button>
-        {openCount > 0 && (
+        {/* Minimal mode: no count pill here; catch-up stays in the palette. */}
+        {openCount > 0 && !minimal && (
           <Pill
             icon={<Inbox size={11} className="shrink-0" aria-hidden />}
             onClick={() => startPass()}
@@ -1652,42 +1691,23 @@ export function Sidebar() {
             {openCount} open
           </Pill>
         )}
-        {unsent.length > 0 && (
+        {unsentCount > 0 && (
           <Pill
             icon={<PencilLine size={11} className="shrink-0" aria-hidden />}
             onClick={() => (useDrafts.getState().list ? useDrafts.getState().closeList() : openUnsentList())}
             aria-haspopup="dialog"
-            aria-label={`${unsent.length} unsent ${unsent.length === 1 ? 'message' : 'messages'}. Show them`}
-            data-drafts-count={unsent.length}
+            aria-label={`${unsentCount} unsent ${unsentCount === 1 ? 'message' : 'messages'}. Show them`}
+            data-drafts-count={unsentCount}
             className="shrink-0"
           >
-            {unsent.length} unsent
+            {unsentCount} unsent
           </Pill>
         )}
-        <Button
-          variant="quiet"
-          iconOnly
-          icon={<FolderCog size={15} aria-hidden />}
-          aria-label="Projects"
-          selected={view === 'projects' || view === 'project'}
-          aria-current={view === 'projects' || view === 'project' ? 'page' : undefined}
-          data-open-projects
-          // The list and the open project are one view: a second click leaves it.
-          onClick={() => setView(view === 'projects' || view === 'project' ? 'session' : 'projects')}
-        />
         </div>
-        <Button
-          variant="quiet"
-          iconOnly
-          icon={<Settings size={15} aria-hidden />}
-          className={showTabs ? 'ml-auto' : undefined}
-          aria-label="Settings"
-          shortcut="settings"
-          selected={view === 'settings'}
-          aria-current={view === 'settings' ? 'page' : undefined}
-          data-open-settings
-          onClick={() => (view === 'settings' ? useSessions.getState().closeSettings() : useSessions.getState().openSettings())}
-        />
+        {/* Under the Browser's tabs: its profiles (Projects and Settings are on the nav rail). */}
+        {showTabs && (
+          <Button variant="quiet" iconOnly icon={<UserRound size={15} aria-hidden />} aria-label="Browser profiles" className="ml-auto" data-open-browser-profiles onClick={openBrowserProfiles} />
+        )}
       </footer>
       </div>
 

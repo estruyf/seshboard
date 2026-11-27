@@ -58,6 +58,8 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     prompts: [],
     canEditActions: false,
     colorScheme: 'system',
+    minimalMode: false,
+    codeHighlighting: true,
     themes: [
       { id: 'demo-time', name: 'Demo Time' },
       { id: 'solarized', name: 'Solarized' },
@@ -67,6 +69,8 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     sidebarGroup: 'state',
     conversationView: 'skim',
     sidebar: 'open',
+    canGoBack: false,
+    canGoForward: false,
     settingsSection: 'general',
     newSession: null,
     questionsDir: '/data/questions',
@@ -504,14 +508,25 @@ describe('rememberIn', () => {
 });
 
 describe('sidebar and session navigation', () => {
-  it('offers only the sidebar states that change something, and always the toggle', () => {
+  it('offers only the panel states that change something, and always the toggle', () => {
     const open = ids(context());
-    expect(open).toEqual(expect.arrayContaining(['toggle-sidebar', 'sidebar-minimize', 'sidebar-close']));
+    expect(open).toEqual(expect.arrayContaining(['toggle-sidebar', 'sidebar-close']));
     expect(open).not.toContain('sidebar-open');
-    const minimal = ids(context({ sidebar: 'minimal' }));
-    expect(minimal).toEqual(expect.arrayContaining(['toggle-sidebar', 'sidebar-open', 'sidebar-close']));
-    expect(minimal).not.toContain('sidebar-minimize');
-    expect(ids(context({ sidebar: 'closed' }))).not.toContain('sidebar-close');
+    const closed = ids(context({ sidebar: 'closed' }));
+    expect(closed).toEqual(expect.arrayContaining(['toggle-sidebar', 'sidebar-open']));
+    expect(closed).not.toContain('sidebar-close');
+  });
+
+  it('offers Go back and Go forward only with somewhere to go, and goes there', () => {
+    expect(ids(context())).not.toEqual(expect.arrayContaining(['nav-back']));
+    expect(ids(context())).not.toEqual(expect.arrayContaining(['nav-forward']));
+    const ctx = context({ canGoBack: true, canGoForward: true });
+    expect(ids(ctx)).toEqual(expect.arrayContaining(['nav-back', 'nav-forward']));
+    const api = { goInHistory: vi.fn() } as unknown as PaletteApi;
+    COMMANDS.find((c) => c.id === 'nav-back')!.run!(api, ctx);
+    COMMANDS.find((c) => c.id === 'nav-forward')!.run!(api, ctx);
+    expect(api.goInHistory).toHaveBeenNthCalledWith(1, -1);
+    expect(api.goInHistory).toHaveBeenNthCalledWith(2, 1);
   });
 
   it('puts ⌘B on Toggle sidebar and ⌘\\ on closing the other panes', () => {
@@ -618,10 +633,10 @@ describe('in a pop-out', () => {
   });
 
   it("leaves out the main window's: the panes, the sidebar, Home, the window's own terminal and what New session answers", () => {
-    const ctx = popout({}, { ...dynamic, split: true, splitDirection: 'row', paneWays: ['left', 'right'], sidebar: 'closed', newSession: { canWorktree: true, canSaveDefaults: true, canQueue: true, canCatchUp: true }, unsent: 2, queue: { count: 1, readyCount: 1, firstReady: { id: 'q', prompt: 'x' } }, cloneEnabled: true });
+    const ctx = popout({}, { ...dynamic, split: true, splitDirection: 'row', paneWays: ['left', 'right'], sidebar: 'closed', canGoBack: true, canGoForward: true, newSession: { canWorktree: true, canSaveDefaults: true, canQueue: true, canCatchUp: true }, unsent: 2, queue: { count: 1, readyCount: 1, firstReady: { id: 'q', prompt: 'x' } }, cloneEnabled: true });
     const shown = ids(ctx);
     for (const id of ['focus-other-pane', 'focus-pane-left', 'swap-panes', 'stack-panes', 'close-pane', 'close-other-panes']) expect(shown, id).not.toContain(id);
-    for (const id of ['toggle-sidebar', 'sidebar-open', 'sidebar-minimize', 'sidebar-close', 'sidebar-compact', 'home', 'open-in-new-window', 'unsent', 'queue-start-next', 'queue-pick', 'manage-projects', 'add-project', 'new-session-clone', 'new-session-worktree', 'toggle-worktree', 'save-defaults', 'catch-up', 'show-only:c1', 'new-session-on:c1', 'import-theme', 'export-settings']) {
+    for (const id of ['toggle-sidebar', 'sidebar-open', 'sidebar-close', 'nav-back', 'nav-forward', 'customize-nav-rail', 'sidebar-compact', 'home', 'open-in-new-window', 'unsent', 'queue-start-next', 'queue-pick', 'manage-projects', 'add-project', 'new-session-clone', 'new-session-worktree', 'toggle-worktree', 'save-defaults', 'catch-up', 'show-only:c1', 'new-session-on:c1', 'import-theme', 'export-settings']) {
       expect(shown, id).not.toContain(id);
     }
     expect(groupIds(ctx, 'panes')).toEqual([]);

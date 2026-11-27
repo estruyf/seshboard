@@ -272,7 +272,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail" | "files" | "text";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading" | "tab" | "rail" | "files" | "text" | "actions";
 
 export interface ShortcutDef {
   id: string;
@@ -347,6 +347,20 @@ export const SHORTCUTS = [
   },
   { id: "home", keys: ["mod+shift+h"], action: "Home", section: "general" },
   {
+    id: "nav.back",
+    keys: [],
+    action: "Go back",
+    section: "general",
+    note: "No key by default: use the title bar's Back, the mouse's back button, or the command palette",
+  },
+  {
+    id: "nav.forward",
+    keys: [],
+    action: "Go forward",
+    section: "general",
+    note: "No key by default: use the title bar's Forward, the mouse's forward button, or the command palette",
+  },
+  {
     id: "home.pick",
     keys: ["mod+1..9"],
     action: "Start in a project",
@@ -389,6 +403,13 @@ export const SHORTCUTS = [
     keys: ["mod+/"],
     action: "Keyboard shortcuts",
     section: "general",
+  },
+  {
+    id: "view.minimal",
+    keys: ["mod+shift+."],
+    action: "Turn Minimal mode on or off",
+    section: "general",
+    note: "Shows less at once: one-line sessions, no chips, no counts",
   },
   // The menu bar's panel (its own window): never in the main window, so they don't count there.
   {
@@ -501,6 +522,24 @@ export const SHORTCUTS = [
     reserve: false,
   },
   {
+    id: "quickstart.screenshot",
+    keys: ["mod+shift+s"],
+    action: "Take a screenshot and attach it",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.clear-images",
+    keys: ["mod+shift+backspace"],
+    action: "Remove all attached images",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
     id: "quickstart.later",
     keys: ["mod+l"],
     action: "Add to Later instead",
@@ -532,7 +571,7 @@ export const SHORTCUTS = [
   {
     id: "sidebar.toggle",
     keys: ["mod+b"],
-    action: "Collapse or open the sidebar",
+    action: "Open or close the panel",
     section: "sessions",
   },
   {
@@ -1047,6 +1086,15 @@ export const SHORTCUTS = [
     where: "files",
   },
   {
+    id: "files.save",
+    keys: ["mod+s"],
+    action: "Save the file you are editing",
+    section: "session",
+    context: "In the Files viewer, while editing",
+    when: inSession,
+    where: "files",
+  },
+  {
     id: "changes.toggle",
     keys: ["mod+shift+d"],
     action: "Show or hide Changes",
@@ -1084,9 +1132,19 @@ export const SHORTCUTS = [
     action: "Move a tool or an app on the rail up or down",
     section: "session",
     context: "On a button on the rail at the session's right edge",
-    note: "Or drag it. A button moves only inside its group",
+    note: "Or drag it. A button moves only inside its group. The same keys move an item on the nav rail at the window's left edge",
     when: inSession,
     where: "rail",
+  },
+  {
+    id: "actions.move",
+    keys: ["alt+arrowleft", "alt+arrowright", "alt+arrowup", "alt+arrowdown"],
+    action: "Move a project action",
+    section: "session",
+    context: "On an action above the message box (left or right), or in the list of the actions editor (up or down)",
+    note: "Or drag it",
+    when: inSession,
+    where: "actions",
   },
   {
     id: "web.toggle",
@@ -1161,6 +1219,22 @@ export const SHORTCUTS = [
     action: "Bookmark the page, or edit its bookmark",
     section: "general",
     context: "While a page or its address bar has focus",
+  },
+  {
+    id: "browser.reload",
+    keys: ["mod+r"],
+    action: "Reload the page",
+    section: "general",
+    context: "With a browser page on screen",
+    note: "The page on screen, wherever the focus is",
+  },
+  {
+    id: "browser.hard-reload",
+    keys: ["mod+shift+r"],
+    action: "Hard reload the page",
+    section: "general",
+    context: "With a browser page on screen",
+    note: "Skips the cache, so changed scripts, styles and pictures load fresh",
   },
   {
     id: "browser.back",
@@ -1267,10 +1341,11 @@ export const SHORTCUTS = [
   },
   {
     id: "claude.stop",
-    keys: ["escape"],
+    keys: ["escape escape"],
     action: "Stop Claude",
     section: "session",
     context: "While Claude is working",
+    note: "Press once if you turned that off in Settings › Conversation",
     when: (ctx) => inSession(ctx) && ctx.running,
     where: "composer",
   },
@@ -1362,6 +1437,25 @@ export const SHORTCUTS = [
     action: "Add files as context",
     section: "composer",
     context: "Several at once; they show as chips",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
+    id: "composer.screenshot",
+    keys: ["mod+shift+s"],
+    action: "Take a screenshot and attach it",
+    section: "composer",
+    context: "Pick an area of the screen",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
+    id: "composer.take-reply",
+    keys: ["tab"],
+    action: "Put the suggested reply in the box",
+    section: "composer",
+    context: "In an empty box, after Claude's turn",
+    note: "Turn suggested replies off in Settings › Conversation",
     when: inMessageBox,
     where: "composer",
   },
@@ -1575,9 +1669,9 @@ export const SHORTCUTS = [
     when: (ctx) => ctx.view === "usage",
   },
   {
-    id: "usage.back",
+    id: "usage.close",
     keys: ["escape"],
-    action: "Back to where you were",
+    action: "Close Usage",
     section: "usage",
     when: (ctx) => ctx.view === "usage",
   },
@@ -1684,6 +1778,13 @@ const withoutShiftForSymbols = (press: string) => {
     : press;
 };
 
+/**
+ * ⌘⇧. as pressed: Shift turns `.` into another character on most layouts (`>` on US English), so the physical key
+ * decides. `matches` covers a layout that keeps `.`.
+ */
+export const isMinimalKey = (event: { metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; key: string; code?: string }) =>
+  matches(event, "view.minimal") || (modKey(event) && event.shiftKey && !event.altKey && event.code === "Period");
+
 /** Whether a key press is `id`'s shortcut (any of its alternatives). */
 export function matches(
   event: Parameters<typeof shortcutFromEvent>[0],
@@ -1707,6 +1808,10 @@ export const keysFor = (id: ShortcutId) =>
  */
 export const clickKeysFor = (id: ShortcutId) =>
   shortcutById(id).keys.find((combo) => combo.endsWith("click")) ?? "";
+
+/** A shortcut's main keys like `keysFor`, or undefined for one with no key by default (`nav.back`). */
+export const keysIfAny = (id: ShortcutId): string | undefined =>
+  shortcutById(id).keys.length > 0 ? keysFor(id) : undefined;
 
 /** Every key that runs `id`, as `aria-keyshortcuts` lists them (space-separated). */
 export const ariaKeysFor = (id: ShortcutId) =>

@@ -15,7 +15,7 @@ Settings is where you choose how Seshboard looks and behaves: what it opens on, 
 ## Open it
 
 - Press <Kbd shortcut="settings" />.
-- Click the gear at the bottom of the sidebar (also there when the sidebar is a narrow rail).
+- Click the gear at the bottom of the [rail](/sessions/rail/). Its sections show in the panel next to it. Click the gear again to close Settings.
 - Choose **<Os mac="Seshboard → Settings…" windows="File → Settings…" />** in the menu bar. On Windows the menu bar shows when you press Alt.
 - Run *Settings* in the command palette (<Kbd shortcut="palette.commands" />). While Settings is open, the palette offers *Settings: &lt;page&gt;* for each other page, such as *Settings: Theme*, in the menu's order.
 
@@ -32,7 +32,7 @@ The menu groups the pages by what they are about:
 | **App** | [General](#general), [Browser](#browser-1), [Theme](#theme), [Sidebar](#sidebar), [Notifications](#notifications) and [Focus](#focus) |
 | **Claude** | [Conversation](#conversation), [Profiles](#profiles), [Usage](#usage) and [Memory](#memory) |
 | **Your work** | [Projects](#projects), [Sessions](#sessions), [Prompts](#prompts) and [Pipelines](#pipelines) |
-| **Connect** | [VS Code](#vs-code), [Remote](#remote) and [Mods](#mods) |
+| **Connect** | [VS Code](#vs-code), [Browser extension](#browser-extension), [Remote](#remote) and [Mods](#mods) |
 
 [Backup](#backup), [Diagnostics](#diagnostics) and [About](#about) sit at the bottom of the menu, under a line. <Kbd keys="arrowup|arrowdown" /> moves between the pages in the menu.
 
@@ -113,29 +113,48 @@ Shown while the browser is on.
 - **Allow Seshboard to control the browser** (on by default): the agent in a session (Claude Code, Copilot or Codex) can open, read and click pages in its Browser panel to check its work. See [Agents in the browser](/browser/agents/).
 - **Allow scripts in pages** (off by default): the agent can also run scripts in its page and read the page's requests. Other sites ask first. See [Scripts in pages](/browser/agents/#scripts-in-pages).
 - **Browser profiles**: the Default profile and yours, each with its own logins, site data and cache. See [Browser profiles](/browser/profiles/).
+- **Site actions**: **Start session** in the address bar and the page's right-click menu, on the pages each action names. Two are built in, for GitHub pull requests and issues, and you can add your own. See [Start a session from a page](/browser/tabs-and-pages/#start-a-session-from-a-page).
 
 Both switches apply to sessions you start or resume after you change them.
 
 ## Theme
 
-<Screenshot name="settings-theme" alt="Settings on Theme: the Appearance control, the theme cards with light and dark previews, and the Import… and Open themes folder buttons" />
+<Screenshot name="settings-theme" alt="Settings on Theme: the Appearance section, the theme cards with light and dark previews, and the Import… and Open themes folder buttons" />
 
-- **Appearance**: **Match System** (the default, follows <Os mac="macOS" windows="Windows" />), **Light** or **Dark**.
-- **Theme**: a card for each theme. Click one to use it. Each card's **⋯** menu has **Export…** and **Duplicate**, plus **Show file** and **Remove** for themes you imported.
+**Appearance**:
+
+- **Minimal mode** (off by default) shows less at once: sessions as one line with their state as a shape, the message box without its chips, and no counts on icons. What it hides is in tooltips and menus. <Kbd shortcut="view.minimal" /> turns it on and off.
+- **Theme**: **Seshboard** (the default, with colour for state and projects), **Black and white** or **Black and white, light** (greys only, with red and amber for errors and what needs you).
+- **Light or dark**, with Seshboard picked: **Light**, **Dark** or **Follow the system** (the default, follows <Os mac="macOS" windows="Windows" />).
+
+**Seshboard themes**, with Seshboard picked:
+
+- A card for each theme. Click one to use it. Each card's **⋯** menu has **Export…** and **Duplicate**, plus **Show file** and **Remove** for themes you imported.
 - **Open themes folder** shows where imported themes are kept, and **Import…** (or the **Drop a theme .json here** card) adds a theme file.
+
+Under them, in any theme:
+
+- **Code highlighting** (on by default) colours code and diffs by syntax. Off, code is in one colour, removed lines are struck through and added lines are in bold.
+- **Project colours** (on by default) shows a project's colour on its tile and in the sidebar. Off, projects show their letter in grey.
+- **File icons**: **None** (the default), or an icon theme you installed in VS Code, Cursor or Windsurf, such as Material Icon Theme or vscode-icons. The [Files](/sessions/files/) tree then shows its icons, in light and dark.
 
 See [Built-in themes](/themes/built-in/), [Custom themes](/themes/custom/) and [Code and terminal colours](/themes/syntax-colours/).
 
 ### App icon
 
-<Screenshot name="settings-app-icon" alt="The App icon section: nine icon tiles with Signal yellow chosen, Reset to Graphite, and a note on where the original icon stays" />
+<Screenshot name="settings-app-icon" alt="The App icon section: ten icon tiles with Signal yellow chosen, Reset to Graphite, and a note on where the original icon stays" />
 
-Pick one of nine colourways of the Seshboard icon: **Graphite** (the default), **Midnight**, **Paper**, **Signal yellow**, **Forest**, **Plum**, **Aluminium**, **Ocean** or **Neon**. The shape stays the same, only the colours change. Click a tile, or move between them with the arrow keys, and the icon changes right away. There is no restart. **Reset to Graphite** goes back to the original.
+Pick one of ten colourways of the Seshboard icon: **Graphite** (the default), **Midnight**, **Paper**, **Signal yellow**, **Forest**, **Plum**, **Aluminium**, **Ocean**, **Neon** or **Black and white**, which goes with the Black and white theme. The shape stays the same, only the colours change. Click a tile, or move between them with the arrow keys, and the icon changes right away. There is no restart. **Reset to Graphite** goes back to the original.
 
-**Show when Claude is working** (macOS, on by default): while a session works, the empty jacks in the Dock icon light up one after another and a pulse of light runs along the cables, in whichever icon you picked. With Reduce motion on, the jacks stay lit instead.
+**Show when Claude is working** (macOS): while a session works, the empty jacks in the Dock icon light up one after another and light runs along the cables, in whichever icon you picked. With Reduce motion on, the jacks stay lit instead. It has three choices:
+
+- **Off**: the icon stays still.
+- **Light** (the default): the same motion at about 3 frames a second, using about 2% of a CPU core while Claude works.
+- **Smooth**: smoother motion at about 13 frames a second, using about 20% of a CPU core while Claude works.
+
 <OnlyOn os="mac">
 
-The icon shows in the Dock and the app switcher. macOS shows it while Seshboard runs, so Finder and Launchpad keep the original icon, and so do notifications.
+The icon shows in the Dock and the app switcher, and stays in the Dock after you quit if you keep Seshboard there. If the Dock still shows the old icon after an update, quit and open Seshboard once. Finder and Launchpad keep the original icon, and so do notifications.
 
 </OnlyOn>
 
@@ -151,7 +170,7 @@ Seshboard doesn't change the app's own files or your shortcuts for this, so it a
 
 ## Sidebar
 
-<Screenshot name="settings-sidebar" alt="Settings on Sidebar: three previews for Large icons, Standard and Compact, the When collapsed control, and the Show sessions from other apps switch" />
+<Screenshot name="settings-sidebar" alt="Settings on Sidebar: three previews for Large icons, Standard and Compact, and the Show sessions from other apps switch" />
 
 - **Sidebar style**: how sessions are listed.
   - **Large icons**: a big project icon on each row, so each session's project is easy to spot.
@@ -159,7 +178,6 @@ Seshboard doesn't change the app's own files or your shortcuts for this, so it a
   - **Compact**: one line per session.
 
   The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact* too.
-- **When collapsed**: what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do. **Minimal rail** (the default) shrinks the sidebar to a narrow rail of project icons; **Hidden** hides it.
 - **Show sessions from other apps** (off by default): also list sessions from your terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Seshboard.
 - **Quick actions on hover** (on by default): Mark as read, Pin and Done appear on a row under the pointer. **Show** picks **Done only** or **Read · Pin · Done** (the default); working sessions show Stop too. See [Quick actions on hover](/sessions/sidebar/#quick-actions-on-hover).
 
@@ -209,6 +227,13 @@ See [Conversation](/sessions/conversation/).
 - **Time, duration and tokens**: `14:32 · 2m 14s · 18.4k tokens`.
 
 See [How long a turn took](/sessions/conversation/#how-long-a-turn-took).
+
+**Side panel** has two switches for the panel on the right of a session:
+
+- **Open the side panel in new sessions** (off by default): a session you start opens with the side panel beside it, so the conversation sits on the left. Pick a tool there, or close it.
+- **Panels at half width** (off by default): the side panel takes half of the session, also as the window resizes. Drag its edge to pick a width of your own again. The rail's right-click menu has it too.
+
+See [The side panel](/sessions/tool-rail/#the-side-panel).
 
 **Split view** has **Fade inactive panes** (on by default). With sessions side by side, the panes other than the active one are faded until you point at one. Turn it off to show them as clearly as the active pane, which keeps its line along the top. See [Split view](/sessions/split-view/).
 
@@ -336,6 +361,12 @@ A status line says whether an editor is connected right now ("Connected to 1 edi
 
 *VS Code extension* in the command palette opens this section. See [VS Code companion](/vscode-companion/).
 
+## Browser extension
+
+Connects the Seshboard extension in Chrome, Edge, Brave, Vivaldi, Arc, Chromium and Firefox to Seshboard. **Connect browsers** sets up each browser found on this computer, and the list under it says which ones are connected. A status line says whether a browser is connected right now ("Connected to 1 browser"). **Disconnect** removes the connection from every browser.
+
+*Browser extension* in the command palette opens this section. See [Browser extension](/browser-extension/).
+
 ## Remote
 
 Use your sessions from your phone, or from another computer, over an encrypted connection through a tunnel. Turn it on with the switch next to the title. The status card says whether Remote works, with the fix as a button when it doesn't; under it are **Pair a device**, your paired devices with **Rename** and **Revoke**, and the tunnel. *Connect to another computer…* in the command palette opens this page. See [Remote access](/remote-access/#settings--remote) and [Other computers](/other-computers/).
@@ -380,7 +411,7 @@ The engine behind Seshboard, the Claude Code it runs, and its recent log. Look h
 - **Channel**: **Stable** (published releases, the default) or **Beta** (beta versions to test what comes next, and the published releases).
 - **Claude Code**: the Claude Code Seshboard runs, whether it is up to date, **Installed**, **Latest**, **Installed with** and **Path**, with **Check for Updates** and, when a newer version is out, **Update to v…**.
 - **Check for Claude Code updates automatically** (on by default).
-- **GitHub Copilot CLI**, with a Copilot profile: the version you have, whether a newer one is out, and **Update**.
+- **GitHub Copilot CLI**, with a Copilot profile, and **Antigravity CLI**, with a Google Antigravity profile: the version you have, whether a newer one is out, and **Update**, with a switch to check automatically.
 
 See [Updates](/settings/updates/).
 

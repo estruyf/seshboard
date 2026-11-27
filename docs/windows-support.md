@@ -192,10 +192,9 @@ Goal: every feature in the README works on Windows, and looks and feels native t
 
 - `createWindow`: on Windows, use `titleBarStyle: 'hidden'` with `titleBarOverlay` (colours from the active theme, updated on theme and scheme changes), instead of `hiddenInset` and the traffic lights.
 - The renderer gets the platform through the preload (`window.seshboard.platform` already exists). The UI then makes room for the window controls on the right instead of the traffic lights on the left:
-  - `SidebarToggle` and `SidebarRail`;
-  - `sidebarStore` and `sidebarWidth` (the 80px rail exists for the traffic lights; on Windows it can be narrower);
+  - `TitleBar` (the 76px space for the traffic lights is macOS only);
   - the header of every view, with drag regions checked.
-- The `windowButtons` IPC does nothing on Windows.
+- The traffic lights' place is set when the window is made (`WINDOW_BUTTONS` in main); Windows and Linux keep their own title bar.
 - The menu: on Windows a File / Edit / View / Window / Help menu without `services`, `hide` and `hideOthers`. About, Check for Updates and Settings move to Help and File. Decide whether the menu bar shows, or hides behind Alt (`autoHideMenuBar`). The app already has a command palette, so hidden is likely right.
 - `window-all-closed` quits on Windows (already in place). Check that this matches the quit guard and the notifier.
 

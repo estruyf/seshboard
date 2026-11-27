@@ -19,7 +19,6 @@ import { useProjectActionList } from '../actions/useActions.ts';
 import { Menu } from '../Menu.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { useProjectIconEntries } from '../sidebar/ProjectMenu.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { BranchesTab } from '../branches/BranchesTab.tsx';
@@ -139,7 +138,6 @@ export function ProjectPage({ list, narrow = false, onShowList }: { list: readon
     return (
       <div className="@container flex h-full min-h-0 flex-col" data-project-page>
         <header className={PANE_HEADER}>
-          <SidebarToggle />
           <h1 className="flex-1 text-title font-semibold">Project</h1>
         </header>
         <div className="mx-auto grid max-w-3xl justify-items-start gap-3 px-6 py-8">
@@ -182,12 +180,8 @@ export function ProjectPage({ list, narrow = false, onShowList }: { list: readon
           </nav>
         )}
         <div className="flex min-w-0 items-center gap-3">
-          {narrow && (
-            <>
-              <SidebarToggle />
-              <Button variant="quiet" iconOnly icon={<ChevronLeft size={16} aria-hidden />} aria-label="Show projects" onClick={onShowList} className="no-drag -mr-1" data-project-show-list />
-            </>
-          )}
+          {/* The panel is closed or lists something else: the way back to the projects list. */}
+          {onShowList && <Button variant="quiet" iconOnly icon={<ChevronLeft size={16} aria-hidden />} aria-label="Show projects" onClick={onShowList} className="no-drag -mr-1" data-project-show-list />}
           <ProjectIcon project={project} root={root} size={34} />
           <div className="grid min-w-0 flex-1">
             <button
@@ -248,7 +242,7 @@ export function ProjectPage({ list, narrow = false, onShowList }: { list: readon
                 />
               </>
             )}
-            <Button variant="primary" icon={<Plus size={13} aria-hidden />} shortcut="session.new" kbdHideNarrow disabled={!project.exists} onClick={startHere} data-project-new-session>
+            <Button variant="primary" icon={<Plus size={13} aria-hidden />} shortcut="session.new" disabled={!project.exists} onClick={startHere} data-project-new-session>
               New session
             </Button>
             <Button

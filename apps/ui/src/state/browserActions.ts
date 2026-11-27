@@ -3,7 +3,7 @@ import type { PickedElement } from '@seshboard/protocol/bridge';
 import { elementImage, elementItem, quoteHeading } from '../components/webPreview/pageMessage.ts';
 import { useDrafts } from './draftsStore.ts';
 import { browserPopoutSession } from './popoutsStore.ts';
-import { BROWSER_OWNER, livePages, nextZoom, type BrowserTab } from '../components/webPreview/browserTabs.ts';
+import { BROWSER_OWNER, frontTab, livePages, nextZoom, type BrowserTab } from '../components/webPreview/browserTabs.ts';
 import { previewPage, usePreviewPages } from '../components/webPreview/webPreviewPages.ts';
 import { currentPageTab, openBrowserView, openFavorite } from './browserViewStore.ts';
 import { usePaletteBus } from './paletteBus.ts';
@@ -65,6 +65,26 @@ export async function clearBrowsingData(origin: string | null, profileId: string
     previewPage(id)?.reload(tab.url);
   }
   toast(origin ? `Signed out of ${siteName(origin)}` : 'Browsing data cleared', { icon: 'browser' });
+}
+
+/** Loads a tab's page again; `hard` skips the cache (Hard reload). */
+export function reloadPage(tab: Pick<BrowserTab, 'id' | 'url'>, hard = false): void {
+  if (tab.url) previewPage(tab.id)?.reload(tab.url, hard);
+}
+
+/** Reload from the menu bar (⌘R, ⌘⇧R): main sends it as this event and reloads the window when nothing here takes it. */
+export const RELOAD_PAGE_EVENT = 'seshboard:reload-page';
+
+/**
+ * The page ⌘R (⌘⇧R) means in this window: the one whose address bar or find bar has the focus, else the page on screen
+ * (a browser window's, the Browser view's, or the session's whose browser panel is open). Null with no page loaded.
+ */
+export function pageToReload(): BrowserTab | null {
+  const web = useWebPreview.getState();
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const focusedId = active?.dataset.webPreviewPage ?? active?.closest<HTMLElement>('[data-browser-address], [data-browser-find]')?.dataset.tabId;
+  const tab = (focusedId ? web.tabs.find((t) => t.id === focusedId) : undefined) ?? (browserPopoutSession ? frontTab(web, browserPopoutSession) : currentPageTab()) ?? null;
+  return tab?.url ? tab : null;
 }
 
 /** Find in page: opens the page's find bar, or puts the focus back in it. */
@@ -178,6 +198,8 @@ export type BrowserAction =
   | 'open-external'
   | 'address'
   | 'find'
+  | 'reload'
+  | 'hard-reload'
   | 'full'
   | 'side'
   | 'close-panel'
@@ -238,6 +260,9 @@ export function runBrowserAction(action: BrowserAction): void {
       return;
     case 'find':
       return findInPage(tab);
+    case 'reload':
+    case 'hard-reload':
+      return reloadPage(tab, action === 'hard-reload');
     case 'full':
     case 'side':
       return web.setFull(tab.owner, action === 'full');

@@ -26,6 +26,7 @@ function fakeUpdater(offer: { version: string; releaseNotes?: unknown } | Error)
     channel: null as string | null,
     forceDevUpdateConfig: false,
     logger: null as unknown,
+    updateConfigPath: null as string | null,
     feed: null as unknown,
     installed: 0,
     checks: 0,
@@ -81,6 +82,11 @@ function setup(fake: ReturnType<typeof fakeUpdater>, extra: Partial<UpdaterOptio
   return { updater, states, stopped: () => stopped, resumed: () => resumed };
 }
 
+const MISSING = 'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/estruyf/seshboard/releases/download/v1.5.0-beta.10/latest-mac.yml): HttpError: 404';
+const ATOM = ['v1.5.0-beta.10', 'v1.5.0-beta.9', 'v1.5.0-beta.8', 'v1.4.0']
+  .map((t) => `<entry><link rel="alternate" href="https://github.com/estruyf/seshboard/releases/tag/${t}"/></entry>`)
+  .join('');
+
 describe('Updater', () => {
   it('checks, downloads with progress, and installs after writing the marker', async () => {
     const fake = fakeUpdater({ version: '0.0.4', releaseNotes: '<ul><li>Restart works</li></ul>' });
@@ -131,10 +137,60 @@ describe('Updater', () => {
     const { updater } = setup(fake);
     await updater.check();
     expect(updater.state).toMatchObject({ status: 'error', error: 'net::ERR_INTERNET_DISCONNECTED', canRetry: true });
-    const feedError = Object.assign(new Error('Cannot find latest-mac.yml'), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' });
+    const feedError = Object.assign(new Error('Cannot parse releases feed'), { code: 'ERR_UPDATER_INVALID_RELEASE_FEED' });
     const { updater: second } = setup(fakeUpdater(feedError));
     await second.check();
-    expect(second.state.canRetry).toBe(false);
+    expect(second.state).toMatchObject({ status: 'error', canRetry: false });
+  });
+
+  it('is up to date while the newest release is still being built and no earlier one is newer', async () => {
+    const missing = Object.assign(new Error(MISSING), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' });
+    const fetched: string[] = [];
+    const { updater, states } = setup(fakeUpdater(missing), { channel: 'beta', currentVersion: '1.5.0-beta.9', fetchText: async (url) => (fetched.push(url), url.endsWith('.atom') ? ATOM : 'version: x') });
+    await updater.check();
+    expect(updater.state).toMatchObject({ status: 'up-to-date', error: null });
+    expect(updater.state.checkedAt).not.toBeNull();
+    expect(states.some((s) => s.status === 'error')).toBe(false);
+    expect(fetched).toEqual(['https://github.com/estruyf/seshboard/releases.atom']);
+  });
+
+  it('offers the release before the newest while the newest has no feed yet, then goes back to GitHub', async () => {
+    const missing = Object.assign(new Error(MISSING), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' });
+    const fake = fakeUpdater(missing);
+    // The generic feed of the earlier release answers; the GitHub feed still has nothing.
+    fake.checkForUpdates = async function () {
+      this.checks++;
+      if (!this.feed) throw missing;
+      return { updateInfo: { version: '1.5.0-beta.9' }, isUpdateAvailable: true };
+    };
+    const fetched: string[] = [];
+    const { updater } = setup(fake, {
+      channel: 'beta',
+      currentVersion: '1.5.0-beta.7',
+      // beta.9 has its feed; the feed of beta.10 is not attached yet.
+      fetchText: async (url) => (fetched.push(url), url.endsWith('.atom') ? ATOM : url.includes('beta.9/') ? 'version: 1.5.0-beta.9' : null),
+    });
+    await updater.check();
+    expect(updater.state).toMatchObject({ status: 'available', availableVersion: '1.5.0-beta.9' });
+    expect(fake.feed).toEqual({ provider: 'generic', url: 'https://github.com/estruyf/seshboard/releases/download/v1.5.0-beta.9' });
+    expect(fake.channel).toBe('beta');
+    expect(fake.allowDowngrade).toBe(false);
+    expect(fetched).toContain('https://github.com/estruyf/seshboard/releases/download/v1.5.0-beta.9/beta-mac.yml');
+    await updater.download();
+    expect(updater.state).toMatchObject({ status: 'downloaded', downloadedVersion: '1.5.0-beta.9' });
+    // The next check reads the GitHub feed again.
+    fake.feed = null;
+    let reset = 0;
+    Object.defineProperty(fake, 'updateConfigPath', { set: () => void reset++, configurable: true });
+    await updater.check();
+    expect(reset).toBe(1);
+  });
+
+  it('is up to date when looking for an earlier release fails', async () => {
+    const missing = Object.assign(new Error(MISSING), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' });
+    const { updater } = setup(fakeUpdater(missing), { channel: 'beta', currentVersion: '1.5.0-beta.7', fetchText: async () => { throw new Error('offline'); } });
+    await updater.check();
+    expect(updater.state).toMatchObject({ status: 'up-to-date', error: null });
   });
 
   it('switches to Beta and checks pre-releases at once; going back to Stable never downgrades', async () => {

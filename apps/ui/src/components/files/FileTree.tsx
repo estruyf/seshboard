@@ -5,10 +5,14 @@ import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import type { OpenFilesMenu } from './FilesMenu.tsx';
 import type { TouchedFiles } from './touchedFiles.ts';
 import { buildTree, treeKey, visibleRows, type FileTreeRow } from './fileTree.ts';
+import { FileIcon } from './FileIcon.tsx';
+import { useFileIconTheme } from '../../state/fileIconStore.ts';
+import { useCurrentMode } from '../theme/ThemeSettings.tsx';
 
 const ROW_PX = 26;
 /** How far one level of the tree is indented. */
 const INDENT_PX = 14;
+const NONE: ReadonlySet<string> = new Set();
 
 interface FileTreeProps {
   /** `files.list`'s files; null while they load. */
@@ -37,7 +41,23 @@ interface FileTreeProps {
  */
 export function FileTree({ files, truncated, error, open, filter, onFilter, onToggle, onOpen, selected, touched, reveal, onContextMenu }: FileTreeProps) {
   const root = useMemo(() => buildTree(files ?? []), [files]);
-  const rows = useMemo(() => visibleRows(root, open, filter, files ?? []), [root, open, filter, files]);
+  // Settings › Theme › File icons: a VS Code icon theme, or none.
+  const iconTheme = useFileIconTheme();
+  const light = useCurrentMode() === 'light';
+  // A theme that draws open and closed folders hides the arrows, as VS Code does with it.
+  const arrows = !iconTheme?.hidesExplorerArrows;
+  // While filtering, every folder with a match is open; these are the ones closed by hand since the filter last changed.
+  const [closed, setClosed] = useState<{ filter: string; paths: ReadonlySet<string> }>({ filter, paths: new Set() });
+  const closedNow = closed.filter === filter ? closed.paths : NONE;
+  const rows = useMemo(() => visibleRows(root, open, filter, files ?? [], closedNow), [root, open, filter, files, closedNow]);
+  /** Opens or closes a folder: in the filter's own set while filtering, so the folders open without a filter stay as they were. */
+  const toggle = (path: string, isOpen: boolean) => {
+    if (!filter.trim()) return onToggle(path, isOpen);
+    const next = new Set(closedNow);
+    if (isOpen) next.delete(path);
+    else next.add(path);
+    setClosed({ filter, paths: next });
+  };
   const [active, setActive] = useState(0);
   // Two panes can each show a tree: ids are the tree's own.
   const idBase = useId();
@@ -75,12 +95,12 @@ export function FileTree({ files, truncated, error, open, filter, onFilter, onTo
     if (step.kind === 'move') {
       setActive(step.index);
       virtual.scrollToIndex(step.index);
-    } else if (step.kind === 'toggle') onToggle(step.path, step.open);
+    } else if (step.kind === 'toggle') toggle(step.path, step.open);
     else onOpen(step.path);
   };
   const click = (row: FileTreeRow, index: number) => {
     setActive(index);
-    if (row.dir) onToggle(row.path, !row.open);
+    if (row.dir) toggle(row.path, !row.open);
     else onOpen(row.path);
   };
   const activeRow = rows[Math.min(active, rows.length - 1)];
@@ -154,9 +174,12 @@ export function FileTree({ files, truncated, error, open, filter, onFilter, onTo
                   data-files-dir={row.dir || undefined}
                   data-files-touched={state ?? undefined}
                 >
-                  <span className="flex w-3.5 shrink-0 justify-center text-faint" aria-hidden>
-                    {row.dir ? row.open ? <ChevronDown size={12} /> : <ChevronRight size={12} /> : null}
-                  </span>
+                  {arrows && (
+                    <span className="flex w-3.5 shrink-0 justify-center text-faint" aria-hidden>
+                      {row.dir ? row.open ? <ChevronDown size={12} /> : <ChevronRight size={12} /> : null}
+                    </span>
+                  )}
+                  {iconTheme && <FileIcon theme={iconTheme} path={row.path} dir={row.dir} open={row.open} light={light} />}
                   <span className="min-w-0 flex-1 truncate">{row.name}</span>
                   {state && <span aria-label={state === 'changed' ? 'Changed in this session' : 'Read in this session'} className={`size-1.5 shrink-0 rounded-full ${state === 'changed' ? 'bg-accent-ink' : 'bg-faint'}`} />}
                 </div>

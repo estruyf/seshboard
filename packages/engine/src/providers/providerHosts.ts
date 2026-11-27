@@ -18,6 +18,15 @@ import {
   type SlashCommand,
   type StreamDelta,
   ORCHESTRATOR_SERVER,
+  PROVIDER_BROWSER_SERVER,
+  SESSION_TOOL_PREFIX,
+  SESSIONS_SERVER,
+  sessionStartPromptText,
+  type SessionStartAsk,
+  approvalReplyOf,
+  type ApprovalAnswer,
+  type ApprovalAsk,
+  type ApprovalCard,
   PROVIDER_NAMES,
   browserAnswerOf,
   browserPromptText,
@@ -41,6 +50,8 @@ export interface ProviderHostsDeps {
    * session, whether a session being resumed is one, and what a resumed session reads after the provider's prompt.
    */
   orchestratorServer?(sessionId: () => string | null): Promise<McpStdioServer | null>;
+  /** Every other session's `seshboard` MCP server (start_session, which asks you first), as Claude Code's get. */
+  sessionsServer?(sessionId: () => string | null, cwd: string | null): Promise<McpStdioServer | null>;
   isOrchestrator?(sessionId: string): boolean;
   appendSystemFor?(sessionId: string): string | null;
   /** The provider profile a session belongs to (to resume it with that profile's login). */
@@ -76,8 +87,8 @@ export interface ProviderHostsDeps {
   onPermission(request: PermissionRequest): void;
   onPermissionResolved(requestId: string, sessionId: string): void;
   onTurnEnd?(sessionId: string, outcome: TurnOutcome): void;
-  /** A session this app started (it counts as a Seshboard session). */
-  onCreated(sessionId: string): void;
+  /** A session this app started (it counts as a Seshboard session), and the folder it was started in. */
+  onCreated(sessionId: string, cwd: string): void;
   /** You sent a message to a session started elsewhere. */
   onContinued?(sessionId: string): void;
   log(level: LogLevel, message: string): void;
@@ -115,8 +126,8 @@ export class ProviderHosts {
   private readonly hosts = new Map<string, Host>();
   /** Permission request id → session. */
   private readonly requests = new Map<string, string>();
-  /** Prompts Seshboard raised itself (a browser site, or scripts on it, to allow), not the provider: where their answer goes. */
-  private readonly ownPrompts = new Map<string, { resolve(answer: BrowserAnswer): void }>();
+  /** Prompts Seshboard raised itself (a browser site, a session to start), not the provider: where their answer goes. */
+  private readonly ownPrompts = new Map<string, { resolve(decision: PermissionDecision): void }>();
 
   constructor(private readonly deps: ProviderHostsDeps) {}
 
@@ -167,7 +178,7 @@ export class ProviderHosts {
     host.info = { ...host.info, sessionId: session.sessionId };
     this.hosts.set(session.sessionId, host);
     this.deps.settings?.set(session.sessionId, { model: params.model, effort, permissionMode });
-    this.deps.onCreated(session.sessionId);
+    this.deps.onCreated(session.sessionId, params.cwd);
     this.deps.onInfo(host.info);
     // A new worktree's setup actions (installing its dependencies) run before the first message, as for Claude Code.
     await params.beforeFirstMessage?.(session.sessionId).catch((error: Error) => this.deps.log('warn', `Worktree setup for ${session.sessionId}: ${error.message}`));
@@ -333,7 +344,9 @@ export class ProviderHosts {
     if (host.readOnly) return {};
     const browser = (await this.deps.browserServer?.(() => host.info.sessionId || null)) ?? null;
     const orchestrator = host.orchestrator ? ((await this.deps.orchestratorServer?.(() => host.info.sessionId || null)) ?? null) : null;
-    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { browser } : {}), ...(orchestrator ? { [ORCHESTRATOR_SERVER]: orchestrator } : {}) };
+    // Any other session gets start_session, which asks you before anything starts.
+    const sessions = host.orchestrator ? null : ((await this.deps.sessionsServer?.(() => host.info.sessionId || null, host.info.cwd ?? null)) ?? null);
+    const servers = { ...(this.visualize ? { visualize: this.visualize } : {}), ...(browser ? { [PROVIDER_BROWSER_SERVER]: browser } : {}), ...(orchestrator ? { [ORCHESTRATOR_SERVER]: orchestrator } : {}), ...(sessions ? { [SESSIONS_SERVER]: sessions } : {}) };
     return Object.keys(servers).length ? { mcpServers: servers } : {};
   }
 
@@ -344,21 +357,51 @@ export class ProviderHosts {
   askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
     const host = this.hosts.get(sessionId);
     if (!host) return Promise.resolve('deny');
+    const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
+    return this.askOwn(host, sessionId, `mcp__browser__${ask.tool}`, JSON.parse(JSON.stringify(ask.input)) as PermissionRequest['input'], { ...browserPromptText(agent, ask), sessionAllow: true });
+  }
+
+  /** The session asks to start another (start_session): asks in its permission card, with Allow and Deny only. */
+  async askStart(sessionId: string, ask: SessionStartAsk): Promise<boolean> {
+    const host = this.hosts.get(sessionId);
+    if (!host) return false;
+    const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
+    return (await this.askOwn(host, sessionId, `${SESSION_TOOL_PREFIX}start_session`, { ...ask }, { ...sessionStartPromptText(agent, ask), sessionAllow: false })) !== 'deny';
+  }
+
+  /** A tool on the session's `seshboard` server asks on an approval card (docs/seshboard-tools.md), as Claude Code's do. */
+  async askApproval(sessionId: string, ask: ApprovalAsk): Promise<ApprovalAnswer> {
+    const host = this.hosts.get(sessionId);
+    if (!host) return { allowed: false, message: null, reply: {} };
+    const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
+    const decision = await this.askOwnDecision(host, sessionId, ask.tool, JSON.parse(JSON.stringify(ask.input)) as PermissionRequest['input'], { title: `${agent} ${ask.title}`, description: ask.description, alwaysLabel: null, sessionAllow: false, approval: ask.card });
+    return decision.behavior === 'allow' ? { allowed: true, message: null, reply: approvalReplyOf(decision.updatedInput) } : { allowed: false, message: decision.message ?? null, reply: {} };
+  }
+
+  /** A card Seshboard raises itself, not the provider: the session needs you while it is open. */
+  private async askOwn(host: Host, sessionId: string, toolName: string, input: PermissionRequest['input'], text: { title: string; description: string; alwaysLabel: string | null; sessionAllow: boolean; detail?: string }): Promise<BrowserAnswer> {
+    return browserAnswerOf(await this.askOwnDecision(host, sessionId, toolName, input, text));
+  }
+
+  private askOwnDecision(host: Host, sessionId: string, toolName: string, input: PermissionRequest['input'], text: { title: string; description: string; alwaysLabel: string | null; sessionAllow: boolean; detail?: string; approval?: ApprovalCard }): Promise<PermissionDecision> {
     return new Promise((resolve) => {
       const requestId = randomUUID();
-      const agent = PROVIDER_NAMES[host.adapter.id] ?? 'The agent';
       const request: PermissionRequest = {
         requestId,
         sessionId,
-        toolName: `mcp__browser__${ask.tool}`,
+        toolName,
         toolUseId: null,
-        input: JSON.parse(JSON.stringify(ask.input)) as PermissionRequest['input'],
-        ...browserPromptText(agent, ask),
-        sessionAllow: true,
+        input,
+        title: text.title,
+        description: text.description,
+        alwaysLabel: text.alwaysLabel,
+        ...(text.sessionAllow ? { sessionAllow: true } : {}),
+        ...(text.detail ? { detail: text.detail } : {}),
         decisionReason: null,
         blockedPath: null,
         agentId: null,
         createdAt: Date.now(),
+        ...(text.approval ? { approval: text.approval } : {}),
       };
       this.ownPrompts.set(requestId, { resolve });
       host.permissions.set(requestId, request);
@@ -404,7 +447,7 @@ export class ProviderHosts {
       this.requests.delete(requestId);
       this.deps.onPermissionResolved(requestId, sessionId);
       if (host.info.state === 'needs-you' && host.permissions.size === 0) this.update(host, { state: host.inTurn ? 'running' : 'idle' });
-      own.resolve(browserAnswerOf(decision));
+      own.resolve(decision);
       return true;
     }
     if (!host?.session) return false;

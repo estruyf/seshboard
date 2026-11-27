@@ -9,6 +9,7 @@ import { ClonePlan, CloneProgress } from './clone.ts';
 import { ApiRetry, AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, SlashCommand, StreamDelta, WorktreeBaseSchema } from './host.ts';
 import { Pipeline, PipelineRun, PipelineRunStep, PushPreview } from './pipelineSchema.ts';
 import { ProfileColor } from './profiles.ts';
+import { MAX_WORKER_TITLE } from './orchestrator.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
@@ -39,7 +40,7 @@ export type RemoteSessionProfile = z.infer<typeof RemoteSessionProfile>;
 
 /** Which trigger started a session or a run (`triggerOrigin.ts`); one this version can't read is left out, not the session. */
 export const RemoteTriggerOriginSchema = z
-  .object({ name: z.string().max(200), kind: z.enum(['ci', 'issue']), ref: z.string().max(100), url: z.string().max(2_000), at: z.number() })
+  .object({ name: z.string().max(200), kind: z.enum(['ci', 'issue', 'pr']), ref: z.string().max(100), url: z.string().max(2_000), at: z.number() })
   .optional()
   .catch(undefined);
 
@@ -88,6 +89,11 @@ export const RemoteSession = z.object({
   background: z.array(BackgroundTask).optional(),
   /** Claude Code is retrying a failed API call; the line under the conversation says so. Left out when it isn't, and by a Seshboard from before phones knew it. */
   apiRetry: ApiRetry.optional(),
+  /**
+   * Claude Code's guess at your next message after its turn ("go"): the box offers it as a chip that sends it. Left
+   * out when there is none, and by a Seshboard from before phones knew it.
+   */
+  suggestion: z.string().optional(),
   /**
    * The session or run row it sits under: a pipeline step's sub-session under the session the run started from, or
    * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Seshboard from before phones knew runs.
@@ -139,9 +145,30 @@ export const RemotePrompt = z.object({
   description: z.string().nullable(),
   /** What "Always allow" would do; null when not offered. */
   alwaysLabel: z.string().nullable(),
+  /** What the call does, in words (a browser card's "Click “Sign in”"), when Seshboard knows better than the input. */
+  detail: z.string().optional(),
   createdAt: z.number(),
 });
 export type RemotePrompt = z.infer<typeof RemotePrompt>;
+
+/**
+ * An orchestrator (docs/orchestrator.md) as a phone gets it: its session and the sessions it started, oldest first, with
+ * the title it gave each. A start that still waits in the queue has an `itemId` and no session yet. No folders.
+ */
+export const RemoteOrchestrator = z.object({
+  sessionId: z.string(),
+  createdAt: z.number(),
+  workers: z.array(
+    z.object({
+      sessionId: z.string().nullable(),
+      itemId: z.string().nullable(),
+      title: z.string().max(MAX_WORKER_TITLE),
+      startedAt: z.number(),
+      pr: z.object({ number: z.number().int(), url: z.string().max(2_000), state: z.enum(['open', 'merged', 'closed']) }).nullable().optional(),
+    }),
+  ),
+});
+export type RemoteOrchestrator = z.infer<typeof RemoteOrchestrator>;
 
 export const RemoteSessions = z.object({
   /** Needs you first, then working, then the most recent. */
@@ -153,6 +180,8 @@ export const RemoteSessions = z.object({
    * newest first. With `REMOTE_FEATURE_PIPELINES`.
    */
   runs: z.array(RemoteRunState).optional(),
+  /** The orchestrators among the sessions listed, for the overview above their conversation. With `REMOTE_FEATURE_ORCHESTRATOR`. */
+  orchestrators: z.array(RemoteOrchestrator).optional(),
 });
 export type RemoteSessions = z.infer<typeof RemoteSessions>;
 
@@ -178,7 +207,12 @@ export const RemoteArchivedSession = z.object({
 });
 export type RemoteArchivedSession = z.infer<typeof RemoteArchivedSession>;
 
-export const RemoteProject = z.object({ id: ProjectId, name: z.string() });
+/**
+ * A project you added. `repo` is the GitHub repository its folder's remote points at (`owner/name`, lowercased), so
+ * another computer can find the same project when its folder there has another path; null without one, and left out
+ * by an older Seshboard.
+ */
+export const RemoteProject = z.object({ id: ProjectId, name: z.string(), repo: z.string().max(200).nullable().optional() });
 export type RemoteProject = z.infer<typeof RemoteProject>;
 
 /** A transcript block for the phone: images are only a placeholder, tool output is plain text. */
@@ -510,6 +544,16 @@ export const remoteContract = {
           /** With `REMOTE_FEATURE_ATTACHMENTS`, as `session.send` takes them. */
           images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
           files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
+          /**
+           * Start it as the project's orchestrator (docs/orchestrator.md), as Run as › Orchestrator does on the computer.
+           * With `REMOTE_FEATURE_ORCHESTRATOR`.
+           */
+          orchestrator: z.boolean().optional(),
+          /**
+           * Its title in the sidebar, as a session another one started there gets (start_session with `computer`,
+           * docs/orchestrator.md). An older Seshboard leaves it out and names it from the prompt.
+           */
+          title: z.string().trim().min(1).max(80).optional(),
         })
         .extend(RemoteSessionOptions.shape),
       result: z.object({ sessionId: z.string() }),
@@ -696,6 +740,11 @@ export const remoteContract = {
         finished: z.boolean(),
         /** Reminders that come due (Remind me later); left out by a phone from before: it follows `finished`. */
         reminders: z.boolean().optional(),
+        /**
+         * With `REMOTE_FEATURE_PUSH_AWAY`: the moments that push only while nobody uses this computer. Left out by a
+         * phone from before, which gets every moment it asked for; a reminder left out follows `finished`.
+         */
+        onlyWhenAway: z.object({ needsYou: z.boolean().optional(), finished: z.boolean().optional(), reminders: z.boolean().optional() }).optional(),
         vapid: RemoteVapidKeys.optional(),
         label: z.string().trim().min(1).max(60).optional(),
       }),

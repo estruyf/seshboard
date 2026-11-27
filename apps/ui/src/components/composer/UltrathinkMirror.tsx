@@ -1,16 +1,17 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
-import { splitUltrathink } from './ultrathink.ts';
+import type { MessageMark } from './messageMarks.ts';
 
 /**
- * The message drawn under its own text box, so the word ultrathink can have a colour: a textarea can't colour part of
- * its text. While this shows, the box's own text is transparent (its caret, selection and spell check stay), so each
+ * The message drawn under its own text box, so the word ultrathink and a slash command at the start can have a
+ * colour: a textarea can't colour part of its text. The command only changes colour, never weight, so each character
+ * keeps the width the box gives it. While this shows, the box's own text is transparent (its caret, selection and spell check stay), so each
  * character sits where the box has it. It wraps like the box does: same type and padding (`className`), and the box's
  * width without its scrollbar. It follows the box's scroll.
  *
  * The scroll offset and the scrollbar's width are written straight to the element, not through state, so they are in
  * the same frame as the box's own scroll (state would paint the old offset first).
  */
-export function UltrathinkMirror({ text, textarea, className, disabled }: { text: string; textarea: RefObject<HTMLTextAreaElement | null>; className: string; disabled?: boolean }) {
+export function UltrathinkMirror({ text, parts, textarea, className, disabled }: { text: string; parts: MessageMark[]; textarea: RefObject<HTMLTextAreaElement | null>; className: string; disabled?: boolean }) {
   const lines = useRef<HTMLDivElement>(null);
   const sync = () => {
     const el = textarea.current;
@@ -40,9 +41,13 @@ export function UltrathinkMirror({ text, textarea, className, disabled }: { text
   return (
     <div aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden ${disabled ? 'opacity-60' : ''}`} data-ultrathink-mirror>
       <div ref={lines} className={`break-words whitespace-pre-wrap text-text ${className}`}>
-        {splitUltrathink(text).map((part, i) =>
-          part.hit ? (
+        {parts.map((part, i) =>
+          part.mark === 'ultrathink' ? (
             <span key={i} className="ultrathink-word" data-ultrathink-word>
+              {part.text}
+            </span>
+          ) : part.mark === 'command' ? (
+            <span key={i} className="text-accent-ink" data-command-mark>
               {part.text}
             </span>
           ) : (

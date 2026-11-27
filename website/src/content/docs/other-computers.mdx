@@ -40,7 +40,7 @@ The other computer's sessions sit in your sidebar, in the same groups as yours: 
 
 When that computer has more than one Claude profile, the row's left line has the profile's colour, as your own sessions do. A profile with the same name here, such as Personal or Work, gets this computer's colour, so one account looks the same everywhere. Otherwise it keeps the colour the other computer gave it.
 
-Click a row to open the session in the normal view. A violet line runs along the top, and the header says **on mystic**. It opens in a pane like your own sessions, so you can put it next to one of yours or next to another computer's: see [Split view](/sessions/split-view/). Read the conversation as it happens, answer what Claude asks with the same keys as on your own sessions, send a message, and **Stop** a turn. While Claude works there, sending works as on [your own sessions](/sessions/conversation/): <Kbd keys="enter" /> queues or steers, as set under **While Claude is working** in [Settings, Conversation](/settings/#conversation), <Kbd shortcut="composer.send-other" /> does the other one, and <Kbd shortcut="composer.send-now" /> stops Claude and sends at once. The send button's ▾ menu has all three. A message in Up next has **Send now** too. Steer and Send now need this version of Seshboard on the other computer. Drag a message in Up next, or press <Kbd shortcut="upnext.move" /> on it, to change its place, as on your own sessions. That needs this version there too. When the turn ended but a background command or agent still runs there, the end of the conversation says so in green, and a green pill above the message box lists each task with a **Stop** for it, as on your own sessions. Runs of tool calls fold into one line, such as *Read 4 files · Edited ContentOverview.tsx +42 −6*. Click it to see each step.
+Click a row to open the session in the normal view. A violet line runs along the top, and the header says **on mystic**. It opens in a pane like your own sessions, so you can put it next to one of yours or next to another computer's: see [Split view](/sessions/split-view/). Read the conversation as it happens, answer what Claude asks with the same keys as on your own sessions, send a message, and **Stop** a turn. While Claude works there, sending works as on [your own sessions](/sessions/conversation/): <Kbd keys="enter" /> queues or steers, as set under **While Claude is working** in [Settings, Conversation](/settings/#conversation), <Kbd shortcut="composer.send-other" /> does the other one, and <Kbd shortcut="composer.send-now" /> stops Claude and sends at once. The send button's ▾ menu has all three. A message you queue waits in Up next, right above the message box, with **Send now**. Steer and Send now need this version of Seshboard on the other computer. Drag a message in Up next, or press <Kbd shortcut="upnext.move" /> on it, to change its place, as on your own sessions. That needs this version there too. When the turn ended but a background command or agent still runs there, the end of the conversation says so in green, and a green pill above the message box lists each task with a **Stop** for it, as on your own sessions. Runs of tool calls fold into one line, such as *Read 4 files · Edited ContentOverview.tsx +42 −6*. Click it to see each step.
 
 A message you start typing there stays in that session's message box when you open something else, also after a restart, until you send it.
 
@@ -50,7 +50,17 @@ While the session runs in Seshboard there, the chips under the message box show 
 
 Under the message box, *Cost ≈$12.40* says what the session would cost at API prices, as that computer counts it from its own transcripts. It needs this version of Seshboard on both computers. See [Estimated cost](/usage/#estimated-cost).
 
-What only works on that computer stays in its place, but is off: **Changes**, the terminal, opening the folder in your editor, pull requests and links to files other than [the ones the session wrote](#files-the-session-wrote). Point at one to see why, for example *Terminal is on mystic. Not available from here.* Nothing in another computer's conversation runs on yours: only web links open.
+What needs the session's folder stays on that computer: Files, the terminal, opening the folder in your editor, pull requests and links to files other than [the ones the session wrote](#files-the-session-wrote). The **⋯** menu says so: *Files are on mystic. Not available from here.* Nothing in another computer's conversation runs on yours: only web links open.
+
+### The rail of tools
+
+A session on another computer has the [rail of tools](/sessions/tool-rail/) at its right edge, as a session here has, with **Changes**, **Browser** and **Ask**. <Kbd shortcut="changes.toggle" /> and <Kbd shortcut="web.toggle" /> work as here.
+
+- **Changes** and **Ask** work on that computer.
+- **Browser** runs on this computer. A web link in the conversation opens in that session's browser here. <Kbd keys="mod+click" /> opens it in your system browser.
+- A `localhost` link points at that computer, so it doesn't load here. Its tooltip says so, and a message says *This page is on mystic* when you click it.
+
+**Panels at half width** and **Open the side panel in new sessions** work for these sessions too. Both are in **Settings › Conversation › Side panel** and in the rail's right-click menu.
 
 Right-click a remote session for **Open**, **Open beside**, **Pin**, **Done**, **Copy title** and **New session in** its project. Rename and delete it on the computer it runs on.
 
@@ -101,19 +111,21 @@ Each row shows the computer's version. **Update** shows when that computer is be
 
 ## Filter by computer
 
-<Screenshot name="computers-sidebar" alt="The sidebar with sessions from This Mac and from mystic in the same groups, each remote one with a monitor badge on its icon and a mystic chip, and the Computers strip at the bottom with counts of what needs you" width={320} />
+<Screenshot name="computers-sidebar" alt="The sidebar with sessions from This Mac and from mystic in the same groups, each remote one with a monitor badge on its icon and a mystic chip" width={320} />
 
-The **Computers** strip at the bottom of the sidebar has a chip for <Os mac="This Mac" windows="This PC" /> and one for each paired computer, with a green dot when it is connected and, in pink, how many of its sessions need you. Click a chip to show only that computer's sessions. Click it again to show all of them. In the project menu (**All projects ▾**), **Show sessions from** has a checkbox for each computer, and the other computers' projects are listed with their chip. The command palette has **Show only mystic** for each connected computer. Each window keeps its own filter.
+The **Computers** strip, in the **Computers** menu on the [rail](/sessions/rail/) (rest the pointer on it, or click it), has a chip for <Os mac="This Mac" windows="This PC" /> and one for each paired computer, with a green dot when it is connected and, in pink, how many of its sessions need you. Click a chip to show only that computer's sessions. Click it again to show all of them. In the project menu (**All projects ▾**), **Show sessions from** has a checkbox for each computer, and the other computers' projects are listed with their chip. The command palette has **Show only mystic** for each connected computer. Each window keeps its own filter.
 
 On a shared computer, the chip switches between your sessions and everyone's. Right-click it, or click the ▾ that shows on hover, to pick **Mine** or **All**, kept for each computer. While Mine is on, a person shows after the computer's name. Mine shows the sessions you started there from this computer, and the ones you sent a message to, answered or resumed from here. The chip's menu says how many it hides, and a search still finds them. In **All**, other people's sessions say who started them, after the branch. The chips that don't fit fold into **+N**.
 
-**Search sessions** at the top of the sidebar finds them by title, project, branch or computer name. Go to session in the command palette (<Kbd shortcut="palette.goto" />) and <Kbd shortcut="session.next-needs-you" /> include them too.
+**Filter sessions** in the sidebar's header finds them by title, project, branch or computer name. Go to session in the command palette (<Kbd shortcut="palette.goto" />) and <Kbd shortcut="session.next-needs-you" /> include them too.
 
 ## Start a session there
 
 <Screenshot name="computers-new-session" alt="New session with Run on set to mystic: project rows from mystic with two-letter icons, the strip above the message box with mystic, the project and Current checkout, and Start on mystic, with a line under it that Claude runs on mystic" />
 
-In New session, **Run on** picks the computer. Its projects fill the project list, and **Start on mystic** starts the session there. With **New worktree**, **Branch from** picks the branch the worktree starts from, and the branch menus list that computer's remote branches too. New session keeps one unsent prompt for each computer, also after a restart. See [Run on another computer](/new-session/form/#run-on-another-computer). **New session on mystic…** in the command palette opens it with that computer picked.
+In New session, **Run on** picks the computer. Its projects fill the project list, and **Start on mystic** starts the session there. With **New worktree**, **Branch from** picks the branch the worktree starts from, and the branch menus list that computer's remote branches too. New session keeps one unsent prompt for each computer, also after a restart. See [Run on another computer](/new-session/form/#run-on-another-computer). **New session on mystic…** in the command palette opens it with that computer picked. **Run as** has **Orchestrator** too: the [orchestrator](/sessions/orchestrator/#on-your-phone-and-other-computers) runs on that computer, and its overview shows above its conversation here.
+
+A session can start one there for you too: ask it to "run the tests on mystic". See [Seshboard tools in sessions](/sessions/seshboard-tools/#on-another-computer).
 
 With [Clone from GitHub](/projects/clone-from-github/#on-another-computer) on here, **Clone from GitHub…** clones a repository on that computer, into its own **Clone into** folder, adds it as a project there and starts the session in it. Clone from GitHub has to be on in Settings › Projects on that computer too, and it needs this version of Seshboard there.
 

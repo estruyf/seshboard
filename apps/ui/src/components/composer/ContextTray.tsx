@@ -1,4 +1,4 @@
-import { CircleX, ClipboardPaste, FileCode, FileText, Folder, Link2, MessageSquareText, Pencil, ScrollText, Search, SquareDashedMousePointer, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
+import { Bug, CircleX, ClipboardPaste, FileCode, FileText, Folder, Globe, Link2, MessageSquareText, Pencil, ScrollText, Search, SquareDashedMousePointer, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ContextItem, WorktreePullRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -21,6 +21,8 @@ const TEXT_ICON: Record<Extract<ContextItem, { kind: 'text' }>['source'], Lucide
   file: FileCode,
   search: Search,
   element: SquareDashedMousePointer,
+  page: Globe,
+  console: Bug,
 };
 
 const iconFor = (item: Extract<ContextItem, { kind: 'file' | 'text' }>): LucideIcon => (item.kind === 'text' ? TEXT_ICON[item.source] : item.directory ? Folder : item.range ? TextSelect : FileText);

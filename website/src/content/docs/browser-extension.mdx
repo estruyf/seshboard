@@ -1,0 +1,81 @@
+---
+title: Browser extension
+description: Send what you see in Chrome, Edge, Brave or Firefox to a Seshboard session, or start a session in the project a GitHub page belongs to.
+---
+
+import Kbd from '../../components/Kbd.astro';
+import Related from '../../components/Related.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+When you read an issue, a doc page or an error in the browser and want Claude to look at it, send it to a session instead of copying and pasting. The Seshboard extension for Chrome, Edge, Brave and Firefox sends what you see in the browser to a Seshboard session: the text you select, the page's address, a screenshot, and the console errors of a page you run on `localhost`.
+
+It works with the browser you already use, not with Seshboard's own [browser](/browser/overview/), which sessions can already see.
+
+## Set it up
+
+<Steps>
+
+1. Install the Seshboard extension in your browser. It works in Chrome, Edge, Brave, Vivaldi, Arc, Chromium and Firefox 140 or later.
+2. In Seshboard, open **Settings › Browser extension** and press **Connect browsers**. Seshboard lists the browsers it found on this computer and whether each one is connected.
+3. Open a page in the browser. The status line in Settings says "Connected to 1 browser".
+
+</Steps>
+
+You connect once. A browser you install later is connected the next time Seshboard starts. *Browser extension* in the command palette opens the Settings page.
+
+## Send a selection or a page
+
+1. Select text on a page, right-click, and choose **Send “…” to Seshboard**. Or right-click anywhere on the page and choose **Send page to Seshboard**.
+2. A panel on the page shows what goes and where. It starts on the session you have on screen in Seshboard.
+3. Press <Kbd keys="enter" /> or **Add to Seshboard**. To send it somewhere else first, type a few letters of a session or project in the search field.
+
+<Kbd keys="escape" /> closes the panel.
+
+The selection arrives as a chip in that session's message box, with the address of the page it came from. If Seshboard isn't running, the panel says so and offers **Open Seshboard**.
+
+<Aside title="Nothing goes to Claude yet">
+The extension only adds chips to the message box. Nothing is sent to Claude until you add your question in Seshboard and press <Kbd keys="mod+enter" />.
+</Aside>
+
+## Start a session from a page
+
+Right-click a page and choose **Start session from this page**. The panel opens on **New session** in the page's project. On a GitHub issue or pull request, that is the project with that repository on your computer. Seshboard opens New session with the page as a chip, ready for your prompt.
+
+## The toolbar button
+
+The Seshboard button in the browser's toolbar shows how many sessions wait for you (a permission, a question or a finished plan) on its badge. Click it to open the popup:
+
+- **Waiting for you** lists those sessions. Click one to open it in Seshboard.
+- **Send** picks what to send from this page: **Selection**, **Page address**, **Screenshot** and, on `localhost`, **Console errors**.
+- **To** picks where it goes: a session, or New session in a project. The page's own project comes first.
+
+Then press **Add to Seshboard**. A screenshot arrives as an attached image, the rest as chips.
+
+## Console errors
+
+On pages at `localhost` or `127.0.0.1`, the extension records the page's console errors from the moment it loads: `console.error` calls, uncaught errors, unhandled promise rejections and failed `fetch` calls. It keeps the last 50. Tick **Console errors** in the popup to send them to a session, so Claude sees what broke in the app you run.
+
+The browser's own network errors (such as `net::ERR_CONNECTION_REFUSED`) are not in the list.
+
+## What stays private
+
+- The extension talks only to Seshboard on your own computer, through the browser's native messaging. It sends nothing to a server.
+- It reads a page only when you right-click it or open the popup on it.
+- It records console errors on `localhost` and `127.0.0.1` only.
+- The key that lets it into Seshboard stays in Seshboard. The browser never sees it.
+
+**Disconnect** in Settings › Browser extension removes the connection from every browser.
+
+## When it doesn't connect
+
+| The popup says | What to do |
+|---|---|
+| Seshboard is not running. | Click **Open Seshboard**, or start it yourself. |
+| This browser can't reach Seshboard yet. | In Seshboard, open Settings › Browser extension and press **Connect browsers**. Then open the popup again. |
+| This page can't be read. | The browser keeps its own pages (settings, the extension store) from extensions. Try it on another page. |
+
+If Settings says "Seshboard waits for the extension", the browsers are connected but the extension isn't installed, or no page has opened since. How the connection works is in [Browser extension](https://github.com/estruyf/seshboard/blob/main/docs/browser-extension.md) on GitHub.
+
+## Related
+
+<Related pages={['vscode-companion', 'sessions/conversation', 'browser/overview', 'settings']} />

@@ -49,7 +49,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 **Work with Claude**
 - Start a session in a folder (⌘N): pick a project by typing a few letters, then work on the current branch (or check out another one first) or in a **new worktree**, just like `claude --worktree`.
 - **Quick questions** (⌘⇧N): ask Claude something without picking a project. Choose *Quick question* under the project tiles in New session. Claude works in a scratch folder of Seshboard's own, so there are no git options and nothing is added to your projects. These sessions show as *Questions* in the sidebar.
-- **Projects** are the folders you choose to work in. Add them from the folders you've used Claude Code in, or any folder, then reorder, rename or remove them in the **Projects** view (the folder icon at the bottom of the sidebar). Renaming only changes the name Seshboard shows; the folder keeps its own. Each project has its own **page**: see [Project pages and worktrees](#project-pages-and-worktrees). Give a project its own defaults for new sessions there: model, effort, permission mode, worktree or current folder, and a branch. The New session view starts from them; change something there for one session, or click *Save as project default*.
+- **Projects** are the folders you choose to work in. Add them from the folders you've used Claude Code in, or any folder, then reorder, rename or remove them in the **Projects** view (**Projects** on the rail at the left edge, which lists them in the panel beside it). Renaming only changes the name Seshboard shows; the folder keeps its own. Each project has its own **page**: see [Project pages and worktrees](#project-pages-and-worktrees). Give a project its own defaults for new sessions there: model, effort, permission mode, worktree or current folder, and a branch. The New session view starts from them; change something there for one session, or click *Save as project default*.
 - **Clean up worktrees.** A project's **Worktrees** tab lists every worktree with its sessions, changes, commits, pull request and size on disk, and suggests which ones can go. Remove several at once after one confirmation. See [Project pages and worktrees](#project-pages-and-worktrees).
 - **Clean up branches.** A project's **Branches** tab lists its branches here and on the remote, says which are merged or deleted on the remote, and deletes the ones you tick: the local copy, the one on the remote, or both. See [Branches](#branches).
 - Chat as you would in the terminal. You get streaming replies, `/` commands (your own commands and skills included), `@` file mentions, and images you paste, drop or attach. Drag files anywhere over a session and the message box shows what a drop does: images are attached, other files and folders are added as context.
@@ -89,7 +89,8 @@ It uses the Claude Code you already have installed, with your login, settings, c
 **Everything in one place**
 - A **command palette**: ⌘K (or ⌘⇧P) for the commands that fit where you are, ⌘P to jump to any session or project by typing a few letters. Start a session from it without leaving the keyboard: pick a project, write the prompt, press ⌘↵.
 - **Sessions side by side**: ⌥-click a session (or choose *Open beside*) to split the active pane. Open as many as fit, side by side, one above the other, or mixed. Drag a pane by its title to dock it somewhere else, and drag the dividers to resize.
-- **Home** (⌘⇧H, or **Home** at the top of the sidebar) shows what needs you, what is working, and your projects. **Upcoming** (⌘⇧Y), under it, shows your queue, the scheduled runs of the next 7 days and every schedule, across projects. **Close a session** with the × in its header to go back to Home. A session that is working keeps running; pick it in the sidebar to open it again.
+- **The rail and the title bar.** The rail at the left edge holds New session, Home, Sessions, Upcoming, Activity, Browser, Projects, Computers, Running and Settings. Each item but Home and Computers shows its own list in the panel beside it, as in VS Code; click the selected one again (or ⌘B) to close the panel. Right-click the rail to hide or reorder its items. The title bar has Back and Forward, a search field that opens Go to (⌘P), and buttons for the panel and the session's side panel.
+- **Home** (⌘⇧H, or **Home** on the rail) shows what needs you, what is working, and your projects. **Upcoming** (⌘⇧Y) shows your queue, the scheduled runs of the next 7 days and every schedule, across projects. **Close a session** with the × in its header to go back to Home. A session that is working keeps running; pick it in the sidebar to open it again.
 - **Tools** (below the message box): the session's MCP servers, with their status and tools (turn them on or off, or reconnect, while the session runs in Seshboard), plus its skills, commands, agents and plugins.
 - A built-in terminal per session: ⌘J (or **Terminal** in the header) opens a shell in the session's folder. Outside a session, ⌘J opens a terminal too: in the project's folder on its page, otherwise in your home folder. **⋯ → Open in → Claude Code** opens the session in the full Claude Code terminal interface.
 - **Project actions**: one-click buttons for things like *Commit*, *Test* or *Publish*, running a command or sending Claude a prompt. See [Project actions](docs/project-actions.md).
@@ -213,12 +214,15 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘P | Go to a session or project (⌥↩ opens a session beside this one) |
 | ⌘⇧F | Search all conversations |
 | ⌘⇧H | Home |
+|  | Go back (No key by default: use the title bar's Back, the mouse's back button, or the command palette) |
+|  | Go forward (No key by default: use the title bar's Forward, the mouse's forward button, or the command palette) |
 | ⌘1 to ⌘9 | Start in a project (on Home; with what you typed in the start box as the prompt) |
 | ⌘⇧Y | Upcoming: queued and scheduled |
 | ⌘⇧T | Activity: what you did per day |
 |  | Open usage (No key by default: use the command palette, or click a usage bar) |
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
+| ⌘⇧. | Turn Minimal mode on or off (Shows less at once: one-line sessions, no chips, no counts) |
 | ⌘↩ | Start new work in the background (in the menu bar's panel) |
 | ⌘0 | Open Seshboard (in the menu bar's panel) |
 | ⌃⌥Space | Quick start: start a session from any app (in any app; Change it in Settings › General › Quick start) |
@@ -231,6 +235,8 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⇧⇥ | Change the permission mode (in the quick start panel) |
 | ⌘P | Change the profile (in the quick start panel) |
 | ⌘V | Attach the clipboard (in the quick start panel) |
+| ⌘⇧S | Take a screenshot and attach it (in the quick start panel) |
+| ⌘⇧⌫ | Remove all attached images (in the quick start panel) |
 | ⌘L | Add to Later instead (in the quick start panel) |
 | ⌘O | Open the new session (in the quick start panel) |
 | ⌘Q then ⌘Q | Quit (Seshboard asks first; Press once if you turned that off) |
@@ -242,6 +248,8 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌥↑ or ⌥↓ or ⌥← or ⌥→ | Move the tab up or down, or left or right (on a tab, in the Browser view's list or a session's tab strip; Or drag it. Pinned tabs stay before the others) |
 | ⌘W | Close the tab (while a page or its address bar has focus) |
 | ⌘D | Bookmark the page, or edit its bookmark (while a page or its address bar has focus) |
+| ⌘R | Reload the page (with a browser page on screen; The page on screen, wherever the focus is) |
+| ⌘⇧R | Hard reload the page (with a browser page on screen; Skips the cache, so changed scripts, styles and pictures load fresh) |
 | ⌘[ | Back in the page (while a page has focus) |
 | ⌘] | Forward in the page (while a page has focus) |
 | ⌘J or ⌃` | Show or hide the terminal |
@@ -252,7 +260,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 
 | Shortcut | What it does |
 |---|---|
-| ⌘B | Collapse or open the sidebar |
+| ⌘B | Open or close the panel |
 | ⌃⇥ | Next session (in the sidebar's order) |
 | ⌃⇧⇥ | Previous session (in the sidebar's order) |
 | ⌘⇧U | Next session that needs you |
@@ -318,11 +326,13 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⌥M | Add the selected lines, or the file, to the message (in the Files viewer) |
 | ⌘⌥L | Go to line (in the Files viewer) |
 | ⌘F | Find in the file (in the Files viewer) |
+| ⌘S | Save the file you are editing (in the Files viewer, while editing) |
 | ⌘⇧D | Show or hide Changes |
 | ⌘⇧M | Comment on the selected lines (in a diff in Changes; Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box) |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |
 | ⌘⇧E | Show or hide Commands (The commands Claude runs in the background, with their output) |
-| ⌥↑ or ⌥↓ | Move a tool or an app on the rail up or down (on a button on the rail at the session's right edge; Or drag it. A button moves only inside its group) |
+| ⌥↑ or ⌥↓ | Move a tool or an app on the rail up or down (on a button on the rail at the session's right edge; Or drag it. A button moves only inside its group. The same keys move an item on the nav rail at the window's left edge) |
+| ⌥← or ⌥→ or ⌥↑ or ⌥↓ | Move a project action (on an action above the message box (left or right), or in the list of the actions editor (up or down); Or drag it) |
 | ⌘⇧B | Show or hide the session's browser (Your running dev server, or with the browser on any page, beside the conversation) |
 |  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |
 | Esc | Restore the terminal (while it fills the view, outside the shell) |
@@ -332,7 +342,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧L | Pull (when the branch is behind) |
 | ⌘↩ | Create the pull request (in Create pull request) |
 | ⌘O | Open the folder in your editor |
-| Esc | Stop Claude (while Claude is working) |
+| Esc then Esc | Stop Claude (while Claude is working; Press once if you turned that off in Settings › Conversation) |
 | ⌘⇧↩ | Send now (while Claude is working; Stops what Claude is doing so your message runs right away) |
 | ⌥↩ | Queue or steer, the other way (while Claude is working; Does what Enter doesn't: steers when Enter queues, queues when Enter steers) |
 | ⇧⇥ | Switch permission mode (in the message box) |
@@ -348,6 +358,8 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | # | Attach an issue or pull request (at the start of a word, in a project on GitHub) |
 | ⌥↩ | New session from it (on an issue or pull request in the # list) |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
+| ⌘⇧S | Take a screenshot and attach it (Pick an area of the screen) |
+| ⇥ | Put the suggested reply in the box (in an empty box, after Claude's turn; Turn suggested replies off in Settings › Conversation) |
 | ⇥ | Next blank (in a saved prompt; After the last blank, on to the text under the prompt) |
 | ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank takes it out of the prompt) |
 | ↑ or ↓ | Bring back an earlier message (at the start of your text; Esc goes back to what you were typing) |
@@ -411,12 +423,12 @@ Drag the sidebar's right edge to make it wider or narrower; double-click the edg
 
 ## Settings
 
-Open Settings with ⌘, or the gear at the bottom of the sidebar. While it is open, the sidebar lists its sections; close it with the × button, *Back to sessions* or Escape.
+Open Settings with ⌘, or the gear at the bottom of the rail. While it is open, the panel lists its sections; close it with the × button, the gear again, or Escape.
 
 - **General:** *Open at login* opens Seshboard when you log in (handy on a virtual machine that restarts by itself), and what it shows when it opens: *The last session* (the default; only if the sidebar lists it, so not a session from another app while those are hidden) or *New session*. You can also turn off the "Ask before quitting" prompt.
 
 - **Theme:** *Appearance* is Match System, Light or Dark. Under it, pick a [theme](#themes): Demo Time (the default), Catppuccin, Nord (dark only), Solarized, one of the nine that match the app icons (Graphite, Midnight, Paper, Signal, Forest, Plum, Aluminium, Ocean, Neon), or one you imported.
-- **Sidebar:** *Large icons* (easy to spot each project), *Standard*, or *Compact* (one line per session). *When collapsed* picks what ⌘B does: a *Minimal rail* of project icons, or *Hidden*. *Show sessions from other apps* also lists sessions from the terminal, Claude desktop and your editor (off by default), and notifies you when a terminal session is waiting.
+- **Sidebar:** *Large icons* (easy to spot each project), *Standard*, or *Compact* (one line per session). *Show sessions from other apps* also lists sessions from the terminal, Claude desktop and your editor (off by default), and notifies you when a terminal session is waiting.
 - **Projects:** *Project order* picks how New session, Home and the command palette list your projects: *Recent* (the ones you used last first, the default) or *Your order* (the order you set in Projects). *Clone from GitHub* (off by default) starts a project from a GitHub URL: New session clones it into the *Clone into* folder, adds it to your projects and runs your first prompt there. Before the first session in a clone that brings hooks, MCP servers or permission rules, Seshboard lists them and asks.
 - **Conversation:** *Summarised* (the default) shows each run of tool calls as one line, like Claude Code: what Claude is doing right now, or what it did, with how long it took. Click it to see the steps, and a step to see its details. *Every step* shows each tool call as its own card.
 - **Notifications and sounds:** two cards, each with its own switch. *Notifications* (on by default) turns the notifications for sessions that need you, finish or stop with an error, and for project actions that end, on or off; the Dock badge stays either way. *Send a test notification* checks that they come through, and the page says so when notifications are off for Seshboard in System Settings. *Sounds* (off by default) plays a sound per moment, with notifications on or off: pick the sound for *Needs you*, *Finished*, *Stopped with an error* and *Project action ended* from the system sounds (or *None*), hover one to hear it, play it with ▶, and set the *Volume* for all. Turning sounds off keeps your picks. Neither shows for the session you're looking at.

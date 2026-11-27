@@ -48,3 +48,14 @@ export function selectionOf(id: string): SessionSelection {
 
 export const sameRemote = (a: RemoteRef | null | undefined, b: RemoteRef | null | undefined): boolean =>
   !!a && !!b && a.computerId === b.computerId && a.sessionId === b.sessionId;
+
+/**
+ * Whose browser a pane's id has: a session here, or a session on another computer, whose browser runs on this computer
+ * and is kept under its row id. A run row (here or there) has none: it opens no browser. Null for those and for none.
+ */
+export function browserOwnerOf(id: string | null): string | null {
+  if (id === null) return null;
+  const remote = parseRemoteRowId(id);
+  if (remote) return isRunRowId(remote.sessionId) ? null : id;
+  return localSessionId(id);
+}

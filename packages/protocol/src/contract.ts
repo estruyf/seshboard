@@ -6,6 +6,8 @@ import {
   AutoEffortSchema,
   AutoTierSchema,
   EditorInfo,
+  FileIconTheme,
+  FileIconThemeInfo,
   Effort,
   ImageAttachment,
   ModelOption,
@@ -61,7 +63,8 @@ import { ActivityDay, ActivityEntry, ActivitySummary, ActivitySummaryExtra, Acti
 import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
-import { ContextItems } from './context.ts';
+import { ContextItem, ContextItems } from './context.ts';
+import { MAX_CONTEXT_ITEMS } from './companionConstants.ts';
 import { PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
 import { GithubIssueDetail, GithubOrigin, GithubPrDetail, GithubReason, GithubSearchResult } from './github.ts';
 import { CompanionTarget } from './companion.ts';
@@ -155,6 +158,8 @@ const OrchestratorInfoSchema = z.object({
     }),
   ),
 });
+/** A session another session started (`StartedChild`): it goes under that session in the sidebar from the start. */
+const StartedChildSchema = z.object({ sessionId: z.string(), parentId: z.string(), title: z.string().max(MAX_WORKER_TITLE) });
 const AppStateKey = z.string().min(1).max(200);
 const SessionId = z.string().min(1).max(200);
 const Prompt = z.string().max(MAX_PROMPT_LENGTH);
@@ -482,6 +487,18 @@ export const contract = {
       params: z.object({ sessionId: SessionId }),
       result: TranscriptDiagnosis,
     },
+    /**
+     * Which broadcast events this connection wants (main's notifier needs a few): the others are not sent to it. A
+     * connection that never says gets them all. `computers.event:<name>` takes only that event of another computer's.
+     * Per-connection events (`transcript.updated`, a watched `session.stream`) are not affected.
+     */
+    'events.only': { params: z.object({ names: z.array(z.string().max(100)).max(200) }), result: z.object({}) },
+    /**
+     * Sends `session.stream` for the session (what Claude is writing now) until `stream.unwatch`: only views that show a
+     * session's streaming text get it. It starts with a `clear`, then the block so far when a reply is under way.
+     */
+    'stream.watch': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    'stream.unwatch': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Subscribes this window to `transcript.updated` for one session until unwatched or disconnected. */
     'transcript.watch': {
       params: z.object({ sessionId: SessionId }),
@@ -529,6 +546,11 @@ export const contract = {
          * sessions, and the sessions it starts show under it.
          */
         orchestrator: z.boolean().optional(),
+        /**
+         * The session it goes under in the sidebar (Start session from a selection in that session's conversation).
+         * Left out when that session no longer exists.
+         */
+        parentSessionId: SessionId.optional(),
       }),
       result: z.object({ sessionId: z.string() }),
     },
@@ -733,6 +755,14 @@ export const contract = {
       params: z.object({ cwd: AbsolutePath, profileId: ProfileId.nullable().default(null), effort: Effort.nullable().default(null) }),
       result: z.object({}),
     },
+    /**
+     * Fetches the remote branch a new worktree from `baseRef` starts from (`origin/dev`), while the prompt is written, so
+     * Start finds it fresh and doesn't wait on the network. Does nothing when that start fetches nothing.
+     */
+    'worktree.prefetch': {
+      params: z.object({ cwd: AbsolutePath, baseRef: WorktreeRequest.shape.baseRef }),
+      result: z.object({}),
+    },
     'models.list': { params: z.object({}), result: z.object({ models: z.array(ModelOption) }) },
     /**
      * Plan usage (5-hour and weekly limits) from Claude Code's /usage report, or for a Codex profile its rate limits in
@@ -742,7 +772,12 @@ export const contract = {
      */
     'usage.get': {
       /** The profile whose plan to report (default: the default profile). */
-      params: z.object({ refresh: z.boolean().default(false), profileId: ProfileId.optional() }),
+      params: z.object({
+        refresh: z.boolean().default(false),
+        profileId: ProfileId.optional(),
+        /** Without `refresh`: how old cached numbers may be before this fetches again (default a minute). The window coming back into focus passes two minutes. */
+        maxAgeMs: z.number().int().positive().optional(),
+      }),
       result: z.object({ usage: UsageSnapshot.nullable(), error: z.string().nullable() }),
     },
     /**
@@ -832,11 +867,22 @@ export const contract = {
      * Reads a Markdown, HTML or code file (see `previewKind`), or any other text file (`kind: 'text'`, a file with no
      * NUL byte in its first 8 KB), to show it. `content` is null when the file is over `MAX_PREVIEW_BYTES` (`size` still
      * says how big it is). HTML comes with a Content-Security-Policy meta added and its local images inlined as data
-     * URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a folder or a binary file.
+     * URIs, unless `raw` (the text as it is on disk, to edit it). `modified` is the mtime in ms. NOT_FOUND when it is
+     * missing; UNSUPPORTED for a folder or a binary file.
      */
     'files.read': {
-      params: z.object({ path: AbsolutePath }),
+      params: z.object({ path: AbsolutePath, raw: z.boolean().optional() }),
       result: z.object({ kind: z.enum(['markdown', 'html', 'code', 'text']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+    },
+    /**
+     * Saves text the user edited in the Files panel over a file that is already there, inside a folder Seshboard knows
+     * (a session's folder or a project's root; its real path, so a link can't lead out). CONFLICT when the file's mtime
+     * is not `expectedModified` (what `files.read` returned) any more. Keeps the file's line endings, byte order mark and
+     * permissions, and writes a temporary file renamed over it. Never offered to a paired phone.
+     */
+    'files.write': {
+      params: z.object({ path: AbsolutePath, content: z.string(), expectedModified: z.number() }),
+      result: z.object({ modified: z.number(), size: z.number() }),
     },
     /**
      * Every file of a folder Seshboard knows (a session's folder or a project's root), relative to `cwd` with `/`,
@@ -882,6 +928,15 @@ export const contract = {
       result: z.object({ mediaType: z.string(), data: z.string() }),
     },
     'editors.list': { params: z.object({}), result: z.object({ editors: z.array(EditorInfo), defaultId: z.string().nullable() }) },
+    /** The file icon themes installed in VS Code and the editors built on it (Insiders, Cursor, Windsurf, VSCodium). */
+    'fileIcons.themes': { params: z.object({}), result: z.object({ themes: z.array(FileIconThemeInfo) }) },
+    /** A file icon theme's associations, to pick each file's icon; null when it is no longer installed or can't be read. */
+    'fileIcons.theme': { params: z.object({ id: z.string().min(1).max(500) }), result: z.object({ theme: FileIconTheme.nullable() }) },
+    /** Icons of a theme as data URLs (SVG or PNG), by id; null for one it doesn't have or that can't be read. */
+    'fileIcons.icons': {
+      params: z.object({ id: z.string().min(1).max(500), icons: z.array(z.string().max(300)).max(500) }),
+      result: z.object({ icons: z.record(z.string(), z.string().nullable()) }),
+    },
     /**
      * Opens a folder or file (optionally at a line) in an editor; `editorId` defaults to the user's default. Picking an
      * editor makes it the default, unless `keepDefault` (an app pinned to the rail).
@@ -904,6 +959,14 @@ export const contract = {
      */
     'actions.save': {
       params: z.object({ projectRoot: AbsolutePath.nullable(), action: ProjectAction, previousId: z.string().optional(), shared: z.boolean().optional() }),
+      result: z.object({}),
+    },
+    /**
+     * The order of the project's actions (above the message box, in menus and the editor), yours, across your own,
+     * shared and global ones. Actions it leaves out follow in their usual order.
+     */
+    'actions.reorder': {
+      params: z.object({ projectRoot: AbsolutePath, ids: z.array(z.string().max(64)).max(500) }),
       result: z.object({}),
     },
     /** Deletes one of your actions, or with `shared` takes it out of the project's .seshboard.json. */
@@ -1005,8 +1068,14 @@ export const contract = {
     'memory.bySession': { params: z.object({ sessionId: SessionId }), result: z.object({ memories: z.array(MemoryHit) }) },
 
     // --- Git -----------------------------------------------------------------------------------
-    /** What changed in the checkout a session works in (see ChangesBase). */
-    'git.changes': { params: z.object({ cwd: AbsolutePath, base: ChangesBase }), result: GitChanges },
+    /**
+     * What changed in the checkout a session works in (see ChangesBase), from a look at most a second old; `fresh`
+     * looks again (after an action that changed it). Watching windows get the result as `git.changed` too.
+     */
+    'git.changes': { params: z.object({ cwd: AbsolutePath, base: ChangesBase, fresh: z.boolean().optional() }), result: GitChanges },
+    /** Sends `git.changed` for the checkout with every new result (the first one too) until `git.unwatch`. */
+    'git.watch': { params: z.object({ cwd: AbsolutePath, base: ChangesBase }), result: z.object({}) },
+    'git.unwatch': { params: z.object({ cwd: AbsolutePath, base: ChangesBase }), result: z.object({}) },
     'git.diff': {
       params: z.object({ cwd: AbsolutePath, base: ChangesBase, path: z.string().max(4096) }),
       result: z.object({ diff: z.string(), truncated: z.boolean() }),
@@ -1396,7 +1465,7 @@ export const contract = {
      * brief of the run before your text, and its sub-sessions go under that session.
      */
     /** The orchestrators (docs/orchestrator.md) and the sessions each started. */
-    'orchestrator.list': { params: z.object({}), result: z.object({ orchestrators: z.array(OrchestratorInfoSchema) }) },
+    'orchestrator.list': { params: z.object({}), result: z.object({ orchestrators: z.array(OrchestratorInfoSchema), started: z.array(StartedChildSchema).optional() }) },
     'runs.write': { params: z.object({ runId: z.string().min(1).max(100), text: z.string().min(1).max(MAX_PROMPT_LENGTH) }), result: z.object({ sessionId: z.string() }) },
 
     // --- Settings backup -----------------------------------------------------------------------
@@ -1451,7 +1520,8 @@ export const contract = {
       result: z.object({}),
     },
     /** Whether the companion socket is listening, and how many editors are connected to it. */
-    'companion.status': { params: z.object({}), result: z.object({ listening: z.boolean(), clients: z.number(), error: z.string().nullable() }) },
+    /** The companion socket: whether it listens, and how many editor windows (`clients`) and browsers are connected. */
+    'companion.status': { params: z.object({}), result: z.object({ listening: z.boolean(), clients: z.number(), browsers: z.number().default(0), error: z.string().nullable() }) },
 
     // --- Remote: follow and steer sessions from a phone (docs/remote-access.md) --------------------------------
     'remote.status': { params: z.object({}), result: RemoteStatus },
@@ -1783,6 +1853,8 @@ export const contract = {
     /** Every session's loose ends, whenever one changes (sessions without any left out). */
     'sessions.looseEnds': z.object({ looseEnds: LooseEndsMap }),
     'transcript.updated': TranscriptUpdate,
+    /** A watched checkout's changes (`git.watch`), for the cwd and base it was watched with; null and `error` outside git. */
+    'git.changed': z.object({ cwd: z.string(), base: ChangesBase, changes: GitChanges.nullable(), error: z.string().nullable() }),
     'session.host': SessionHostInfo,
     /** Claude Code reported a new model list (replaces the one from `models.list`). */
     'models.changed': z.object({ models: z.array(ModelOption) }),
@@ -1840,7 +1912,7 @@ export const contract = {
     'triggers.notice': z.object({ notices: z.array(TriggerNotice) }),
     /** Pipelines were saved, deleted or imported: the built-ins and yours. */
     /** An orchestrator was started, or one started, queued or lost a session. */
-    'orchestrator.changed': z.object({ orchestrators: z.array(OrchestratorInfoSchema) }),
+    'orchestrator.changed': z.object({ orchestrators: z.array(OrchestratorInfoSchema), started: z.array(StartedChildSchema).optional() }),
     'pipelines.changed': z.object({ pipelines: z.array(Pipeline) }),
     /** A run changed: a step started or ended, it waits for you, or it ended. */
     'runs.changed': z.object({ state: PipelineRunState }),
@@ -1874,7 +1946,7 @@ export const contract = {
      * Context from the VS Code companion, for this window to add as chips (to a session's message box, or New session
      * on a folder) and confirm with `companion.received`. Sent to the window that reported focus last.
      */
-    'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: ContextItems, reveal: z.boolean() }),
+    'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: z.array(ContextItem).max(MAX_CONTEXT_ITEMS), images: z.array(ImageAttachment).optional(), reveal: z.boolean() }),
     /** The companion asked to show a session (its status bar item): select it and bring the window forward. */
     'companion.reveal': z.object({ sessionId: z.string() }),
     /** A session's catch-up was made, refreshed or cleared (null: a new message or turn started). */

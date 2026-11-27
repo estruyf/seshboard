@@ -32,6 +32,14 @@ export async function githubRepos(cwd: string): Promise<string[]> {
   return [...new Set(repos)];
 }
 
+/** The GitHub repository a checkout is (`owner/name`, lowercased): `origin`'s when it is on GitHub, else the first that is; null without one. */
+export async function githubRepo(cwd: string): Promise<string | null> {
+  const remotes = await remoteUrls(cwd);
+  const origin = remotes.get('origin');
+  const fromOrigin = origin ? githubRepoFromUrl(origin) : null;
+  return fromOrigin ?? [...remotes.values()].map(githubRepoFromUrl).find((repo) => repo !== null) ?? null;
+}
+
 /**
  * The checkout on github.com: the remote the current branch tracks when that one is on GitHub, else
  * `origin`, else any GitHub remote. The link opens the branch when it tracks one on that remote (so a

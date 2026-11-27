@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* While the window is in full screen (main.tsx sets the attribute): the traffic lights are hidden then. */
+@custom-variant full-screen (&:where([data-full-screen] *));
+
 :root {
   /* Demo Time Light (github.com/estruyf/vscode-demo-time-theme) */
   --sb-bg: #ffffff;
@@ -74,6 +77,8 @@
   /* Menus, popovers and dialogs: their own surface, border and shadow so they stand out from what's behind them. */
   --sb-popover: #ffffff;
   --sb-overlay-border: #d1d5da;
+  /* The edge of fields, dropdowns and text areas: 3:1 against every surface they sit on (WCAG 1.4.11). */
+  --sb-field-border: #8b8e95;
   --sb-overlay-shadow: 0 2px 6px rgb(21 24 31 / 0.08), 0 12px 32px -4px rgb(21 24 31 / 0.2);
   /* Backdrop behind dialogs. */
   --sb-scrim: rgb(21 24 31 / 0.35);
@@ -91,6 +96,14 @@
   /* The outline around the focused control while moving with Tab. */
   --sb-focus-ring: #916c008c;
   color-scheme: light;
+}
+
+/*
+ * The window's chrome: the title bar and the nav rail, a shade off the sidebar. Not a theme token: it follows the
+ * theme's text and sidebar, so every theme (and light and dark) gets it without saying so.
+ */
+:root {
+  --sb-chrome: color-mix(in srgb, var(--sb-text) 4%, var(--sb-sidebar));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -147,6 +160,7 @@
     /* Lighter than card (which the sidebar and composer share) with a strong shadow: a dark UI hides soft ones. */
     --sb-popover: #2a3244;
     --sb-overlay-border: #414861;
+    --sb-field-border: #787b82;
     --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
     --sb-scrim: rgb(0 0 0 / 0.6);
     --sb-terminal-bg: #0d1016;
@@ -218,6 +232,7 @@
   /* Lighter than card (which the sidebar and composer share) with a strong shadow: a dark UI hides soft ones. */
   --sb-popover: #2a3244;
   --sb-overlay-border: #414861;
+  --sb-field-border: #787b82;
   --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
   --sb-scrim: rgb(0 0 0 / 0.6);
   --sb-terminal-bg: #0d1016;
@@ -229,13 +244,117 @@
   color-scheme: dark;
 }
 
+/*
+ * Minimal (Settings › Theme, `minimalMode`, data-minimal on <html> from the preferences store): no line where a line
+ * only separates things. Cards keep their shape as a tint of the canvas instead of a border (Surfaces and lines, rule 4),
+ * so they read on white too. What keeps its edge: fields (the `field` utility) and any other control (inputs, text
+ * areas, buttons, comboboxes, text boxes), secondary buttons (`btn-secondary`), overlays, and frames that say
+ * something (needs you, an error, the focus ring). Colours stay the theme's: Black and white is the theme for a window
+ * without them. Matched on the class, so every `border-border` and `border-border/…` follows. It stays outside the
+ * layers: in `@layer components` the `border-border` utility itself would win again.
+ */
+:root[data-minimal] {
+  --sb-card: color-mix(in srgb, var(--sb-text) 4%, var(--sb-bg));
+}
+:root[data-minimal]
+  :is([class~='border-border'], [class^='border-border/'], [class*=' border-border/']):not(input, textarea, select, button, [role='combobox'], [role='textbox'], [contenteditable='true'], .field) {
+  border-color: transparent;
+}
+
+/*
+ * Code highlighting off (Settings › Theme, `codeHighlighting`; data-code-plain on <html> from the preferences store).
+ * Code itself turns one colour in highlight.ts (a plain syntax theme from the active theme's text and faint). Diffs
+ * keep the theme's colours for the lines that changed (their tints and the + and − signs), wherever they are drawn
+ * (`data-diff-kind` on each line), and say it by shape too: a removed line is struck through in the muted colour, an
+ * added one is bold. Works in every theme.
+ */
+:root[data-code-plain] [data-diff-kind='del'] {
+  color: var(--sb-muted);
+}
+:root[data-code-plain] [data-diff-kind='del'] > :last-child {
+  text-decoration-line: line-through;
+}
+:root[data-code-plain] [data-diff-kind='add'] > :last-child {
+  font-weight: 600;
+}
+
+/*
+ * A monochrome theme (Black and white, `monochrome` in its file; data-monochrome on <html> from the theme store): the
+ * tokens are grey already, so this greys what they can't reach, the pictures: project icons, emoji and letter tiles,
+ * editor icons and site icons. What people look at (images in a conversation, a file preview) keeps its colours, and
+ * so do the app icon picker's tiles, which show each colourway as it is.
+ */
+:root[data-monochrome] :is([data-project-icon], img[data-app-icon], [data-favicon]) {
+  filter: grayscale(1);
+}
+/*
+ * Your prompts sit one step above the cards and the message box (the selected tone, opaque in such a theme), so they
+ * stand out from the canvas. Collapsed long prompts fade to the muted colour, not to nothing.
+ */
+:root[data-monochrome] [data-prompt-bubble] {
+  background-color: var(--sb-selected);
+}
+:root[data-monochrome] [data-prompt-clamped] {
+  /* The second line ends at about two thirds of the text, which on the bubble is the muted grey. */
+  mask-image: linear-gradient(to bottom, #000 1lh, rgb(0 0 0 / 0.68));
+}
+/* Group headers and the message box's placeholder are read, not hints: muted rather than faint in such a theme. */
+:root[data-monochrome] [data-section-tone='neutral'],
+:root[data-monochrome] [data-composer-root] textarea::placeholder {
+  color: var(--sb-muted);
+}
+/*
+ * Black and white, light: every surface is near white, so the edges come back as lines, wherever Windows high
+ * contrast would draw them (`forced-colors:border-*`, a surface that meets another): the title bar's bottom edge, the
+ * nav rail's and the sidebar's right edges, the side
+ * panels' left edge, the rail of tools, and pane headers always (not only while content scrolls under). The message
+ * box and the catch-up bar get their border and a light shadow. With Code highlighting off, a changed line also gets a
+ * 2px bar in its gutter: strong for added, light for removed.
+ */
+@media (prefers-color-scheme: light) {
+  :root[data-monochrome] [class~='forced-colors:border-l'] {
+    border-left: 1px solid var(--sb-border);
+  }
+  :root[data-monochrome] [class~='forced-colors:border-r'] {
+    border-right: 1px solid var(--sb-border);
+  }
+  :root[data-monochrome] [class~='forced-colors:border-b'] {
+    border-bottom: 1px solid var(--sb-border);
+  }
+  :root[data-monochrome] [data-tool-rail] {
+    border-left-color: var(--sb-border);
+  }
+  :root[data-monochrome] .edge-b::after,
+  :root[data-monochrome] .edge-t::before {
+    opacity: 1;
+  }
+  :root[data-monochrome] :is([data-composer-card], [data-catchup-strip]) {
+    border: 1px solid var(--sb-border);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--sb-text) 6%, transparent);
+  }
+  :root[data-monochrome][data-code-plain] [data-diff-kind='add'] > :first-child {
+    box-shadow: inset 2px 0 0 var(--sb-text);
+  }
+  :root[data-monochrome][data-code-plain] [data-diff-kind='del'] > :first-child {
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--sb-text) 38%, transparent);
+  }
+}
+/* Its links have the text colour, so they are underlined instead. */
+:root[data-monochrome] :is(a[href], .text-link) {
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+}
+
 @theme inline {
   --color-bg: var(--sb-bg);
   --color-sidebar: var(--sb-sidebar);
+  --color-chrome: var(--sb-chrome);
   --color-card: var(--sb-card);
   --color-border: var(--sb-border);
   /* A border that stays visible on dialogs and popovers (fields, chips, cards inside an overlay); plain `border` vanishes there. */
   --color-edge: var(--sb-overlay-border);
+  /* The edge of fields, dropdowns and text areas (the `field` utility). */
+  --color-field: var(--sb-field-border);
   --color-text: var(--sb-text);
   --color-muted: var(--sb-muted);
   --color-faint: var(--sb-faint);
@@ -359,6 +478,32 @@
   }
   &:disabled {
     opacity: 0.5;
+  }
+}
+
+/*
+ * A field: an input, a text area or a dropdown in a form (settings, dialogs). Its edge is `field-border`, 3:1 against
+ * every surface (WCAG 1.4.11), in every theme and in Minimal mode; hover darkens it, and focus (also from a click) or an
+ * open list draws it in the accent ink, two pixels wide. Height and padding stay with the caller. `FIELD` in
+ * components/ui/fieldStyles.ts is the class to use; a test checks that form fields do.
+ */
+@utility field {
+  border: 1px solid var(--sb-field-border);
+  border-radius: 0.375rem;
+  background-color: var(--sb-bg);
+  color: var(--sb-text);
+  &:hover:not(:disabled, :focus) {
+    border-color: color-mix(in srgb, var(--sb-text) 65%, var(--sb-bg));
+  }
+  &:focus,
+  &:focus-within,
+  &[aria-expanded='true'] {
+    border-color: var(--sb-accent-ink);
+    box-shadow: 0 0 0 1px var(--sb-accent-ink);
+  }
+  &:disabled,
+  &[aria-disabled='true'] {
+    opacity: 0.6;
   }
 }
 
@@ -618,12 +763,28 @@ html[data-quick-start-window] body {
 .working-panel .jack-hole {
   fill: var(--sb-working-hole);
 }
+/*
+ * The lights over the free jacks are HTML, not SVG: only opacity and transform animate, so Chromium runs them on the
+ * compositor. .jack-light is the glow's square, centred on its jack; the lit dot is the middle share of it (its inset is set by the component, from JACK / GLOW).
+ */
+/* The glow of a jack on the panel's edge is clipped to the panel, as the SVG it replaced clipped it. */
+.working-panel {
+  overflow: hidden;
+}
+.working-panel .jack-light {
+  position: absolute;
+  opacity: 0;
+}
 .working-panel .jack-lit {
-  fill: var(--sb-working-lit);
+  position: absolute;
+  border-radius: 50%;
+  background: var(--sb-working-lit);
 }
 .working-panel .jack-glow {
-  fill: var(--sb-working-glow);
-  transform-box: fill-box;
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--sb-working-glow);
   transform-origin: center;
 }
 .working-panel .jack-plug-a {
@@ -637,9 +798,6 @@ html[data-quick-start-window] body {
 }
 .working-panel .jack-plug-d {
   fill: var(--sb-working-plug-d);
-}
-.working-panel .jack-light {
-  opacity: 0;
 }
 .working-panel[data-working-state='working'] :is(.jack-light, .jack-glow) {
   animation-duration: var(--working-round);
@@ -675,7 +833,7 @@ html[data-quick-start-window] body {
   opacity: 1;
 }
 .working-panel[data-working-state='waiting'] .jack-lit {
-  fill: var(--sb-warn);
+  background: var(--sb-warn);
 }
 .working-panel:not([data-working-state='working']) .jack-glow {
   visibility: hidden;
@@ -702,6 +860,20 @@ html[data-quick-start-window] body {
   100% {
     transform: scale(0.427);
   }
+}
+/*
+ * A window in the background (data-blurred on <html>, lib/windowActivity.ts) stops what never ends: every frame of it
+ * costs the renderer and the GPU, for something nobody is looking at. The one-shot animations finish as usual.
+ */
+html[data-blurred] :is(.working-panel .jack-light, .working-panel .jack-glow, .animate-spin, .animate-pulse, [class*='_infinite]']),
+html[data-blurred] .stream-caret > :last-child > :last-child::after,
+html[data-blurred] .stream-caret:empty::after,
+html[data-blurred] .page-progress::before {
+  animation-play-state: paused;
+}
+/* The needs-you ring grows and fades away: stopped, it would sit at its biggest, so it rests at the dot's size. */
+html[data-blurred] .animate-ping {
+  animation: none;
 }
 /* The message box after Quote put text in it: its frame lights up in the accent once, then fades back. */
 @keyframes composer-flash {
@@ -869,6 +1041,20 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
 ::highlight(find-current) {
   background-color: var(--sb-accent);
   color: var(--sb-on-accent);
+}
+/* A line Claude changed, in the file editor's gutter: the same bar as in the viewer. */
+.monaco-editor .sb-claude-mark {
+  background-color: var(--sb-accent-ink);
+  width: 3px !important;
+  margin-left: 3px;
+}
+/* The same marks in the file editor (Monaco), where the find bar draws them as decorations. */
+.monaco-editor .sb-find-match {
+  background-color: color-mix(in srgb, var(--sb-accent) 35%, transparent);
+}
+.monaco-editor .sb-find-current {
+  background-color: var(--sb-accent);
+  color: var(--sb-on-accent) !important;
 }
 
 /* A narrow pop-out: a panel on the right fills the session view (its own width is a wider window's). */

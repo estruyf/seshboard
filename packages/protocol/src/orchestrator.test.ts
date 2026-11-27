@@ -39,7 +39,8 @@ describe('groupWorkers', () => {
 
 describe('readStartArgs', () => {
   it('takes a title and a prompt, and trims the title to one line', () => {
-    expect(readStartArgs({ title: '  Fix\n login ', prompt: ' do it ' })).toEqual({ title: 'Fix login', prompt: 'do it', agent: null, model: null, workspace: null });
+    expect(readStartArgs({ title: '  Fix\n login ', prompt: ' do it ' })).toEqual({ title: 'Fix login', prompt: 'do it', agent: null, model: null, workspace: null, computer: null });
+    expect(readStartArgs({ title: 'A', prompt: 'a', computer: ' mystic ' })).toMatchObject({ computer: 'mystic' });
   });
 
   it('says what is missing or wrong', () => {

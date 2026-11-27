@@ -13,9 +13,10 @@ import { useOpenIn } from '../OpenInButton.tsx';
 import { filesActionLabel, filesMenu, type FilesAction, type FilesMenuTarget } from './filesMenu.ts';
 import { insideFolder } from './touchedFiles.ts';
 
-/** What only the viewer can do from its menu: the lines picked in it. */
+/** What only the viewer can do from its menu: the lines picked in it, and the text selected when the menu opened. */
 export interface ViewerMenuActions {
   addLines(focus: boolean): void;
+  selectedText?: string;
 }
 
 /** Opens the Files menu for a target: at the pointer for a right-click, at `element` for Shift+F10. */
@@ -55,6 +56,10 @@ export function useFilesMenu(sessionId: string, cwd: string): { open: OpenFilesM
     const failed = (what: string) => (e: unknown) => toast(`Couldn't ${what}: ${e instanceof Error ? e.message : String(e)}`);
     const copy = (text: string, what: string) => void navigator.clipboard.writeText(text).then(() => toast(`${what} copied`), failed(`copy the ${what.toLowerCase()}`));
     switch (action) {
+      case 'copy-link':
+        return target.kind === 'viewer' && target.link ? copy(target.link, 'Link') : undefined;
+      case 'copy':
+        return viewer?.selectedText ? void navigator.clipboard.writeText(viewer.selectedText).catch(failed('copy the selection')) : undefined;
       case 'add-lines':
         return viewer?.addLines(false);
       case 'ask-lines':

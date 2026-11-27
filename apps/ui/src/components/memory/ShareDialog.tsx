@@ -16,7 +16,7 @@ import { Select } from '../ui/Select.tsx';
 import { canShare, parsePaths, relativeTo, removeByDefault, ruleLabel, shareButtonLabel, shareNotices, validRuleName, type TargetKind } from './memoryUi.ts';
 import { useMemoryList } from './useMemoryList.ts';
 
-const field = 'h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
+const field = 'field h-7 w-full px-2.5 text-ui outline-none';
 const NEW_RULE = '__new__';
 /** How long the preview waits after typing before asking the engine again. */
 const PREVIEW_DELAY_MS = 200;

@@ -1,6 +1,6 @@
 import { Cpu, Sparkles, WandSparkles, Zap, ZapOff } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
-import { useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode } from '@seshboard/protocol/client';
 import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import type { FastModeFace } from '../../lib/fastMode.ts';
@@ -16,6 +16,7 @@ import { PROFILE_DOT, PROFILE_TEXT } from '../profiles/ProfileBadge.tsx';
 import { byTool } from '../newSession/providerSwitch.ts';
 import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFamily, shortModelName, type FooterLevel } from './chipFaces.ts';
 import { TrayContext } from './ComposerTray.tsx';
+import { composerSummary } from './minimalComposer.ts';
 import { FoldedChip, type FoldedSection } from './FoldedChip.tsx';
 import { foldedFace, foldedLabel } from './trayFold.ts';
 
@@ -148,6 +149,10 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
   const modeChoices: Array<Choice<PermissionMode>> = modes.map((m) => ({ value: m, label: modeChoice(m)?.label ?? MODE_LABEL[m], description: modeChoice(m)?.description ?? MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }));
   // In a tray too narrow for every chip, model, effort and mode are one chip (the profile keeps its own).
   const tray = useContext(TrayContext);
+  // Minimal mode: the box shows these chips as one line ("Sonnet 5.5 · Auto · Work"). The profile only counts with several.
+  const summary = composerSummary({ model: modelName, mode: modeShort, profile: profile && profiles.length > 1 ? (current?.name ?? null) : null });
+  const onSummary = tray.onSummary;
+  useEffect(() => onSummary?.(summary), [onSummary, summary]);
 
   /** Each chip's face at a level: what the real chip shows, and what the hidden copies measure. */
   const chips: Array<{ key: string; face(level: FooterLevel): ReactNode; menu(face: ReactNode): ReactNode }> = [];

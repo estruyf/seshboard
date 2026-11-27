@@ -110,6 +110,11 @@ class FakeQuery {
         state('idle');
         continue;
       }
+      if (text === 'rate updates') {
+        // A busy turn: the same rate-limit update over and over, then a different one, then the reply.
+        const info = (resetsAt: number, status = 'allowed') => ({ type: 'rate_limit_event', session_id: sessionId, rate_limit_info: { status, rateLimitType: 'five_hour', resetsAt } });
+        for (const message of [info(10), info(10), info(10), info(10, 'allowed_warning'), info(10, 'allowed_warning'), info(20, 'allowed_warning')]) this.out.push(message);
+      }
       if (text === 'crash') {
         this.out.fail(new Error('Claude Code process exited with code 1'));
         return;
@@ -157,6 +162,8 @@ class FakeQuery {
       }
       this.out.push({ type: 'result', subtype: text === 'fail' ? 'error_during_execution' : 'success', is_error: text === 'fail', total_cost_usd: 0.01, session_id: sessionId });
       state('idle');
+      // Claude Code's guess at the next message comes after the result, when it has one.
+      if (text.startsWith('suggest:')) this.out.push({ type: 'prompt_suggestion', suggestion: text.slice(8), uuid: `s-${text}`, session_id: sessionId });
     }
     this.inputEnded = true;
   }
@@ -266,6 +273,7 @@ function setup(
     /** Sees each process as it starts, before it gets a message. */
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
+    onUsageHint?: HostManagerDeps['onUsageHint'];
     signIns?: HostManagerDeps['signIns'];
     links?: HostManagerDeps['links'];
     readOnly?: HostManagerDeps['readOnly'];
@@ -274,6 +282,7 @@ function setup(
     assertTrusted?: HostManagerDeps['assertTrusted'];
     browserServer?: HostManagerDeps['browserServer'];
     orchestratorServer?: HostManagerDeps['orchestratorServer'];
+    sessionsServer?: HostManagerDeps['sessionsServer'];
     isOrchestrator?: HostManagerDeps['isOrchestrator'];
     appendSystemFor?: HostManagerDeps['appendSystemFor'];
     fallbackModel?: HostManagerDeps['fallbackModel'];
@@ -327,6 +336,7 @@ function setup(
     },
   };
   const manager = new HostManager({
+    ...(opts.onUsageHint ? { onUsageHint: opts.onUsageHint } : {}),
     sdk: async () => sdk,
     // Each profile's processes get its config folder.
     env: async (profileId) => ({ PATH: '/usr/bin', ...(profileId === 'default' ? {} : { CLAUDE_CONFIG_DIR: `/config/${profileId}` }) }),
@@ -355,6 +365,7 @@ function setup(
     assertTrusted: opts.assertTrusted,
     browserServer: opts.browserServer,
     orchestratorServer: opts.orchestratorServer,
+    sessionsServer: opts.sessionsServer,
     isOrchestrator: opts.isOrchestrator,
     appendSystemFor: opts.appendSystemFor,
     fallbackModel: opts.fallbackModel,
@@ -397,6 +408,19 @@ describe('HostManager', () => {
     // The Working list orders by when you last sent a message.
     expect(t.infos.at(-1)!.promptedAt).toBeGreaterThanOrEqual(t.infos.at(-1)!.startedAt);
     await expect(t.manager.commands(id, undefined, 'default')).resolves.toEqual([{ name: 'review', description: 'Review the diff', argumentHint: '' }]);
+    t.manager.closeAll();
+  });
+
+  it("offers Claude Code's guess at your next message until you send one", async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'suggest:go' });
+    expect(t.queries[0]!.options).toMatchObject({ promptSuggestions: true });
+    await until(() => t.infos.at(-1)!.suggestion === 'go');
+    await t.manager.send({ sessionId: id, text: 'go', attachments: [], fork: false });
+    // Sending takes it away at once, before Claude Code answers.
+    expect(t.infos.at(-1)!.suggestion).toBeUndefined();
+    await until(() => t.queries[0]!.received.length === 2 && lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)!.suggestion).toBeUndefined();
     t.manager.closeAll();
   });
 
@@ -489,6 +513,20 @@ describe('HostManager', () => {
     await until(() => t.turns.length === 2);
     expect(limit).toBeNull();
     await until(() => t.infos.at(-1)!.usageLimit === null);
+    t.manager.closeAll();
+  });
+
+  it('hints that plan usage changed when a rate-limit update says something new and at the end of a turn, not for every update', async () => {
+    const hints: string[] = [];
+    const t = setup({ onUsageHint: (profileId) => hints.push(profileId) });
+    // Six rate-limit updates in a turn, three different (new, a warning, another reset): a hint for each of those and the turn's end.
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'rate updates' });
+    await until(() => lastState(t.infos, id) === 'idle' && t.turns.length === 1);
+    expect(hints).toHaveLength(4);
+    // The same update again in the next turn is nothing new: only the turn's end hints.
+    await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(hints).toHaveLength(5);
     t.manager.closeAll();
   });
 
@@ -628,6 +666,38 @@ describe('HostManager', () => {
     await until(() => t.permissions.length === 3);
     t.manager.respond(t.permissions[2]!.requestId, { behavior: 'deny' });
     await expect(declined).resolves.toBe('deny');
+    t.manager.closeAll();
+  });
+
+  it('asks to start a session on a card with Allow and Deny only, and waits on you while it is open', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const ask = { title: 'Fix lint', prompt: 'Fix the lint errors.', agent: null, workspace: 'worktree' as const };
+    const allowed = t.manager.askStart(id, ask);
+    await until(() => t.permissions.length === 1);
+    expect(t.permissions[0]).toMatchObject({ sessionId: id, toolName: 'mcp__seshboard__start_session', title: 'Claude Code wants to start a session: Fix lint', alwaysLabel: null, input: ask });
+    expect(t.permissions[0]!.sessionAllow).toBeUndefined();
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', always: true });
+    await expect(allowed).resolves.toBe(true);
+    const denied = t.manager.askStart(id, ask);
+    await until(() => t.permissions.length === 2);
+    t.manager.respond(t.permissions[1]!.requestId, { behavior: 'deny' });
+    await expect(denied).resolves.toBe(false);
+    t.manager.closeAll();
+  });
+
+  it('gives every other session the seshboard server, with start_session allowed, and none to an orchestrator', async () => {
+    const owners: Array<() => string | null> = [];
+    const server = { command: '/app/Seshboard', args: ['orchestrator-mcp.js'], env: { SESHBOARD_ORCHESTRATOR_ROLE: 'session' } };
+    const t = setup({ sessionsServer: async (sessionId) => (owners.push(sessionId), server), orchestratorServer: async () => ({ command: '/app/Seshboard', args: ['orchestrator-mcp.js'], env: {} }) });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    expect(t.queries[0]!.options.mcpServers?.seshboard).toEqual({ type: 'stdio', ...server });
+    expect(t.queries[0]!.options.allowedTools).toEqual(expect.arrayContaining(['mcp__seshboard__start_session']));
+    expect(owners.at(-1)!()).toBe(id);
+    await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi', orchestrator: true, appendSystem: 'You are the orchestrator.' });
+    expect(t.queries[1]!.options.mcpServers?.seshboard).toBeUndefined();
+    expect(t.queries[1]!.options.mcpServers?.orchestrator).toBeDefined();
     t.manager.closeAll();
   });
 
@@ -1523,7 +1593,7 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
-  it('holds the first message until setup has finished', async () => {
+  it('shows the first message at once, and holds it from Claude Code until setup has finished', async () => {
     const t = setup();
     let finishSetup!: () => void;
     const setupDone = new Promise<void>((resolve) => (finishSetup = resolve));
@@ -1538,11 +1608,68 @@ describe('HostManager', () => {
       },
     });
     expect(seen).toEqual([id]);
+    expect(t.messages[0]).toMatchObject({ id, messages: [{ type: 'user' }] });
     await new Promise((r) => setTimeout(r, 50));
-    expect(t.messages).toEqual([]);
+    expect(lastState(t.infos, id)).toBe('starting');
     finishSetup();
     await until(() => lastState(t.infos, id) === 'idle');
+    t.manager.closeAll();
+  });
+
+  it('opens a session while its worktree is made, and starts Claude Code in it once it is there', async () => {
+    const t = setup();
+    let made!: (done: { cwd: string }) => void;
+    const prepare = new Promise<{ cwd: string }>((resolve) => (made = resolve));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', prepare });
+    // The session and your message show; Claude Code hasn't started.
+    expect(t.created).toEqual([id]);
     expect(t.messages[0]).toMatchObject({ id, messages: [{ type: 'user' }] });
+    expect(t.infos.at(-1)).toMatchObject({ sessionId: id, cwd: '/w', state: 'starting', preparing: true });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(t.queries).toHaveLength(0);
+    made({ cwd: '/w/.claude/worktrees/calm-fox' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.cwd).toBe('/w/.claude/worktrees/calm-fox');
+    expect(t.infos.at(-1)).toMatchObject({ cwd: '/w/.claude/worktrees/calm-fox' });
+    expect(t.infos.at(-1)!.preparing).toBeUndefined();
+    t.manager.closeAll();
+  });
+
+  it('turns fast mode on once the worktree is there, without holding up the start', async () => {
+    const t = setup();
+    let made!: (done: { cwd: string }) => void;
+    const prepare = new Promise<{ cwd: string }>((resolve) => (made = resolve));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', prepare, fastMode: true });
+    expect(t.queries).toHaveLength(0);
+    made({ cwd: '/w/.claude/worktrees/calm-fox' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)).toMatchObject({ fastMode: 'on' });
+    t.manager.closeAll();
+  });
+
+  it('fails with git\'s reason when the worktree can\'t be made, and offers nothing to send again', async () => {
+    const t = setup();
+    // git fails after the session has opened (the fetch found no such branch).
+    const prepare = new Promise<{ cwd: string }>((_, reject) => setTimeout(() => reject(new Error('There is no branch dev on origin.')), 20));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', prepare });
+    await until(() => lastState(t.infos, id) === 'error');
+    expect(t.infos.at(-1)).toMatchObject({ error: 'Could not make the worktree: There is no branch dev on origin.' });
+    expect(t.infos.at(-1)!.unsent).toBeUndefined();
+    expect(t.infos.at(-1)!.preparing).toBeUndefined();
+    expect(t.queries).toHaveLength(0);
+    t.manager.closeAll();
+  });
+
+  it('never starts Claude Code for a session closed while its worktree is made', async () => {
+    const t = setup();
+    let made!: (done: { cwd: string }) => void;
+    const prepare = new Promise<{ cwd: string }>((resolve) => (made = resolve));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', prepare });
+    t.manager.close(id);
+    made({ cwd: '/w/.claude/worktrees/calm-fox' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(t.queries).toHaveLength(0);
+    expect(lastState(t.infos, id)).toBe('closed');
     t.manager.closeAll();
   });
 
@@ -2076,7 +2203,7 @@ describe('buildOptions', () => {
     const orchestrator = { command: '/Apps/Seshboard', args: ['/Apps/orchestrator-mcp.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
     const options = buildOptions({ ...config, orchestrator, appendSystem: 'You are the orchestrator.', skimMarks: true }, () => {});
     expect(options.mcpServers).toEqual({ orchestrator: { type: 'stdio', ...orchestrator } });
-    expect(options.allowedTools).toEqual(['mcp__orchestrator__start_session', 'mcp__orchestrator__list_sessions', 'mcp__orchestrator__read_session', 'mcp__orchestrator__message_session']);
+    expect(options.allowedTools).toEqual(['mcp__orchestrator__start_session', 'mcp__orchestrator__list_sessions', 'mcp__orchestrator__read_session', 'mcp__orchestrator__message_session', 'mcp__orchestrator__run_pipeline', 'mcp__orchestrator__get_run', 'mcp__orchestrator__list_computers']);
     expect(options.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: `${SKIM_MARKS_PROMPT}\n\nYou are the orchestrator.` });
     expect(buildOptions({ ...config, appendSystem: 'Branch from dev.' }, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: 'Branch from dev.' });
     expect(buildOptions({ ...config, orchestrator, readOnly: true }, () => {}).mcpServers).toBeUndefined();

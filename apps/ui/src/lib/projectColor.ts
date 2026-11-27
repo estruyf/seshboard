@@ -1,5 +1,12 @@
-/** Stable, readable colour per project name: the tile behind a letter icon, and any icon without a clear colour. */
-export function letterColor(name: string): string {
+/** The grey a project gets with Settings › Theme › Project colours off: the theme's muted colour. */
+export const PROJECT_GREY = 'var(--sb-muted)';
+
+/**
+ * Stable, readable colour per project name: the tile behind a letter icon, and any icon without a clear colour.
+ * `colored: false` (Project colours off) gives the theme's muted grey instead.
+ */
+export function letterColor(name: string, colored = true): string {
+  if (!colored) return PROJECT_GREY;
   let hash = 0;
   for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   return `hsl(${hash % 360} 45% 42%)`;

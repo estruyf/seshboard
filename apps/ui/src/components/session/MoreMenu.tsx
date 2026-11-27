@@ -115,6 +115,7 @@ export function MoreMenu({
   title,
   onStop,
   provider = null,
+  extra = [],
 }: {
   sessionId: string;
   actions: ActionsMenu;
@@ -137,6 +138,8 @@ export function MoreMenu({
    * Code's actions it doesn't have yet (from `supports`, so the line shrinks as they come).
    */
   provider?: ProviderMenu | null;
+  /** Minimal mode: the header's other buttons, first in the menu (Open in new window). */
+  extra?: MenuEntry[];
 }) {
   const menu = useMenu();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -283,7 +286,8 @@ export function MoreMenu({
     },
   );
 
-  const shownEntries = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null, onAgents, agents }, openIn.entries) : entries;
+  const listed = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null, onAgents, agents }, openIn.entries) : entries;
+  const shownEntries: MenuEntry[] = extra.length ? [...extra, 'separator', ...listed] : listed;
   const label = provider ? 'More: open in, compact, tools, copy, done' : `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
   const error = actions.error ?? openIn.error;
   return (

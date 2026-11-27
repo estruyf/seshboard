@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, shell, webContents, type DownloadItem, type Session, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
-import { isBrowserPartition, localPreviewUrl, webPageUrl, WEB_PREVIEW_PARTITION } from '@seshboard/protocol/client';
+import { isBrowserPartition, localPreviewUrl, siteActionsFor, webPageUrl, WEB_PREVIEW_PARTITION, type SiteAction, type StartFromPageRequest } from '@seshboard/protocol/client';
 import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
 import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, CANVAS_CSS, needsCanvas, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
@@ -34,6 +34,10 @@ export interface WebPreviewGuardDeps {
   askFirst: boolean;
   /** Where pages' downloads go: the Downloads folder, or a folder in the throwaway profile in a smoke run. */
   downloadsDir(): string;
+  /** Settings › Browser › Site actions, read when a page's menu opens. */
+  siteActions(): SiteAction[];
+  /** The page menu's site action: New session in the main window, from the page. */
+  startFromPage(request: StartFromPageRequest): void;
 }
 
 /** Files pages downloaded this run: the only paths Show in Finder will reveal. */
@@ -297,7 +301,7 @@ async function openAppLink(host: WebContents, url: string, deps: WebPreviewGuard
 }
 
 /** Runs an entry of a page's right-click menu against the page (the smoke run calls it too, as the menu can't be clicked). */
-export function runPageMenuEntry(host: WebContents, guest: WebContents, params: Pick<Electron.ContextMenuParams, 'x' | 'y' | 'linkURL' | 'srcURL' | 'selectionText'>, id: PageMenuEntryId | 'spelling', word?: string) {
+export function runPageMenuEntry(host: WebContents, guest: WebContents, params: Pick<Electron.ContextMenuParams, 'x' | 'y' | 'linkURL' | 'srcURL' | 'selectionText'>, id: Exclude<PageMenuEntryId, 'start-session'> | 'spelling', word?: string) {
   if (guest.isDestroyed()) return;
   switch (id) {
     case 'spelling':
@@ -326,6 +330,8 @@ export function runPageMenuEntry(host: WebContents, guest: WebContents, params: 
       return guest.navigationHistory.goForward();
     case 'reload':
       return guest.reload();
+    case 'hard-reload':
+      return guest.reloadIgnoringCache();
     case 'quote':
       return send(host, { kind: 'quote', contentsId: guest.id, text: params.selectionText, url: webPageUrl(guest.getURL()) ?? guest.getURL() });
     case 'add-element':
@@ -340,10 +346,22 @@ export const isSessionPage = (contentsId: number): boolean => sessionPages.has(c
 
 /** A page's right-click menu (`pageMenuEntries`), run here against the page, over `owner` (the page's window, or a sign-in window's own). */
 function showPageMenu(host: WebContents, guest: WebContents, params: Electron.ContextMenuParams, deps: WebPreviewGuardDeps, owner = BrowserWindow.fromWebContents(host)): void {
-  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward(), session: sessionPages.has(guest.id) });
-  const run = (id: PageMenuEntryId | 'spelling', word?: string) => runPageMenuEntry(host, guest, params, id, word);
+  const url = guest.getURL();
+  const offered = deps.browser() ? siteActionsFor(url, deps.siteActions()) : [];
+  const entries = pageMenuEntries(params, { browser: deps.browser(), back: guest.navigationHistory.canGoBack(), forward: guest.navigationHistory.canGoForward(), session: sessionPages.has(guest.id), start: offered.map((action) => ({ action: action.id, label: action.name })) });
+  const run = (id: Exclude<PageMenuEntryId, 'start-session'> | 'spelling', word?: string) => runPageMenuEntry(host, guest, params, id, word);
+  // A site action leaves the page for New session, which main opens, with the page's title and the selection.
+  const start = (action: string) => deps.startFromPage({ url, action, title: guest.getTitle(), selection: params.selectionText });
   const menu = Menu.buildFromTemplate(
-    entries.map((entry) => (entry === 'separator' ? { type: 'separator' as const } : entry.id === 'spelling' ? { label: entry.label, click: () => run('spelling', entry.word) } : { label: entry.label, enabled: entry.enabled, click: () => run(entry.id) })),
+    entries.map((entry) =>
+      entry === 'separator'
+        ? { type: 'separator' as const }
+        : entry.id === 'spelling'
+          ? { label: entry.label, click: () => run('spelling', entry.word) }
+          : entry.id === 'start-session'
+            ? { label: entry.label, click: () => start(entry.action) }
+            : { label: entry.label, enabled: entry.enabled, click: () => run(entry.id) },
+    ),
   );
   menu.popup(owner ? { window: owner } : {});
 }
@@ -464,6 +482,7 @@ function guardPage(host: WebContents, guest: WebContents, deps: WebPreviewGuardD
     event.preventDefault();
     if (action === 'swallow') return;
     if (action === 'reload') return guest.reload();
+    if (action === 'hard-reload') return guest.reloadIgnoringCache();
     if (action === 'back') return guest.navigationHistory.canGoBack() && guest.navigationHistory.goBack();
     if (action === 'ahead') return guest.navigationHistory.canGoForward() && guest.navigationHistory.goForward();
     if (host.isDestroyed()) return;

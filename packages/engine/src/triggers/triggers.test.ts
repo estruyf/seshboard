@@ -10,7 +10,7 @@ import type { RunHold } from '../schedules/scheduler.ts';
 import { removeDir } from '../util/removeDir.ts';
 import type { GhRun } from './sources/gh.ts';
 import { TriggerStore } from './triggerStore.ts';
-import { TriggerWatcher } from './watcher.ts';
+import { DONE_QUIET_MS, TriggerWatcher } from './watcher.ts';
 
 const FAKE_GH = resolve(import.meta.dirname, '../../../../tests/fixtures/fake-gh-triggers.cjs');
 const START = Date.parse('2026-10-20T10:00:00Z');
@@ -43,8 +43,26 @@ interface FakeRun {
   createdAt?: string;
   displayTitle?: string;
 }
+interface FakePr {
+  number: number;
+  title: string;
+  body?: string;
+  labels?: string[];
+  reviewers?: string[];
+  author?: string;
+  association?: string;
+  headRefName?: string;
+  baseRefName?: string;
+  fork?: boolean;
+  headOwner?: string;
+  draft?: boolean;
+  updatedAt?: string;
+  comments?: Array<{ author: string; body: string }>;
+  reviews?: Array<{ author: string; state: string; body?: string }>;
+}
 interface FakeState {
   repo?: string;
+  prs?: FakePr[];
   login?: string;
   defaultBranch?: string;
   fail?: string | null;
@@ -76,11 +94,22 @@ function world(initial: FakeState = {}) {
   const pipelines = new Map<string, Pipeline>(builtInPipelines().map((p) => [p.id, p]));
   const runs = new Map<string, PipelineRunState>();
   const runStarts: Array<{ pipelineId: string; projectRoot: string; profileId: string | null; task: string; title: string; context: string | null; id: string }> = [];
+  /** When each session's transcript last changed; START when not set. */
+  const activity = new Map<string, number>();
+  /** What `markDone` moved to Done: a session's id, or `run:<id>`. */
+  const done: string[] = [];
+  /** The same, with whether its worktree's branch is let go. */
+  const doneTargets: Array<Parameters<NonNullable<ConstructorParameters<typeof TriggerWatcher>[0]['markDone']>>[0]> = [];
   const watcher = new TriggerWatcher({
     store,
     gh,
     folderExists: () => true,
     sessionState: (id) => sessions.get(id) ?? null,
+    lastActivity: (id) => activity.get(id) ?? START,
+    markDone: (target) => {
+      doneTargets.push(target);
+      done.push('sessionId' in target ? target.sessionId : `run:${target.runId}`);
+    },
     sessionPr: (id) => prs.get(id) ?? null,
     queued: () => true,
     hold: () => holds.next,
@@ -132,6 +161,10 @@ function world(initial: FakeState = {}) {
     pipelines,
     runs,
     runStarts,
+    activity,
+    done,
+    doneTargets,
+    now: () => now,
     /** Moves a run on: its status, a pull request Push opened, a step's session. */
     setRun: (id: string, status: PipelineRunStatus, extra: { pr?: { number: number; url: string }; stepSession?: string } = {}) => runs.set(id, fakeRun(id, status, extra)),
     fake,
@@ -712,5 +745,204 @@ describe('triggers that start a pipeline', () => {
     await w.tick();
     expect(w.store.get(t.id)).toMatchObject({ paused: true, pausedReason: expect.stringMatching(/bypasses permissions/) });
     expect(w.runStarts).toEqual([]);
+  });
+});
+
+describe('reviews for you', () => {
+  const pr = (number: number, extra: Partial<FakePr> = {}): FakePr => ({ number, title: `PR ${number}`, body: `What ${number} does`, reviewers: ['estruyf'], association: 'MEMBER', updatedAt: new Date(START + number * 1000).toISOString(), ...extra });
+
+  it('starts a session on the pull request that asks for your review, with what it read, and again when it asks again', async () => {
+    const w = world({ prs: [pr(1)] });
+    w.save({ name: 'Reviews for you', source: { kind: 'reviews' }, prompt: 'Review {{event.title}} ({{event.url}}) against {{event.base}}.' });
+    await w.watcher.check();
+    expect(w.started).toEqual([]);
+    w.fake.write((s) => s.prs!.push(pr(88, { title: 'Add a dark theme', headRefName: 'feat/dark', baseRefName: 'dev', comments: [{ author: 'mara-k', body: 'Ready for a look.' }] }), pr(89, { draft: true }), pr(90, { reviewers: ['someone'] })));
+    await w.tick();
+    expect(w.started.map((s) => s.title)).toEqual(['Review #88 Add a dark theme']);
+    const [run] = w.started;
+    expect(run!.draft.prompt).toMatch(/^Review Add a dark theme \(https:\/\/github\.com\/o\/r\/pull\/88\) against dev\./);
+    expect(run!.draft.prompt).toContain('What 88 does');
+    expect(run!.draft.prompt).toContain('@mara-k: Ready for a look.');
+    expect(run!.draft.pullRequest).toEqual({ number: 88, repo: 'o/r', branch: 'feat/dark', fork: false });
+    expect(w.store.sessions()).toMatchObject([{ sessionId: 'session-1', ref: 'PR #88', kind: 'pr' }]);
+    expect(w.notices).toMatchObject([{ kind: 'started', eventKind: 'pr', ref: 'PR #88', title: 'Review #88 Add a dark theme' }]);
+    // Who opened it is asked of the pull request, not an issue.
+    expect(w.fake.calls().some((c) => c[1] === 'graphql' && c.some((arg) => arg.includes('i88: pullRequest(number: 88)')))).toBe(true);
+
+    // Reviewed: the request is gone. Asked again: a re-review starts, and reads the review it got.
+    w.sessions.set('session-1', null);
+    w.fake.write((s) => {
+      s.prs!.find((p) => p.number === 88)!.reviewers = [];
+    });
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+    w.fake.write((s) => {
+      const again = s.prs!.find((p) => p.number === 88)!;
+      again.reviewers = ['estruyf'];
+      again.reviews = [{ author: 'estruyf', state: 'CHANGES_REQUESTED', body: 'Rename the token.' }];
+    });
+    await w.tick();
+    expect(w.started.map((s) => s.title)).toEqual(['Review #88 Add a dark theme', 'Review #88 Add a dark theme']);
+    expect(w.started[1]!.draft.prompt).toContain('@estruyf (changes requested): Rename the token.');
+  });
+
+  it('keeps a state label on the pull request: working while it reviews, reviewed when its turn ends, and again on a re-review', async () => {
+    const w = world({ prs: [] });
+    w.save({ name: 'Reviews for you', source: { kind: 'reviews', label: 'seshboard' }, stateLabels: { on: true } });
+    await w.watcher.check();
+    w.fake.write((s) => s.prs!.push(pr(88, { labels: ['seshboard'] })));
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+    // `gh pr edit`, and the trigger's label stays: it says what to review again.
+    expect(w.fake.calls().filter((c) => c[1] === 'edit')).toEqual([['pr', 'edit', '88', '--add-label', 'seshboard: working']]);
+    expect(w.fake.read().labels).toEqual(['seshboard', 'seshboard: working', 'seshboard: needs input', 'seshboard: reviewed', 'seshboard: failed']);
+    const labels = () => w.fake.read().prs!.find((p) => p.number === 88)!.labels;
+    expect(labels()).toEqual(['seshboard', 'seshboard: working']);
+
+    // Its session works on the pull request's branch: that pull request is not one it opened.
+    w.prs.set('session-1', { number: 88, url: 'https://github.com/o/r/pull/88' });
+    w.sessions.set('session-1', 'waiting');
+    await w.tick(MINUTE);
+    expect(labels()).toEqual(['seshboard', 'seshboard: needs input']);
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: true });
+    await w.tick(MINUTE);
+    expect(labels()).toEqual(['seshboard', 'seshboard: reviewed']);
+    // Still asking for the review, with its label: it was seen, so nothing starts.
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+
+    // It asks again after the review: a new session, and the reviewed label makes way for working.
+    w.fake.write((s) => {
+      s.prs!.find((p) => p.number === 88)!.reviewers = [];
+    });
+    await w.tick();
+    w.fake.write((s) => {
+      s.prs!.find((p) => p.number === 88)!.reviewers = ['estruyf'];
+    });
+    await w.tick();
+    expect(w.started).toHaveLength(2);
+    expect(labels()).toEqual(['seshboard', 'seshboard: working']);
+  });
+
+  it('skips a pull request another session reviews, and takes the working label off when its session is archived', async () => {
+    const w = world();
+    w.save({ name: 'Reviews for you', source: { kind: 'reviews' }, stateLabels: { on: true } });
+    await w.watcher.check();
+    w.fake.write((s) => {
+      s.labels!.push('seshboard: working', 'seshboard: reviewed');
+      s.prs = [pr(7, { labels: ['seshboard: working'] }), pr(8)];
+    });
+    await w.tick();
+    expect(w.started.map((s) => s.draft.pullRequest?.number)).toEqual([8]);
+    expect(w.store.events().find((e) => e.key === '#7')).toMatchObject({ status: 'skipped', reason: 'already has the seshboard: working label' });
+    // Its review there ends: it was seen, so it doesn't start here.
+    w.fake.write((s) => {
+      s.prs!.find((p) => p.number === 7)!.labels = ['seshboard: reviewed'];
+    });
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+
+    w.watcher.released('session-1');
+    await w.tick(MINUTE);
+    expect(w.fake.read().prs!.find((p) => p.number === 8)!.labels).toEqual([]);
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+  });
+
+  it("works on a fork's branch, skips an outsider, and writes nothing to GitHub", async () => {
+    const w = world();
+    w.save({ name: 'Reviews for you', source: { kind: 'reviews' } });
+    await w.watcher.check();
+    w.fake.write((s) => {
+      s.prs = [pr(5, { fork: true, headOwner: 'stranger', headRefName: 'fix-typo', association: 'COLLABORATOR' }), pr(6, { association: 'NONE' })];
+    });
+    await w.tick();
+    expect(w.started.map((s) => s.draft.pullRequest)).toEqual([{ number: 5, repo: 'o/r', branch: 'stranger/fix-typo', fork: true }]);
+    expect(w.store.events().find((e) => e.key === '#6')).toMatchObject({ status: 'skipped', reason: "opened by someone outside the repository's collaborators" });
+    expect(w.fake.calls().filter((c) => c[0] === 'pr' && c[1] !== 'list' && c[1] !== 'view')).toEqual([]);
+  });
+});
+
+describe('moving finished work to Done', () => {
+  /** A trigger with one issue started: session-1 works on it. */
+  async function startedOne(over: Partial<TriggerSave> = {}) {
+    const w = world();
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, ...over });
+    await w.watcher.check();
+    w.fake.write((s) => s.issues!.push(issue(5)));
+    await w.tick();
+    return w;
+  }
+
+  it('leaves a finished session in To review when the trigger doesn\'t say so', async () => {
+    const w = await startedOne();
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: true });
+    await w.tick(MINUTE);
+    expect(w.done).toEqual([]);
+  });
+
+  it('moves a session to Done once its turn ended cleanly and its transcript is quiet, and only once', async () => {
+    const w = await startedOne({ doneWhenFinished: true });
+    // Still working: nothing yet.
+    await w.tick(MINUTE);
+    expect(w.done).toEqual([]);
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: true });
+    // The transcript just changed: it waits for it to be quiet, or new activity would bring it straight back.
+    w.activity.set('session-1', w.now());
+    await w.tick(1_000);
+    expect(w.done).toEqual([]);
+    await w.tick(DONE_QUIET_MS);
+    expect(w.done).toEqual(['session-1']);
+    expect(w.store.events()).toMatchObject([{ key: '#5', doneAt: w.now() }]);
+    // Brought back from Done and finished again: it stays.
+    w.watcher.turnEnded('session-1', { ok: true });
+    await w.tick(MINUTE);
+    expect(w.done).toEqual(['session-1']);
+  });
+
+  it('lets the branch go only in a worktree the trigger made', async () => {
+    for (const workspace of ['worktree', 'current'] as const) {
+      const w = await startedOne({ doneWhenFinished: true, draft: { workspace } as TriggerSave['draft'] });
+      w.sessions.set('session-1', null);
+      w.watcher.turnEnded('session-1', { ok: true });
+      await w.tick(DONE_QUIET_MS + 1_000);
+      expect(w.doneTargets).toEqual([{ sessionId: 'session-1', worktree: workspace === 'worktree' }]);
+    }
+  });
+
+  it('leaves a session that failed or was stopped for you', async () => {
+    const w = await startedOne({ doneWhenFinished: true });
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: false });
+    await w.tick(MINUTE);
+    w.watcher.turnEnded('session-1', { ok: false, stopped: true });
+    await w.tick(MINUTE);
+    expect(w.done).toEqual([]);
+  });
+
+  it('moves a pipeline run to Done when it is done, not when it stopped', async () => {
+    const w = world();
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, start: { kind: 'pipeline', pipelineId: 'builtin-plan-execute-validate-push' }, doneWhenFinished: true });
+    await w.watcher.check();
+    w.fake.write((s) => s.issues!.push(issue(1), issue(2)));
+    await w.tick();
+    w.setRun('run-1', 'waiting');
+    w.setRun('run-2', 'stopped');
+    await w.tick(MINUTE);
+    expect(w.done).toEqual([]);
+    w.setRun('run-1', 'done');
+    await w.tick(MINUTE);
+    expect(w.done).toEqual(['run:run-1']);
+    expect(w.doneTargets).toEqual([{ runId: 'run-1', worktree: true }]);
+  });
+
+  it('keeps the choice across a save and a read', () => {
+    const w = world();
+    const t = w.save({ source: { kind: 'ci' }, doneWhenFinished: true });
+    expect(w.store.get(t.id)?.doneWhenFinished).toBe(true);
+    expect(w.store.get(w.save({ id: t.id, source: { kind: 'ci' } }).id)?.doneWhenFinished).toBe(false);
   });
 });

@@ -8,7 +8,7 @@ import { fieldQuery, insertField, promptSegments } from '../../state/triggerProm
  * the list (and only the list). The chips are drawn on a layer behind the text, which keeps its own caret and
  * selection, so the text stays plain text.
  */
-export function TriggerPromptField({ value, onChange, kind, id, describedBy, invalid }: { value: string; onChange(value: string): void; kind: 'ci' | 'issues'; id: string; describedBy?: string; invalid?: boolean }) {
+export function TriggerPromptField({ value, onChange, kind, id, describedBy, invalid }: { value: string; onChange(value: string): void; kind: 'ci' | 'issues' | 'reviews'; id: string; describedBy?: string; invalid?: boolean }) {
   const listId = useId();
   const ref = useRef<HTMLTextAreaElement>(null);
   const behind = useRef<HTMLDivElement>(null);
@@ -23,6 +23,8 @@ export function TriggerPromptField({ value, onChange, kind, id, describedBy, inv
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 66), 260)}px`;
+    // Setting the height can move the text box's scroll: the chips follow it.
+    if (behind.current) behind.current.scrollTop = el.scrollTop;
   }, [value]);
 
   const look = (text: string, caret: number) => {
@@ -57,10 +59,12 @@ export function TriggerPromptField({ value, onChange, kind, id, describedBy, inv
     }
   };
 
-  const box = 'col-start-1 row-start-1 w-full rounded-lg px-3 py-2.5 text-body leading-6 whitespace-pre-wrap break-words';
+  // Both layers keep room for a scroll bar, so a long prompt wraps at the same place in each.
+  const box = 'w-full rounded-lg px-3 py-2.5 text-body leading-6 whitespace-pre-wrap break-words [scrollbar-gutter:stable]';
   return (
-    <div className="relative grid">
-      <div ref={behind} aria-hidden className={`${box} pointer-events-none overflow-hidden border border-transparent text-text`} data-trigger-prompt-chips>
+    <div className="relative">
+      {/* The text box sets the size: the chips' layer covers it exactly and scrolls with it, so a long prompt stays inside. */}
+      <div ref={behind} aria-hidden className={`${box} pointer-events-none absolute inset-0 overflow-hidden border border-transparent text-text`} data-trigger-prompt-chips>
         {promptSegments(value).map((part, i) =>
           part.field ? (
             // The same font and size as the text in front, so the chip sits exactly under it.
@@ -98,7 +102,7 @@ export function TriggerPromptField({ value, onChange, kind, id, describedBy, inv
         onScroll={(e) => {
           if (behind.current) behind.current.scrollTop = e.currentTarget.scrollTop;
         }}
-        className={`${box} resize-none border bg-transparent text-transparent caret-text outline-none selection:bg-accent/30 selection:text-transparent focus:border-accent-ink ${invalid ? 'border-error' : 'border-edge'}`}
+        className={`${box} relative block resize-none border bg-transparent text-transparent caret-text outline-none selection:bg-accent/30 selection:text-transparent focus:border-accent-ink ${invalid ? 'border-error' : 'border-edge'}`}
         data-trigger-prompt
       />
       {open && list && (

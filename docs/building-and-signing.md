@@ -6,7 +6,7 @@ How to package Seshboard as a Mac app, and how to sign and notarise it with an A
 
 ## Building the app
 
-Needs macOS on Apple Silicon, Node 24+ and npm 11+.
+Needs macOS on Apple Silicon, Node 24+, npm 11+ and Swift (Xcode or its Command Line Tools, `xcode-select --install`). Swift builds the Dock tile plug-in ([`native/dock-tile`](../apps/desktop/native/dock-tile/DockTilePlugIn.swift)), which keeps the chosen app icon in the Dock after Seshboard quits. `scripts/afterPack.mjs` builds it into `Contents/PlugIns`, and `scripts/macSign.mjs` signs it, since electron-builder skips that folder.
 
 ```bash
 npm install

@@ -2,6 +2,7 @@ import { ChevronsUpDown, ListFilter } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSidebarFolds } from '../../state/sidebarFoldsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -11,10 +12,12 @@ import { viewButtonLabel } from './sidebarView.ts';
  * The View button beside the project filter: Group by (State or Project), Sort (Recent or Quickest to unblock), Show
  * (Done and Compact rows), and Collapse all projects while grouped by project. It says the grouping's name.
  */
-export function SidebarViewButton({ projects }: { projects: readonly string[] }) {
+export function SidebarViewButton({ projects, withProjects = false }: { projects: readonly string[]; /** Minimal mode: the project filter is in this menu, as it has no row of its own. */ withProjects?: boolean }) {
   const prefs = usePreferences((s) => s.prefs);
   const update = usePreferences((s) => s.update);
   const filtered = useProjects((s) => s.filter !== null);
+  const filter = useProjects((s) => s.filter);
+  const added = useProjects((s) => s.projects);
   const folded = useSidebarFolds((s) => s.folded);
   const [open, setOpen] = useState<{ x: number; y: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -22,7 +25,16 @@ export function SidebarViewButton({ projects }: { projects: readonly string[] })
   const allFolded = projects.length > 0 && projects.every((key) => folded.has(key));
   const option = (value: string) => ({ 'data-sidebar-view-option': value });
 
+  const projectEntries: MenuEntry[] = withProjects
+    ? [
+        { heading: 'Project' },
+        { label: 'All projects', checked: filter === null, data: option('project-all'), onSelect: () => useProjects.getState().setFilter(null) },
+        ...addedProjects(added).map((p): MenuEntry => ({ label: p.name, checked: filter === p.root, data: option(`project:${p.root}`), onSelect: () => useProjects.getState().setFilter(p.root) })),
+        'separator',
+      ]
+    : [];
   const entries: MenuEntry[] = [
+    ...projectEntries,
     { heading: 'Group by' },
     { label: 'State', hint: 'Needs you, Working…', checked: prefs.sidebarGroup === 'state', data: option('group-state'), onSelect: () => update({ sidebarGroup: 'state' }) },
     { label: 'Project', checked: prefs.sidebarGroup === 'project', data: option('group-project'), onSelect: () => update({ sidebarGroup: 'project' }) },

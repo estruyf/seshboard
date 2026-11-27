@@ -1,5 +1,5 @@
-import { AtSign, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { AtSign, Camera, ClipboardPaste, Copy, CornerDownLeft, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
@@ -14,22 +14,25 @@ import { paletteRoom, type PaletteRoom } from './paletteRoom.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
+import { countRender, RENDER_COUNTS } from '../../lib/renderCounts.ts';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
 import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
-import { MAX_ATTACHMENTS } from './images.ts';
+import { MAX_ATTACHMENTS, mergeAttachments } from './images.ts';
+import { screenshotOutcome } from './screenshot.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
-import { hasUltrathink, ultrathinkSend } from './ultrathink.ts';
+import { ultrathinkSend } from './ultrathink.ts';
 import { UltrathinkMirror } from './UltrathinkMirror.tsx';
+import { hasMarks, splitMarks } from './messageMarks.ts';
 import { useUltrathink } from '../../state/ultrathinkStore.ts';
 import { branchOf, linkableSessions } from './sessionLinks.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { shortAge } from '../../lib/format.ts';
 import { useAttachments } from './useAttachments.ts';
-import { ariaKeysFor, formatKeys, keysFor, matches, type ShortcutId } from '../../lib/shortcuts.ts';
+import { ariaShortcut, formatKeys, keysFor, matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { submitKey } from '../newSession/startMenu.ts';
 import { blanksLeft, fillMessage, scopeKey, slashScore, startFill, type FillState } from '../savedPrompts/fillModel.ts';
 import { PromptFiller, type PromptFillerHandle } from '../savedPrompts/PromptFiller.tsx';
@@ -40,7 +43,10 @@ import { pastedGithubLink, rowsOf, SEARCH_DEBOUNCE_MS, withoutLink } from '../gi
 import { chipItem, reasonLine } from '../github/githubText.ts';
 import { cachedSearch, forgetGithub, githubStatus, rememberSearch } from '../github/githubCache.ts';
 import { GithubStateIcon } from '../github/GithubParts.tsx';
-import { usePreferences } from '../../state/preferencesStore.ts';
+import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
+import { EscapeStopHint } from './EscapeStopHint.tsx';
+import { useEscapeStop } from './useEscapeStop.ts';
+import { quickReplyLabel, quickReplyOf } from './quickReply.ts';
 import { startFromGithub } from '../../state/githubStartStore.ts';
 
 /**
@@ -113,6 +119,8 @@ export interface ComposerProps {
   status?: ReactNode;
   /** Last on the tray: the context ring (with plan usage in its tooltip while the terminal is open below). */
   meter?: ReactNode;
+  /** Minimal mode's line above the box: usage and context past 80% (`minimalAlert`), or null. */
+  alert?: string | null;
   /** A shortcut shown on the submit button, like `⌘↵`. */
   submitHint?: string;
   /** A taller prompt that is the main thing on screen. */
@@ -145,6 +153,13 @@ export interface ComposerProps {
   /** Returning `false` means nothing was sent (the focus limit asked and you cancelled): the prompt stays as it is. */
   onSubmit(text: string, attachments: ImageAttachment[], requested?: boolean, parts?: SentParts): Promise<void | false> | void | false;
   onInterrupt?(): void;
+  /** The agent that works in this session ("Claude", "GitHub Copilot"), named where Esc and Stop stop it. Claude when unset. */
+  agent?: string;
+  /**
+   * Claude Code's guess at your next message after its turn ("go"): in an empty box, a chip that sends it and grey
+   * text that Tab takes (Settings › Conversation › Suggested replies).
+   */
+  reply?: string | null;
   onCycleMode?(): void;
   /**
    * Ask about this session: the Ask button before Send or Stop, and `/btw`. With text in the box, Ask asks it
@@ -213,7 +228,31 @@ function isTypingElsewhere(prompt: HTMLElement): boolean {
   return active.matches('input, textarea, select, [contenteditable]') || !!active.closest('[role=menu], [role=dialog], [role=alertdialog], [role=listbox]');
 }
 
-export function Composer(props: ComposerProps) {
+/**
+ * The message box. Memoised: give it stable callbacks (`useCallback`, `useStableCallback`) and memoised objects and
+ * elements, and it doesn't render with every render of its view.
+ */
+export const Composer = memo(function Composer(props: ComposerProps) {
+  if (RENDER_COUNTS) countRender('Composer');
+  // Minimal mode: the tray's chips are one line in the box (`chipSummary`), opened as a popover over it.
+  const minimal = useMinimal();
+  const [chipSummary, setChipSummary] = useState('');
+  const [chipsOpen, setChipsOpen] = useState(false);
+  const closeChips = useCallback(() => setChipsOpen(false), []);
+  useEffect(() => {
+    if (!chipsOpen) return;
+    // A press outside the popover and its summary closes it; the menus its chips open are outside it too, so they count.
+    const onDown = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[data-composer-tray], [data-composer-summary], [role="menu"], [role="listbox"], [role="dialog"]')) return;
+      setChipsOpen(false);
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, [chipsOpen]);
+  useEffect(() => {
+    if (!minimal) setChipsOpen(false);
+  }, [minimal]);
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [saved] = useState(() => (props.draftKey === undefined ? undefined : useDrafts.getState().drafts[props.draftKey]));
@@ -248,10 +287,16 @@ export function Composer(props: ComposerProps) {
   const left = fillState ? blanksLeft(fillState) : [];
   /** Where "Ultrathink this turn" is kept for this box: its draft key, for a Claude Code box. */
   const armedKey = props.ultrathink && props.draftKey !== undefined ? props.draftKey : null;
-  /** The word is in the box: it is drawn under the text, in colour. */
-  const marked = !!props.ultrathink && hasUltrathink(text);
+  /** The word ultrathink, and a known slash command at the start: drawn under the text, in colour. */
+  const commandNames = useMemo(() => props.commands.map((c) => c.name), [props.commands]);
+  // A side question and the context after a filled prompt don't run commands.
+  const marks = useMemo(() => splitMarks(text, { commands: sideToken || fillState ? [] : commandNames, ultrathink: !!props.ultrathink }), [text, commandNames, props.ultrathink, sideToken, fillState]);
+  const marked = hasMarks(marks);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [shooting, setShooting] = useState(false);
+  // Every system has an area picker (on Linux, a screenshot tool); main says when none is installed.
+  const canShoot = typeof window.seshboard?.takeScreenshot === 'function';
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -317,6 +362,8 @@ export function Composer(props: ComposerProps) {
   const [pasteOffer, setPasteOffer] = useState<ReturnType<typeof pastedGithubLink>>(null);
   const githubRoot = props.github?.root ?? null;
   const ids = useId();
+  // Esc stops Claude, by default only when pressed twice, so a stray one never stops a turn.
+  const escapeStop = useEscapeStop(!!props.running && !!props.onInterrupt, props.onInterrupt);
   const history = useRef<PromptHistory | null>(null);
   history.current ??= new PromptHistory(props.history);
   /** Read out after ↑ or ↓ brings back a message (screen readers only). */
@@ -345,7 +392,11 @@ export function Composer(props: ComposerProps) {
     const value = loadText(props.preset!.text);
     setFill(null);
     if (props.preset!.attachments) setAttachments(props.preset!.attachments);
-    if (props.preset!.context) setLocalChips(addChips([], props.preset!.context));
+    // A box with a draft keeps its chips in the drafts store (New session's link to a session); a queued item's live here.
+    if (props.preset!.context) {
+      if (draftKey !== undefined) useDrafts.getState().addContext(draftKey, props.preset!.context);
+      else setLocalChips(addChips([], props.preset!.context));
+    }
     history.current!.reset();
     closePalette();
     requestAnimationFrame(() => {
@@ -615,6 +666,26 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     if (text) setSuggestion(null);
   }, [text]);
+  const quickRepliesOn = usePreferences((p) => p.prefs.quickReplies);
+  // A mod's suggestion is asked for there and then, so it goes before Claude Code's.
+  const reply = suggestion
+    ? null
+    : quickReplyOf({ reply: props.reply, enabled: quickRepliesOn, text, chips: chips.length, attachments: attachments.length, busyWith: !!fillState || sideToken, running: !!props.running, disabled: !!props.disabledReason });
+  /** The chip: sends the reply as it is, as if typed and sent. */
+  const sendReply = async (value: string) => {
+    if (sending) return;
+    setSending(true);
+    setNotice(null);
+    try {
+      await props.onSubmit(value, [], false, { typed: value, context: [] });
+      history.current!.reset();
+    } catch (error) {
+      setNotice(`Not sent: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSending(false);
+      ref.current?.focus();
+    }
+  };
   const openPicker = () => {
     if (draftKey !== undefined && cwd && !props.disabledReason) useComposerTargets.getState().openPicker({ key: draftKey, cwd });
   };
@@ -859,11 +930,17 @@ export function Composer(props: ComposerProps) {
       setMenuAt(contextMenuPoint(null, event.currentTarget.getBoundingClientRect(), window.innerHeight));
       return;
     }
-    // Tab takes a mod's suggestion into the empty box.
+    // Tab takes a mod's suggestion, or Claude Code's suggested reply, into the empty box.
     if (suggestion && event.key === 'Tab' && !event.shiftKey && !text) {
       event.preventDefault();
       setText(suggestion);
       setSuggestion(null);
+      return;
+    }
+    if (reply && matches(event.nativeEvent, 'composer.take-reply')) {
+      event.preventDefault();
+      setText(reply);
+      requestAnimationFrame(() => ref.current?.setSelectionRange(reply.length, reply.length));
       return;
     }
     if (event.nativeEvent.isComposing) return;
@@ -952,6 +1029,9 @@ export function Composer(props: ComposerProps) {
     } else if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
       event.preventDefault();
       openPicker();
+    } else if (canShoot && matches(event.nativeEvent, 'composer.screenshot')) {
+      event.preventDefault();
+      void screenshot();
     } else if (send) {
       event.preventDefault();
       void (send === 'secondary' ? submitSecondary() : submit());
@@ -959,7 +1039,7 @@ export function Composer(props: ComposerProps) {
       // With a dialog, menu or popover open, Escape closes that; it must never also stop Claude.
       if (document.querySelector('[role=dialog], [role=alertdialog], [role=menu], [role=listbox], [data-context-breakdown]')) return;
       event.preventDefault();
-      props.onInterrupt?.();
+      escapeStop.press();
     } else if (matches(event.nativeEvent, 'mode.cycle') && props.onCycleMode) {
       event.preventDefault();
       props.onCycleMode();
@@ -990,6 +1070,23 @@ export function Composer(props: ComposerProps) {
       updatePalette(value, caret);
     });
   };
+  /** Take a screenshot: Seshboard steps aside, the area picker opens, and the picture is attached here. */
+  const screenshot = async () => {
+    if (!canShoot || shooting || disabled) return;
+    setShooting(true);
+    setNotice(null);
+    try {
+      const outcome = screenshotOutcome(await window.seshboard?.takeScreenshot());
+      if (outcome.image) {
+        const { next, notice: left } = mergeAttachments(attachments, [outcome.image], 1);
+        setAttachments(next);
+        setNotice(left ?? outcome.notice);
+      } else setNotice(outcome.notice);
+      ref.current?.focus();
+    } finally {
+      setShooting(false);
+    }
+  };
   const hasText = !!text.trim() || chips.length > 0 || !!fillState;
   const hasMessage = hasText || attachments.length > 0;
   const attach = (
@@ -1017,6 +1114,20 @@ export function Composer(props: ComposerProps) {
         aria-label="Attach images"
         data-attach
       />
+      {canShoot && (
+        <Button
+          variant="quiet"
+          size="sm"
+          iconOnly
+          icon={<Camera size={15} />}
+          onClick={() => void screenshot()}
+          disabled={disabled || shooting}
+          shortcut="composer.screenshot"
+          aria-label={shooting ? 'Taking a screenshot…' : 'Take a screenshot'}
+          aria-busy={shooting}
+          data-screenshot
+        />
+      )}
       {addContext && (
         <Button
           variant="quiet"
@@ -1057,6 +1168,12 @@ export function Composer(props: ComposerProps) {
       }}
     >
       <DropOverlay drop={drop} />
+      {/* Minimal mode: usage and context only once they pass 80%, as one line above the box. */}
+      {minimal && props.alert && (
+        <p className="mx-4 mb-1 truncate text-meta text-caution" role="status" data-composer-alert>
+          {props.alert}
+        </p>
+      )}
       {palette?.kind === 'issue' &&
         palette.github &&
         (palette.github.hint ? (
@@ -1199,6 +1316,23 @@ export function Composer(props: ComposerProps) {
             setLocalChips((current) => current.flatMap((chip) => (chip.id !== id ? [chip] : chip.kind !== 'text' ? [chip] : value.trim() ? [{ ...chip, text: value }] : [])));
           }}
         />
+        {reply && (
+          <div className="mb-2 flex min-w-0 items-center gap-1.5" data-quick-reply-row>
+            <Button
+              size="sm"
+              icon={<CornerDownLeft size={12} aria-hidden />}
+              disabled={sending}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void sendReply(reply)}
+              aria-label={`Send suggested reply: ${reply}`}
+              data-tooltip={`Send "${reply}". ${formatKeys(keysFor('composer.take-reply'))} puts it in the box.`}
+              className="min-w-0 max-w-full"
+              data-quick-reply
+            >
+              <span className="truncate">{quickReplyLabel(reply)}</span>
+            </Button>
+          </div>
+        )}
         {pasteOffer && (
           <div className="mb-2 flex items-center gap-1.5 text-meta text-muted" data-github-paste-offer>
             <Button size="sm" icon={<GithubStateIcon type={pasteOffer.type} state="open" size={12} />} onMouseDown={(e) => e.preventDefault()} onClick={() => void attachPasted()} data-github-paste-attach>
@@ -1234,7 +1368,7 @@ export function Composer(props: ComposerProps) {
           )}
           {/* The wrapper holds the box's place in the row, so the coloured copy of the text can sit over exactly the box. */}
           <div className={`relative min-w-0 ${props.large ? 'flex min-h-0 flex-[0_1_auto] flex-col' : 'flex-1'}`}>
-          {marked && <UltrathinkMirror text={text} textarea={ref} className={boxType} disabled={disabled} />}
+          {marked && <UltrathinkMirror text={text} parts={marks} textarea={ref} className={boxType} disabled={disabled} />}
           <textarea
             data-composer
             data-history={props.history?.length ?? 0}
@@ -1243,10 +1377,10 @@ export function Composer(props: ComposerProps) {
             rows={1}
             disabled={disabled}
             // Under a saved prompt the placeholder is drawn over the box, in two shades.
-            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : fillState ? undefined : (suggestion ?? props.placeholder))}
+            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : fillState ? undefined : (suggestion ?? reply ?? props.placeholder))}
             aria-label={sideToken ? 'Question about this session' : fillState ? 'More context, sent after the prompt' : 'Message to Claude'}
             aria-describedby={`${ids}-hint`}
-            aria-keyshortcuts={props.running && props.onInterrupt ? ariaKeysFor('claude.stop') : undefined}
+            aria-keyshortcuts={props.running && props.onInterrupt ? ariaShortcut('escape') : undefined}
             // While the / or @ list is open, ↑ ↓ move through it without leaving the box.
             aria-autocomplete="list"
             aria-controls={palette && !palette.github?.hint ? `${ids}-palette` : undefined}
@@ -1308,14 +1442,29 @@ export function Composer(props: ComposerProps) {
           </div>
           {/* The keys are read out with the message box; on screen the placeholder carries the hint. */}
           <span id={`${ids}-hint`} className="sr-only">
-            {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${githubRoot ? ', # for issues' : ''}${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
+            {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `${escapeStop.twice ? 'Esc twice stops' : 'Esc stops'} ${props.agent ?? 'Claude'}.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${githubRoot ? ', # for issues' : ''}${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
             {/* Said when it changes; empty (but there) once every required blank is filled. */}
             <span role="status" aria-live="polite" className={`text-meta text-caution ${left.length ? '' : 'sr-only'}`} data-blanks-left={left.length || undefined}>
               {left.length ? blanksLeftText(left.length) : ''}
             </span>
+            <EscapeStopHint armed={escapeStop.armed} agent={props.agent} />
             {props.status}
+            {/* Minimal mode: the chips as one quiet line; a click opens them as they are, in a popover over the box. */}
+            {minimal && (props.controls || props.info || props.meter || props.tools) && (
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={chipsOpen}
+                aria-label={`Options for the next message: ${chipSummary || 'model, mode and profile'}`}
+                onClick={() => setChipsOpen((open) => !open)}
+                className={`min-w-0 max-w-64 truncate rounded-md px-1.5 py-0.5 text-meta hover:bg-border/50 hover:text-text ${chipsOpen ? 'bg-border/50 text-text' : 'text-muted'}`}
+                data-composer-summary
+              >
+                {chipSummary || 'Options'}
+              </button>
+            )}
             {props.dropHint && !text && attachments.length === 0 && !disabled && <span className="text-meta text-muted @max-[860px]:hidden">Paste or drop images and files</span>}
             {side && (
               <span className="relative flex">
@@ -1340,7 +1489,7 @@ export function Composer(props: ComposerProps) {
             {sideToken ? null : (
               <>
                 {props.running && props.onInterrupt && (
-                  <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow onClick={props.onInterrupt} data-tooltip={`Stop Claude (${formatKeys(keysFor('claude.stop'))})`} data-composer-stop>
+                  <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} onClick={props.onInterrupt} data-tooltip={`Stop ${props.agent ?? 'Claude'} (${formatKeys(keysFor('claude.stop'))}${escapeStop.twice ? ' twice' : ''})`} data-composer-stop>
                     Stop
                   </Button>
                 )}
@@ -1365,7 +1514,7 @@ export function Composer(props: ComposerProps) {
                       data-composer-submit
                       onClick={() => void submit()}
                       disabled={disabled || sending || !hasMessage || left.length > 0}
-                      className="disabled:pointer-events-none"
+                      className={`disabled:pointer-events-none ${minimal ? 'rounded-full!' : ''}`}
                     >
                       {sending ? 'Sending…' : (props.submitLabel ?? (props.running ? 'Queue' : 'Send'))}
                     </Button>
@@ -1376,10 +1525,12 @@ export function Composer(props: ComposerProps) {
           </div>
         </div>
       </div>
-      {(props.controls || props.info || props.meter || props.tools) && <ComposerTray controls={props.controls} tools={props.tools} info={props.info} usage={props.usage} meter={props.meter} />}
+      {(props.controls || props.info || props.meter || props.tools) && (
+        <ComposerTray controls={props.controls} tools={props.tools} info={props.info} usage={props.usage} meter={props.meter} minimal={minimal ? { open: chipsOpen, onSummary: setChipSummary, onClose: closeChips } : undefined} />
+      )}
     </div>
   );
-}
+});
 
 /** A session in the `@` list: its status dot, title, branch and how long ago it was active. */
 function LinkOption({ session }: { session: SessionSummary }) {

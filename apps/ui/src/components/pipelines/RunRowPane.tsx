@@ -13,7 +13,6 @@ import { Button } from '../ui/Button.tsx';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { paneHandle, paneHeader, type PaneProps } from '../computers/ComputerView.tsx';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { useSessionMenu } from '../sidebar/useSessionMenu.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
 import { TriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
@@ -48,7 +47,6 @@ export function RunRowPane({ runId, pane }: { runId: string; pane: PaneProps }) 
         data-scrolled={!edge.atTop || undefined}
         {...paneHeader(pane)}
       >
-        {pane.leading && <SidebarToggle />}
         <span className="flex size-[22px] shrink-0 items-center justify-center rounded-md bg-pipeline/15 @max-[400px]:hidden">
           <ListTree size={14} className="text-pipeline" aria-hidden />
         </span>

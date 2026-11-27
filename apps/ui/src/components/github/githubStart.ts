@@ -85,7 +85,7 @@ export const forkCaution = (number: number) => `#${number} is from a fork. Claud
 /** A link's or the list's item from another repository than the project's. */
 export const otherRepository = (type: GithubItemType, projectName: string) => `This ${type === 'pr' ? 'pull request' : 'issue'} is from another repository than ${projectName}.`;
 
-/** The banner over New session when a link filled it in. */
-export const linkBanner = (type: GithubItemType, number: number) => `Opened from a link with ${type === 'pr' ? 'pull request' : 'issue'} #${number}. Check the prompt, then start.`;
+/** The banner over New session when a link, or the browser's Start session (`from`), filled it in. */
+export const linkBanner = (type: GithubItemType, number: number, from?: 'browser') => `Opened from ${from === 'browser' ? 'the browser' : 'a link'} with ${type === 'pr' ? 'pull request' : 'issue'} #${number}. Check the prompt, then start.`;
 /** What the banner adds when the link also asked to start on its own. */
 export const NO_AUTOSTART = 'Links with an issue or pull request never start on their own.';

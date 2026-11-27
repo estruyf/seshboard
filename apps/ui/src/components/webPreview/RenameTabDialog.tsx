@@ -52,7 +52,7 @@ export function RenameTabDialog({ tab, onClose }: { tab: BrowserTab; onClose(): 
           maxLength={TAB_NAME_MAX}
           onChange={(e) => setValue(e.target.value)}
           placeholder={tab.title}
-          className="h-7 w-full rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink"
+          className="field h-7 w-full px-2.5 text-ui outline-none"
           data-rename-tab-input
         />
       </form>

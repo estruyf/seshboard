@@ -1,5 +1,9 @@
 import { trashName } from '../../lib/platform.ts';
-import { ChevronRight, ExternalLink, Maximize2, MessageSquareText, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
+import { PanelSize } from '../transcript/PanelSize.tsx';
+import { useThemes } from '../../state/themeStore.ts';
+import { languageFromPath } from '../../lib/highlight.ts';
+import { useHighlightedLines } from '../transcript/useHighlightedLines.ts';
+import { ChevronRight, ExternalLink, FileText, MessageSquareText, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
 import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { joinPath, sessionFileKind, type ChangedFile, type ChangesBase, type DiffImage, type GitChanges } from '@seshboard/protocol/client';
@@ -9,6 +13,7 @@ import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { useDiffComments, useSessionComments } from '../../state/diffCommentsStore.ts';
+import { useFilesPanel } from '../../state/filesPanelStore.ts';
 import { useMemoryView } from '../../state/memoryStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
@@ -97,6 +102,19 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
     // `version` changes whenever git is checked again, so an open diff follows new edits.
   }, [client, cwd, base, path, version]);
   const rows = useMemo(() => (state && 'diff' in state ? parseUnifiedDiff(state.diff) : []), [state]);
+  // The code lines in the theme's code colours: each row's index among them, and their HTML once highlighted.
+  const codeRows = useMemo(() => {
+    const index = new Map<number, number>();
+    const texts: string[] = [];
+    rows.forEach((row, i) => {
+      if (row.kind === 'hunk' || row.kind === 'note') return;
+      index.set(i, texts.length);
+      texts.push(row.text);
+    });
+    return { index, texts };
+  }, [rows]);
+  const syntaxKey = useThemes((s) => s.syntaxKey);
+  const lineHtml = useHighlightedLines(codeRows.texts, languageFromPath(path), syntaxKey);
   // git has no lines for an image: it shows as the image before and after instead.
   const image = rows.length === 1 && rows[0]!.kind === 'note' && rows[0]!.text === 'Binary file' && sessionFileKind(path) === 'image';
   const [images, setImages] = useState<{ before: DiffImage | null; after: DiffImage | null } | 'failed' | null>(null);
@@ -262,6 +280,7 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
             <div
               key={i}
               data-diff-row={i}
+              data-diff-kind={row.kind}
               data-diff-picked={(picked && i >= picked.first && i <= picked.last) || undefined}
               className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed text-text/80' : 'text-muted'}`}
               onMouseEnter={drag ? () => dragRef.current && dragTo({ ...dragRef.current, to: i }) : undefined}
@@ -282,7 +301,12 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
                   </span>
                 </span>
               </span>
-              <span className={`pr-3 ${wrap ? 'min-w-0 break-all whitespace-pre-wrap' : 'whitespace-pre'}`}>{row.text || ' '}</span>
+              {lineHtml && codeRows.index.has(i) && row.text ? (
+                // Shiki escapes the code; the HTML is spans with colour variables only.
+                <span className={`shiki pr-3 ${wrap ? 'min-w-0 break-all whitespace-pre-wrap' : 'whitespace-pre'}`} dangerouslySetInnerHTML={{ __html: lineHtml[codeRows.index.get(i)!]! }} />
+              ) : (
+                <span className={`pr-3 ${wrap ? 'min-w-0 break-all whitespace-pre-wrap' : 'whitespace-pre'}`}>{row.text || ' '}</span>
+              )}
             </div>
           )}
           {under(i)}
@@ -297,8 +321,9 @@ const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, 
 /**
  * The session's changes in git: uncommitted work (stage, unstage, revert), or the
  * whole branch compared with where it left its base branch (what a merge or PR contains).
+ * Memoised: it renders again when a prop changes, `changes` by identity (each check is a new load).
  */
-export function ChangesPanel({
+export const ChangesPanel = memo(function ChangesPanel({
   sessionId,
   cwd,
   changes,
@@ -453,8 +478,8 @@ export function ChangesPanel({
           data-changes-resize
         />
       )}
-      {tabs?.(<Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />)}
-      <div className="edge-b flex h-10 shrink-0 items-center gap-2 px-3" data-scrolled={!listEdge.atTop || undefined} data-changes-header>
+      {tabs?.(<Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />)}
+      <div className="@container/toolbar edge-b flex h-10 shrink-0 items-center gap-2 px-3" data-scrolled={!listEdge.atTop || undefined} data-changes-header>
         {/* Arrow keys move between the two, like any radio group; only the chosen one is a Tab stop. */}
         <SegmentedControl
           mode="radio"
@@ -487,20 +512,10 @@ export function ChangesPanel({
           aria-label="Wrap long lines"
           data-diff-wrap-toggle
         />
-        <Button
-          variant="quiet"
-          size="sm"
-          iconOnly
-          icon={expanded ? <Minimize2 size={13} aria-hidden /> : <Maximize2 size={13} aria-hidden />}
-          selected={expanded}
-          onClick={() => toggleExpanded()}
-          aria-pressed={expanded}
-          data-tooltip={expanded ? 'Back to a side panel' : 'Expand to the whole view'}
-          aria-label={expanded ? 'Back to a side panel' : 'Expand changes to the whole view'}
-          data-changes-expand
-        />
+        {/* Side, Half or Full (expanded), as every panel on the right. */}
+        <PanelSize room="lg" full={expanded} onChange={(full) => toggleExpanded(full)} />
         <Button variant="quiet" size="sm" iconOnly icon={<RefreshCw size={12} />} onClick={onRefresh} data-tooltip="Check git for changes again" aria-label="Refresh changes" />
-        {!tabs && <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />}
+        {!tabs && <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />}
       </div>
 
       {outside.length > 0 && (
@@ -579,6 +594,19 @@ export function ChangesPanel({
                   )}
                   {/* Shown on hover, and while the row has keyboard focus so Tab can reach them. */}
                   <span className="hidden shrink-0 items-center group-focus-within:flex group-hover:flex">
+                    {file.status !== 'deleted' && changes.root && (
+                      // Files' viewer, in front of Changes on the right: the whole file, with the lines Claude changed marked.
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        icon={<FileText size={12} />}
+                        data-tooltip="Open in Files"
+                        aria-label={`Open ${name} in Files`}
+                        onClick={() => useFilesPanel.getState().openFile(sessionId, joinPath(changes.root, file.path))}
+                        data-open-in-files
+                      />
+                    )}
                     {file.status !== 'deleted' && changes.root && (
                       <Button
                         variant="quiet"
@@ -667,4 +695,4 @@ export function ChangesPanel({
       )}
     </aside>
   );
-}
+});

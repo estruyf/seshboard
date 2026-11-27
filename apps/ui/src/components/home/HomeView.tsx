@@ -6,7 +6,8 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
 import { inScope } from '../../state/sidebarRows.ts';
 import { YesterdayCard } from '../activity/YesterdayCard.tsx';
 import { useMinute } from '../focus/useMinute.ts';
@@ -15,7 +16,7 @@ import { Button } from '../ui/Button.tsx';
 import { SchedulesCard } from '../schedules/SchedulesCard.tsx';
 import { StartInProject, UpNext } from './HomeBelow.tsx';
 import { NeedsLane, ReviewLane, WorkingLane } from './HomeLanes.tsx';
-import { HOME_WIDTH } from '../newSession/newSessionLayout.ts';
+import { HOME_HEIGHT, HOME_WIDTH } from '../newSession/newSessionLayout.ts';
 import { greeting, homeSessions, homeSummary, reviewSessions } from './homeModel.ts';
 import { HomeStartBox } from './HomeStartBox.tsx';
 import { HomeUsage } from './HomeUsage.tsx';
@@ -43,15 +44,13 @@ function Onboarding() {
 export function HomeView() {
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
-  const sessions = useSessions((s) => s.sessions);
-  const live = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
+  const baseRows = useRows((s) => s.rows);
   const projects = useProjects((s) => s.projects);
   const loaded = useProjects((s) => s.loaded);
   const quick = useQuickProjects('');
   const now = useMinute();
 
-  const rows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const rows = useMemo(() => baseRows.filter((row) => inScope(row, scope)), [baseRows, scope]);
   const { needs, working } = useMemo(() => homeSessions(rows), [rows]);
   const review = useMemo(() => reviewSessions(rows, { now, archiveAfterDays }), [rows, now, archiveAfterDays]);
   const nameOf = (root: string) => projects.get(root)?.name ?? basename(root);
@@ -79,7 +78,7 @@ export function HomeView() {
       <ViewHeader title="Home" />
       {/* The container: the breakpoints follow the view (beside the sidebar and panels), not the window. */}
       <div className="@container flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className={`mx-auto grid w-full ${HOME_WIDTH} grid-cols-[minmax(0,1fr)] gap-7 pt-2 pb-12`} data-home>
+        <div className={`mx-auto grid w-full ${HOME_WIDTH} ${HOME_HEIGHT} grid-cols-[minmax(0,1fr)] gap-7 pt-2 pb-12`} data-home>
           <header className="min-w-0">
             {/* The greeting, a little larger than text-title; the header names the view. */}
             <h2 className="text-hero leading-tight font-semibold">{greeting(now)}</h2>

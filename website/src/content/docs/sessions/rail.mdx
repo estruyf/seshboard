@@ -1,0 +1,86 @@
+---
+title: The rail and the title bar
+description: The rail at the left edge of the window, the panel beside it, and the title bar across the top.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import Related from '../../../components/Related.astro';
+
+The window has three parts around what you work on. The **title bar** runs across the top. The **rail** sits at the left edge, a column of icons that is always there. Next to it, the **panel** shows the list of the item you picked on the rail, such as your sessions or your projects.
+
+<Screenshot name="nav-rail" alt="The window with the rail at the left edge, Sessions selected, the sessions list in the panel next to it, and a session in the main area. The title bar runs across the top with Back, Forward and the search field." eager />
+
+## The title bar
+
+<Screenshot name="title-bar" alt="The title bar: Back and Forward on the left, the Search sessions and projects field in the middle, and the Panel, Tools panel and More buttons on the right" />
+
+- **Back** and **Forward** return to where you were, as in a browser: sessions, Home, New session, Settings pages, Projects and project pages. A session or project that is gone is skipped. The back and forward buttons on your mouse do the same, and the command palette has *Go back* and *Go forward*.
+- **Search sessions and projects** opens Go to (<Kbd shortcut="palette.goto" />). Type part of a session's title or a project's name and press <Kbd keys="enter" />.
+- **Panel** opens or closes the panel next to the rail (<Kbd shortcut="sidebar.toggle" />).
+- **Tools panel** shows or hides the panel on the right of a session: the [tools](/sessions/tool-rail/) you opened, or the list of tools to open there. Outside a session it is greyed out.
+- **More** (**⋯**) has **Customize the rail…** and **Settings**.
+
+<Os mac="The window's buttons sit at its left end." windows="Windows keeps its own title bar for the window's buttons, above this one." />
+
+## The rail
+
+From top to bottom:
+
+| Item | What it does |
+|---|---|
+| **+** | Starts a [new session](/new-session/form/) (<Kbd shortcut="session.new" />). Always first. |
+| **Home** | Opens [Home](/sessions/home/) (<Kbd shortcut="home" />), with your sessions in the panel. |
+| **Sessions** | Shows your sessions in the panel. See [The sidebar](/sessions/sidebar/). Its badge counts the sessions that need you. |
+| **Upcoming** | Opens [Upcoming](/sessions/upcoming/) (<Kbd shortcut="upcoming" />), with its projects in the panel, to show one. Its badge counts your queued items and active schedules, in yellow when a queued item is ready. |
+| **Activity** | Opens [Activity](/sessions/activity/) (<Kbd shortcut="activity" />), with its projects in the panel, to show one. Its tooltip says how many sessions you had today. |
+| **Browser** | Opens the [Browser view](/sessions/web-preview/) (<Kbd shortcut="browser.view" />), with its tabs in the panel. Only while the browser is on. |
+| **Projects** | Opens the [Projects view](/projects/projects-view/), with your projects in the panel. |
+| **Computers** | Shows who is [connected to this computer](/remote-access/) and the [computers you paired](/other-computers/). Rest the pointer on it, or click it. A green dot shows while Remote is on. Only with Remote on or a paired computer. |
+| **Running** | The [focus limit](/focus-limit/), such as `2/3`: how many sessions are going, out of how many. Shows what counts in the panel. Only while the focus limit is on. |
+| **Settings** | Opens [Settings](/settings/) (<Kbd shortcut="settings" />), with its sections in the panel. Always last. |
+
+Point at an item to see its name, what it holds and its shortcut.
+
+### The panel
+
+Every item but **+**, **Home** and **Computers** shows its own list in the panel, and that item is the selected one: it has a fill and a bar on the rail's left edge.
+
+- Click an item while the panel is closed, and the panel opens on its list.
+- Click it while the panel shows another list, and the panel switches to its list.
+- Click it while the panel shows its list, and the panel closes. **Settings** closes Settings instead.
+
+Items with a page, such as Upcoming or Projects, open their page in the main area too. Click **Sessions** to go back to your session, or Home when none is open, with your sessions in the panel. Going to a page another way, such as with its shortcut, also shows its list in the panel.
+
+Press <Kbd shortcut="sidebar.toggle" /> to open or close the panel. Drag its right edge to make it wider or narrower, or drag it all the way in to close it. Double-click the edge to reset the width. Seshboard remembers the width, and whether the panel is open.
+
+In a small window, the panel closes by itself so the main area keeps its room. It comes back as the window grows.
+
+### Peek at your sessions
+
+With the panel closed, rest the pointer on **Sessions** for a moment, or press <Kbd keys="arrowright" /> on it. A list of your sessions shows next to the rail, in the same groups as the sidebar. Click one to open it, or **Show all** to open the panel.
+
+<Screenshot name="nav-rail-peek" alt="The panel closed, and next to the rail's Sessions a list of sessions under Open, each with its age, and Show all at the bottom" />
+
+### With the keyboard
+
+The rail is one stop for <Kbd keys="tab" />. <Kbd keys="arrowup|arrowdown" /> move between its items, <Kbd keys="home" /> and <Kbd keys="end" /> go to the first and the last, and <Kbd keys="enter" /> or <Kbd keys="space" /> picks one.
+
+## Customize the rail
+
+Right-click the rail, or choose **More › Customize the rail…** in the title bar.
+
+<Screenshot name="nav-rail-customize" alt="The Customize the rail menu: a checkbox for Home, Sessions, Upcoming, Activity, Browser, Projects, Computers and Running, then Reset to default" width={720} />
+
+- Uncheck an item to take it off the rail, and check it to bring it back. The menu stays open, so you can change several. A hidden item keeps its shortcut and its command in the palette.
+- Drag an item up or down on the rail, or press <Kbd shortcut="rail.move" /> on it, to move it.
+- **Reset to default** brings every item back, in the order above.
+
+**+** and **Settings** always show, first and last.
+
+In Minimal mode, the badges on the rail are dots.
+
+## Related
+
+<Related pages={['sessions/sidebar', 'sessions/home', 'sessions/tool-rail', 'command-palette']} />

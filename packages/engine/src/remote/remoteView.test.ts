@@ -24,6 +24,10 @@ describe('remoteMessage', () => {
     expect(user('Another Claude session sent a message:\n<agent-message from="a1">The report follows:\n  Done.\n</agent-message>')).toMatchObject({ role: 'system', blocks: [{ type: 'text', text: 'An agent reported back' }] });
   });
 
+  it('shows a message from another session with who sent it, without Claude Code\'s guidance', () => {
+    expect(user('Another Claude session sent a message:\n<cross-session-message from=\"uds:/tmp/s.sock\" from-name=\"dev-2f\">\nKeep off versions.ts.\n</cross-session-message>\n\nThis came from another Claude session.')).toMatchObject({ role: 'user', blocks: [{ type: 'text', text: 'From another session, dev-2f:\n\nKeep off versions.ts.' }] });
+  });
+
   it('reads slash commands, command output and interrupts as the app does', () => {
     expect(user('<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>--fast</command-args>')).toMatchObject({ role: 'user', blocks: [{ type: 'text', text: '/review --fast' }] });
     expect(user('<local-command-stdout>Compacted</local-command-stdout>')).toMatchObject({ role: 'system', blocks: [{ type: 'text', text: 'Compacted' }] });
@@ -131,6 +135,32 @@ describe('remoteSessions with runs', () => {
     expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW }).sessions[0]).not.toHaveProperty('startedBy');
   });
 
+  it('sends the orchestrators the phone lists, without their folder', () => {
+    const pr = { number: 7, url: 'https://github.com/acme/web/pull/7', state: 'open' as const };
+    const listed = { sessionId: 'parent', projectRoot: ROOT, createdAt: 1, workers: [{ sessionId: 'plan', itemId: null, title: 'Plan it', startedAt: 2, pr }, { sessionId: null, itemId: 'later-1', title: 'Then this', startedAt: 3 }] };
+    const hidden = { sessionId: 'elsewhere', projectRoot: ROOT, createdAt: 1, workers: [] };
+    const list = remoteSessions({ summaries: [summary('parent', null), summary('plan', 'parent')], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), orchestrators: [listed, hidden], now: NOW });
+    expect(list.orchestrators).toEqual([{ sessionId: 'parent', createdAt: 1, workers: [{ sessionId: 'plan', itemId: null, title: 'Plan it', startedAt: 2, pr }, { sessionId: null, itemId: 'later-1', title: 'Then this', startedAt: 3, pr: null }] }]);
+    expect(JSON.stringify(list.orchestrators)).not.toContain(ROOT);
+    expect(RemoteSessions.parse(list).orchestrators).toHaveLength(1);
+    // An engine without orchestrators sends none.
+    expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW })).not.toHaveProperty('orchestrators');
+  });
+
+  it('puts a session another session or an orchestrator started under it while it starts, with the title it was given', () => {
+    const host = (sessionId: string) => ({ sessionId, cwd: ROOT, state: 'running', startedAt: NOW, promptedAt: NOW, queue: [], backgroundTasks: [], profileId: 'default' }) as unknown as SessionHostInfo;
+    const orc = { sessionId: 'orc', projectRoot: ROOT, createdAt: 1, workers: [{ sessionId: 'worker', itemId: null, title: 'Fix login', startedAt: 2 }] };
+    const list = remoteSessions(
+      { summaries: [summary('plain', null), summary('orc', null), summary('done', null)], live: [], hosts: [host('child'), host('worker')] },
+      { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), orchestrators: [orc], started: [{ sessionId: 'child', parentId: 'plain', title: 'PR 2575' }, { sessionId: 'done', parentId: 'plain', title: 'Given title' }], now: NOW },
+    );
+    const byId = new Map(list.sessions.map((s) => [s.id, s]));
+    expect(byId.get('child')).toMatchObject({ parentId: 'plain', title: 'PR 2575' });
+    expect(byId.get('worker')).toMatchObject({ parentId: 'orc', title: 'Fix login' });
+    // Once it has a transcript, its own title shows.
+    expect(byId.get('done')).toMatchObject({ parentId: 'plain', title: 'done' });
+  });
+
   it("gives a read-only provider's session its resume command, in place of the message box", () => {
     const codex = { ...summary('019a-codex', null), provider: 'codex' } as SessionSummary;
     const copilot = { ...summary('copilot-1', null), provider: 'copilot' } as SessionSummary;
@@ -169,6 +199,14 @@ describe('remoteSessions with runs', () => {
     // What another computer reads keeps it.
     expect(RemoteSessions.parse(list).sessions[0]!.apiRetry).toEqual(apiRetry);
     expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [host] }, options).sessions[0]).not.toHaveProperty('apiRetry');
+  });
+
+  it("sends Claude Code's suggested reply, and nothing for a session without one", () => {
+    const host = { sessionId: 'parent', cwd: ROOT, state: 'idle', model: 'opus', effort: null, permissionMode: 'default', profileId: 'work', backgroundTasks: [] } as unknown as SessionHostInfo;
+    const options = { archiveAfterDays: 7, scope: 'switchboard' as const, projectNames: new Map(), now: NOW };
+    const list = remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [{ ...host, suggestion: 'go' }] }, options);
+    expect(RemoteSessions.parse(list).sessions[0]!.suggestion).toBe('go');
+    expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [host] }, options).sessions[0]).not.toHaveProperty('suggestion');
   });
 
   it('sends no runs from an engine without pipelines', () => {

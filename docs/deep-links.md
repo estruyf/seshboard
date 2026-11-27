@@ -1,6 +1,6 @@
 # Links: open Seshboard from a URL
 
-Seshboard registers the `seshboard://` URL scheme. A link opens the app on **New session** with the folder and prompt already filled in, or jumps to an existing session. You can put these links in runbooks, alerts, READMEs, issue templates or Raycast and Alfred scripts, or run `open "seshboard://…"` from a shell. They work like Claude Code's own [`claude-cli://` deep links](https://code.claude.com/docs/en/deep-links).
+Seshboard registers the `seshboard://` URL scheme. A link opens the app on **New session** with the folder and prompt already filled in, jumps to an existing session, or opens a web page in Seshboard's browser. You can put these links in runbooks, alerts, READMEs, issue templates or Raycast and Alfred scripts, or run `open "seshboard://…"` from a shell. They work like Claude Code's own [`claude-cli://` deep links](https://code.claude.com/docs/en/deep-links).
 
 [← Back to the README](../README.md)
 
@@ -60,6 +60,22 @@ seshboard://session/0b9a7c1e-1234-4abc-9def-001122334455
 
 Shows that session, as if you'd picked it in the sidebar. To get a session's ID, right-click it in the sidebar and choose **Copy session ID**.
 
+## Open a web page
+
+```text
+seshboard://open?url=https%3A%2F%2Fexample.com%2Fdocs
+seshboard://open?url=http%3A%2F%2Flocalhost%3A5173&session=0b9a7c1e-1234-4abc-9def-001122334455
+```
+
+| Parameter | What it does |
+|---|---|
+| `url` | The page, URL-encoded. Only `http` and `https`, at most 8,000 characters, with no user name or password in it. |
+| `session` | A session's ID: the page opens in that session's Browser panel. Without it, the page opens in the Browser view. |
+
+In the Browser view, a tab already on that address comes to the front instead of a second tab (`openFavorite` in `apps/ui/src/state/browserViewStore.ts`). The browser must be on (Settings › General › Allow browser). Main checks that before it hands the link to the window, and refuses the link with a message if it is off.
+
+Browser pickers send links here. [LinkLane](https://github.com/estruyf/LinkLane) lists Seshboard among its browsers when Seshboard is installed, and runs `open -a Seshboard "seshboard://open?url=…"`.
+
 ## Bring the window up
 
 ```text
@@ -76,14 +92,15 @@ Opening a link starts Seshboard if it isn't running. The link waits until the wi
 
 Links can come from any web page, chat message or script, so Seshboard checks each one before it changes anything. A link it refuses shows a short message at the bottom of the window explaining why, and nothing else happens. That covers:
 
-- an action other than `new-session` or `session`;
+- an action other than `new-session`, `session` or `open`;
 - a prompt longer than 5,000 characters, or one with control characters (other than tabs and new lines) or invisible characters such as right-to-left overrides and zero-width spaces, which can hide text;
 - a `cwd` that isn't an absolute path (on Windows: a drive path, not `/…`), is a network location (`//server/share`, `\\server\share`, `smb://…`), contains `.` or `..` segments, has a colon after the drive on Windows, or has control or invisible characters;
 - a `project` that isn't one of your projects, or has control or invisible characters;
 - a `repo` that isn't `owner/name`;
 - an `autostart` value other than `1`, `true`, `yes`, `0`, `false` or `no`;
 - an `issue` or `pr` that isn't a number, `#123` or a link to an issue or pull request on github.com; both in one link; one in a quick question (`question=1`), or without `cwd`, `project` or `repo`;
-- a session ID that isn't a session ID, or a session that isn't on this Mac.
+- a session ID that isn't a session ID, or a session that isn't on this Mac;
+- an `open` link without a `url`, with an address that isn't `http` or `https`, with a user name or password in it, or with the browser off.
 
 Seshboard ignores parameters it doesn't know, so a link made for a newer version still opens.
 

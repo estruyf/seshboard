@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { ACTIVITY_MAX_DAYS, RpcError, type ActivityEntry, type ActivityPr, type ActivitySummary, type ActivitySummaryExtra, type ActivitySummaryState, type SessionSummary } from '@seshboard/protocol';
+import { ACTIVITY_MAX_DAYS, RpcError, type ActivityEntry, type ActivityStarter, type ActivityPr, type ActivitySummary, type ActivitySummaryExtra, type ActivitySummaryState, type SessionSummary } from '@seshboard/protocol';
 import type { SessionPr } from '../links/linkStore.ts';
 import { oneLine } from '../catchUp/turn.ts';
 import { attributeCommits, localClock, parseCommits, prDay, sessionDays, uniquePrs, type Commit, type MessageRow, type PromptRow, type SessionDay, type UsageRow } from './activityDays.ts';
 import { ActivityStore, type StoredSummary } from './activityStore.ts';
+import { SessionStarters, starterOf } from './sessionStarters.ts';
 import { PRICE_COLUMNS } from '../usage/usageQuery.ts';
 import { DAY_SUMMARY_SYSTEM_PROMPT, daySummaryInput, parseDaySummary } from './daySummary.ts';
 
@@ -45,6 +46,7 @@ export interface ActivityServiceOptions {
 /** Activity's numbers and the day in short: made from what Seshboard already keeps, nothing new is tracked. */
 export class ActivityService {
   private readonly store: ActivityStore;
+  private readonly starters: SessionStarters;
   private readonly statements;
   private readonly gitCache = new Map<string, { since: number; at: number; commits: Commit[] }>();
   /** Summaries being written, so two asks for a day share one Haiku call. */
@@ -53,6 +55,7 @@ export class ActivityService {
   constructor(private readonly options: ActivityServiceOptions) {
     const { db } = options;
     this.store = new ActivityStore(db);
+    this.starters = new SessionStarters(db);
     this.statements = {
       messages: db.prepare('SELECT session_id, at FROM usage_messages WHERE at >= ? AND at < ?'),
       prompts: db.prepare('SELECT session_id, at, text FROM usage_prompts WHERE at >= ? AND at < ?'),
@@ -104,6 +107,8 @@ export class ActivityService {
     for (const day of days) roots.set(day, this.rootOf(day.sessionId));
     const commits = params.git === false ? new Map<SessionDay, Commit[]>() : await this.commitsOf(days, roots, start - ZONE_MARGIN);
     const prs = this.prsByDay(days, clock.dayOf);
+    const starters = this.starters.all();
+    const startedBy = (sessionId: string) => starterOf(sessionId, starters, (id) => this.options.session(id)?.parentId);
 
     const entries = days.map((day): ActivityEntry => {
       const session = this.options.session(day.sessionId);
@@ -122,6 +127,8 @@ export class ActivityService {
         activeMs: day.activeMs,
         turns: day.turns,
         costUsd: day.costUsd,
+        tokens: day.tokens,
+        startedBy: startedBy(day.sessionId),
         hours: day.hours,
         commits: made.length,
         files: new Set(made.flatMap((commit) => commit.files)).size,
@@ -131,7 +138,7 @@ export class ActivityService {
         available: session !== null,
       };
     });
-    return [...entries, ...this.providerEntries(clock, inRange, hidden)];
+    return [...entries, ...this.providerEntries(clock, inRange, hidden, startedBy)];
   }
 
   /** The folder a session's project is in: from the index, or the folder its transcript named. */
@@ -143,7 +150,7 @@ export class ActivityService {
   }
 
   /** Another provider's sessions have no moments here: they show on the day of their last activity, without a time. */
-  private providerEntries(clock: ReturnType<typeof localClock>, inRange: (day: string) => boolean, hidden: ReadonlySet<string>): ActivityEntry[] {
+  private providerEntries(clock: ReturnType<typeof localClock>, inRange: (day: string) => boolean, hidden: ReadonlySet<string>, startedBy: (sessionId: string) => ActivityStarter | null): ActivityEntry[] {
     return this.options.providerSessions().flatMap((session): ActivityEntry[] => {
       const day = clock.dayOf(session.updatedAt);
       if (!inRange(day) || hidden.has(session.id)) return [];
@@ -161,6 +168,7 @@ export class ActivityService {
         activeMs: 0,
         turns: 0,
         costUsd: null,
+        startedBy: startedBy(session.id),
         hours,
         commits: 0,
         files: 0,

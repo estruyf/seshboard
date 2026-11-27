@@ -104,6 +104,8 @@ describe('copilotMessages', () => {
 
   it("names an MCP server's tool as Claude Code does, so a visual draws", () => {
     expect(claudeTool('github-mcp-server-get_file_contents', { owner: 'o' }, { mcpServerName: 'github-mcp-server', mcpToolName: 'get_file_contents' })).toEqual({ name: 'mcp__github-mcp-server__get_file_contents', input: { owner: 'o' } });
+    // The browser server goes by another name for Copilot (OpenAI reserves `browser`), and reads as Claude Code's.
+    expect(claudeTool('seshboard-browser-click', { ref: 'e1' }, { mcpServerName: 'seshboard-browser', mcpToolName: 'click' }).name).toBe('mcp__browser__click');
     const code = '<svg viewBox="0 0 680 80"></svg>';
     const blocks = copilotMessages([
       { type: 'assistant.message', id: 'a1', data: { content: 'Here is the flow.', toolRequests: [{ toolCallId: 'v1', name: 'visualize-show_widget', mcpServerName: 'visualize', mcpToolName: 'show_widget', arguments: { title: 'flow', loading_messages: ['Drawing'], widget_code: code } }] } },

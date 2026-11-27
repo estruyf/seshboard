@@ -3,19 +3,26 @@ import { chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ORCHESTRATOR_SOCKET_ENV, ORCHESTRATOR_TOKEN_ENV, ORCHESTRATOR_TOOLS, type OrchestratorBridgeRequest, type OrchestratorTool, type OrchestratorToolResult } from '@seshboard/protocol';
+import { ORCHESTRATOR_ROLE_ENV, ORCHESTRATOR_SOCKET_ENV, ORCHESTRATOR_TOKEN_ENV, ORCHESTRATOR_TOOLS, SESSION_TOOL_SET_ENV, toolsFor, type OrchestratorBridgeRequest, type OrchestratorRole, type OrchestratorOwnTool, type OrchestratorToolResult, type SeshboardTool, type SessionToolSet } from '@seshboard/protocol';
 import type { McpStdioServer } from '../providers/provider.ts';
 
 /*
  * The engine's side of the orchestrator's tools (docs/orchestrator.md), built like the browser tools' bridge
  * (`browser/browserBridge.ts`). Every agent that runs an orchestrator (Claude Code, Copilot, Codex) starts the same
  * `orchestrator` MCP server, with this socket's path and a token for its session. Each call comes here, and goes on
- * only when the token's session is an orchestrator.
+ * only when the token's session is an orchestrator. Every other session gets a token for the 'session' role: its server
+ * lists the `seshboard` tools its project gives it (docs/seshboard-tools.md), and each call goes to `tool`, which asks
+ * you on a card before anything is saved or starts.
  */
 
 export interface OrchestratorBridgeDeps {
   /** Runs one tool for an orchestrator session. */
-  run(sessionId: string, tool: OrchestratorTool, args: Record<string, unknown>): Promise<OrchestratorToolResult>;
+  run(sessionId: string, tool: OrchestratorOwnTool, args: Record<string, unknown>): Promise<OrchestratorToolResult>;
+  /**
+   * One of the `seshboard` server's tools (`seshboardTools.ts`), for any session, or for an orchestrator its extra
+   * ones (run_pipeline, get_run; `orchestrator` true). What saves or starts asks you on a card first.
+   */
+  tool(sessionId: string, tool: SeshboardTool, args: Record<string, unknown>, orchestrator: boolean): Promise<OrchestratorToolResult>;
   isOrchestrator(sessionId: string): boolean;
   log(level: 'info' | 'warn' | 'error', message: string): void;
   /** Tests: where the socket goes. Defaults to the system's temporary folder (a named pipe on Windows). */
@@ -29,7 +36,7 @@ export class OrchestratorBridge {
   private listening: Promise<string> | null = null;
   private socketDir: string | null = null;
   /** Each token's session, read when a call comes: a new session learns its id after its process started. */
-  private readonly tokens = new Map<string, () => string | null>();
+  private readonly tokens = new Map<string, { sessionId: () => string | null; role: OrchestratorRole; set: SessionToolSet }>();
 
   constructor(private readonly deps: OrchestratorBridgeDeps) {}
 
@@ -56,23 +63,28 @@ export class OrchestratorBridge {
 
   /**
    * The `orchestrator` server for one agent process: `base` (Seshboard's binary and the server's script, from main)
-   * with the socket and a token of its own. `sessionId` says which orchestrator its calls are for.
+   * with the socket and a token of its own. `sessionId` says which session its calls are for, `role` which tools it
+   * lists and may call, and `set` which of the `seshboard` tools a session's project gives it.
    */
-  async serverFor(base: McpStdioServer, sessionId: () => string | null): Promise<McpStdioServer> {
+  async serverFor(base: McpStdioServer, sessionId: () => string | null, role: OrchestratorRole = 'orchestrator', set: SessionToolSet = 'all'): Promise<McpStdioServer> {
     const socket = await this.start();
     const token = randomUUID();
-    this.tokens.set(token, sessionId);
-    return { command: base.command, args: [...base.args], env: { ...base.env, [ORCHESTRATOR_SOCKET_ENV]: socket, [ORCHESTRATOR_TOKEN_ENV]: token } };
+    this.tokens.set(token, { sessionId, role, set });
+    const roleEnv: Record<string, string> = role === 'session' ? { [ORCHESTRATOR_ROLE_ENV]: 'session', ...(set === 'sessions' ? { [SESSION_TOOL_SET_ENV]: 'sessions' } : {}) } : {};
+    return { command: base.command, args: [...base.args], env: { ...base.env, [ORCHESTRATOR_SOCKET_ENV]: socket, [ORCHESTRATOR_TOKEN_ENV]: token, ...roleEnv } };
   }
 
-  /** One call: whose session, is it an orchestrator, then the tool. Public for tests. */
+  /** One call: whose session, which role its token has, then the tool. Public for tests. */
   async handle(request: OrchestratorBridgeRequest): Promise<OrchestratorToolResult> {
-    const sessionId = this.tokens.get(request.token)?.() ?? null;
-    if (!sessionId) return fail('These tools are not tied to a session in Seshboard.');
-    if (!this.deps.isOrchestrator(sessionId)) return fail('This session is not an orchestrator in Seshboard.');
-    if (!(ORCHESTRATOR_TOOLS as readonly string[]).includes(request.tool)) return fail(`No orchestrator tool called ${request.tool}.`);
+    const entry = this.tokens.get(request.token);
+    const sessionId = entry?.sessionId() ?? null;
+    if (!entry || !sessionId) return fail('These tools are not tied to a session in Seshboard.');
+    if (!(toolsFor(entry.role, entry.set).tools as readonly string[]).includes(request.tool)) return fail(`No tool called ${request.tool} here.`);
     const args = request.args && typeof request.args === 'object' ? request.args : {};
-    return this.deps.run(sessionId, request.tool as OrchestratorTool, args);
+    if (entry.role === 'session') return this.deps.tool(sessionId, request.tool as SeshboardTool, args, false);
+    if (!this.deps.isOrchestrator(sessionId)) return fail('This session is not an orchestrator in Seshboard.');
+    if ((ORCHESTRATOR_TOOLS as readonly string[]).includes(request.tool)) return this.deps.run(sessionId, request.tool as OrchestratorOwnTool, args);
+    return this.deps.tool(sessionId, request.tool as SeshboardTool, args, true);
   }
 
   private accept(socket: Socket): void {
@@ -93,7 +105,7 @@ export class OrchestratorBridge {
         }
         if (typeof request.id !== 'number') continue;
         void this.handle(request)
-          .catch((error: Error) => fail(`The orchestrator could not do that: ${error.message}`))
+          .catch((error: Error) => fail(`Seshboard could not do that: ${error.message}`))
           .then((result) => !socket.destroyed && socket.write(`${JSON.stringify({ id: request.id, result })}\n`));
       }
     });

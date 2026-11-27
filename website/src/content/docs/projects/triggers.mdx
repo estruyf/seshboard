@@ -1,6 +1,6 @@
 ---
 title: Triggers
-description: Start a session when CI fails on a branch, or when an issue gets your label or is assigned to you.
+description: Start a session when CI fails on a branch, when an issue gets your label or is assigned to you, or when a pull request asks for your review.
 sidebar:
   badge: New
 ---
@@ -11,7 +11,7 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 import OnlyOn from '../../../components/OnlyOn.astro';
 import Related from '../../../components/Related.astro';
 
-A trigger starts a session when there is work, not at a set time. [Schedules](/new-session/schedules/) start a session at 08:00. A trigger starts one when CI fails on `main`, or when an issue is labelled `seshboard` or assigned to you.
+A trigger starts a session when there is work, not at a set time. [Schedules](/new-session/schedules/) start a session at 08:00. A trigger starts one when CI fails on `main`, when an issue is labelled `seshboard` or assigned to you, or when a pull request asks for your review.
 
 Seshboard checks GitHub through the GitHub CLI (`gh`), every 5 minutes, on this computer. You need no webhook and no public address. A trigger belongs to a project, and lives on this computer only.
 
@@ -23,15 +23,17 @@ Seshboard checks GitHub through the GitHub CLI (`gh`), every 5 minutes, on this 
 
 1. Open the project's page, and its **Triggers** tab. The project's **⋯** menu in the sidebar has **Triggers…**. In the command palette, *Triggers…* asks for the project, and *Triggers in* the current project goes straight there.
 2. Choose **New trigger**. The name in the title follows the source, such as "CI fails on main", until you click it and type one.
-3. Under **When should it start?**, pick **CI fails on a branch** or **Issues for you**. Under **Which runs?** or **Which issues?**, say what to look for.
+3. Under **When should it start?**, pick **CI fails on a branch**, **Issues for you** or **Reviews for you**. Under **Which runs?**, **Which issues?** or **Which pull requests?**, say what to look for.
 4. Under **What does it start?**, pick **A session** or **A pipeline**, write the prompt, and check what it runs with.
 5. Choose **Create trigger** (<Kbd keys="mod+enter" />).
 
 </Steps>
 
-The editor has five numbered sections: **When should it start?**, **Which issues?** (**Which runs?** for CI), **What happens on GitHub?**, **What does it start?** and **Limits**. A CI trigger has nothing to do on GitHub, so it has four. A sentence at the top says what the trigger will do, such as "When an issue gets the **seshboard** label, start a **session** in a new worktree. Up to **3** at once." **What happens on GitHub?** and **Limits** stay folded while they are at their defaults, with one line that says so. A new issues trigger changes nothing on GitHub until you turn on state labels there.
+The editor has five numbered sections: **When should it start?**, **Which issues?** (**Which runs?** for CI, **Which pull requests?** for reviews), **What happens on GitHub?**, **What does it start?** and **Limits**. A CI trigger has nothing to do on GitHub, so it has four. A sentence at the top says what the trigger will do, such as "When an issue gets the **seshboard** label, start a **session** in a new worktree. Up to **3** at once." **What happens on GitHub?** and **Limits** stay folded while they are at their defaults, with one line that says so. A new issues trigger changes nothing on GitHub until you turn on state labels there.
 
 You can also start from a prompt: write it in [New session](/new-session/form/), then choose **Start when…** in Start's ▾ menu, after **Schedule…**. The editor opens for that project, with the prompt and New session's choices. A folder that isn't one of your projects yet becomes one, so the trigger has a Triggers tab. In the command palette, *New trigger…* asks for the project first.
+
+Or ask a session: "when an issue gets the bug label and is assigned to me, run it". It saves the trigger after you say yes on a card, paused unless you tick **Start watching now**. See [Seshboard tools in sessions](/sessions/seshboard-tools/).
 
 <Aside>
 The first check marks what is there as seen, and starts nothing. Only failures and issues that come after start a session. The editor's footer says so: "Issues that match now are marked as seen. Only new ones start a session."
@@ -104,14 +106,53 @@ Two choices write to GitHub, and only when you turn them on. Until then, the sec
 
 When an issue is assigned to someone else while its session works, the session goes on. Its header says who has it now.
 
+## Reviews for you
+
+An open pull request that asks for your review, has a label, or both, starts a session that reviews it.
+
+| Which pull requests? | Picks up |
+|---|---|
+| **Asked of me** | every open pull request that asks you for a review |
+| **With a label** | every open pull request with the label |
+| **Both** | pull requests with the label that ask you for a review |
+
+**Review asked of** is you, the account `gh` is signed in with, or **Someone else…**. The session is titled after the pull request, such as "Review #88 Add a dark theme".
+
+- **On the pull request's code.** The session works in a new worktree on the pull request's branch, also for a pull request from a fork. When another worktree already has that branch, such as an earlier review or the session that wrote the pull request, the review gets a branch of its own at the pull request's latest commit, and the other worktree stays as it is. A push from that branch doesn't update the pull request.
+- **What it reads.** The pull request's description, its comments and the earlier reviews go in after the prompt, so a re-review checks what changed since.
+- **Asked again.** When the author asks for your review again after you reviewed, a new session starts.
+- **Skipped.** Draft pull requests, and with **Only from collaborators** on (the default), pull requests from outside the repository's collaborators. On a public repository anyone can open a pull request and ask you for a review.
+- **Only a session.** A review starts a session, not a pipeline.
+
+### Keep a state label on the pull request
+
+The trigger posts nothing on GitHub unless you turn on **Keep a state label on the pull request** under **What happens on GitHub?**. Then the pull request shows where its review is:
+
+| When | The pull request gets |
+|---|---|
+| The review starts, also while it waits for a slot | `seshboard: working` |
+| The session needs you | `seshboard: needs input` |
+| The session is done with its turn | `seshboard: reviewed` |
+| It ends with an error, is stopped, or can't start | `seshboard: failed` |
+
+The trigger's label stays on, so the pull request can be reviewed again later. A pull request that already has `seshboard: working` or `seshboard: needs input` is skipped: another computer reviews it. **Rename** changes the labels' names, and labels the repository doesn't have yet are created.
+
 ## What does it start?
 
 **Starts** is **A session** or **A pipeline**. For a pipeline, see [Start a pipeline](#start-a-pipeline).
 
 | Field | What it does |
 |---|---|
-| **Prompt** | What the session should do. Type `{{` for the event's fields, such as `{{event.title}}`, `{{event.url}}`, `{{event.number}}`, `{{event.workflow}}` or `{{event.branch}}`. They show as violet chips, and are filled in for each event. The issue's text and comments, or the failed log, go in after the prompt as context to read, not instructions. |
+| **Prompt** | What the session should do. Type `{{` for the event's fields, such as `{{event.title}}`, `{{event.url}}`, `{{event.number}}`, `{{event.workflow}}` or `{{event.branch}}`. They show as violet chips, and are filled in for each event. The issue's text and comments, the pull request's text, comments and reviews, or the failed log, go in after the prompt as context to read, not instructions. |
 | **Runs with** | The workspace (a new worktree, or the project folder), the [Claude profile](/settings/claude-profiles/), the model and the mode, from the project's defaults. The mode menu has no **Bypass permissions**. |
+
+### Mark done when it finishes
+
+Turn on **Mark done when it finishes** to keep the trigger's work out of **To review**. A session it started goes to **Done** once Claude finishes without an error. For a pipeline, the run goes to Done when it is done. A session that fails or is stopped stays for you.
+
+- Done sessions don't count toward your [focus limit](/focus-limit/).
+- Work in a worktree lets its branch go when it goes to Done, so the next review of the same pull request can work on the pull request's own branch. The folder and its changes stay.
+
 ### Limits
 
 | Field | What it does |
@@ -177,7 +218,7 @@ A trigger starts work while you look elsewhere, from text other people wrote.
 - **Never bypass permissions.** A trigger can't be saved with **Bypass permissions**. Claude asks for permissions as always, and you get a notification.
 - **Event text is context, not instructions.** Your prompt is the instruction.
 - **Only from collaborators** is on by default.
-- **Nothing outward.** Seshboard writes nothing to GitHub but the state labels and **Assign the issue to me when work starts**, and only when they are on. A pipeline's Push opens a pull request only after you confirm, or with **Open the pull request without me** on. Commenting or pushing is for Claude to do in the prompt, behind a permission prompt.
+- **Nothing outward.** Seshboard writes nothing to GitHub but the state labels on an issue or a pull request and **Assign the issue to me when work starts**, and only when they are on. A pipeline's Push opens a pull request only after you confirm, or with **Open the pull request without me** on. Commenting or pushing is for Claude to do in the prompt, behind a permission prompt.
 - **Pauses on failure.** A trigger whose check fails five times in a row pauses, with the reason, such as "Paused after 5 failed checks: gh is signed out". When GitHub asks Seshboard to slow down, it waits an hour before it checks again.
 - **On this computer only.** Triggers are never in `.seshboard.json`: a committed file must not start sessions on everyone's computer.
 

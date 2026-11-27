@@ -1,4 +1,5 @@
 import { ArrowUp, Clock, Copy, EyeOff, MessageCircleQuestion, Plus, Quote, X } from 'lucide-react';
+import { PanelSize, sidePanelClass } from '../transcript/PanelSize.tsx';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { MAX_SIDE_QUESTION_LENGTH, skimMarks } from '@seshboard/protocol/client';
 import { agoText } from '../../lib/format.ts';
@@ -20,6 +21,10 @@ interface AskPanelProps {
   /** Claude is working on a turn right now. */
   working: boolean;
   width: number;
+  /** Full: the panel takes the whole session area (`useRightPanel().full`). */
+  full?: boolean;
+  /** Picks Full or back; with it, the header shows the panel's size (Side, Half, Full). */
+  onFull?(full: boolean): void;
   onWidth(width: number): void;
   /** Changes is open too: this row of tabs stands in for the title, with the panel's buttons on its right. */
   tabs?: (actions: ReactNode) => ReactNode;
@@ -41,6 +46,7 @@ interface AskPanelProps {
  * follow-up, which goes with the thread's earlier questions and answers. Claude answers while it keeps working.
  */
 export function AskPanel(props: AskPanelProps) {
+  const full = props.full ?? false;
   const { sessionId, state } = props;
   const thread = currentThread(state);
   const items = thread?.items ?? [];
@@ -170,6 +176,7 @@ export function AskPanel(props: AskPanelProps) {
 
   const actions = (
     <div className="flex shrink-0 items-center gap-0.5">
+      {props.onFull && <PanelSize full={full} onChange={props.onFull} />}
       <Button
         ref={threadsRef}
         variant="quiet"
@@ -200,11 +207,11 @@ export function AskPanel(props: AskPanelProps) {
       aria-label="Ask about this session"
       tabIndex={-1}
       onKeyDown={onPanelKey}
-      className="relative flex max-w-[min(85%,calc(100%-27.5rem))] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
-      style={{ width: props.width }}
+      className={sidePanelClass(full)}
+      style={full ? undefined : { width: props.width }}
       data-ask-panel
     >
-      <div
+      {!full && <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Ask panel width"
@@ -217,14 +224,14 @@ export function AskPanel(props: AskPanelProps) {
         className="absolute inset-y-0 -left-0.5 z-10 w-1 cursor-col-resize hover:bg-link/40 focus-visible:bg-link/40"
         data-tooltip="Drag (or use ← →) to resize"
         data-ask-resize
-      />
+      />}
       {props.tabs ? (
         <>
           {props.tabs(actions)}
           <div className="flex h-7 shrink-0 items-center border-b border-border px-3">{notInConversation}</div>
         </>
       ) : (
-        <header className="flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
+        <header className="@container/toolbar flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
           <MessageCircleQuestion size={16} aria-hidden className="mt-0.5 shrink-0 text-link" />
           <div className="grid min-w-0 flex-1">
             <h2 className="truncate text-ui font-semibold text-text">Ask about this session</h2>

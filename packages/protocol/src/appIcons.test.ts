@@ -22,9 +22,9 @@ const repo = join(import.meta.dirname, '..', '..', '..');
 
 describe('app icon colourways', () => {
   it('lists the nine, Graphite first', () => {
-    expect(APP_ICON_KEYS).toEqual(['graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon']);
+    expect(APP_ICON_KEYS).toEqual(['graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon', 'black-and-white']);
     expect(DEFAULT_APP_ICON).toBe('graphite');
-    expect(APP_ICONS.map((icon) => icon.label)).toEqual(['Graphite', 'Midnight', 'Paper', 'Signal yellow', 'Forest', 'Plum', 'Aluminium', 'Ocean', 'Neon']);
+    expect(APP_ICONS.map((icon) => icon.label)).toEqual(['Graphite', 'Midnight', 'Paper', 'Signal yellow', 'Forest', 'Plum', 'Aluminium', 'Ocean', 'Neon', 'Black and white']);
     expect(appIconLabel('signal')).toBe('Signal yellow');
   });
 

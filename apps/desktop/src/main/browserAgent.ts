@@ -2,7 +2,7 @@ import { app, ipcMain, webContents, type BrowserWindow, type WebContents } from 
 import { IpcChannel, isScriptTool, SCRIPTS_OFF_TEXT, siteOf, type BrowserAgentTarget, type BrowserAgentTargetRequest, type BrowserToolRequest, type BrowserToolResult } from '@seshboard/protocol/bridge';
 import { isProfilePartition, browserProfilePartition } from '@seshboard/protocol/client';
 import { isBrowserSession } from './webPreview.ts';
-import { CONSOLE_KEEP, consoleLevel, consoleText, EVALUATE_MS, evaluateSource, evaluateText, focusScript, keyEvents, locateScript, pagedText, READ_SCRIPT, readText, SNAPSHOT_SCRIPT, snapshotText, type ConsoleEntry, type EvaluateResult } from './browserAgentScripts.ts';
+import { CONSOLE_KEEP, consoleLevel, consoleText, EVALUATE_MS, evaluateSource, evaluateText, focusScript, keyEvents, locateScript, nameScript, pagedText, READ_SCRIPT, readText, SNAPSHOT_SCRIPT, snapshotText, type ConsoleEntry, type EvaluateResult } from './browserAgentScripts.ts';
 import { bodyText, NetworkLog, networkText } from './browserNetwork.ts';
 
 /*
@@ -153,7 +153,11 @@ export function installBrowserAgent(deps: BrowserAgentDeps): { run(request: Brow
 
     if (tool === 'where') {
       const where = await target(win, request.sessionId, null, false);
-      return { text: '', url: where.url, profileId: where.profileId ?? null };
+      // A click or type names its element by ref: the card says which one, in the page's own words.
+      const ref = typeof args.ref === 'string' ? args.ref : null;
+      const page = ref && where.contentsId !== null ? pageOf(win, where.contentsId) : null;
+      const name = page ? ((await page.executeJavaScript(nameScript(ref!), true).catch(() => null)) as string | null) : null;
+      return { text: '', url: where.url, profileId: where.profileId ?? null, target: name };
     }
 
     if (tool === 'open') {

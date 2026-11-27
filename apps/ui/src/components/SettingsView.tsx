@@ -1,9 +1,13 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
+import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
-import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
+import { SIDE_PANEL_DETAIL, SIDE_PANEL_HALF_DETAIL } from './transcript/sidePanelCopy.ts';
+import { useRightPanel } from '../state/rightPanelStore.ts';
+import { ESCAPE_TWICE_DETAIL } from './composer/escapeStop.ts';
+import { QUICK_REPLY_DETAIL } from './composer/quickReply.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -12,9 +16,12 @@ import { NotificationsSettings } from './notifications/NotificationsSettings.tsx
 import { PipelinesSettings } from './pipelines/editor/PipelinesSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
-import { useSidebar } from '../state/sidebarStore.ts';
+import { usePanelView } from '../state/panelSlotStore.ts';
+import { listForView, useSidebarList } from '../state/browserViewStore.ts';
+import { createPortal } from 'react-dom';
 import { BackupSettings } from './backup/BackupSettings.tsx';
 import { CompanionSettings } from './companion/CompanionSettings.tsx';
+import { BrowserExtensionSettings } from './companion/BrowserExtensionSettings.tsx';
 import { RemoteSettings } from './remote/RemoteSettings.tsx';
 import { ModsSettings } from './mods/ModsSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
@@ -46,6 +53,7 @@ import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } f
 import { settingsIndex } from './settingsSearch/settingsIndex.ts';
 import { navGroups, SETTINGS_GROUP_LABEL, SETTINGS_SECTIONS, settingsPageOrder, settingsPageShown, settingsSectionLabel, type SettingsPage } from './settingsSections.ts';
 import { BrowserProfilesSettings } from './webPreview/BrowserProfilesSettings.tsx';
+import { SiteActionsSettings } from './webPreview/SiteActionsSettings.tsx';
 import { SectionHeader } from './ui/SectionHeader.tsx';
 
 /** A session row in miniature, drawn with the live theme tokens. */
@@ -246,6 +254,7 @@ function useEscapeToClose(sheet: RefObject<HTMLElement | null>) {
 function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollRef: RefObject<HTMLDivElement | null> }) {
   const prefs = usePreferences((s) => s.prefs);
   const update = usePreferences((s) => s.update);
+  const panelSizing = useRightPanel((s) => s.sizing);
 
   switch (section) {
     case 'theme':
@@ -260,23 +269,6 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               </Choice>
             ))}
           </RadioGroup>
-          <div className="flex items-center justify-between gap-4" data-setting-row>
-            <span>
-              <span className="block text-ui">When collapsed</span>
-              <span className="block text-meta text-muted">What {formatKeys(keysFor('sidebar.toggle'))} and the sidebar button do: a narrow rail of project icons, or hide the sidebar.</span>
-            </span>
-            <SegmentedControl<SidebarCollapsed>
-              mode="radio"
-              label="When collapsed"
-              value={prefs.sidebarCollapsed}
-              onChange={(sidebarCollapsed) => update({ sidebarCollapsed })}
-              segments={[
-                { value: 'minimal', label: 'Minimal rail', data: { 'data-sidebar-collapsed': 'minimal' } },
-                { value: 'closed', label: 'Hidden', data: { 'data-sidebar-collapsed': 'closed' } },
-              ]}
-              className="shrink-0"
-            />
-          </div>
           <Toggle
             label="Show sessions from other apps"
             detail="Also list sessions from Terminal, Claude desktop, your editor, GitHub Copilot, OpenAI Codex and Google Antigravity. Off shows only sessions you started or continued in Seshboard."
@@ -304,7 +296,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 onChange={(quickActionsShow) => update({ quickActionsShow })}
                 segments={[
                   { value: 'archive', label: 'Done only', data: { 'data-quick-actions-show': 'archive' } },
-                  { value: 'all', label: 'Read · Pin · Done', data: { 'data-quick-actions-show': 'all' } },
+                  { value: 'all', label: 'New · Read · Pin · Done', data: { 'data-quick-actions-show': 'all' } },
                 ]}
                 className="shrink-0"
               />
@@ -366,6 +358,23 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               onChange={(fadeInactivePanes) => update({ fadeInactivePanes })}
             />
           </Section>
+          <Section title="Side panel">
+            <Toggle
+              label="Open the side panel in new sessions"
+              detail={SIDE_PANEL_DETAIL}
+              checked={prefs.sidePanelOnNewSession}
+              attr="data-side-panel-on-new-setting"
+              onChange={(sidePanelOnNewSession) => update({ sidePanelOnNewSession })}
+            />
+            {/* The same choice as the rail's menu: kept per computer (localStorage), not with the preferences. */}
+            <Toggle
+              label="Panels at half width"
+              detail={SIDE_PANEL_HALF_DETAIL}
+              checked={panelSizing === 'half'}
+              attr="data-side-panel-half-setting"
+              onChange={(half) => useRightPanel.getState().setSizing(half ? 'half' : 'side')}
+            />
+          </Section>
           <Section title="File links">
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
@@ -384,7 +393,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                   { value: 'editor', label: 'Open in editor' },
                 ]}
                 menuWidth={200}
-                className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                className="field h-7 shrink-0 px-2.5 text-ui outline-none"
                 dataAttrs={{ 'data-file-link-click': true }}
               />
             </div>
@@ -409,6 +418,20 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 className="shrink-0"
               />
             </div>
+            <Toggle
+              label="Press Esc twice to stop"
+              detail={ESCAPE_TWICE_DETAIL}
+              checked={prefs.escapeTwiceToStop}
+              attr="data-escape-twice-setting"
+              onChange={(escapeTwiceToStop) => update({ escapeTwiceToStop })}
+            />
+            <Toggle
+              label="Suggested replies"
+              detail={QUICK_REPLY_DETAIL}
+              checked={prefs.quickReplies}
+              attr="data-quick-replies-setting"
+              onChange={(quickReplies) => update({ quickReplies })}
+            />
           </Section>
           <Section title="Usage limits">
             <div className="flex items-center justify-between gap-4" data-setting-row>
@@ -527,7 +550,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 onChange={(newSessionMode) => update({ newSessionMode })}
                 options={NEW_SESSION_MODE_OPTIONS}
                 menuWidth={200}
-                className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                className="field h-7 shrink-0 px-2.5 text-ui outline-none"
                 dataAttrs={{ 'data-new-session-mode': true }}
               />
             </div>
@@ -611,6 +634,15 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <CompanionSettings />
         </Section>
       );
+    case 'browserExtension':
+      return (
+        <Section
+          title="Browser extension"
+          description="The Seshboard extension for Chrome, Edge, Brave and Firefox sends what you select on a page to a session, or starts one in the page's project, as chips above the message box. Nothing goes to Claude until you send."
+        >
+          <BrowserExtensionSettings />
+        </Section>
+      );
     case 'remote':
       // Its own header: the switch sits on the title's row.
       return <RemoteSettings />;
@@ -658,6 +690,9 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <Section title="Browser profiles" description="Each profile keeps its own logins, site data and cache, so you can use one site with several accounts side by side. Its tabs show its colour.">
             <BrowserProfilesSettings />
           </Section>
+          <Section title="Site actions" description={SITE_ACTIONS_DETAIL}>
+            <SiteActionsSettings />
+          </Section>
         </>
       );
     case 'about':
@@ -678,13 +713,14 @@ interface SearchState {
   field: ReactNode;
 }
 
-/** Settings' sections, on the left of the Settings sheet, under the search field. */
-export function SettingsNav({ search }: { search: SearchState }) {
+/**
+ * Settings' sections under the search field: in the panel beside the nav rail while it shows Settings (`inPanel`), else
+ * on the left of the Settings sheet.
+ */
+export function SettingsNav({ search, inPanel = false }: { search: SearchState; inPanel?: boolean }) {
   const section = useSessions((s) => s.settingsSection);
   const openSettings = useSessions((s) => s.openSettings);
   const searching = search.query.trim() !== '';
-  // With the sidebar closed, the traffic lights sit above this list (macOS; elsewhere they're in the title bar).
-  const sidebarClosed = useSidebar((s) => s.state === 'closed') && currentPlatform() === 'darwin';
   const row = ({ id, label, icon: Icon }: SettingsPage) => {
     // While searching, no page is the one on screen: each says how many results it has.
     const current = !searching && section === id;
@@ -716,8 +752,14 @@ export function SettingsNav({ search }: { search: SearchState }) {
   const groups = navGroups(SETTINGS_SECTIONS.filter((page) => settingsPageShown(page.id, { browser })));
   const bottom = groups.find((g) => g.group === 'bottom');
   return (
-    <nav aria-label="Settings sections" onKeyDown={moveBetweenPages} className={`flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 ${sidebarClosed ? 'pt-12' : 'pt-3'}`} data-settings-nav>
-      <h2 id="settings-title" className="px-2.5 pt-2 pb-3 text-title font-semibold">
+    <nav
+      aria-label="Settings sections"
+      onKeyDown={moveBetweenPages}
+      className={inPanel ? 'flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2' : 'flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 pt-3'}
+      data-settings-nav={inPanel ? 'panel' : 'sheet'}
+    >
+      {/* In the panel, its header as the other lists': the name, at the panel header's height. */}
+      <h2 id="settings-title" className={inPanel ? 'flex h-10 shrink-0 items-center px-1.5 text-ui font-semibold text-text' : 'px-2.5 pt-2 pb-3 text-title font-semibold'}>
         Settings
       </h2>
       {search.field}
@@ -756,10 +798,19 @@ function moveBetweenPages(event: ReactKeyboardEvent<HTMLElement>) {
 }
 
 /**
- * Settings fills the main area, with its sections on the left and the page on the right. The app
- * sidebar keeps its session list next to it, so what needs you stays in sight.
+ * Settings fills the main area with its page. Its sections are in the panel beside the nav rail while the panel shows
+ * Settings, else on the sheet's left.
  */
 export function SettingsView() {
+  const slot = usePanelView('settings');
+  // However Settings closes (its ✕, Escape, the rail, the menu), the panel gives its list back to the view underneath.
+  useEffect(
+    () => () => {
+      const { list, setList } = useSidebarList.getState();
+      if (list === 'settings') setList(listForView(useSessions.getState().view));
+    },
+    [],
+  );
   const section = useSessions((s) => s.settingsSection);
   const openSettings = useSessions((s) => s.openSettings);
   const sheet = useRef<HTMLDivElement>(null);
@@ -863,13 +914,15 @@ export function SettingsView() {
       className="absolute inset-0 z-30 flex min-h-0 flex-col bg-bg"
       data-settings
     >
+      {/* Its sections are in the panel while it shows them (a portal), else on the sheet's left. */}
+      {slot && createPortal(<SettingsNav search={search} inPanel />, slot)}
       <div className="flex min-h-0 flex-1">
-        <SettingsNav search={search} />
+        {!slot && <SettingsNav search={search} />}
         <div className="relative flex min-w-0 flex-1 flex-col">
           {/* The top strip keeps the window draggable, like every other view's header. */}
           {/* Same padding as the session header, so the close button stays put when Settings opens over it. */}
           <div className="drag flex h-13 shrink-0 items-center justify-end px-6">
-            <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} shortcut="settings.close" onClick={close} data-close-settings data-tooltip={`Close (${formatKeys(keysFor('settings.close'))})`} aria-label="Close settings" className="no-drag" />
+            <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} shortcut="settings.close" onClick={close} data-close-settings aria-label="Close settings" className="no-drag" />
           </div>
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
             {searching ? (

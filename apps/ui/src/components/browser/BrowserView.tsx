@@ -6,7 +6,6 @@ import { Button } from '../ui/Button.tsx';
 import { BrowserPane } from '../webPreview/BrowserPane.tsx';
 import { NewTabSections } from '../webPreview/NewTabPage.tsx';
 import { BROWSER_OWNER } from '../webPreview/browserTabs.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 
 /**
  * The Browser view (the browser on): the tabs that belong to no session, listed in the sidebar, and the one in
@@ -29,11 +28,6 @@ export function BrowserView() {
             tab={tab}
             onNewTab={newBrowserTab}
             asHeader
-            lead={
-              <span className="mr-2 flex">
-                <SidebarToggle />
-              </span>
-            }
           />
         ) : (
           <NoPage />

@@ -2,6 +2,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { UpdateChannel, UpdateCommand, UpdateState } from '@seshboard/protocol/bridge';
 import { guarded } from './guarded.ts';
 import { cleanReleaseNotes } from './releaseNotes.ts';
+import { fallbackTags, feedChannelOf, feedUrl, parseMissingFeed, releaseDownloadUrl, releaseTags } from './updateFallback.ts';
 import { available, changeChannel, checking, dismissUpdated, downloaded, downloading, failed, initialUpdateState, installing, isBusy, nextCommand, upToDate } from './updateState.ts';
 
 /** The first automatic check waits this long after launch, so it never slows startup. */
@@ -23,12 +24,16 @@ interface AutoUpdater {
   channel: string | null;
   forceDevUpdateConfig: boolean;
   logger: unknown;
+  /** Set to null to go back to the feed in app-update.yml after setFeedURL. */
+  updateConfigPath: string | null;
   setFeedURL(options: { provider: 'generic'; url: string }): void;
-  checkForUpdates(): Promise<{ updateInfo: { version: string; releaseNotes?: unknown }; isUpdateAvailable?: boolean } | null>;
+  checkForUpdates(): Promise<CheckResult | null>;
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   on(event: 'download-progress', listener: (progress: { percent: number }) => void): unknown;
 }
+
+type CheckResult = { updateInfo: { version: string; releaseNotes?: unknown }; isUpdateAvailable?: boolean };
 
 export interface UpdaterOptions {
   currentVersion: string;
@@ -49,6 +54,8 @@ export interface UpdaterOptions {
   log(message: string): void;
   /** Injected in tests; defaults to electron-updater's autoUpdater (loaded on first use). */
   load?: () => Promise<AutoUpdater>;
+  /** Fetches a URL's text, or null when it isn't there. Injected in tests; defaults to fetch. */
+  fetchText?: (url: string) => Promise<string | null>;
 }
 
 /** What the marker file from the last install says about this launch. */
@@ -84,6 +91,9 @@ function retryable(error: Error): boolean {
   return !/code signature|signature|not signed|Could not get code signature/i.test(error.message);
 }
 
+/** The newest release on GitHub has no update feed (latest-mac.yml, beta-mac.yml, …) attached yet. */
+const feedNotAttachedYet = (error: Error) => (error as Error & { code?: string }).code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND';
+
 /** First line, without the stack or the XML electron-updater appends to some errors. */
 const shortMessage = (error: Error) => (error.message.split('\n')[0] ?? 'Unknown error').slice(0, 300);
 
@@ -98,6 +108,8 @@ export class Updater {
   #autoCheck: boolean;
   #stallTimer: ReturnType<typeof setTimeout> | undefined;
   #installTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The last check read an earlier release's feed: the next one goes back to the GitHub feed. */
+  #feedOverridden = false;
   /** A channel picked while a check, download or install was running; applied when it ends. */
   #pendingChannel: UpdateChannel | null = null;
 
@@ -165,9 +177,25 @@ export class Updater {
     this.#set(checking(this.#state));
     try {
       const updater = await this.#load();
-      const result = await withTimeout(updater.checkForUpdates(), CHECK_TIMEOUT_MS, 'Checking for updates took too long.');
+      this.#restoreFeed(updater);
+      let result: CheckResult | null;
+      try {
+        result = await withTimeout(updater.checkForUpdates(), CHECK_TIMEOUT_MS, 'Checking for updates took too long.');
+      } catch (error) {
+        if (!feedNotAttachedYet(error as Error)) throw error;
+        // The release workflow publishes the GitHub release first and attaches the feed once every build is
+        // done, so for a while the newest release has none. Check the release before it instead; the next
+        // check finds the newest one once it is ready.
+        this.options.log(`Update check: the newest release has no update feed yet. ${shortMessage(error as Error)}`);
+        const earlier = this.#checkEarlierRelease(updater, (error as Error).message).catch((fallbackError: unknown) => {
+          // Not worth an error: the newest release is on its way, and the next check finds it.
+          this.options.log(`Update check of an earlier release failed: ${(fallbackError as Error).message}`);
+          return null;
+        });
+        result = await withTimeout(earlier, CHECK_TIMEOUT_MS, 'Checking for updates took too long.');
+      }
       const info = result?.updateInfo;
-      if (!info || result.isUpdateAvailable === false || info.version === this.options.currentVersion) {
+      if (!info || result?.isUpdateAvailable === false || info.version === this.options.currentVersion) {
         this.#set(upToDate(this.#state, Date.now()));
       } else {
         this.#set(available(this.#state, { version: info.version, releaseNotes: cleanReleaseNotes(info.releaseNotes) }, Date.now()));
@@ -261,6 +289,39 @@ export class Updater {
     this.#applyPendingChannel();
   }
 
+  /**
+   * Checks the newest earlier release of this channel that has its feed, up to the version this app runs.
+   * Null when there is none: the app is up to date until the newest release is ready.
+   */
+  async #checkEarlierRelease(updater: AutoUpdater, message: string): Promise<CheckResult | null> {
+    const missing = this.options.mockFeedUrl ? null : parseMissingFeed(message);
+    if (!missing) return null;
+    const fetchText = this.options.fetchText ?? fetchTextOrNull;
+    const atom = await fetchText(`${missing.releasesUrl}.atom`);
+    if (!atom) return null;
+    const tags = fallbackTags({ tags: releaseTags(atom), missingTag: missing.tag, currentVersion: this.options.currentVersion, channel: this.#state.channel });
+    for (const tag of tags) {
+      if ((await fetchText(feedUrl(missing, tag))) === null) continue;
+      this.options.log(`Update check: checking ${tag}, the newest earlier release with an update feed.`);
+      // The generic provider reads <channel><suffix>.yml from the release's folder and downloads its files from there.
+      updater.setFeedURL({ provider: 'generic', url: releaseDownloadUrl(missing, tag) });
+      this.#feedOverridden = true;
+      // Setting `channel` turns allowDowngrade on, so set it first and the flag after.
+      updater.channel = feedChannelOf(tag);
+      updater.allowDowngrade = false;
+      return updater.checkForUpdates();
+    }
+    return null;
+  }
+
+  /** Back to the GitHub feed in app-update.yml after a check of an earlier release. */
+  #restoreFeed(updater: AutoUpdater): void {
+    if (!this.#feedOverridden) return;
+    this.#feedOverridden = false;
+    updater.updateConfigPath = null;
+    this.#applyChannel(updater);
+  }
+
   #applyPendingChannel(): void {
     if (this.#pendingChannel) this.setChannel(this.#pendingChannel);
   }
@@ -317,6 +378,13 @@ export class Updater {
     updater.allowPrerelease = beta;
     updater.allowDowngrade = false;
   }
+}
+
+async function fetchTextOrNull(url: string): Promise<string | null> {
+  const response = await fetch(url, { headers: { accept: 'application/atom+xml, text/yaml, */*' } });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Checking for updates failed: HTTP ${response.status} for ${url}`);
+  return response.text();
 }
 
 async function loadAutoUpdater(): Promise<AutoUpdater> {

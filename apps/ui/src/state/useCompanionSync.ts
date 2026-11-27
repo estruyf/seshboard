@@ -28,17 +28,19 @@ export function useCompanionSync(): void {
   useEffect(() => {
     if (!client) return;
     const offs = [
-      client.on('companion.context', ({ deliveryId, target, items, reveal }) => {
+      client.on('companion.context', ({ deliveryId, target, items, images, reveal }) => {
         let error: string | null = null;
         try {
+          const key = target.kind === 'session' ? target.sessionId : newDraftKey(target.cwd);
+          if (items.length) useDrafts.getState().addContext(key, items);
+          // Pictures (the browser extension's screenshot) go to the box as Attach images adds them, once it is on screen.
+          if (images?.length) useDrafts.getState().requestImages(key, images);
           if (target.kind === 'session') {
-            useDrafts.getState().addContext(target.sessionId, items);
             if (reveal) {
               useSessions.getState().select(target.sessionId);
               useDrafts.getState().requestFocus(target.sessionId);
             }
           } else {
-            useDrafts.getState().addContext(newDraftKey(target.cwd), items);
             // New session on that folder, as a link would open it; the chips are already in its box.
             if (reveal) void useLinks.getState().open({ action: 'new-session', cwd: target.cwd, prompt: null, project: null, repo: null, autostart: false, question: false });
           }

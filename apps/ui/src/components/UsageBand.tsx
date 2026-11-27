@@ -7,7 +7,7 @@ import { useProfiles } from '../state/profilesStore.ts';
 import { ProfileBadge, ProfileDot } from './profiles/ProfileBadge.tsx';
 import { Meter } from './ui/Meter.tsx';
 import type { UsageLine } from './session/foldedMeter.ts';
-import { costComputersNotes, countdown, limitCosts, limitLabel, nextUsageEntry, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
+import { costComputersNotes, countdown, FOCUS_MAX_AGE_MS, limitCosts, limitLabel, nextUsageEntry, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { useWindowCosts } from './usage/useWindowCosts.ts';
 import { openUsage } from '../state/usageViewStore.ts';
@@ -17,7 +17,7 @@ import { hasPlanUsage, quotaSummary, resetDay, TOKEN_BILLING } from './providers
 interface UsageState {
   /** Plan usage per Claude profile (each login has its own limits). No entry: not loaded yet. */
   usage: Map<string, UsageEntry>;
-  /** Profiles a band has shown; refreshed when the window comes back into focus (also after a failed fetch). */
+  /** Profiles a band has shown; refreshed when the window comes back into focus, unless the engine's numbers are fresh (also after a failed fetch). */
   wanted: Set<string>;
   set(profileId: string, result: { usage: UsageSnapshot | null; error?: string | null }): void;
 }
@@ -33,14 +33,14 @@ export const useUsage = create<UsageState>()((set) => ({
 }));
 
 /** Asks the engine for a profile's usage (`refresh`: fetch now rather than from its cache) and stores the answer, or why there is none. */
-export function fetchUsage(client: EngineClient, profileId: string, refresh = false): Promise<void> {
-  return client.call('usage.get', { refresh, profileId }).then(
+export function fetchUsage(client: EngineClient, profileId: string, refresh = false, maxAgeMs?: number): Promise<void> {
+  return client.call('usage.get', { refresh, profileId, ...(maxAgeMs ? { maxAgeMs } : {}) }).then(
     (result) => useUsage.getState().set(profileId, result),
     (error: unknown) => useUsage.getState().set(profileId, { usage: null, error: error instanceof Error ? error.message : String(error) }),
   );
 }
 
-/** Follows usage updates, and refreshes the profiles on screen when the window comes back into focus. */
+/** Follows usage updates, and refreshes the profiles on screen when the window comes back into focus, unless the engine's numbers are younger than two minutes. */
 export function useUsageSync(): void {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -48,7 +48,8 @@ export function useUsageSync(): void {
     if (!client) return;
     const off = client.on('usage.changed', ({ profileId, usage }) => useUsage.getState().set(profileId, { usage }));
     const onFocus = () => {
-      for (const profileId of useUsage.getState().wanted) void fetchUsage(client, profileId);
+      // The engine fetches only when its numbers are older than that (each fetch starts a Claude Code process).
+      for (const profileId of useUsage.getState().wanted) void fetchUsage(client, profileId, false, FOCUS_MAX_AGE_MS);
     };
     window.addEventListener('focus', onFocus);
     return () => {
@@ -117,10 +118,10 @@ const resetTitle = (limit: UsageLimit, now: number) =>
  * Plan usage, like the claude-stats mod: one pill per window with a ring and a reset countdown.
  * Shows the limits of the given Claude profile (the default one when omitted).
  * `compact` drops the pills for a single line (`6% 5h · 4h44m`), for the new session's route tray.
- * `footer`: small rings (`5h ◔ 9%   Week ◔ 18%`) for the tray under the message box, reset times in the tooltips;
- * the profile is a chip on the same tray.
+ * `footer`: small rings (`5h ◔ 9%   Week ◔ 18%`) for the tray under the message box, reset times and each window's
+ * cost in the tooltip; the profile is a chip on the same tray.
  */
-export function UsageBand({ profileId, compact = false, footer = false, cost = true }: { profileId?: string | null; compact?: boolean; footer?: boolean; /** The windows' cost after the bars (Settings › Usage), when `footer`. */ cost?: boolean }) {
+export function UsageBand({ profileId, compact = false, footer = false, cost = true }: { profileId?: string | null; compact?: boolean; footer?: boolean; /** The windows' cost in the tooltip (Settings › Usage), when `footer`. */ cost?: boolean }) {
   const defaultId = useProfiles((s) => s.defaultId);
   const id = profileId ?? defaultId;
   const usage = useUsageFor(id)?.usage;
@@ -131,7 +132,7 @@ export function UsageBand({ profileId, compact = false, footer = false, cost = t
   }, []);
   const limits = usage ? visibleLimits(usage.limits) : [];
   const extra = usage?.extraUsage;
-  // The estimated API cost of each window, after its bar (Settings › Usage), in the footer and New session's tray.
+  // The estimated API cost of each window (Settings › Usage), in the tooltip of the footer and New session's tray.
   const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && footer && cost;
   const currency = usePreferences((s) => s.prefs.costCurrency);
   const priced = useWindowCosts(id, showCost && limits.length > 0);
@@ -159,20 +160,17 @@ export function UsageBand({ profileId, compact = false, footer = false, cost = t
         data-usage-profile={id}
       >
         {limits.map((limit, i) => (
-          <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap">
+          // Each window's cost is in the tooltip, not on the line: the line also holds the chips, the session's cost and
+          // the context ring, and a cost per window pushed the chips into one. `data-usage-cost` says the window has one.
+          <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap" data-usage-cost={costs[i] ? limit.kind : undefined}>
             {/* Rings rather than bars: the line also holds the cost and the context window, so it runs out of room fast. */}
             <Meter kind="ring" percent={limit.percent} showValue hideTrackNarrow>
               <span>{footerLabel(limit)}</span>
             </Meter>
-            {costs[i] && (
-              <span className="tabular-nums text-faint @max-[400px]/meters:hidden" data-usage-cost={limit.kind}>
-                {costs[i]}
-              </span>
-            )}
           </span>
         ))}
         {extra?.enabled && extra.usedCredits !== null && extra.usedCredits > 0 && (
-          <span className="whitespace-nowrap @max-[400px]/meters:hidden">
+          <span className="whitespace-nowrap @max-[400px]/meters:hidden" data-tray-cost>
             <span className="text-ok">{money(extra.usedCredits, extra.currency)}</span> extra
           </span>
         )}

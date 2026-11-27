@@ -17,7 +17,7 @@ import { ConfirmStrip, ConnectedNow, ListRow, RenameField } from './RemoteRows.t
 import { addressCanChange, connectionLine, remoteStatusView, type StatusAction, type StatusTone, type StatusView } from './remoteStatusView.ts';
 import { remoteAge, TUNNELS } from './remoteText.ts';
 
-const field = 'h-7 min-w-0 flex-1 rounded-md border border-edge bg-card px-2 font-mono text-ui text-text placeholder:text-faint';
+const field = 'field h-7 min-w-0 flex-1 bg-card px-2 font-mono text-ui placeholder:text-faint';
 const SECURITY =
   "Anyone can reach the address, but only paired devices get in. Every connection is checked with the device's key and encrypted from the device to this computer.";
 /** Advanced is open or closed per window, as the right panel is. */

@@ -26,7 +26,7 @@ export interface BrowserBridgeDeps {
    * The address a call works on (the one `open` loads, else the session's page; null with no page) and the browser
    * profile it acts in (its name, null for the Default one).
    */
-  where(sessionId: string, tool: BrowserTool, args: Record<string, unknown>): Promise<{ url: string | null; profile: string | null }>;
+  where(sessionId: string, tool: BrowserTool, args: Record<string, unknown>): Promise<{ url: string | null; profile: string | null; target?: string | null }>;
   /** The sites the session's project allows, for the tools and for scripts; `project` is false outside an added project. */
   sites(sessionId: string): { sites: readonly string[]; scriptSites: readonly string[]; project: boolean };
   /** Settings › Browser › Allow scripts in pages, now: off, evaluate and network are refused even in sessions that list them. */
@@ -109,7 +109,7 @@ export class BrowserBridge {
     const access = browserAccess({ tool, url: where.url, scripts: this.deps.scripts(), sites, scriptSites, sessionSites: [...(ours?.site ?? [])], sessionScriptSites: [...(ours?.scripts ?? [])] });
     if ('refuse' in access) return fail(access.refuse);
     if ('ask' in access) {
-      const answer = await this.deps.ask(sessionId, { kind: access.ask, site: access.site, tool, input: given, profile: where.profile, project });
+      const answer = await this.deps.ask(sessionId, { kind: access.ask, site: access.site, tool, input: given, profile: where.profile, ...(where.target ? { target: where.target } : {}), project });
       if (answer === 'deny') {
         return fail(
           access.ask === 'scripts'

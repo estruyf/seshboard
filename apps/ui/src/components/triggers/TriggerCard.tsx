@@ -47,6 +47,8 @@ export function TriggerCard({ trigger, events, now }: { trigger: Trigger; events
   const waiting = sorted.filter((e) => e.status === 'waiting');
   const source = trigger.source;
   const paused = pausedLine(trigger);
+  /** Who the issues are assigned to, or whose review the pull requests ask for. */
+  const who = source.kind === 'issues' ? source.assignee : source.kind === 'reviews' ? source.reviewer : null;
 
   const meta = [
     source.kind === 'ci' ? workflowsLine(source.workflows) : trigger.stateLabels.on ? 'State labels on' : null,
@@ -71,15 +73,15 @@ export function TriggerCard({ trigger, events, now }: { trigger: Trigger; events
         <div className="grid min-w-0 flex-1 gap-0.5">
           <h3 className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-title font-semibold ${trigger.paused ? 'text-muted' : 'text-text'}`}>
             <span className="truncate">{trigger.name}</span>
-            {source.kind === 'issues' && source.label && (
+            {source.kind !== 'ci' && source.label && (
               <Pill icon={<Tag size={11} aria-hidden />} className="font-normal" data-trigger-filter-label>
                 {source.label}
               </Pill>
             )}
-            {source.kind === 'issues' && source.label && source.assignee && <span className="text-ui font-normal text-muted">and assigned to</span>}
-            {source.kind === 'issues' && source.assignee && (
+            {who && source.kind !== 'ci' && source.label && <span className="text-ui font-normal text-muted">{source.kind === 'reviews' ? 'and asks' : 'and assigned to'}</span>}
+            {who && (
               <Pill className="font-normal" data-trigger-filter-assignee>
-                @{source.assignee === '@me' ? (login ?? 'me') : source.assignee}
+                @{who === '@me' ? (login ?? 'me') : who}
               </Pill>
             )}
             {pill && (
@@ -239,7 +241,7 @@ export function TriggerEventRow({ event, state, now, position, of }: { event: Tr
               e.preventDefault();
               openWebLink(event.url!);
             }}
-            className="text-meta text-muted hover:text-link" aria-label={`Open ${event.kind === 'ci' ? 'the run' : 'the issue'} on GitHub`} data-tooltip="Open on GitHub">
+            className="text-meta text-muted hover:text-link" aria-label={`Open ${event.kind === 'ci' ? 'the run' : event.kind === 'pr' ? 'the pull request' : 'the issue'} on GitHub`} data-tooltip="Open on GitHub">
             GitHub
           </a>
         )}

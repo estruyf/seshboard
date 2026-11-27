@@ -5,8 +5,6 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openAsk, openAskThrough, type AskBackend } from '../../state/askStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { useReadMode } from '../../state/readModeStore.ts';
-import { useSidebar } from '../../state/sidebarStore.ts';
-import { fitSidebar } from '../../state/sidebarWidth.ts';
 import { Markdown, StreamingMarkdown } from '../transcript/Markdown.tsx';
 import { currentHeading, STREAMING_BLOCK, type ReadReply } from '../transcript/readReply.ts';
 import { TranscriptItem } from '../transcript/TranscriptItem.tsx';
@@ -130,15 +128,6 @@ export function ReadMode({ sessionId, title, live, cwd, reply, remote }: { sessi
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, []);
-
-  // The window's buttons sit at the top left, over the bar. The rail moves them; put them back when it shows.
-  useEffect(() => {
-    window.seshboard?.setWindowButtons?.('default');
-    return () => {
-      const { state, width, viewport } = useSidebar.getState();
-      window.seshboard?.setWindowButtons?.(fitSidebar(state, width, viewport).state === 'minimal' ? 'rail' : 'default');
-    };
   }, []);
 
   // The heading the next J or K goes from; it follows the scroll, and a jump moves it at once so quick presses keep stepping.

@@ -17,6 +17,11 @@ export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'styl
   anchor?: RefObject<HTMLElement | null>;
   /** The `id` of the popover this one opened from (a submenu): clicks here don't close that one. */
   owner?: string;
+  /**
+   * A panel that holds controls with menus of their own (the nav rail's Computers): while another popover is open, that
+   * one gets Escape and clicks, and this one stays.
+   */
+  yieldToNested?: boolean;
   children: ReactNode;
 }
 
@@ -26,7 +31,7 @@ export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'styl
  * on Escape. The shared base for `Menu` and `Select`. Rendered in `body`, so a parent
  * that stacks its own layer (Settings, a dialog) can't keep it under the toasts.
  */
-export function Popover({ x, y, width, minWidth, above = false, onClose, closeOnEscape = true, anchor, owner, className = '', children, ...rest }: PopoverProps) {
+export function Popover({ x, y, width, minWidth, above = false, onClose, closeOnEscape = true, anchor, owner, yieldToNested = false, className = '', children, ...rest }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: x, top: y });
 
@@ -50,16 +55,18 @@ export function Popover({ x, y, width, minWidth, above = false, onClose, closeOn
   // whenever `onClose` changed, a popover that closes on a click (the project filter) would re-render
   // a nested one (its project menu) mid-dispatch, and the browser would skip the nested one's
   // replaced listener, leaving it open.
-  const latest = useRef({ onClose, closeOnEscape });
+  const latest = useRef({ onClose, closeOnEscape, yieldToNested });
   useLayoutEffect(() => {
-    latest.current = { onClose, closeOnEscape };
+    latest.current = { onClose, closeOnEscape, yieldToNested };
   });
 
   useEffect(() => {
     const close = () => latest.current.onClose();
+    // Another popover is open beside this one (`yieldToNested`): it is on top, so it acts first.
+    const nestedOpen = () => latest.current.yieldToNested && [...document.querySelectorAll('[data-popover]')].some((el) => el !== ref.current);
     const onDown = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (ref.current?.contains(target) || anchor?.current?.contains(target) || inOwnPopover(target)) return;
+      if (ref.current?.contains(target) || anchor?.current?.contains(target) || inOwnPopover(target) || nestedOpen()) return;
       close();
     };
     // A click in a popover opened from this one (a submenu, or a submenu's submenu) is inside it.
@@ -72,7 +79,7 @@ export function Popover({ x, y, width, minWidth, above = false, onClose, closeOn
       return false;
     };
     const onKey = (event: KeyboardEvent) => {
-      if (!latest.current.closeOnEscape || event.key !== 'Escape' || event.defaultPrevented) return;
+      if (!latest.current.closeOnEscape || event.key !== 'Escape' || event.defaultPrevented || nestedOpen()) return;
       // This Escape was the menu's: a dialog under it (or over it) leaves a handled key alone.
       event.preventDefault();
       close();

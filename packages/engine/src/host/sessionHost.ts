@@ -1,6 +1,6 @@
 import { randomUUID, type UUID } from 'node:crypto';
 import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { BROWSER_SERVER, BROWSER_TOOL_NAMES, cacheTtlOf, ORCHESTRATOR_SERVER, ORCHESTRATOR_TOOL_NAMES, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
+import { BROWSER_SERVER, BROWSER_TOOL_NAMES, cacheTtlOf, ORCHESTRATOR_SERVER, ORCHESTRATOR_TOOL_NAMES, SESHBOARD_TOOL_NAMES, SESSIONS_SERVER, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -92,6 +92,12 @@ export interface HostConfig {
   /** For forks: the session being forked. */
   forkFrom?: string;
   cwd: string;
+  /**
+   * The worktree Seshboard is still making for a new session (`git fetch` and `git worktree add`), and the folder it
+   * gives: Claude Code starts there once it settles. Meanwhile the session shows (in `cwd`) and takes messages, so
+   * starting one never waits on git. If it fails, the session fails with git's reason.
+   */
+  prepare?: Promise<{ cwd: string }>;
   /** The Claude profile (login); `env` already points at its config folder. */
   profileId: string;
   mode: 'new' | 'resume' | 'fork';
@@ -120,6 +126,8 @@ export interface HostConfig {
   skimMarks?: boolean;
   /** The orchestrator's tools (docs/orchestrator.md): Seshboard's `orchestrator` MCP server, tied to this session. */
   orchestrator?: McpStdioServer | null;
+  /** Any other session's start_session (docs/orchestrator.md): Seshboard's `seshboard` MCP server, tied to this session. */
+  sessions?: McpStdioServer | null;
   /** More text for after Claude Code's prompt: an orchestrator's role, a project's instructions for its sessions. */
   appendSystem?: string | null;
   /** The project's own workflow text for plan mode (the SDK's `planModeInstructions`); Claude Code keeps its read-only rules. Absent or empty: its default. */
@@ -180,6 +188,9 @@ export function resultOutcome(message: Extract<SDKMessage, { type: 'result' }>):
 }
 const STREAM_FLUSH_MS = 30;
 
+/** The longest suggested reply kept: a predicted next message is short, and a long one is no quick reply. */
+const SUGGESTION_MAX = 500;
+
 /** The tools of Seshboard's `visualize` server, as Claude Code names them: allowed without asking. */
 const VISUALIZE_TOOLS = ['mcp__visualize__read_me', 'mcp__visualize__show_widget'];
 
@@ -193,6 +204,9 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     settingSources: ['user', 'project', 'local'],
     includePartialMessages: true,
     enableFileCheckpointing: true,
+    // Claude Code predicts your next message after each turn ("go", "yes, run it"): the message box offers it to send.
+    // It reuses the turn's prompt cache, so it costs next to nothing. A read-only step has nobody to answer it.
+    ...(config.readOnly ? {} : { promptSuggestions: true }),
     permissionMode: config.permissionMode,
     canUseTool: config.canUseTool,
     stderr: (data) => log('debug', `[claude] ${data.trimEnd()}`),
@@ -246,6 +260,11 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   if (config.orchestrator && !config.readOnly) {
     options.mcpServers = { ...options.mcpServers, [ORCHESTRATOR_SERVER]: { type: 'stdio', ...config.orchestrator } };
     options.allowedTools = [...(options.allowedTools ?? []), ...ORCHESTRATOR_TOOL_NAMES];
+  }
+  // Allowed up front too: the engine asks you on its own card before a session starts, in every mode.
+  if (config.sessions && !config.orchestrator && !config.readOnly) {
+    options.mcpServers = { ...options.mcpServers, [SESSIONS_SERVER]: { type: 'stdio', ...config.sessions } };
+    options.allowedTools = [...(options.allowedTools ?? []), ...SESHBOARD_TOOL_NAMES];
   }
   return options;
 }
@@ -366,6 +385,7 @@ export class SessionHost {
       sessionId: config.sessionId,
       cwd: config.cwd,
       state: 'starting',
+      ...(config.prepare ? { preparing: true } : {}),
       model: config.model,
       permissionMode: config.permissionMode,
       effort: config.effort,
@@ -399,8 +419,28 @@ export class SessionHost {
   }
 
   start(): void {
-    this.query = (async () => this.startQuery({ prompt: this.input, options: buildOptions(this.config, this.events.log) }))().then(
+    this.query = (async () => {
+      let config = this.config;
+      if (config.prepare) {
+        let cwd: string;
+        try {
+          ({ cwd } = await config.prepare);
+        } catch (error) {
+          this.failPreparing(error);
+          return undefined;
+        }
+        config = { ...config, cwd };
+        if (!this.closing) this.update({ cwd, preparing: undefined });
+      }
+      // Closed while its worktree was being made: Claude Code never starts.
+      if (this.closing) return undefined;
+      return this.startQuery({ prompt: this.input, options: buildOptions(config, this.events.log) });
+    })().then(
       (query) => {
+        if (!query) {
+          this.input.end();
+          return undefined;
+        }
         // The loop catches its own failures; this is the last line, so nothing becomes an unhandled rejection.
         this.loop(query).catch((error: unknown) => this.events.log('error', `Session ${this.sessionId} broke: ${(error as Error).message}`));
         this.mods.setBridge(modsBridge(query));
@@ -485,7 +525,8 @@ export class SessionHost {
     const commands = this.commands.length ? this.commands : (this.events.knownCommands?.() ?? []);
     const echo = attachments.length === 0 && text ? { role: 'user' as const, content: [{ type: 'text' as const, text: commandEcho(text, commands.map((c) => c.name)) }] } : message.message;
     this.events.messages(this.sessionId, [{ type: 'user', uuid, message: echo, parent_tool_use_id: null, timestamp: new Date().toISOString() }], after !== undefined);
-    this.update({ promptedAt: this.lastActivity });
+    // You answered: the guess at your answer goes.
+    this.update({ promptedAt: this.lastActivity, suggestion: undefined });
     return uuid;
   }
 
@@ -756,7 +797,14 @@ export class SessionHost {
     // Background tasks die with the process.
     // A retry belongs to the turn it happened in: the next turn starts without it.
     const turnStarts = patch.state === 'running' && this.info.state !== 'running' && this.info.state !== 'needs-you';
-    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false } : {}), ...(ended || (turnStarts && !('apiRetry' in patch)) ? { apiRetry: undefined } : {}) };
+    this.info = {
+      ...this.info,
+      ...patch,
+      ...(ended ? { backgroundTasks: [], compacting: false } : {}),
+      ...(ended || (turnStarts && !('apiRetry' in patch)) ? { apiRetry: undefined } : {}),
+      // A suggestion answers the turn before: a new turn, or the end of the process, leaves nothing to answer.
+      ...(ended || turnStarts ? { suggestion: undefined } : {}),
+    };
     try {
       this.events.info(this.info);
     } catch (error) {
@@ -765,10 +813,24 @@ export class SessionHost {
     }
   }
 
+  /**
+   * Its worktree couldn't be made: the session fails with git's reason. Nothing is offered to send again (Claude Code
+   * never had a folder to start in); New session's first prompt comes back in the box instead.
+   */
+  private failPreparing(error: unknown): void {
+    const message = `Could not make the worktree: ${error instanceof Error ? error.message : String(error)}`;
+    this.events.log('warn', `Session ${this.sessionId}: ${message}`);
+    this.initReject(new Error(message));
+    this.early = null;
+    if (!this.closing) this.update({ state: 'error', error: message, preparing: undefined, ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
+  }
+
   private fail(error: unknown): void {
     const message = failureMessage(error instanceof Error ? error.message : String(error), this.config.claudePath);
     this.events.log('error', `Session ${this.sessionId} failed: ${message}`);
     this.initReject(new Error(message));
+    // What was streaming goes out before the state, which drops it everywhere: none of it may come after.
+    this.flushStream();
     this.update({ state: 'error', error: message, ...(this.early?.length ? { unsent: this.early.length } : {}), ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
   }
 
@@ -781,7 +843,10 @@ export class SessionHost {
           this.events.log('warn', `Could not handle ${message.type} message: ${(error as Error).message}`);
         }
       }
-      if (!this.closing) this.update({ state: 'closed' });
+      if (!this.closing) {
+        this.flushStream();
+        this.update({ state: 'closed' });
+      }
     } catch (error) {
       if (this.closing) return;
       this.fail(error);
@@ -861,11 +926,22 @@ export class SessionHost {
         this.events.turnEnded?.(this.sessionId, { ...outcome, stopped, superseded: this.nowPhase !== null });
         return;
       }
+      case 'prompt_suggestion':
+        // It comes after the turn's result. If your next message has started a turn already, it answers nothing.
+        if (this.info.state === 'running' || this.info.state === 'needs-you' || !message.suggestion.trim()) return;
+        this.update({ suggestion: message.suggestion.trim().slice(0, SUGGESTION_MAX) });
+        return;
       case 'rate_limit_event':
-        this.lastRateLimit = message.rate_limit_info;
-        if (message.rate_limit_info.status === 'rejected') this.rejected = message.rate_limit_info;
-        this.events.rateLimit?.(this.sessionId, message.rate_limit_info);
-        this.events.usageHint?.();
+        {
+          const info = message.rate_limit_info;
+          const before = this.lastRateLimit;
+          this.lastRateLimit = info;
+          if (info.status === 'rejected') this.rejected = info;
+          this.events.rateLimit?.(this.sessionId, info);
+          // These arrive every few seconds in a busy session. Plan usage is only worth asking again when one says
+          // something new (a warning, a limit hit, another window); the monitor keeps a floor between its fetches.
+          if (!before || before.status !== info.status || before.rateLimitType !== info.rateLimitType || before.resetsAt !== info.resetsAt) this.events.usageHint?.();
+        }
         return;
       default:
         return;

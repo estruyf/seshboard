@@ -29,6 +29,13 @@ import {
   browserPromptText,
   type BrowserAnswer,
   type BrowserAsk,
+  SESSION_TOOL_PREFIX,
+  sessionStartPromptText,
+  approvalReplyOf,
+  type ApprovalAnswer,
+  type ApprovalAsk,
+  type ApprovalCard,
+  type SessionStartAsk,
 } from '@seshboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -168,6 +175,9 @@ export interface HostManagerDeps {
    * one, and what a resumed session reads after Claude Code's prompt (an orchestrator's role, its sessions' instructions).
    */
   orchestratorServer?: (sessionId: () => string | null) => Promise<McpStdioServer | null>;
+  /** Every other session's `seshboard` MCP server (start_session, which asks you first), tied the same way. */
+  /** Every other session's `seshboard` server; `cwd` picks the tools its project gives its sessions. */
+  sessionsServer?: (sessionId: () => string | null, cwd: string | null) => Promise<McpStdioServer | null>;
   isOrchestrator?: (sessionId: string) => boolean;
   appendSystemFor?: (sessionId: string) => string | null;
   /** The project's own plan mode instructions for a session in `cwd`; null for none. Read when a process starts. */
@@ -187,14 +197,27 @@ const keyOf = ({ profileId, cwd }: CommandKey) => `${profileId}\0${cwd}`;
 /** Commands that only work in the terminal UI; Claude Code reports more at init. */
 const TERMINAL_ONLY = new Set(['doctor', 'color', 'focus', 'reload-plugins']);
 
+/** The words and choices of a card Seshboard raises itself; `answer` hears a browser card's pick. */
+interface OwnCard {
+  title: string;
+  description: string;
+  alwaysLabel: string | null;
+  sessionAllow: boolean;
+  /** What the call does, in words, shown instead of its input's first value. */
+  detail?: string;
+  answer?: (picked: BrowserAnswer) => void;
+  /** An approval card of one of Seshboard's own tools: what it shows instead of the input. */
+  approval?: ApprovalCard;
+}
+
 interface Pending {
   request: PermissionRequest;
   input: Record<string, unknown>;
   suggestions: PermissionUpdate[] | undefined;
   /** A user's ask rule forced this prompt, so no mode answers it. */
   matchedAskRule: boolean;
-  /** A browser card (`askBrowser`): hears which of its choices you picked; its "Always allow" is the bridge's to keep. */
-  browser?: (answer: BrowserAnswer) => void;
+  /** Seshboard's own card (`askOwn`): hears which of its choices you picked; a browser card's "Always allow" is the bridge's to keep. */
+  own?: (answer: BrowserAnswer) => void;
   resolve: (result: PermissionResult) => void;
 }
 
@@ -226,6 +249,11 @@ export interface CreateParams {
   /** Turned on before the first message goes, so that message runs fast too. Not saved: a resume starts off. */
   fastMode?: boolean | undefined;
   worktree: ClaudeWorktreeRequest | null;
+  /**
+   * The worktree the engine is still making for it, and its folder (`HostConfig.prepare`): the session opens in `cwd`
+   * at once, and Claude Code starts in the worktree once it is there.
+   */
+  prepare?: Promise<{ cwd: string }>;
   /**
    * Runs after Claude Code has started (and created the worktree) but before
    * the first message, e.g. setup actions. Failures are logged; the message still goes.
@@ -312,8 +340,9 @@ export class HostManager {
 
   async create(params: CreateParams): Promise<string> {
     await this.deps.links?.warm(params.prompt);
-    // A warm process started without the read-only hook, the orchestrator's tools and any text after the prompt.
-    const warm = params.readOnly || params.orchestrator || params.appendSystem ? undefined : this.takeWarm(params);
+    // A warm process started without the read-only hook, the orchestrator's tools and any text after the prompt, and
+    // in another folder than a worktree still being made.
+    const warm = params.readOnly || params.orchestrator || params.appendSystem || params.prepare ? undefined : this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
       {
@@ -325,6 +354,7 @@ export class HostManager {
         permissionMode: params.permissionMode,
         effort: params.effort,
         worktree: params.worktree,
+        ...(params.prepare ? { prepare: params.prepare } : {}),
         ...(params.readOnly ? { readOnly: true } : {}),
         ...(params.orchestrator ? { orchestrate: true } : {}),
         ...(params.appendSystem ? { appendSystem: params.appendSystem } : {}),
@@ -340,19 +370,16 @@ export class HostManager {
       if (params.permissionMode !== 'default') await host.setPermissionMode(params.permissionMode).catch(() => {});
     }
     // Sent the same way for a warm process and a new one. If it fails the session starts at standard speed, and says so.
-    if (params.fastMode) await host.setFastMode(true).catch((error: Error) => this.deps.log('warn', `Fast mode did not turn on: ${error.message}`));
+    // Claude Code takes it only once it runs: while a worktree is made, the first message waits for it instead of Start.
+    const fastMode = params.fastMode ? host.setFastMode(true).catch((error: Error) => this.deps.log('warn', `Fast mode did not turn on: ${error.message}`)) : undefined;
+    if (fastMode && !params.prepare) await fastMode;
     // Claude Code has already failed (no login, a folder it can't start in): no message can go, so say why.
     if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
     // Return the id now, so the window can show the session (and its setup terminals) right away.
     const setup = params.beforeFirstMessage?.(sessionId).catch((error: Error) => this.deps.log('warn', `Worktree setup failed: ${error.message}`));
-    if (params.pickModel) {
-      // Your message shows while Auto chooses; Claude Code gets it once the model is set.
-      host.send(params.prompt, params.attachments, Promise.all([setup, this.pickModel(host, sessionId, params.pickModel)]));
-    } else if (setup) {
-      void setup.then(() => host.active && host.send(params.prompt, params.attachments));
-    } else {
-      host.send(params.prompt, params.attachments);
-    }
+    // Your message shows at once; Claude Code gets it once Auto has set the model, setup has run and fast mode is on.
+    const waits = [setup, params.pickModel ? this.pickModel(host, sessionId, params.pickModel) : undefined, params.prepare ? fastMode : undefined].filter((w) => w !== undefined);
+    host.send(params.prompt, params.attachments, waits.length ? Promise.all(waits) : undefined);
     return sessionId;
   }
 
@@ -711,8 +738,8 @@ export class HostManager {
         behavior: 'allow',
         updatedInput: decision.updatedInput ?? pending.input,
       };
-      if (decision.always && pending.suggestions && !pending.browser) result.updatedPermissions = pending.suggestions;
-      pending.browser?.(browserAnswerOf(decision));
+      if (decision.always && pending.suggestions && !pending.own) result.updatedPermissions = pending.suggestions;
+      pending.own?.(browserAnswerOf(decision));
       this.settle(requestId, result);
       // "Always" can switch the mode too (Accept edits for this session), which the other waiting prompts miss.
       const mode = result.updatedPermissions?.findLast((u) => u.type === 'setMode');
@@ -1088,6 +1115,7 @@ export class HostManager {
     this.deps.ephemeral?.add(sessionId);
     const route: Warm['route'] = { canUseTool: null, sessionId: null };
     const browser = (await this.deps.browserServer?.(() => route.sessionId?.() ?? null)) ?? null;
+    const sessions = (await this.deps.sessionsServer?.(() => route.sessionId?.() ?? null, cwd)) ?? null;
     // Settings changed while the server started: this process would start with the old ones.
     if (generation !== this.warmGeneration) return;
     const options = buildOptions(
@@ -1105,6 +1133,7 @@ export class HostManager {
         chrome: this.chrome,
         visualize: this.visualize,
         browser,
+        sessions,
         skimMarks: this.skimMarks,
         env,
         claudePath,
@@ -1214,6 +1243,8 @@ export class HostManager {
         // A pre-warmed process has its tools already; a new one gets them here.
         browser: warm ? null : ((await this.deps.browserServer?.(() => hostRef?.sessionId ?? null)) ?? null),
         orchestrator: orchestrate ? ((await this.deps.orchestratorServer?.(() => hostRef?.sessionId ?? null)) ?? null) : null,
+        // Any other session asks before it starts one; a pre-warmed process has the server already, a read-only one gets none.
+        sessions: warm || orchestrate || config.readOnly ? null : ((await this.deps.sessionsServer?.(() => hostRef?.sessionId ?? null, config.cwd)) ?? null),
         skimMarks: this.skimMarks,
         planModeInstructions: this.deps.planModeInstructionsFor?.(config.cwd) ?? null,
       },
@@ -1287,21 +1318,44 @@ export class HostManager {
    * always (which the bridge keeps for the project); 'deny' when you said no.
    */
   async askBrowser(sessionId: string, ask: BrowserAsk): Promise<BrowserAnswer> {
+    let answer: BrowserAnswer = 'deny';
+    const allowed = await this.askOwn(sessionId, `mcp__browser__${ask.tool}`, ask.input, { ...browserPromptText('Claude Code', ask), sessionAllow: true, answer: (picked) => (answer = picked) });
+    return allowed ? answer : 'deny';
+  }
+
+  /**
+   * The session asks to start another (start_session on its `seshboard` server): asks in its permission card, with
+   * Allow and Deny only. True when you allowed it.
+   */
+  askStart(sessionId: string, ask: SessionStartAsk): Promise<boolean> {
+    return this.askOwn(sessionId, `${SESSION_TOOL_PREFIX}start_session`, { ...ask }, { ...sessionStartPromptText('Claude Code', ask), sessionAllow: false });
+  }
+
+  /**
+   * A tool on the session's `seshboard` server wants to save or start something (docs/seshboard-tools.md): asks on an
+   * approval card, in every permission mode. Your answer, with what you ticked or saved in the editor.
+   */
+  async askApproval(sessionId: string, ask: ApprovalAsk): Promise<ApprovalAnswer> {
+    const result = await this.askOwnResult(sessionId, ask.tool, ask.input, { title: `Claude Code ${ask.title}`, description: ask.description, alwaysLabel: null, sessionAllow: false, approval: ask.card });
+    return result.behavior === 'allow' ? { allowed: true, message: null, reply: approvalReplyOf(result.updatedInput) } : { allowed: false, message: result.message || null, reply: {} };
+  }
+
+  /** A card Seshboard raises itself, not Claude Code: the session waits on you while it is open. */
+  private async askOwn(sessionId: string, toolName: string, input: Record<string, unknown>, own: OwnCard): Promise<boolean> {
+    return (await this.askOwnResult(sessionId, toolName, input, own)).behavior === 'allow';
+  }
+
+  private async askOwnResult(sessionId: string, toolName: string, input: Record<string, unknown>, own: OwnCard): Promise<PermissionResult> {
     const host = this.hosts.get(sessionId);
     host?.waitingOnYou(true);
-    let answer: BrowserAnswer = 'deny';
     try {
-      const result = await this.prompt(sessionId, `mcp__browser__${ask.tool}`, ask.input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], {
-        ask,
-        answer: (picked) => (answer = picked),
-      });
-      return result.behavior === 'allow' ? answer : 'deny';
+      return await this.prompt(sessionId, toolName, input, { signal: new AbortController().signal, toolUseID: randomUUID() } as Parameters<CanUseTool>[2], own);
     } finally {
       host?.waitingOnYou(false);
     }
   }
 
-  private prompt(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2], browser?: { ask: BrowserAsk; answer(picked: BrowserAnswer): void }): Promise<PermissionResult> {
+  private prompt(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2], own?: OwnCard): Promise<PermissionResult> {
     // Once per call: Claude's new attempt has a new id, so it can't come back here again.
     const before = this.callsBeforeMode.get(sessionId);
     if (before?.toolUseIds.delete(options.toolUseID) && recheckAfterModeChange({ toolName, matchedAskRule: Boolean(options.matchedAskRule) }, before.mode)) {
@@ -1325,10 +1379,10 @@ export class HostManager {
         alwaysLabel: describeSuggestions(options.suggestions),
         agentId: str(options.agentID),
         createdAt: Date.now(),
-        // A browser card: the site (or its scripts) in its words, and Allow for this session.
-        ...(browser ? { ...browserPromptText('Claude Code', browser.ask), sessionAllow: true } : {}),
+        // Seshboard's own card (a browser site, a session to start): its words, and Allow for this session when it has one.
+        ...(own ? { title: own.title, description: own.description, alwaysLabel: own.alwaysLabel, ...(own.sessionAllow ? { sessionAllow: true } : {}), ...(own.detail ? { detail: own.detail } : {}), ...(own.approval ? { approval: own.approval } : {}) } : {}),
       };
-      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), ...(browser ? { browser: browser.answer } : {}), resolve });
+      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), ...(own ? { own: own.answer ?? (() => {}) } : {}), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });
       // Answered for you: through `respond`, so an approved plan goes through `planApproved` as a click would.
       const auto = this.deps.autoAnswer?.(request) ?? null;

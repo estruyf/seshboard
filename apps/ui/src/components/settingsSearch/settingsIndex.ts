@@ -5,9 +5,13 @@ import { keepAwakeDetail, keepAwakeLabel } from '../general/keepAwake.ts';
 import { BACKGROUND_LABEL, backgroundDetail, NEEDS_YOU_DETAIL, NEEDS_YOU_LABEL, QUICK_START_KEYWORDS, SHORTCUT_DETAIL } from '../general/quickStartCopy.ts';
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
+import { CODE_HIGHLIGHTING_DETAIL, FILE_ICONS_DETAIL, MINIMAL_MODE_DETAIL, PROJECT_COLORS_DETAIL } from '../theme/minimalCopy.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
-import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
+import { SIDE_PANEL_DETAIL, SIDE_PANEL_HALF_DETAIL } from '../transcript/sidePanelCopy.ts';
+import { ESCAPE_TWICE_DETAIL } from '../composer/escapeStop.ts';
+import { QUICK_REPLY_DETAIL } from '../composer/quickReply.ts';
+import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -122,14 +126,27 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'browser profile account accounts login logins sign in cookies storage partition container separate test users admin customer reset delete new',
       target: '[data-new-browser-profile]',
     },
+    {
+      id: 'site-actions',
+      page: 'browser',
+      label: 'Site actions',
+      detail: SITE_ACTIONS_DETAIL,
+      keywords: 'start session page github pull request issue sentry jira url pattern prompt template button address bar right click menu extension',
+      target: '[data-add-site-action]',
+    },
 
     // Theme
-    { id: 'appearance', page: 'theme', label: 'Appearance', detail: 'Match System, Light or Dark.', keywords: 'dark mode light mode night colour color scheme', target: '[data-color-scheme]' },
-    { id: 'theme', page: 'theme', label: 'Theme', detail: 'Colours for the app, the code blocks and the terminal. Themes are JSON files you can share.', keywords: 'color colors palette syntax', target: '[data-theme-picker]' },
+    { id: 'appearance', page: 'theme', label: 'Light or dark', detail: 'Light, Dark or Follow the system.', keywords: 'appearance dark mode light mode night colour color scheme match system', target: '[data-color-scheme]' },
+    { id: 'appearance-theme', page: 'theme', label: 'Theme', detail: 'Seshboard, Black and white, or Black and white, light.', keywords: 'appearance black white greys grey gray monochrome colours colors', target: '[data-appearance-cards]' },
+    { id: 'minimal-mode', page: 'theme', label: 'Minimal mode', detail: MINIMAL_MODE_DETAIL, keywords: 'quiet calm minimalist less clutter one line chips badges counts borders', target: '[data-minimal-mode]' },
+    { id: 'code-highlighting', page: 'theme', label: 'Code highlighting', detail: CODE_HIGHLIGHTING_DETAIL, keywords: 'syntax colours colors code blocks diffs one colour plain monochrome', target: '[data-code-highlighting]' },
+    { id: 'file-icons', page: 'theme', label: 'File icons', detail: FILE_ICONS_DETAIL, keywords: 'icon theme icon pack vs code vscode material seti explorer files tree folders', target: '[data-file-icon-theme]' },
+    { id: 'project-colors', page: 'theme', label: 'Project colours', detail: PROJECT_COLORS_DETAIL, keywords: 'project colors tiles letters icons grey gray', target: '[data-project-colors]' },
+    { id: 'theme', page: 'theme', label: 'Seshboard themes', detail: 'Colours for the app, the code blocks and the terminal. Themes are JSON files you can share.', keywords: 'color colors palette syntax', target: '[data-theme-picker]' },
     { id: 'theme-import', page: 'theme', label: 'Import…', detail: 'Add a theme from a .json file.', keywords: 'theme file json drop', target: '[data-theme-import]' },
     { id: 'theme-folder', page: 'theme', label: 'Open themes folder', detail: 'Where imported themes are kept.', keywords: 'theme files', target: '[data-theme-folder]' },
     { id: 'app-icon', page: 'theme', label: 'App icon', detail: appIconDetail(), keywords: 'icon dock taskbar logo app switcher colourway colorway', target: '[data-app-icon-picker]' },
-    { id: 'dock-activity', page: 'theme', label: DOCK_ACTIVITY_LABEL, detail: DOCK_ACTIVITY_DETAIL, keywords: 'dock icon animation animate working busy running activity progress lights cables', target: '[data-dock-activity]', os: 'darwin' },
+    { id: 'dock-activity', page: 'theme', label: DOCK_ACTIVITY_LABEL, detail: DOCK_ACTIVITY_DETAIL, keywords: 'dock icon animation animate working busy running activity progress lights cables light smooth off cpu battery', target: '[data-dock-activity]', os: 'darwin' },
     {
       id: 'app-icon-remote',
       page: 'theme',
@@ -143,14 +160,6 @@ export function settingsIndex(): SettingEntry[] {
 
     // Sidebar
     { id: 'sidebar-style', page: 'sidebar', label: 'Sidebar style', detail: 'Large icons, Standard or Compact. Large icons makes each session’s project easy to spot.', keywords: 'density rows size', target: '[data-sidebar-style]' },
-    {
-      id: 'sidebar-collapsed',
-      page: 'sidebar',
-      label: 'When collapsed',
-      detail: `What ${formatKeys(keysFor('sidebar.toggle'))} and the sidebar button do: a narrow rail of project icons, or hide the sidebar.`,
-      keywords: 'minimal rail hidden hide collapse',
-      target: '[data-sidebar-collapsed]',
-    },
     {
       id: 'session-scope',
       page: 'sidebar',
@@ -171,7 +180,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'quick-actions-show',
       page: 'sidebar',
       label: 'Show',
-      detail: 'Quick actions on hover: Done only, or Read · Pin · Done.',
+      detail: 'Quick actions on hover: Done only, or New · Read · Pin · Done.',
       keywords: 'hover archive done quick actions mark as read pin buttons done only',
       target: '[data-quick-actions-show]',
       // Only while Quick actions on hover is on.
@@ -302,6 +311,22 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-fade-panes-setting]',
     },
     {
+      id: 'side-panel-on-new',
+      page: 'conversation',
+      label: 'Open the side panel in new sessions',
+      detail: SIDE_PANEL_DETAIL,
+      keywords: 'side panel right panel open default new session start launcher tools layout',
+      target: '[data-side-panel-on-new-setting]',
+    },
+    {
+      id: 'side-panel-half',
+      page: 'conversation',
+      label: 'Panels at half width',
+      detail: SIDE_PANEL_HALF_DETAIL,
+      keywords: 'side panel right panel width half split 50 resize size wide layout changes browser ask',
+      target: '[data-side-panel-half-setting]',
+    },
+    {
       id: 'turn-details',
       page: 'conversation',
       label: 'Under each reply',
@@ -324,6 +349,22 @@ export function settingsIndex(): SettingEntry[] {
       detail: `Queue holds your message in Up next until Claude finishes the turn. Steer gives it to Claude now, and Claude reads it at its next step. ${formatKeys(keysFor('composer.send-now'))} always stops Claude and sends at once.`,
       keywords: 'while working queue steer message send busy up next',
       target: '[data-while-working]',
+    },
+    {
+      id: 'escape-twice',
+      page: 'conversation',
+      label: 'Press Esc twice to stop',
+      detail: ESCAPE_TWICE_DETAIL,
+      keywords: 'escape esc stop interrupt cancel twice double accident accidental working',
+      target: '[data-escape-twice-setting]',
+    },
+    {
+      id: 'quick-replies',
+      page: 'conversation',
+      label: 'Suggested replies',
+      detail: QUICK_REPLY_DETAIL,
+      keywords: 'suggestion suggested reply quick answer go yes continue tab chip predict next message',
+      target: '[data-quick-replies-setting]',
     },
     {
       id: 'resume-at-limit',
@@ -455,7 +496,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'show-bar-cost',
       page: 'usage',
       label: 'Show it on the usage bars',
-      detail: 'The estimated cost after the 5-hour and weekly bars, under the message box and in New session.',
+      detail: 'The estimated cost of the 5-hour and weekly windows, in the usage tooltip under the message box and in New session.',
       keywords: 'cost price money dollars euro estimate usage bar footer stats 5h week',
       target: '[data-show-bar-cost]',
     },
@@ -571,6 +612,17 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-companion-settings]',
     },
     { id: 'companion-install', page: 'vscode', label: 'Visual Studio Marketplace', detail: 'Install the Seshboard extension.', keywords: 'install download extension open vsx cursor windsurf', target: '[data-companion-link="marketplace"]' },
+
+    // Browser extension
+    {
+      id: 'browser-extension',
+      page: 'browserExtension',
+      label: 'Browser extension',
+      detail: 'The Seshboard extension sends what you select on a page to a session, or starts one in the page’s project.',
+      keywords: 'chrome firefox edge brave browser extension web page selection companion',
+      target: '[data-browser-extension-settings]',
+    },
+    { id: 'browser-extension-connect', page: 'browserExtension', label: 'Connect browsers', detail: 'Lets the extension in each browser on this computer reach Seshboard.', keywords: 'install native messaging host chrome firefox edge brave', target: '[data-browser-extension-action]', fallback: '[data-browser-extension-settings]' },
 
     // Remote
     {

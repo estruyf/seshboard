@@ -71,6 +71,8 @@ import {
   REMOTE_DESKTOP_ORIGIN,
   type RemoteProfile,
   type TriggerSession,
+  type OrchestratorInfo,
+  type StartedChild,
   remoteOnlyBranches,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
@@ -84,7 +86,7 @@ import { RemoteServer } from './remoteServer.ts';
 import { nextFreePort } from './freePort.ts';
 import { RemoteLog } from './remoteLog.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
-import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
+import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type OnlyWhenAway, type PushPayload } from './pushEvents.ts';
 import { IdleUpdate } from './idleUpdate.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
 import { SessionOrigins } from './sessionOrigins.ts';
@@ -106,6 +108,8 @@ type PushEntry = {
   finished: boolean;
   /** Reminders that come due; left out by a phone from before, which follows `finished`. */
   reminders?: boolean;
+  /** The moments it wants only while nobody uses this computer; left out by a phone from before. */
+  onlyWhenAway?: OnlyWhenAway;
   /** The device's own VAPID key (`REMOTE_FEATURE_PUSH_KEY`), which its subscription was made with; else the engine's. */
   vapid?: VapidKeys;
   /** What its pushes start with: this computer's name, for a device paired with more than one. */
@@ -198,6 +202,10 @@ export interface RemoteHubOptions {
   sources(): SessionSources;
   /** The sessions and runs triggers started, for the bolt and "Started by …" on the phone. */
   triggerSessions?(): readonly TriggerSession[];
+  /** Every orchestrator and the sessions it started (docs/orchestrator.md), for the overview on the phone. */
+  orchestrators?(): readonly OrchestratorInfo[];
+  /** The sessions other sessions started (start_session), under those on the phone while they start. */
+  startedChildren?(): readonly StartedChild[];
   archiveAfterDays(): number;
   /** The sidebar's scope, so the phone lists what the sidebar lists. */
   scope(): 'switchboard' | 'all';
@@ -227,8 +235,14 @@ export interface RemoteHubOptions {
   respond(requestId: string, decision: PermissionDecision): void;
   /** The slash commands (skills, custom and plugin commands) a session can run, as its / menu on the computer lists them. */
   commands?(sessionId: string): Promise<SlashCommand[]>;
-  /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
-  create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
+  /**
+   * A new session in `root`, with what the phone chose and the project's defaults for the rest. `orchestrator`: it
+   * starts as the project's orchestrator (docs/orchestrator.md). `title`: its title in the sidebar, from a session on
+   * another computer that asked for it (start_session with `computer`).
+   */
+  create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[], orchestrator?: boolean, title?: string): Promise<{ sessionId: string }>;
+  /** The GitHub repository a project's folder is (`owner/name`, lowercased), so another computer finds the same project; null without one. */
+  repoOf?(root: string): Promise<string | null>;
   /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
   providerOfProfile?(profileId: string): RemoteProfile['provider'] | null;
   /** Providers whose sessions are read-only here (Codex), with the command that continues one in its own CLI. */
@@ -374,6 +388,11 @@ export class RemoteHub {
   private theme: RemoteTheme | null;
   /** Seshboard's updater as main last said (`setAppUpdate`); null until it did. */
   private appUpdate: RemoteAppUpdate | null = null;
+  /**
+   * Someone uses this computer now (`setPresent`, from main): the moments a device wants only while you're away wait.
+   * False until main says, so an engine without main's process pushes as before.
+   */
+  private present = false;
   /** Update when it's idle, from another computer: it starts once no session here works. */
   private readonly idleUpdate = new IdleUpdate({
     working: () => this.list().sessions.filter((s) => s.status === 'working' || s.status === 'needs-you' || s.status === 'background').length,
@@ -584,6 +603,11 @@ export class RemoteHub {
     if (JSON.stringify(update) === JSON.stringify(this.appUpdate)) return;
     this.appUpdate = update;
     this.emitAppUpdate();
+  }
+
+  /** Whether someone uses this computer now, from main: keyboard or mouse in the last 5 minutes, and not locked or asleep. */
+  setPresent(present: boolean): void {
+    this.present = present;
   }
 
   /** The updater as the computers see it: main's, and whether an update waits for idle here. */
@@ -808,6 +832,17 @@ export class RemoteHub {
     this.options.appState.set(PUSH_KEY, entry ? [...rest, { deviceId, ...entry }] : rest);
   }
 
+  /**
+   * A session's agent tells you something (notify_me on its `seshboard` server): a push as a finished turn's, or as a
+   * needs-you one. False when no paired device gets pushes from this computer.
+   */
+  pushNote(sessionId: string, text: string, needsYou: boolean): boolean {
+    if (!this.settings.enabled || !this.pushEntries().length) return false;
+    const session = this.list().sessions.find((s) => s.id === sessionId);
+    this.push({ kind: needsYou ? 'needs-you' : 'finished', sessionId, title: session?.title ?? 'A session', project: session?.projectName ?? '', ...(session ? profileOf(session) : {}), line: text });
+    return true;
+  }
+
   /** Reminders that came due (Remind me later): one push each, to the devices that want them. */
   pushReminders(reminders: readonly { id: string; title: string; note: string | null }[]): void {
     for (const reminder of reminders) {
@@ -827,15 +862,16 @@ export class RemoteHub {
   }
 
   /**
-   * Sends a push to every device that wants this kind and doesn't have the app on screen. A subscription the push
-   * service says is gone is forgotten.
+   * Sends a push to every device that wants this kind and doesn't have the app on screen, and holds back the moments a
+   * device wants only while you're away when someone uses this computer. A subscription the push service says is gone
+   * is forgotten.
    */
   private push(payload: PushPayload): void {
     if (!this.settings.enabled) return;
     const entries = this.pushEntries();
     if (!entries.length) return;
     const known = new Set(this.devices.list().map((d) => d.id));
-    const targets = pushTargets(entries, payload.kind, new Set(this.visible.values()), known);
+    const targets = pushTargets(entries, payload.kind, new Set(this.visible.values()), known, this.present);
     if (!targets.length) return;
     // At most 32 characters: a newer push about the same session replaces one the phone hasn't had yet.
     const topic = createHash('sha256').update(`${payload.kind}:${payload.sessionId}`).digest('base64url').slice(0, 32);
@@ -859,7 +895,9 @@ export class RemoteHub {
     const runs = this.options.pipelines?.runs();
     const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
     const triggers = this.options.triggerSessions?.();
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
+    const orchestrators = this.options.orchestrators?.();
+    const started = this.options.startedChildren?.();
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(orchestrators ? { orchestrators } : {}), ...(started ? { started } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
   }
 
   /** The sessions in Done, which a phone may list and reopen (nothing else). */
@@ -998,7 +1036,9 @@ export class RemoteHub {
     return {
       'sessions.list': () => this.list(),
       'sessions.archived': () => ({ sessions: this.archived() }),
-      'projects.list': () => ({ projects: this.yourProjects().map((p) => ({ id: projectIdOf(p.root), name: p.name })) }),
+      'projects.list': async () => ({
+        projects: await Promise.all(this.yourProjects().map(async (p) => ({ id: projectIdOf(p.root), name: p.name, repo: (await this.options.repoOf?.(p.root).catch(() => null)) ?? null }))),
+      }),
       'projects.branches': ({ projectId }) => this.options.branches(this.project(projectId).root),
       'transcript.get': async ({ sessionId, before, after, limit }) => {
         this.checkSession(sessionId);
@@ -1009,9 +1049,13 @@ export class RemoteHub {
         this.checkSession(sessionId);
         if (this.watches.has(phone)) unwatch(phone);
         else phone.onDispose(() => unwatch(phone));
+        // What this connection was sent, so a `splice` (which phones and other computers don't know) goes as the whole list.
+        let shown: TranscriptMessage[] = [];
         const stop = this.options.watchTranscript(sessionId, (update) => {
           if (update.error) return;
-          phone.emit('transcript.updated', { sessionId, mode: update.mode, messages: toRemote(sessionId, update.messages) });
+          shown = update.mode === 'replace' ? update.messages : update.mode === 'splice' ? shown.slice(0, update.at ?? 0).concat(update.messages) : shown.concat(update.messages);
+          const mode = update.mode === 'append' ? 'append' : 'replace';
+          phone.emit('transcript.updated', { sessionId, mode, messages: toRemote(sessionId, mode === 'append' ? update.messages : shown) });
         });
         this.watches.set(phone, { sessionId, stop });
         phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
@@ -1077,14 +1121,16 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId: prompt.sessionId, messageUuid: null, requestId, device: device.name, deviceId: device.id, answer: { toolName: prompt.toolName, allowed: decision.behavior === 'allow' } });
         return {};
       },
-      'session.create': async ({ projectId, prompt, images, files, ...options }) => {
+      'session.create': async ({ projectId, prompt, images, files, orchestrator, title, ...options }) => {
         const project = this.project(projectId);
         checkAttachments(images, files);
         // A provider profile (GitHub Copilot) runs in its own modes: one it doesn't have is refused, not passed on.
         const provider = options.profileId ? this.options.providerOfProfile?.(options.profileId) : null;
         if (provider && options.permissionMode && !provider.modes.some((m) => m.value === options.permissionMode)) throw new RpcError('INVALID_PARAMS', `${provider.name} has no such mode`);
         const choice = await this.choiceFor(project, options);
-        const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
+        const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images, orchestrator === true, title);
+        if (title) this.log('info', `Remote: ${device.name} started "${title}" in ${project.name} for one of its sessions`);
+        if (orchestrator) this.log('info', `Remote: ${device.name} started an orchestrator in ${project.name}`);
         this.origins.add(created.sessionId, device);
         // Its first prompt: the sidebar's last action for the device.
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
@@ -1343,11 +1389,11 @@ export class RemoteHub {
         return readPreviewImage(await this.sharedFile(sessionId, path), REMOTE_FILE_IMAGE_BYTES);
       },
       'push.key': () => ({ publicKey: this.vapid().publicKey }),
-      'push.subscribe': ({ subscription, needsYou, finished, reminders, vapid, label }) => {
+      'push.subscribe': ({ subscription, needsYou, finished, reminders, onlyWhenAway, vapid, label }) => {
         // Only the browsers' push services: a phone can't make the engine send requests anywhere else.
         if (!isPushEndpoint(subscription.endpoint)) throw new RpcError('INVALID_PARAMS', 'Not a push service this app knows');
         if (vapid && !validVapidKeys(vapid)) throw new RpcError('INVALID_PARAMS', 'Not a VAPID key pair');
-        this.setPush(device.id, { subscription, needsYou, finished, ...(reminders !== undefined ? { reminders } : {}), ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
+        this.setPush(device.id, { subscription, needsYou, finished, ...(reminders !== undefined ? { reminders } : {}), ...(onlyWhenAway ? { onlyWhenAway } : {}), ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
         return {};
       },
       'push.unsubscribe': () => {

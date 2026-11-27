@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ProjectAction } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { posixQuote, powershellQuote, windowsUnsafe } from '../system/shell.ts';
-import { ActionStore, expandCommand, suggestActions } from './actionStore.ts';
+import { ActionStore, expandCommand, orderActions, suggestActions } from './actionStore.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -24,7 +24,51 @@ function setup() {
   return { store: new ActionStore(cache.db), project, cache };
 }
 
+describe('orderActions', () => {
+  const list = ['a', 'b', 'c', 'd'].map((id) => ({ id }));
+  const ids = (actions: Array<{ id: string }>) => actions.map((a) => a.id);
+
+  it('keeps the list as it is without an order', () => {
+    expect(ids(orderActions(list, []))).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('puts the named actions first, in order, and the others after them as they were', () => {
+    expect(ids(orderActions(list, ['c', 'a']))).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('skips ids that are gone', () => {
+    expect(ids(orderActions(list, ['gone', 'd', 'b']))).toEqual(['d', 'b', 'a', 'c']);
+  });
+});
+
 describe('ActionStore', () => {
+  it('lists the actions in the order you gave them, across scopes, and keeps a renamed one in its place', () => {
+    const { store, project, cache } = setup();
+    const other = tempDir();
+    store.save(null, action({ id: 'lint' }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ name: 'Test', command: 'npm test' }] }));
+    store.save(project, action({ id: 'dev' }));
+    store.save(project, action({ id: 'build' }));
+    expect(store.list(project).actions.map((a) => a.id)).toEqual(['lint', 'test', 'dev', 'build']);
+
+    store.setOrder(project, ['build', 'lint', 'build']);
+    expect(store.order(project)).toEqual(['build', 'lint']);
+    expect(store.list(project).actions.map((a) => a.id)).toEqual(['build', 'lint', 'test', 'dev']);
+    // Another project keeps its own order.
+    store.setOrder(other, ['lint']);
+    expect(store.list(other).actions.map((a) => a.id)).toEqual(['lint']);
+
+    store.save(project, action({ id: 'compile' }), 'build');
+    store.renameInOrder(project, 'build', 'compile');
+    expect(store.list(project).actions.map((a) => a.id)).toEqual(['compile', 'lint', 'test', 'dev']);
+    // A global action renamed keeps its place in every project.
+    store.save(null, action({ id: 'check' }), 'lint');
+    store.renameInOrder(null, 'lint', 'check');
+    expect(store.order(project)).toEqual(['compile', 'check']);
+    expect(store.order(other)).toEqual(['check']);
+    cache.close();
+  });
+
   it('merges yours, shared and global actions with yours winning', () => {
     const { store, project, cache } = setup();
     store.save(null, action({ id: 'test', name: 'Global test' }));

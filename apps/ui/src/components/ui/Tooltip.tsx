@@ -76,6 +76,13 @@ function readCard(target: Element): TooltipCard | null {
  * status colour (`data-tooltip-status`, `data-tooltip-tone`: warn, accent, unread, ok, error, faint)
  * and a faint hint (`data-tooltip-hint`). `data-tooltip` stays the plain text of the same.
  */
+const HIDE_EVENT = 'seshboard:hide-tooltip';
+
+/** Hides the tooltip on screen now: a popover opened by resting on its button (the rail's peek) takes its place. */
+export function hideTooltip(): void {
+  document.dispatchEvent(new Event(HIDE_EVENT));
+}
+
 export function TooltipLayer() {
   const [shown, setShown] = useState<Shown | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
@@ -133,7 +140,9 @@ export function TooltipLayer() {
     document.addEventListener('scroll', onScroll, true);
     document.addEventListener('mouseout', onLeaveWindow);
     window.addEventListener('blur', hide);
+    document.addEventListener(HIDE_EVENT, hide);
     return () => {
+      document.removeEventListener(HIDE_EVENT, hide);
       clearTimeout(timer);
       document.removeEventListener('pointerover', onOver);
       document.removeEventListener('focusin', onFocus);

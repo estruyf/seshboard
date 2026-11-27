@@ -1,12 +1,14 @@
-import { MessageCircleQuestion, Monitor } from 'lucide-react';
+import { Monitor } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ProjectIcon as Icon, ProjectInfo } from '@seshboard/protocol/client';
 import { basename } from '../lib/format.ts';
 import { accentFromPixels, letterColor } from '../lib/projectColor.ts';
 import { isQuestionsFolder } from '../lib/questions.ts';
+import { usePreferences } from '../state/preferencesStore.ts';
 import { useProjects } from '../state/projectsStore.ts';
+import { useThemes } from '../state/themeStore.ts';
 import { useComputerTint } from './computers/ComputerChip.tsx';
-import { projectInitials } from './projectInitials.ts';
+import { ProjectTileView } from './ProjectTileView.tsx';
 
 /** Sampled icon colours by icon (null: no clear colour), so each icon is drawn and read once. */
 const iconColors = new Map<string, Promise<string | null>>();
@@ -61,7 +63,12 @@ export function useProjectColor(project: ProjectInfo | undefined, root: string |
       cancelled = true;
     };
   }, [key]);
-  if (!root || question) return null;
+  // Minimal mode draws no coloured frames, and Project colours off or a monochrome theme no project colours: callers
+  // then draw their neutral look.
+  const minimal = usePreferences((s) => s.prefs.minimalMode);
+  const colored = usePreferences((s) => s.prefs.projectColors);
+  const monochrome = useThemes((s) => s.active.entry.file.monochrome === true);
+  if (!root || question || minimal || !colored || monochrome) return null;
   const fallback = letterColor(project?.name ?? basename(root));
   return (key && sampled?.key === key ? sampled.color : null) ?? fallback;
 }
@@ -93,34 +100,7 @@ function RemoteProjectIcon({ root, size, name, letters, computerId }: { root: st
 function ProjectTile({ project, root, size, name: given, letters }: { project: ProjectInfo | undefined; root: string; size: number; name?: string; letters: 1 | 2 }) {
   const question = useProjects((s) => given === undefined && isQuestionsFolder(root, s.questionsDir));
   const name = given ?? project?.name ?? basename(root);
-  // Corners scale with the icon, so large ones read as tiles rather than squares.
-  const box = { width: size, height: size, borderRadius: Math.max(3, Math.round(size * 0.22)) };
-  if (question) {
-    return (
-      <span style={box} className="flex shrink-0 items-center justify-center bg-border text-text" aria-hidden data-question-icon>
-        <MessageCircleQuestion size={Math.round(size * 0.72)} strokeWidth={2.25} />
-      </span>
-    );
-  }
-  if (project?.icon?.kind === 'image') {
-    return <img src={project.icon.dataUrl} alt="" style={box} className="shrink-0 object-contain" draggable={false} />;
-  }
-  if (project?.icon?.kind === 'emoji') {
-    return (
-      <span style={{ ...box, fontSize: size * 0.85, lineHeight: `${size}px` }} className="shrink-0 text-center" aria-hidden>
-        {project.icon.value}
-      </span>
-    );
-  }
-  const text = projectInitials(name, letters);
-  return (
-    <span
-      style={{ ...box, background: letterColor(name), fontSize: size * (text.length > 1 ? 0.44 : 0.62) }}
-      className="flex shrink-0 items-center justify-center font-semibold text-white"
-      aria-hidden
-      data-project-initials={text}
-    >
-      {text}
-    </span>
-  );
+  // Project colours off (Settings › Theme): pictures and emoji in grey, letters in grey on a neutral tile.
+  const colored = usePreferences((s) => s.prefs.projectColors);
+  return <ProjectTileView project={project} name={name} size={size} letters={letters} colored={colored} question={question} />;
 }

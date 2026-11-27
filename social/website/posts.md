@@ -7,4 +7,4 @@ social/render.sh website
 node -e 'require("sharp")("social/website/image.png").resize(1200, 630).png().toFile("website/public/og.png")'
 ```
 
-Alt text: Seshboard for Mac: all your Claude Code sessions in one window, next to the Home view with a session that needs you, one that is working and the queue.
+Alt text: Seshboard for Mac, Windows and Linux: all your AI sessions and tools in one window, next to the Home view with a session that needs you, one that is working and the queue.

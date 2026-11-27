@@ -43,6 +43,9 @@ const PLANS: Record<string, Plan> = {
 
   // The main window's own: the sidebar, Home, the window's terminal outside a session, its dialogs and its queue.
   'toggle-sidebar': 'hide',
+  'nav-back': 'hide',
+  'nav-forward': 'hide',
+  'customize-nav-rail': 'hide',
   home: 'hide',
   'toggle-app-terminal': 'hide',
   'new-app-terminal-tab': 'hide',
@@ -87,6 +90,7 @@ const PLANS: Record<string, Plan> = {
   'memory-settings': 'main',
   'connect-computer': 'main',
   'vscode-extension': 'main',
+  'browser-extension': 'main',
   'manage-sessions': 'main',
   'delete-archived-sessions': 'main',
   diagnostics: 'main',
@@ -145,6 +149,7 @@ const PLANS: Record<string, Plan> = {
   'check-transcript': 'here',
   'toggle-terminal': 'here',
   'new-terminal-tab': 'here',
+  'show-side-panel': 'here',
   'toggle-agents': 'here',
   'toggle-commands': 'here',
   'open-web-preview': 'here',
@@ -169,6 +174,7 @@ const PLANS: Record<string, Plan> = {
   'browser-back': 'here',
   'browser-forward': 'here',
   'browser-stop': 'here',
+  'browser-hard-reload': 'here',
   'browser-close-tab': 'here',
   'browser-reopen-tab': 'here',
   'browser-pin-tab': 'here',
@@ -240,6 +246,9 @@ const PLANS: Record<string, Plan> = {
   // The orchestrator opens in the main window, where its sessions are listed under it.
   'go-to-orchestrator': 'hide',
   'catch-up': 'hide',
+  // Only a preference, which every window follows.
+  'minimal-mode': 'here',
+  'code-highlighting': 'here',
 };
 
 /** The commands made from a list (`sidebar-compact`, `settings-memory`, `theme:solarized`, …) go by their prefix. */

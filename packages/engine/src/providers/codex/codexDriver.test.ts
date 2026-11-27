@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PermissionDecision, PermissionRequest } from '@seshboard/protocol';
 import type { DriverEvents, DriverStatus } from '../provider.ts';
 import { AppServerError } from './appServer.ts';
-import { codexDriver, codexModelOption, type CodexDriverOptions } from './codexDriver.ts';
+import { codexDriver, codexModelOption, OWN_TOOL_TIMEOUT_SEC, type CodexDriverOptions } from './codexDriver.ts';
 import { fakeAppServer, thread } from './codexFakes.ts';
 import type { Model, ServerNotification, ServerRequest, Turn } from './protocol.ts';
 
@@ -83,7 +83,7 @@ describe('codexDriver', () => {
     const { server, driver } = setup();
     const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
     const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default', mcpServers: { visualize } }, recorder().events);
-    expect(server.calls[0]).toMatchObject({ method: 'thread/start', params: { config: { mcp_servers: { visualize } } } });
+    expect(server.calls[0]).toMatchObject({ method: 'thread/start', params: { config: { mcp_servers: { visualize: { ...visualize, tool_timeout_sec: OWN_TOOL_TIMEOUT_SEC } } } } });
     await session.close();
   });
 

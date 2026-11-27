@@ -1,9 +1,10 @@
-import { Check, ChevronRight, Mail, MailOpen, Pin, PinOff, RotateCcw, Square } from 'lucide-react';
+import { Check, ChevronRight, Mail, MailOpen, Pin, PinOff, Plus, RotateCcw, Square } from 'lucide-react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import type { QuickAction, QuickActionMethod } from './quickActions.ts';
 
 const ICON: Record<QuickActionMethod, ReactNode> = {
+  newHere: <Plus size={14} aria-hidden />,
   markRead: <MailOpen size={13} aria-hidden />,
   markUnread: <Mail size={13} aria-hidden />,
   pin: <Pin size={13} aria-hidden />,
@@ -26,8 +27,8 @@ export interface RowActionsTree {
 /**
  * The buttons a session row shows under the pointer, or once Tab moves into them from the row (`group/row` on the row's
  * wrapper). Never on touch: Tailwind's hover only applies where there is a pointer that hovers. Esc goes back to the row.
- * A pipeline's parent gets its steps toggle first: the row's own chevron moves aside for the toolbar, so it would be
- * hard to hit.
+ * A row with sub-sessions gets its steps toggle last, where its own chevron sits at rest: the pointer that goes for the
+ * chevron lands on the toggle, never on Done.
  */
 export function RowActions({ id, title, actions, tree, tabbable, onAction }: { id: string; title: string; actions: readonly QuickAction[]; tree?: RowActionsTree; tabbable: boolean; onAction(action: QuickAction): void }) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -53,6 +54,26 @@ export function RowActions({ id, title, actions, tree, tabbable, onAction }: { i
       className="pointer-events-none absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-edge bg-popover p-0.5 opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-[:focus-visible]/row:pointer-events-auto group-has-[:focus-visible]/row:opacity-100"
       data-row-actions={id}
     >
+      {actions.map((action) => (
+        <button
+          key={action.kind}
+          type="button"
+          tabIndex={tabbable ? 0 : -1}
+          aria-label={action.kind === 'new' ? `${action.tooltip ?? action.label}, beside ${title}` : `${action.label} ${title}`}
+          data-tooltip={action.shortcut ? `${action.label} (${formatKeys(keysFor(action.shortcut))})` : (action.tooltip ?? action.label)}
+          data-row-action={action.kind}
+          // The row never opens or changes the selection from here.
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onAction(action);
+          }}
+          className="flex size-6 items-center justify-center rounded text-muted hover:bg-border/50 hover:text-text"
+        >
+          {ICON[action.method]}
+        </button>
+      ))}
       {tree && (
         <button
           type="button"
@@ -72,26 +93,6 @@ export function RowActions({ id, title, actions, tree, tabbable, onAction }: { i
           <ChevronRight size={13} aria-hidden className={`transition-transform duration-100 motion-reduce:transition-none ${tree.open ? 'rotate-90' : ''}`} />
         </button>
       )}
-      {actions.map((action) => (
-        <button
-          key={action.kind}
-          type="button"
-          tabIndex={tabbable ? 0 : -1}
-          aria-label={`${action.label} ${title}`}
-          data-tooltip={action.shortcut ? `${action.label} (${formatKeys(keysFor(action.shortcut))})` : action.label}
-          data-row-action={action.kind}
-          // The row never opens or changes the selection from here.
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onAction(action);
-          }}
-          className="flex size-6 items-center justify-center rounded text-muted hover:bg-border/50 hover:text-text"
-        >
-          {ICON[action.method]}
-        </button>
-      ))}
     </div>
   );
 }

@@ -179,10 +179,10 @@ describe('fileDiff, stage and revert', () => {
     write('open.txt', 'a\nb');
     write('empty.txt', '');
     writeFileSync(join(repo, 'bin.dat'), Buffer.from([1, 0, 2, 10, 3]));
-    expect(countNewLines(join(repo, 'two.txt')).lines).toBe(2);
-    expect(countNewLines(join(repo, 'open.txt')).lines).toBe(2);
-    expect(countNewLines(join(repo, 'empty.txt')).lines).toBe(0);
-    expect(countNewLines(join(repo, 'bin.dat')).lines).toBe(0);
+    expect((await countNewLines(join(repo, 'two.txt'))).lines).toBe(2);
+    expect((await countNewLines(join(repo, 'open.txt'))).lines).toBe(2);
+    expect((await countNewLines(join(repo, 'empty.txt'))).lines).toBe(0);
+    expect((await countNewLines(join(repo, 'bin.dat'))).lines).toBe(0);
     const files = (await listChanges(repo, 'uncommitted')).files;
     expect(files.map((f) => [f.path, f.additions])).toEqual([
       ['bin.dat', 0],

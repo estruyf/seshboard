@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { git } from './gitChanges.ts';
-import { findCheckout, githubPage, githubRepoFromUrl, githubRepos } from './remotes.ts';
+import { findCheckout, githubPage, githubRepo, githubRepoFromUrl, githubRepos } from './remotes.ts';
 
 describe('githubRepoFromUrl', () => {
   it('reads the forms git accepts for GitHub', () => {
@@ -39,6 +39,12 @@ describe('findCheckout', () => {
     const dir = await repoWith('git@github.com:me/fork.git', 'https://github.com/acme/payments.git', 'git@gitlab.com:x/y.git');
     expect(await githubRepos(dir)).toEqual(['me/fork', 'acme/payments']);
     expect(await githubRepos(tmpdir())).toEqual([]);
+  });
+
+  it('says which repository a checkout is: origin’s on GitHub, else the first on GitHub', async () => {
+    expect(await githubRepo(await repoWith('git@github.com:Me/Fork.git', 'https://github.com/acme/payments.git'))).toBe('me/fork');
+    expect(await githubRepo(await repoWith('git@gitlab.com:x/y.git', 'https://github.com/acme/payments.git'))).toBe('acme/payments');
+    expect(await githubRepo(await repoWith('git@gitlab.com:x/y.git'))).toBeNull();
   });
 
   it('returns the first matching folder in the order given, ignoring case and .git', async () => {

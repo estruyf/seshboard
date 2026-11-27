@@ -84,12 +84,18 @@ export function quickTiles(ordered: readonly string[], value: string | null, cou
   return [...top.slice(0, count - 1), value];
 }
 
+/** How well a folder matches what was typed, by its name or (a little less) its path; null when neither matches. */
+export function folderScore(filter: string, folder: string, name: string, home: string | null): number | null {
+  const score = Math.max(fuzzyScore(filter, name) ?? -Infinity, (fuzzyScore(filter, tildify(folder, home)) ?? -Infinity) - 2);
+  return score > -Infinity ? score : null;
+}
+
 /** The full list, filtered by name or path: the best matches first. Typed paths have their own mode (`pathInput.ts`). */
 export function filterFolders(all: readonly string[], filter: string, nameOf: (root: string) => string, home: string | null): string[] {
   if (!filter.trim()) return [...all];
   return all
-    .map((folder) => ({ folder, score: Math.max(fuzzyScore(filter, nameOf(folder)) ?? -Infinity, (fuzzyScore(filter, tildify(folder, home)) ?? -Infinity) - 2) }))
-    .filter((o) => o.score > -Infinity)
+    .map((folder) => ({ folder, score: folderScore(filter, folder, nameOf(folder), home) }))
+    .filter((o): o is { folder: string; score: number } => o.score !== null)
     .sort((a, b) => b.score - a.score)
     .map((o) => o.folder);
 }

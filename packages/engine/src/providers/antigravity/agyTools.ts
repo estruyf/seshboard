@@ -32,6 +32,9 @@ export function agyMcpServers(geminiDir: string): McpServerInfo[] {
     }));
 }
 
+/** Whether a call is to one of the MCP servers Seshboard gave the session: Antigravity names their tools `mcp_<server>_<tool>`. */
+export const isOwnServerTool = (name: string | null, servers: readonly string[]): boolean => !!name && servers.some((server) => name.startsWith(`mcp_${server}_`));
+
 /** Turning a server on or off, or connecting it again, is Antigravity's own: `agy mcp` writes its config. */
 export const AGY_MCP_REFUSED = 'Antigravity keeps its MCP servers in its own config. Use `agy mcp enable` or `agy mcp disable`, then start the session again.';
 

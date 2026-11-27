@@ -9,6 +9,18 @@ export const ActivityPr = z.object({ number: z.number().int(), url: z.string() }
 export type ActivityPr = z.infer<typeof ActivityPr>;
 
 /**
+ * Who started a session other than you at this computer: a paired device from afar (a phone, a browser or another
+ * computer's Seshboard), a trigger or a schedule. `id` is the device's, trigger's or schedule's id, for an export to
+ * tell two of the same name apart; `name` is what it is called now (or was called, once it is gone).
+ */
+export const ActivityStarter = z.object({
+  kind: z.enum(['device', 'trigger', 'schedule']),
+  id: z.string(),
+  name: z.string(),
+});
+export type ActivityStarter = z.infer<typeof ActivityStarter>;
+
+/**
  * What one session did on one day, for Activity. A session that spans days has an entry per day it had turns, with only
  * that day's time. Everything is read from what Seshboard already keeps: the times from the transcripts (`usage_messages`,
  * `usage_prompts`), `did` from the catch-ups, the commits from git, the cost from the tokens.
@@ -31,6 +43,13 @@ export const ActivityEntry = z.object({
   turns: z.number().int().min(0),
   /** At API list prices, in US dollars. Null when no model's price is known. */
   costUsd: z.number().nullable(),
+  /**
+   * Its tokens that day: input, output, cache reads and cache writes, as the Usage view adds them up. Optional: another
+   * computer on an older version sends none.
+   */
+  tokens: z.number().int().min(0).optional(),
+  /** Who started it, when it wasn't you at this computer (a sub-session says who started the session it sits under). */
+  startedBy: ActivityStarter.nullable().optional(),
   /** The working time per local hour, 24 values. */
   hours: z.array(z.number().int().min(0)).length(24),
   /** The commits made during it that day, and the files they changed. */

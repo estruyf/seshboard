@@ -7,7 +7,7 @@ import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { showOf } from '../../state/catchUpShow.ts';
 import { promptLabel } from '../../state/queue.ts';
-import { useUnsent } from '../drafts/useUnsent.ts';
+import { useUnsentCount } from '../drafts/useUnsent.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
@@ -24,9 +24,11 @@ import { useProjectPage } from '../../state/projectPageStore.ts';
 import { useCloneEnabled } from '../../state/cloneStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { isQuestionsFolder } from '../../lib/questions.ts';
-import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRows } from '../../state/rowsStore.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
 import { isActive } from '../../state/sidebarRows.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
+import { useCanGoInHistory } from '../../state/navHistoryStore.ts';
 import { parentSplit } from '../../state/tiling.ts';
 import { neighbour, type Way } from '../../state/tilingGeometry.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
@@ -121,7 +123,8 @@ export function usePaletteContext(): PaletteContext {
   const triggerCount = useTriggers((s) => s.triggers.length);
   const pipelines = usePipelines((s) => s.pipelines);
   const orchestrators = useOrchestrators((s) => s.orchestrators);
-  const unsent = useUnsent().length;
+  const unsent = useUnsentCount();
+  const baseRows = useRows((s) => s.byId);
   const digest = usePaletteBus((s) => s.digest);
   const newSessionInfo = usePaletteBus((s) => s.newSessionInfo);
   const openFor = useTerminals((s) => s.openFor);
@@ -130,6 +133,8 @@ export function usePaletteContext(): PaletteContext {
   const terminals = useTerminals((s) => s.terminals);
   const activeTerminals = useTerminals((s) => s.active);
   const sidebar = useSidebar((s) => s.state);
+  const canGoBack = useCanGoInHistory(-1);
+  const canGoForward = useCanGoInHistory(1);
   const boxes = useComposerTargets((s) => s.boxes);
   const editors = useHosts((s) => s.editors);
   const computers = useComputers((s) => s.status?.computers);
@@ -158,7 +163,7 @@ export function usePaletteContext(): PaletteContext {
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
   const session = useMemo<PaletteSession | null>(() => {
     if (!id) return null;
-    const row = toRows(sessions, live, hosts).find((r) => r.id === id);
+    const row = baseRows.get(id);
     const host = hosts.get(id);
     const active = isActiveHost(host) ? host : null;
     const summary = sessions.get(id) ?? null;
@@ -185,7 +190,7 @@ export function usePaletteContext(): PaletteContext {
       unsent: host?.state === 'error' ? (host.unsent ?? 0) : 0,
       web: webOpen,
     };
-  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded, webOpen]);
+  }, [id, baseRows, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded, webOpen]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);
@@ -248,12 +253,16 @@ export function usePaletteContext(): PaletteContext {
     actions: actions.map((a) => ({ id: a.id, name: a.name, shortcut: a.shortcut ?? null, icon: a.icon })),
     canEditActions: !!projectRoot && isAbsolutePath(projectRoot),
     colorScheme: prefs.colorScheme,
+    minimalMode: prefs.minimalMode,
+    codeHighlighting: prefs.codeHighlighting,
     themes: themes.map((t) => ({ id: t.id, name: t.file.name })),
     themeId: activeTheme,
     sidebarStyle: prefs.sidebarStyle,
     sidebarGroup: prefs.sidebarGroup,
     conversationView: prefs.conversationView,
     sidebar,
+    canGoBack,
+    canGoForward,
     settingsSection,
     newSession: view === 'new-session' ? newSessionInfo : null,
     questionsDir,

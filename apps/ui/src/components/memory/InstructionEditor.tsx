@@ -91,7 +91,7 @@ export function InstructionEditor({ root, path, content, modified, shared }: { r
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
-          className="min-h-80 w-full resize-y rounded-lg border border-edge bg-code p-4 font-mono text-ui text-text outline-none focus:border-accent-ink"
+          className="field min-h-80 w-full resize-y rounded-lg bg-code p-4 font-mono text-ui outline-none"
           data-instruction-body
         />
       ) : (

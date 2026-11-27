@@ -1,4 +1,5 @@
-import { ACTIVITY_MAX_DAYS, type ActivityEntry, type ActivitySummaryExtra } from '@seshboard/protocol/client';
+import { ACTIVITY_MAX_DAYS, type ActivityEntry, type ActivityStarter, type ActivitySummaryExtra } from '@seshboard/protocol/client';
+import { formatTokens } from '../usage/usageModel.ts';
 
 /** Days in the strip, and what an arrow moves it by. */
 export const WEEK_DAYS = 7;
@@ -171,6 +172,8 @@ export interface ActivityStats {
   prs: number;
   /** Null when no session's cost is known. */
   costUsd: number | null;
+  /** Every token, as the Usage view counts them. */
+  tokens: number;
 }
 
 export function statsOf(rows: readonly ActivityRow[]): ActivityStats {
@@ -182,6 +185,7 @@ export function statsOf(rows: readonly ActivityRow[]): ActivityStats {
     commits: rows.reduce((sum, row) => sum + row.commits, 0),
     prs: new Set(rows.flatMap((row) => row.prs.map((pr) => pr.url))).size,
     costUsd: known.length ? known.reduce((sum, row) => sum + row.costUsd!, 0) : null,
+    tokens: rows.reduce((sum, row) => sum + (row.tokens ?? 0), 0),
   };
 }
 
@@ -392,6 +396,66 @@ export function projectShare(group: ProjectGroup, groups: readonly ProjectGroup[
   return sessions ? group.sessions / sessions : 0;
 }
 
+// --- Who started them -----------------------------------------------------------------------------------------------
+
+/** "1.2M tokens", "940 tokens". */
+export const tokensText = (tokens: number) => `${formatTokens(tokens)} ${tokens === 1 ? 'token' : 'tokens'}`;
+
+/** What a starter is called on a row and in a tooltip: the device's name, "Trigger: Failed CI", "Schedule: Morning triage". */
+export function starterName(starter: ActivityStarter): string {
+  if (starter.kind === 'trigger') return `Trigger: ${starter.name}`;
+  if (starter.kind === 'schedule') return `Schedule: ${starter.name}`;
+  return starter.name;
+}
+
+/** The row's tooltip on who started it: a device's id too, to tell two phones of the same name apart. */
+export function starterTooltip(starter: ActivityStarter): string {
+  if (starter.kind === 'device') return `Started from ${starter.name} (device ${starter.id})`;
+  return `Started by ${starterName(starter).replace(/^./, (c) => c.toLowerCase())}`;
+}
+
+export interface StarterGroup {
+  key: string;
+  /** Null for the sessions started at the computer itself. */
+  starter: ActivityStarter | null;
+  name: string;
+  /** The computer of a row from another one, for "At Studio Mac". */
+  computer: { id: string; name: string } | null;
+  sessions: number;
+  activeMs: number;
+  tokens: number;
+  costUsd: number | null;
+}
+
+/**
+ * The rows by who started them, the most tokens first: each device, trigger and schedule, and the sessions started at
+ * the computer itself (one group per computer). It answers "who uses this computer the most".
+ */
+export function starterGroups(rows: readonly ActivityRow[]): StarterGroup[] {
+  const byKey = new Map<string, { group: StarterGroup; rows: ActivityRow[] }>();
+  for (const row of rows) {
+    const starter = row.startedBy ?? null;
+    const computer = row.computer ?? null;
+    const key = starter ? `${computer?.id ?? ''}:${starter.kind}:${starter.id}` : `here:${computer?.id ?? ''}`;
+    let found = byKey.get(key);
+    if (!found) {
+      const name = starter ? starterName(starter) : computer ? `At ${computer.name}` : 'You, at this computer';
+      found = { group: { key, starter, name, computer, sessions: 0, activeMs: 0, tokens: 0, costUsd: null }, rows: [] };
+      byKey.set(key, found);
+    }
+    found.rows.push(row);
+  }
+  return [...byKey.values()]
+    .map(({ group, rows: of }) => {
+      const stats = statsOf(of);
+      return { ...group, sessions: stats.sessions, activeMs: stats.activeMs, tokens: stats.tokens, costUsd: stats.costUsd };
+    })
+    .sort((a, b) => b.tokens - a.tokens || b.activeMs - a.activeMs || b.sessions - a.sessions || a.name.localeCompare(b.name));
+}
+
+/** Whether anyone but you started a session on screen: the Started by card only shows then. */
+export const anyoneElse = (rows: readonly ActivityRow[]) => rows.some((row) => row.startedBy);
+
 // --- An empty day ----------------------------------------------------------------------------------------------------
 
 /** What a day without sessions says about the days around it: "← Saturday had 1 · Monday had 8 →". Today has no day after. */
@@ -453,6 +517,8 @@ export function sessionsOnce(rows: readonly ActivityRow[]): ActivityRow[] {
       activeMs: known.activeMs + row.activeMs,
       turns: known.turns + row.turns,
       costUsd: known.costUsd === null && row.costUsd === null ? null : (known.costUsd ?? 0) + (row.costUsd ?? 0),
+      tokens: known.tokens === undefined && row.tokens === undefined ? undefined : (known.tokens ?? 0) + (row.tokens ?? 0),
+      startedBy: known.startedBy ?? row.startedBy,
       hours: known.hours.map((ms, hour) => ms + (row.hours[hour] ?? 0)),
       commits: known.commits + row.commits,
       files: known.files + row.files,
@@ -497,7 +563,10 @@ function csvCell(value: string | number): string {
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-const CSV_COLUMNS = ['Date', 'Project', 'Session', 'Computer', 'Start', 'End', 'Minutes', 'Turns', 'Commits', 'Files', 'Pull requests', 'Cost (USD)'];
+const CSV_COLUMNS = ['Date', 'Project', 'Session', 'Session ID', 'Computer', 'Started by', 'Started by name', 'Started by ID', 'Start', 'End', 'Minutes', 'Turns', 'Commits', 'Files', 'Pull requests', 'Tokens', 'Cost (USD)'];
+
+/** The kind of starter, in the export's words. */
+const STARTER_KIND: Record<ActivityStarter['kind'], string> = { device: 'Remote device', trigger: 'Trigger', schedule: 'Schedule' };
 
 /** For a timesheet: a line per session per day. */
 export function activityCsv(rows: readonly ActivityRow[]): string {
@@ -508,7 +577,11 @@ export function activityCsv(rows: readonly ActivityRow[]): string {
         row.day,
         row.projectName,
         oneLine(row.title),
+        row.sessionId,
         row.computer?.name ?? '',
+        row.startedBy ? STARTER_KIND[row.startedBy.kind] : 'At the computer',
+        row.startedBy?.name ?? '',
+        row.startedBy?.id ?? '',
         clock(row.firstAt),
         clock(row.lastAt),
         Math.round(row.activeMs / 60_000),
@@ -516,6 +589,7 @@ export function activityCsv(rows: readonly ActivityRow[]): string {
         row.commits,
         row.files,
         row.prs.map((pr) => `#${pr.number}`).join(' '),
+        row.tokens ?? '',
         row.costUsd === null ? '' : row.costUsd.toFixed(2),
       ]
         .map(csvCell)
@@ -533,11 +607,13 @@ export function activityMarkdown(rows: readonly ActivityRow[], locale?: string):
     const groups = projectGroups(ofDay).map((group) => {
       const sessions = group.rows.map((row) => {
         const details = (row.did.length ? row.did : row.asks).map((line) => `  - ${oneLine(line)}`);
-        return [`- ${oneLine(row.title)} (${clock(row.firstAt)}, ${formatWorked(row.activeMs)})${prNote(row)}`, ...details].join('\n');
+        const facts = [clock(row.firstAt), formatWorked(row.activeMs), ...(row.tokens ? [tokensText(row.tokens)] : []), ...(row.startedBy ? [`started by ${starterName(row.startedBy)}`] : [])];
+        return [`- ${oneLine(row.title)} (${facts.join(', ')})${prNote(row)}`, ...details].join('\n');
       });
       return [`### ${group.name}`, '', ...sessions].join('\n');
     });
-    return [`## ${dayTitle(day, locale)}`, '', `${plural(stats.sessions, 'session')}, ${formatWorked(stats.activeMs)}, ${plural(stats.commits, 'commit')}`, '', groups.join('\n\n')].join('\n');
+    const starters = anyoneElse(ofDay) ? ['', '**Started by**', '', ...starterGroups(ofDay).map((g) => `- ${g.name}: ${plural(g.sessions, 'session')}, ${formatWorked(g.activeMs)}, ${tokensText(g.tokens)}`)] : [];
+    return [`## ${dayTitle(day, locale)}`, '', `${plural(stats.sessions, 'session')}, ${formatWorked(stats.activeMs)}, ${plural(stats.commits, 'commit')}, ${tokensText(stats.tokens)}`, ...starters, '', groups.join('\n\n')].join('\n');
   });
   return `${parts.join('\n\n')}\n`;
 }

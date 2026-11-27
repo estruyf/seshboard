@@ -38,5 +38,14 @@ export function useProjectActionList(projectRoot: string | null) {
     reload: useCallback(() => setVersion((v) => v + 1), []),
     /** Changes the list at once (a save or delete), before the reload confirms it. */
     update: useCallback((change: (actions: ListedAction[]) => ListedAction[]) => setState((s) => ({ ...s, actions: change(s.actions) })), []),
+    /** Puts the actions in this order (their ids) at once, and keeps it for the project; a failed save reloads. */
+    reorder: useCallback(
+      (ids: string[]) => {
+        if (!client || !(projectRoot && isAbsolutePath(projectRoot))) return;
+        setState((s) => ({ ...s, actions: [...ids.flatMap((id) => s.actions.filter((a) => a.id === id)), ...s.actions.filter((a) => !ids.includes(a.id))] }));
+        client.call('actions.reorder', { projectRoot, ids }).catch(() => setVersion((v) => v + 1));
+      },
+      [client, projectRoot],
+    ),
   };
 }

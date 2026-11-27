@@ -563,11 +563,21 @@ export function sidebarTree<T extends TreeRow, R extends Pick<RunView, 'run' | '
   const own = new Map(rows.map((r) => [r.id, r.status]));
   const runOf = new Map<string, R>();
   for (const state of runs) runOf.set(state.run.parentSessionId ?? state.run.id, state);
-  for (const [parent, list] of children) {
+  // A parent takes the most urgent state in its whole tree: a session a sub-session started that needs you makes the
+  // top row Needs you too. `seen` stops a loop of parents.
+  const treeStatus = (parent: string, seen: Set<string>): TreeStatus => {
+    const done = status.get(parent);
+    if (done) return done;
     const state = runOf.get(parent);
     const extra = state ? runStatus(state) : null;
-    status.set(parent, mostUrgent([own.get(parent) ?? 'idle', ...list.map((c) => c.status), ...(extra ? [extra] : [])]));
-  }
+    seen.add(parent);
+    const kids = (children.get(parent) ?? []).map((c) => (children.has(c.id) && !seen.has(c.id) ? treeStatus(c.id, seen) : c.status));
+    seen.delete(parent);
+    const result = mostUrgent([own.get(parent) ?? 'idle', ...kids, ...(extra ? [extra] : [])]);
+    status.set(parent, result);
+    return result;
+  };
+  for (const parent of children.keys()) treeStatus(parent, new Set());
   for (const [parent, state] of runOf) {
     if (status.has(parent)) continue;
     const extra = runStatus(state);

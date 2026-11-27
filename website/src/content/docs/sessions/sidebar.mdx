@@ -5,46 +5,41 @@ description: The list of all your sessions, grouped by what needs attention firs
 
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
-import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-The sidebar lists your sessions across every project, grouped by what needs attention first and then by what is still yours to finish. It is where you see at a glance which sessions are working, which wait for you, and which you still have to look at.
+The sidebar is the panel next to the [rail](/sessions/rail/) while **Sessions** is picked. It lists your sessions across every project, grouped by what needs attention first and then by what is still yours to finish. It is where you see at a glance which sessions are working, which wait for you, and which you still have to look at.
 
 <Screenshot name="sidebar" alt="The sidebar: Needs you and Working at the top, the Queue under them, then Pinned, To review and Open, with Done docked at the bottom" width={480} eager />
 
 ## Open it
 
-The sidebar is always on the left of the window. Press <Kbd shortcut="sidebar.toggle" /> or click the sidebar button at the left of a view's header to collapse it or open it again. The command palette has *Toggle sidebar*, *Open sidebar*, *Minimize sidebar* and *Close sidebar*.
+Click **Sessions** on the [rail](/sessions/rail/) at the left edge of the window. Its badge counts the sessions that need you. Click it again, or press <Kbd shortcut="sidebar.toggle" />, to close the panel. The command palette has *Open or close the panel*, *Open the panel* and *Close the panel*.
+
+With the panel closed, rest the pointer on **Sessions** to [peek at your sessions](/sessions/rail/#peek-at-your-sessions).
 
 ## What's in it
 
-At the top, a row of icons opens the views. Point at one to see what it holds:
+At the top, the panel's header has:
 
-- **Home** opens [Home](/sessions/home/) (<Kbd shortcut="home" />). It has a dot while a session needs you.
-- **Upcoming** opens [Upcoming](/sessions/upcoming/) (<Kbd shortcut="upcoming" />): your queue and scheduled runs. Its count is your queued items plus your active schedules, in green when a queued item is ready. The tooltip says what comes next, such as "Upcoming · 1 ready" or "Upcoming · next 08:00".
-- **Activity** opens [Activity](/sessions/activity/) (<Kbd shortcut="activity" />): what you did per day. The tooltip says how many sessions you had today.
-- **Browser** opens the [Browser view](/sessions/web-preview/) (<Kbd shortcut="browser.view" />), when the browser is on.
-
-Under them:
-
-- **Search sessions** filters the list by title, project or branch. To search inside conversations, use [Search](/sessions/search/) (<Kbd shortcut="search" />).
-- The yellow **+** button starts a [new session](/new-session/form/) (<Kbd shortcut="session.new" />).
-- **All projects** filters the list to one project. Its menu lists your projects with their session count, plus **Manage projects…** and **Add a project folder…**. The ⋯ next to a project (or → on it) opens its options: icon, rename, open the project's page, Worktrees, Branches and more.
-- The **View** button beside it, on the same row, says how the list is grouped: **State** or **Project**. See [View](#view).
+- **All projects**, which filters the list to one project. Its menu lists your projects with their session count, plus **Manage projects…** and **Add a project folder…**. The ⋯ next to a project (or → on it) opens its options: icon, rename, open the project's page, Worktrees, Branches and more.
+- The **View** button, which says how the list is grouped: **State** or **Project**. See [View](#view). In Minimal mode, it holds the project filter too.
+- **Filter sessions** (the magnifier), which shows a field to filter the list by title, project or branch. <Kbd keys="escape" /> clears it and hides it. The field stays while it has text. To search inside conversations, use [Search](/sessions/search/) (<Kbd shortcut="search" />).
 
 A session you ran a [pipeline](/sessions/pipelines/) from shows where the run is, such as *Validate · 3 of 4*, with the pipeline icon. Its steps sit under it, closed at first: open them with the arrow. A run you started from New session has a row of its own with the pipeline icon instead of a project icon.
 
-At the bottom, the footer counts your sessions ("12 sessions · 2 running · 1 queued · 1 waiting"), shows the [focus limit](/focus-limit/) counter when it is on and the [unsent messages](/sessions/unsent-drafts/) count, and has the **Projects** and **Settings** buttons.
+Sessions a session started sit under it the same way: ones you started [from a reply](/sessions/conversation/#start-a-session-from-a-reply), and ones the session [asked to start](/sessions/conversation/#sessions-that-start-sessions). They show there right away, with their titles, while they start. A sub-session with sessions of its own has an arrow to show them too, and when one of them needs you, the top row says so.
+
+At the bottom, the footer counts your sessions ("12 sessions · 2 running · 1 queued · 1 waiting") and your [unsent messages](/sessions/unsent-drafts/). **Projects**, **Settings** and the [focus limit](/focus-limit/) are on the [rail](/sessions/rail/).
 
 **N open** in the footer counts what is still yours to finish: To review, Open and reminders that came due. Click it to [go through them one by one](/sessions/catch-up/#go-through-your-sessions).
 
 ### Star on GitHub
 
-Once you have a few sessions, a **Star on GitHub** button shows above the footer (a star at the bottom of the minimal rail). If the [GitHub CLI](https://cli.github.com/) is installed and signed in, a click stars Seshboard with that account, without opening the browser. Otherwise it opens Seshboard on GitHub, where you can star it.
+Once you have a few sessions, a **Star on GitHub** button shows above the footer. If the [GitHub CLI](https://cli.github.com/) is installed and signed in, a click stars Seshboard with that account, without opening the browser. Otherwise it opens Seshboard on GitHub, where you can star it.
 
-The button shows only until you star Seshboard or click it. Click **×** (right-click the star in the rail and choose **Don't show again**) to hide it for good.
+The button shows only until you star Seshboard or click it. Click **×** to hide it for good.
 
 ## View
 
@@ -65,7 +60,7 @@ Grouped by project, each project has a header with its icon, its name and how ma
 - Point at a header for **New session in** the project (**+**) and its menu (**⋯**). Right-click the header for the menu too.
 - With the keyboard, <Kbd keys="arrowleft" /> folds a project and <Kbd keys="arrowright" /> unfolds it. <Kbd keys="enter" /> or <Kbd keys="space" /> on its header does either.
 
-A project on [another computer](/other-computers/) has its own header, with the computer's chip.
+A project on [another computer](/other-computers/) has its own header, with the computer's chip. Its **+** opens New session on that computer, with the project picked.
 
 Grouping by project works with **All projects**. With one project picked in the filter, the list is grouped by state, and the View button says so in a paler colour.
 
@@ -119,7 +114,7 @@ The session count at the bottom of the sidebar opens [Settings › Sessions](/se
 - **Open a session:** click it. <Kbd shortcut="sidebar.move" /> moves through the list.
 - **Open it beside the current one:** <Kbd shortcut="sidebar.open-beside" />. See [Split view](/sessions/split-view/).
 - **Move between sessions from anywhere:** <Kbd shortcut="session.next" /> and <Kbd shortcut="session.previous" /> go to the next and previous session in the sidebar's order, and <Kbd shortcut="session.next-needs-you" /> to the next one that needs you.
-- **Go back and forward:** the back and forward buttons on your mouse return to where you were before, as in a browser: sessions, Home, New session, Settings pages, Projects and project pages. A session or project that is gone is skipped.
+- **Go back and forward:** **Back** and **Forward** in the [title bar](/sessions/rail/#the-title-bar), or the buttons on your mouse, return to where you were before, as in a browser.
 - **Rename:** press <Kbd shortcut="sidebar.rename" />, or choose **Rename…** in the session's menu.
 - **Mark a finished session done:** middle-click it (<Kbd shortcut="sidebar.archive" />). Sessions that are working, need you or failed stay where they are.
 - **Come back to it later:** press <Kbd shortcut="sidebar.remind" /> to [remind yourself](/sessions/upcoming/#remind-me-later).
@@ -129,10 +124,11 @@ The session count at the bottom of the sidebar opens [Settings › Sessions](/se
 
 Hover a session and buttons show at the end of its row, so you can tidy the list in one click:
 
+- **+** (**New session here**) opens [New session](/new-session/form/) in that session's folder. For a session in a worktree, the new one starts in the same worktree. It isn't there for a session on another computer or a pipeline's run row.
 - **Mark as read** or **Mark as unread**, **Pin** or **Unpin**, and **Done** on a finished session.
 - **Pin**, **Stop** and **Done** on a session that is working or needs you.
 - **Reopen** on a session under Done.
-- On a [pipeline](/sessions/pipelines/)'s row, the first button shows or hides its steps.
+- On a row with sub-sessions or [pipeline](/sessions/pipelines/) steps, the arrow that shows or hides them is the last button, on the right, where the row's own arrow was. **Done** sits one place to its left, so a click aimed at the arrow never marks the session done.
 
 Each button does the same as its item in the session menu. A toast then says what it did, such as "Pinned", with **Undo**. <Kbd shortcut="sidebar.undo" /> in the sidebar undoes it too, while the toast is up.
 
@@ -175,25 +171,19 @@ Right-click a session, or press <Kbd shortcut="context-menu" /> on it, for:
 - <Kbd shortcut="sidebar.clear-selection" /> or **Clear** ends the selection.
 - Right-click one of the selected sessions for the same actions, and **Remind me about** them.
 
-## Resize and collapse
+## Resize and close
 
-The sidebar has three states: **open**, a **minimal rail** of project icons, and **closed**.
+- Drag the panel's right edge to make it wider or narrower. Double-click the edge to reset the width.
+- Drag it all the way in and the panel closes. Drag the edge out again to open it at the width you had.
+- With the edge focused, ← and → change the width. ← at the narrowest closes the panel, and → opens it again.
+- <Kbd shortcut="sidebar.toggle" />, **Panel** in the title bar, or a click on the selected item of the rail opens or closes it.
 
-- Drag the sidebar's right edge to make it wider or narrower. Double-click the edge to reset the width.
-- Drag it further in and it snaps to the rail; further still, it hides. Drag the edge out again to open it at the width you had.
-- With the edge focused, ← and → step through the same states.
-- <Kbd shortcut="sidebar.toggle" /> switches between open and collapsed. Settings decides whether collapsed means the rail or hidden.
+Seshboard remembers the width, and whether the panel is open.
 
-Seshboard remembers the width and the state.
-
-<Screenshot name="sidebar-rail" alt="The sidebar collapsed to the minimal rail: one project icon per session, in the same groups and order" width={480} />
-
-The **minimal rail** is 80px wide: one project icon per session, in the same groups and order as the open sidebar, with the same coloured rails. Hover an icon to see the session's title, project, branch and state. Click a group's letter to open the sidebar there. At the top, under Home, the calendar button opens [Upcoming](/sessions/upcoming/). Its badge shows the count, in green when a queued item is ready. The clock under it opens [Activity](/sessions/activity/).
-
-With the sidebar **hidden**, the conversation takes the whole window. A <Pill tone="needs-you">needs you</Pill> pill in the header says when sessions wait for you; click it to open the one waiting longest. After a jump with <Kbd shortcut="session.next" /> or <Kbd shortcut="session.next-needs-you" />, a short label at the top of the window says where you landed.
+With the panel closed, the session takes the room. The badge on **Sessions** still counts what needs you. After a jump with <Kbd shortcut="session.next" /> or <Kbd shortcut="session.next-needs-you" />, a short label at the top of the window says where you landed.
 
 <Aside type="tip">
-<Kbd shortcut="palette.goto" /> lists your sessions in the same groups as the sidebar, so you can jump anywhere while it is collapsed.
+<Kbd shortcut="palette.goto" /> lists your sessions in the same groups as the sidebar, so you can jump anywhere while the panel is closed.
 </Aside>
 
 ## Settings
@@ -201,12 +191,11 @@ With the sidebar **hidden**, the conversation takes the whole window. A <Pill to
 In [Settings, Sidebar](/settings/#sidebar):
 
 - **Sidebar style:** **Large icons** (each project easy to spot), **Standard** (the default) or **Compact** (one line per session). The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact*.
-- **When collapsed:** what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do: **Minimal rail** (the default) or **Hidden**.
 - **Show sessions from other apps:** also list sessions from your terminal, Claude desktop and your editor. Off (the default) shows only sessions you started or continued in Seshboard.
-- **Quick actions on hover:** show the [buttons on a row under the pointer](#quick-actions-on-hover) (on by default). **Show** picks **Done only** or **Read · Pin · Done** (the default). Working sessions show Stop too.
+- **Quick actions on hover:** show the [buttons on a row under the pointer](#quick-actions-on-hover) (on by default). **Show** picks **Done only** or **New · Read · Pin · Done** (the default). The **+** for a new session in the same folder shows only with the second. Working sessions show Stop too.
 
-<Screenshot name="settings-sidebar" alt="Settings open on Sidebar: the three sidebar styles, the When collapsed choice, and the Show sessions from other apps switch" />
+<Screenshot name="settings-sidebar" alt="Settings open on Sidebar: the three sidebar styles, the Show sessions from other apps switch and Quick actions on hover" />
 
 ## Related
 
-<Related pages={['sessions/states', 'sessions/pinned', 'sessions/split-view', 'sessions/activity', 'command-palette']} />
+<Related pages={['sessions/rail', 'sessions/states', 'sessions/pinned', 'sessions/split-view', 'command-palette']} />

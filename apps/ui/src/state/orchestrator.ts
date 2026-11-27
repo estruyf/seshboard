@@ -1,4 +1,4 @@
-import { groupWorkers, type CatchUp, type OrchestratorInfo, type OrchestratorWorker, type WorkerState, type WorkerStatus } from '@seshboard/protocol/client';
+import { groupWorkers, type CatchUp, type OrchestratorInfo, type OrchestratorWorker, type StartedChild, type WorkerState, type WorkerStatus } from '@seshboard/protocol/client';
 import type { SessionRowData } from './sessionsStore.ts';
 import { rowStatus, type RowStatus } from './sidebarRows.ts';
 
@@ -78,18 +78,22 @@ export function goToOrchestrator(orchestrators: readonly OrchestratorInfo[], ope
   return found && found.sessionId !== open?.id ? found.sessionId : null;
 }
 
-/** Each session an orchestrator started, with its orchestrator: what the sidebar's tree nests them by. */
-export function startedBy(orchestrators: readonly OrchestratorInfo[]): Map<string, string> {
+/**
+ * Each session an orchestrator or another session started, with the session it goes under: what the sidebar's tree
+ * nests them by while they start, before their transcript says so.
+ */
+export function startedBy(orchestrators: readonly OrchestratorInfo[], started: readonly StartedChild[] = []): Map<string, string> {
   const out = new Map<string, string>();
+  for (const child of started) out.set(child.sessionId, child.parentId);
   for (const o of orchestrators) for (const w of o.workers) if (w.sessionId) out.set(w.sessionId, o.sessionId);
   return out;
 }
 
-/** The title an orchestrator gave a session it started, or null for any other session. */
-export function workerTitle(orchestrators: readonly OrchestratorInfo[], sessionId: string): string | null {
+/** The title an orchestrator or another session gave a session it started, or null for any other session. */
+export function workerTitle(orchestrators: readonly OrchestratorInfo[], sessionId: string, started: readonly StartedChild[] = []): string | null {
   for (const o of orchestrators) {
     const worker = o.workers.find((w) => w.sessionId === sessionId);
     if (worker) return worker.title;
   }
-  return null;
+  return started.find((child) => child.sessionId === sessionId)?.title ?? null;
 }

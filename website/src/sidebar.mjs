@@ -37,7 +37,7 @@ export const sidebar = [
   {
     label: 'Stay on top',
     collapsed: true,
-    items: ['sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/upcoming', 'sessions/activity', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
+    items: ['sessions/rail', 'sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/upcoming', 'sessions/activity', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
   },
   {
     label: 'Inside a session',
@@ -56,6 +56,7 @@ export const sidebar = [
       'sessions/linking',
       'sessions/pipelines',
       'sessions/orchestrator',
+      'sessions/seshboard-tools',
       'sessions/github-issues',
       'sessions/agents',
       'sessions/commands',
@@ -93,7 +94,7 @@ export const sidebar = [
   {
     label: 'Work from anywhere',
     collapsed: true,
-    items: ['remote-access', 'other-computers', 'vscode-companion'],
+    items: ['remote-access', 'other-computers', 'vscode-companion', 'browser-extension'],
   },
   {
     label: 'Make it yours',

@@ -15,7 +15,7 @@ function CostLine({ cost, format }: { cost: Cost; format: (usd: number) => strin
   if (!cost) return null;
   const tooltip = `What this session would cost at API prices, since it started: every turn and its agents, each model at its maker's price.${cost.partial ? ' A model without a known price is left out.' : ''} Your plan is not billed per token.`;
   return (
-    <span className="flex h-6 shrink-0 items-center px-1.5 whitespace-nowrap tabular-nums @max-[520px]:hidden" data-tooltip={tooltip} data-session-cost>
+    <span className="flex h-6 shrink-0 items-center px-1.5 whitespace-nowrap tabular-nums @max-[520px]:hidden" data-tooltip={tooltip} data-session-cost data-tray-cost>
       Cost&nbsp;<span className="text-faint">{format(cost.usd)}</span>
     </span>
   );

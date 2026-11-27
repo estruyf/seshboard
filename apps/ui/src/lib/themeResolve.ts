@@ -92,7 +92,7 @@ export const themeModes = (theme: ThemeFile): 'both' | ThemeMode => (theme.light
  * as a complete starting point. Importing the result gives the same tokens as `theme`.
  */
 export function exportThemeFile(theme: ThemeFile, options: { full?: boolean } = {}): ThemeFile {
-  const out: ThemeFile = { $schema: THEME_SCHEMA_URL, name: theme.name, ...(theme.author ? { author: theme.author } : {}), version: theme.version };
+  const out: ThemeFile = { $schema: THEME_SCHEMA_URL, name: theme.name, ...(theme.author ? { author: theme.author } : {}), version: theme.version, ...(theme.monochrome ? { monochrome: true } : {}) };
   for (const mode of THEME_MODES) {
     const file = theme[mode];
     if (!file) continue;

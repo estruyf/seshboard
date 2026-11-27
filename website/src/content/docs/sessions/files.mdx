@@ -11,7 +11,7 @@ import Related from '../../../components/Related.astro';
 
 You want to check a file before you answer Claude, or find where something is used. **Files** shows the session's project as a tree, with a viewer for any text file and a search in all of them, next to the conversation. Lines you select go straight into your message.
 
-Files is for reading. To change a file, **Open in editor** is one click away.
+To change a file, press the pencil and edit it right there (see [Edit a file](#edit-a-file)), or use **Open in editor**.
 
 ## Open it
 
@@ -19,7 +19,7 @@ Files is for reading. To change a file, **Open in editor** is one click away.
 - Choose *Toggle Files* in the [command palette](/command-palette/).
 - Click a file link in Claude's reply: it opens in Files as a tab (see [Preview files](/sessions/file-preview/)).
 
-Files shares the right side with **Changes**, the terminal and the other tools. **Close Files** (the **X**) or <Kbd keys="escape" /> closes it.
+Files shares the right side with **Changes**, the terminal and the other tools. **Close files** (the **X**) or <Kbd keys="escape" /> closes it.
 
 ### Size
 
@@ -36,17 +36,19 @@ In a narrow panel, the tree and the file take turns: a file opens over the tree,
 The tree shows the files of the session's folder, folders first. In a git repository it leaves out what your `.gitignore` leaves out.
 
 - Click a folder to open or close it, and a file to open it.
-- Type in **Filter files** to show only the files whose path matches. <Kbd keys="enter" /> opens the first one, <Kbd keys="escape" /> clears the filter.
+- Type in **Filter files** to show only the files whose path matches. <Kbd keys="enter" /> opens the first one, <Kbd keys="escape" /> clears the filter. Every folder with a match opens, and you can still close and open a folder with a click or <Kbd keys="arrowleft|arrowright" />. A new filter opens them all again.
 - A dot after a file says Claude touched it in this session: the accent colour for a file it changed, grey for one it only read.
 - With the tree focused, <Kbd keys="arrowup|arrowdown" /> move, <Kbd keys="arrowright|arrowleft" /> open and close a folder, and <Kbd keys="enter" /> opens a file.
+
+With **File icons** set in [Settings › Theme](/settings/#theme), each file and folder shows its icon from an icon theme you installed in VS Code, Cursor or Windsurf, such as Material Icon Theme or vscode-icons, in light and dark. **None** (the default) keeps the plain icons.
 
 Drag the line between the tree and the file to make the tree wider. The tree shows up to 50,000 files. In a larger project, use Quick open or Search for the rest.
 
 ## The viewer
 
-The file you open shows on the right, read-only, with line numbers and syntax colours. Each file you open gets a tab. Click a tab to bring it to the front, and its **X** to close it.
+The file you open shows on the right, with line numbers and syntax colours. Each file you open gets a tab. Click a tab to bring it to the front, and its **X** to close it.
 
-- **The path** at the top: click a folder in it to show that folder in the tree.
+- **The path** at the top: click a folder in it to show that folder in the tree. A long path shortens its folders and keeps the file's name whole.
 - **Rendered** and **Source**: a Markdown or HTML file opens rendered, the way [Preview files](/sessions/file-preview/) shows it. **Source** shows its text. A Markdown file has an **Outline** of its headings beside it when there is room.
 - **Images**: a PNG, JPEG, GIF or WebP file shows as the image.
 - **Find in file** (<Kbd shortcut="files.find" />) finds text in the file, with **Previous match** and **Next match**.
@@ -54,6 +56,16 @@ The file you open shows on the right, read-only, with line numbers and syntax co
 - **Wrap lines**, **Reload**, **Open in editor**, **Show in <Os mac="Finder" windows="File Explorer" />** and **Copy path** are in the toolbar too. **Open in a dialog** moves the file over the window.
 
 The file is read again when Claude writes it, so you always see the current version.
+
+## Edit a file
+
+Press the pencil (**Edit file**) over a file to change it in Files, with the same colours as the viewer. Press <Kbd shortcut="files.save" /> or **Save** to save it. **Done** leaves edit mode, and turns into **Discard** while you have unsaved edits.
+
+- <Kbd shortcut="files.find" /> finds in the file, as in the viewer.
+- Lines Claude changed keep their mark, and lines you select go to the message with **Add to message**, as in the viewer.
+- Your edits stay while you look at another tab or close the panel, undo included. A tab with unsaved edits asks before it closes: **Discard**, or **Save** first.
+- Several files can be in edit mode at once.
+- If the file changes on disk while you edit, a notice says so. **Reload** loads the new version, and **Save mine** keeps yours and saves it.
 
 ### What Claude changed
 
@@ -75,7 +87,7 @@ Right-click (or press <Kbd shortcut="context-menu" />) for more:
 
 - **On a file** in the tree or the search results: **Add file to message**, **Open**, **Open full size**, **Open in editor**, **Show in <Os mac="Finder" windows="File Explorer" />**, **Copy path** and **Copy relative path**.
 - **On a folder**: **Add folder to message**, **Search in folder**, **Show in <Os mac="Finder" windows="File Explorer" />** and the two copies.
-- **In the open file**: **Add lines … to message** and **Ask about lines …** for the lines you selected, **Add file to message**, **Find in file**, **Go to line** and the rest.
+- **In the open file**, in the viewer or while you edit: **Add lines … to message** and **Ask about lines …** for the lines you selected, **Add file to message**, **Find in file**, **Go to line** and the rest. On selected text it starts with **Copy**, and on a link in a Markdown file with **Copy link**, which copies the link's address.
 - **On a tab**: **Add file to message**, **Add open files to message**, **Close**, **Close others** and **Close all**.
 
 The files go to this session's message box, as the [VS Code companion](/vscode-companion/) sends them from your editor. A toast says what was added.

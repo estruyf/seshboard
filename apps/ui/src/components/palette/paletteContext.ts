@@ -160,6 +160,10 @@ export interface PaletteContext {
   /** The session has a project to keep actions in. */
   canEditActions: boolean;
   colorScheme: ColorScheme;
+  /** Minimal (Settings › Theme) is on. */
+  minimalMode: boolean;
+  /** Code highlighting (Settings › Theme) is on. */
+  codeHighlighting: boolean;
   /** Every theme, for "Theme: <name>", and the one in use. */
   themes: Array<{ id: string; name: string }>;
   themeId: string;
@@ -167,8 +171,11 @@ export interface PaletteContext {
   /** The sidebar's grouping (its View button): by state or by project. */
   sidebarGroup: SidebarGroup;
   conversationView: ConversationView;
-  /** Open, the minimal rail, or closed. */
+  /** The panel beside the nav rail: open or closed. */
   sidebar: SidebarState;
+  /** Back and forward have a place to go (`navHistoryStore`). */
+  canGoBack: boolean;
+  canGoForward: boolean;
   settingsSection: SettingsSection;
   /** New session is on screen: what its route can do. */
   newSession: { canWorktree: boolean; canSaveDefaults: boolean; canQueue: boolean; canCatchUp: boolean; root?: string | null } | null;

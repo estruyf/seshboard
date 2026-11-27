@@ -162,9 +162,9 @@ process.parentPort.on('message', (event) => {
   }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
-    const { sessionId, cwd, state, outcome, compacting, apiRetry, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; apiRetry?: unknown; fast?: { blocked: string | null; on?: boolean } };
+    const { sessionId, cwd, state, outcome, compacting, apiRetry, fast, suggestion } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; apiRetry?: unknown; fast?: { blocked: string | null; on?: boolean }; suggestion?: unknown };
     if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'needs-you' || state === 'idle' || state === 'closed')) {
-      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(apiRetry === null ? { apiRetry: null } : ApiRetry.safeParse(apiRetry).success ? { apiRetry: apiRetry as ApiRetry } : {}), ...(fast ? { fast } : {}) });
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(apiRetry === null ? { apiRetry: null } : ApiRetry.safeParse(apiRetry).success ? { apiRetry: apiRetry as ApiRetry } : {}), ...(fast ? { fast } : {}), ...(typeof suggestion === 'string' || suggestion === null ? { suggestion } : {}) });
     }
     return;
   }
@@ -174,6 +174,12 @@ process.parentPort.on('message', (event) => {
     if (typeof sessionId === 'string' && typeof projectRoot === 'string') {
       void engine.smokeOrchestrator({ sessionId, projectRoot, ...(typeof tool === 'string' ? { tool } : {}), ...(args && typeof args === 'object' ? { args: args as Record<string, unknown> } : {}) });
     }
+    return;
+  }
+  // The smoke run's seshboard tools step: a stand-in session calls one of its tools; the answer goes to a file.
+  if (data?.type === 'smokeSessionTool') {
+    const { sessionId, tool, args } = data as { sessionId?: unknown; tool?: unknown; args?: unknown };
+    if (typeof sessionId === 'string' && typeof tool === 'string') void engine.smokeSessionTool({ sessionId, tool, args: args && typeof args === 'object' ? (args as Record<string, unknown>) : {} });
     return;
   }
   // The smoke run's pipeline step: a step's turn ends, with the reply its verdict is read from.
@@ -201,6 +207,11 @@ process.parentPort.on('message', (event) => {
   // Whether a window has focus: running pull request checks are read less often without one.
   if (data?.type === 'foreground') {
     engine.setForeground((data as { foreground?: unknown }).foreground !== false);
+    return;
+  }
+  // Whether someone uses this computer (keyboard or mouse in the last 5 minutes, not locked): pushes wait for away.
+  if (data?.type === 'presence') {
+    engine.setPresent((data as { present?: unknown }).present === true);
     return;
   }
   // Settings › Mods › Show mods.

@@ -151,7 +151,7 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
             maxLength={PROMPT_NAME_MAX}
             onChange={(e) => setName(e.target.value)}
             placeholder="Implement issue"
-            className={`rounded-md border bg-bg px-2.5 py-1.5 text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink/60 ${tried && !name.trim() ? 'border-error' : 'border-edge'}`}
+            className={`field px-2.5 py-1.5 text-ui outline-none placeholder:text-faint ${tried && !name.trim() ? 'border-error' : ''}`}
             data-prompt-editor-name
           />
         </label>
@@ -191,7 +191,7 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
                 onChange={(r) => setPersonalRoots([r])}
                 label="Project"
                 placeholder="Choose a project"
-                className="w-full rounded-md border border-edge bg-bg px-2.5 py-1.5 text-ui text-text"
+                className="field w-full px-2.5 py-1.5 text-ui"
                 dataAttrs={{ 'data-prompt-project-select': true }}
               />
             ) : (
@@ -204,7 +204,7 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
               onChange={setSharedRoot}
               label="Project"
               placeholder="Choose a project"
-              className="w-full rounded-md border border-edge bg-bg px-2.5 py-1.5 text-ui text-text"
+              className="field w-full px-2.5 py-1.5 text-ui"
               dataAttrs={{ 'data-prompt-project-select': true }}
             />
           )}

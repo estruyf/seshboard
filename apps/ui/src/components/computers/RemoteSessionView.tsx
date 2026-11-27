@@ -1,13 +1,28 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { RemoteOrchestratorCrumb, RemoteOrchestratorOverview } from '../orchestrator/OrchestratorOverview.tsx';
+import { useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
-import { agentName, apiRetryLine, triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
+import { ArrowDown, BookOpen, ChevronDown, ChevronRight, Ellipsis, GitBranch, LoaderCircle, RefreshCw } from 'lucide-react';
+import { agentName, apiRetryLine, localPreviewUrl, triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
-import { ariaKeysFor, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
+import { ariaKeysFor, ariaShortcut, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { askThrough, closeAsk, newAskThread, openAskThrough, pickAskThread, retryAskThrough, useAsk, useSessionAsk, type AskBackend } from '../../state/askStore.ts';
-import { useRightPanel } from '../../state/rightPanelStore.ts';
+import { useRightPanel, useRightTab, useSidePanelFull } from '../../state/rightPanelStore.ts';
+import { panelWidthFor, rightPanel } from '../ask/askWidth.ts';
+import { ToolRail, useRailItems, type RailButton, type RailItem } from '../transcript/ToolRail.tsx';
+import { railEntries, railLabel, railStep, railToolState, type RailAvailable, type RailToolId } from '../transcript/toolRail.ts';
+import { RAIL_ICONS } from '../transcript/railIcons.tsx';
+import { PanelLauncher } from '../transcript/PanelLauncher.tsx';
+import { launcherEntries, launcherPick, launcherShown } from '../transcript/panelLauncher.ts';
+import { closePanelLauncher, openPanelLauncher, usePanelLauncher } from '../../state/panelLauncherStore.ts';
+import { toggleWebPanel, useSessionWeb, useTabCount, useWebPreview } from '../../state/webPreviewStore.ts';
+import { useBrowserPopouts } from '../../state/popoutsStore.ts';
+import { useLayout } from '../../state/layoutStore.ts';
+import { WebPreviewPanel } from '../webPreview/WebPreviewPanel.tsx';
+import type { ServerOffer } from '../webPreview/serverOffers.ts';
+import { openLinkInBrowser } from '../transcript/openLinkInBrowser.ts';
+import { useStableCallback } from '../../lib/useStableCallback.ts';
 import { AskPanel } from '../ask/AskPanel.tsx';
 import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
 import { catchUpShow } from '../catchUp/catchUpModel.ts';
@@ -30,7 +45,6 @@ import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { OVERLAY_SELECTOR } from '../session/permissionKeys.ts';
-import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { ClampedPrompt } from '../transcript/ClampedPrompt.tsx';
 import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { BackgroundTaskList } from '../transcript/BackgroundTaskList.tsx';
@@ -45,6 +59,8 @@ import { Notice } from '../ui/Notice.tsx';
 import { RemoteLimitNotice } from './RemoteLimitNotice.tsx';
 import { RemoteUpNext } from './RemoteUpNext.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
+import { EscapeStopHint } from '../composer/EscapeStopHint.tsx';
+import { useEscapeStop } from '../composer/useEscapeStop.ts';
 import { queueButtonState, sendKeyMode } from '../composer/queueButton.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
@@ -85,6 +101,8 @@ const PAGE = 100;
 /** Test hooks of the tray's chips: `data-remote-model-select`, `data-menu="remote-model"`. */
 const REMOTE_CHIP_NAMES = { profile: 'remote-profile', model: 'remote-model', effort: 'remote-effort', mode: 'remote-mode' };
 const NO_RUNS: RemoteRunState[] = [];
+/** A remote session's servers run on that computer: its browser has none to offer here. */
+const NO_OFFERS: readonly ServerOffer[] = [];
 
 const DOT_TONE = { warn: 'bg-warn', accent: 'bg-accent-ink animate-pulse', unread: 'bg-unread', ok: 'bg-ok', error: 'bg-error', faint: 'bg-faint' } as const;
 const TEXT_TONE = { warn: 'text-warn', accent: 'text-accent-ink', unread: 'text-unread', ok: 'text-ok', error: 'text-error', faint: 'text-muted' } as const;
@@ -105,8 +123,9 @@ function useNow(active: boolean): number {
  * header with the computer's chip and a 2px `remote` line along its top, the conversation in the same column, what it
  * waits on docked above the message box, Stop, and what it runs in the background with a Stop for each task. As in a
  * local session: the catch-up, Changes and Commit, Ask, reading mode, Quote, Find (⌘F), Jump to latest and a pipeline
- * run's card, all acting on that computer. What only works there (the terminal, the editor, pull requests, file links)
- * keeps its place, disabled, with a reason. The transcript is `RemoteText`: nothing in it acts here. While the computer
+ * run's card, all acting on that computer. The rail of tools at its right edge has Changes, Ask and the browser, which
+ * runs here: a web link in the conversation opens in it. What needs the folder (Files, the terminal, the editor) is left
+ * off the rail, and the ⋯ menu says why. The transcript is `RemoteText`: nothing else in it acts here. While the computer
  * is away the last messages stay, under a banner, and the message box is off. It is a pane like a local session
  * (`pane`): dragged by its title, beside local ones and other remote ones.
  */
@@ -333,15 +352,137 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   useEffect(() => {
     if (changesOpen && !working) refreshChanges();
   }, [working]);
-  // One panel at a time on the right: opening Changes closes Ask, and the other way round.
+  // Opened, Changes comes to the front of the side panel; Ask or the browser stay open behind it.
   const showChanges = (open: boolean) => {
-    if (open) closeAsk(rowId);
     setChangesOpen(open);
+    if (open) useRightPanel.getState().setTab(rowId, 'changes');
   };
+
+  // The side panel and the rail of tools, as in a session here, with what works from this computer: Changes and Ask,
+  // read and done there, and the browser, which runs here (its tabs are kept under the row's id). The rest (Files,
+  // the terminal, Agents, Commands, the apps) needs the folder, which is on that computer, so the rail leaves it out.
+  const browserOn = usePreferences((s) => s.prefs.browserEnabled);
+  const web = useSessionWeb(rowId);
+  const browserAway = useBrowserPopouts((s) => s.tabs.has(rowId));
+  const rightTab = useRightTab(rowId);
+  const right = rightPanel({ changes: changesOpen, ask: ask.open, web: web !== null, files: false, agents: false, commands: false, note: false, terminal: false }, rightTab);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const bodyWidth = useWidth(bodyRef);
+  const sizing = useRightPanel((s) => s.sizing);
+  const rightWidth = useRightPanel((s) => s.width);
+  const setRightWidth = useRightPanel((s) => s.setWidth);
+  // Half: the panel takes half the session area as the window resizes; Side: the width you dragged.
+  const panelWidth = panelWidthFor(sizing, rightWidth, bodyWidth);
+  // The side panel with nothing in it (the title bar's Tools panel, or a new session with Settings asking for it).
+  const launcherRequested = usePanelLauncher((s) => s.open.has(rowId));
+  const launcherQuiet = usePanelLauncher((s) => s.quiet.has(rowId));
+  const showLauncher = launcherShown(launcherRequested, right.open.length, false);
+  // Once a tool opens on the side, the empty panel is done: closing that tool closes the side.
   useEffect(() => {
-    if (ask.open) setChangesOpen(false);
-  }, [ask.open]);
-  const panel: 'ask' | 'changes' | null = changesOpen ? 'changes' : ask.open ? 'ask' : null;
+    if (launcherRequested && right.open.length > 0) closePanelLauncher(rowId);
+  }, [launcherRequested, right.open.length, rowId]);
+  const sharedFull = useSidePanelFull(rowId);
+  const setSharedFull = useCallback((full: boolean) => useRightPanel.getState().setFull(rowId, full), [rowId]);
+  // At Full a panel takes the whole session area: the conversation stays mounted, hidden.
+  const conversationHidden = (sharedFull && (showLauncher || right.tab === 'ask')) || (right.tab === 'web' && browserOn && web?.full === true);
+  const othersOpen = (tool: RailToolId) => right.open.some((tab) => tab !== tool);
+  // A click on the rail (or its shortcut): a closed tool opens in front, one behind comes to the front, the one in front closes.
+  const toggleChangesHere = () => showChanges(railStep(railToolState('changes', right.open, right.tab), othersOpen('changes')) !== 'close');
+  const toggleAskHere = () => {
+    if (railStep(railToolState('ask', right.open, right.tab), othersOpen('ask')) === 'close') closeAsk(rowId);
+    else void openAskThrough(connected ? askBackend : null, rowId);
+  };
+  const toggleWebHere = () => toggleWebPanel(rowId, othersOpen('web'));
+  const webTabs = useTabCount(rowId);
+  const railCounts = { changes: changesOpen ? (changes?.files.length ?? 0) : 0, web: browserOn ? webTabs : 0 };
+  const railOrder = usePreferences((s) => s.prefs.railOrder);
+  const railHidden = usePreferences((s) => s.prefs.railHidden);
+  const railAvailable: RailAvailable = {
+    files: false,
+    changes: true,
+    terminal: false,
+    web: browserOn || web !== null || browserAway,
+    ask: true,
+    agents: false,
+    commands: false,
+    note: false,
+    mods: [],
+    apps: [],
+  };
+  const railName = (tool: RailToolId) => (tool === 'web' && browserAway ? 'Browser (own window)' : undefined);
+  const railTool = (tool: RailToolId): RailButton => {
+    const shortcut = tool === 'changes' ? 'changes.toggle' : tool === 'web' ? 'web.toggle' : null;
+    const ready = tool === 'ask' && ask.ready && !ask.open;
+    const name = railName(tool);
+    return {
+      id: tool,
+      icon: RAIL_ICONS[tool as keyof typeof RAIL_ICONS],
+      label: `${railLabel(tool, railCounts, { name })}${ready ? ' · An answer is ready' : ''}`,
+      ariaLabel: `${railLabel(tool, railCounts, { name, separator: ', ' })}${ready ? ', an answer is ready' : ''}`,
+      kbd: shortcut ? formatKeys(keysFor(shortcut)) : undefined,
+      count: railCounts[tool as keyof typeof railCounts],
+      dot: ready,
+      state: railToolState(tool, right.open, right.tab),
+      // `data-remote-changes`: the hook the Changes button had in the header.
+      data: { [`data-toggle-${tool}`]: true, ...(tool === 'changes' ? { 'data-remote-changes': true } : {}), ...(tool === 'web' && browserAway ? { 'data-browser-away': true } : {}) },
+      onClick: () => (tool === 'changes' ? toggleChangesHere() : tool === 'ask' ? toggleAskHere() : toggleWebHere()),
+    };
+  };
+  const railItems = useRailItems(railEntries(railAvailable, railHidden, railOrder).map((entry): RailItem => (entry.kind === 'tool' ? railTool(entry.id) : 'divider')));
+  const launcherRows = showLauncher
+    ? launcherEntries(railAvailable, railOrder).map((entry) => {
+        if (entry.kind === 'divider') return 'divider' as const;
+        const item = railTool(entry.id);
+        return { id: entry.id, icon: item.icon, name: railLabel(entry.id, {}, { name: railName(entry.id) }), kbd: item.kbd };
+      })
+    : [];
+  const pickFromLauncher = (tool: RailToolId) => {
+    closePanelLauncher(rowId);
+    if (launcherPick(railToolState(tool, right.open, right.tab))) railTool(tool).onClick();
+  };
+  // The title bar's Tools panel button works on the active pane's side panel: Hide panel while it shows something.
+  const sideShows = right.open.length > 0 || showLauncher;
+  const onPanelButton = useStableCallback(() => {
+    if (!sideShows) return openPanelLauncher(rowId);
+    closePanelLauncher(rowId);
+    useRightPanel.getState().setFull(rowId, false);
+    setChangesOpen(false);
+    if (ask.open) closeAsk(rowId);
+    if (web) useWebPreview.getState().hide(rowId);
+  });
+  useEffect(() => {
+    if (pane.active) useLayout.setState({ toolsPanel: { shows: sideShows, toggle: onPanelButton } });
+  }, [pane.active, sideShows, onPanelButton]);
+  useEffect(() => {
+    if (!pane.active) return;
+    // Another pane may have taken it over in the same render: only clear what is still this pane's.
+    return () => {
+      if (useLayout.getState().toolsPanel?.toggle === onPanelButton) useLayout.setState({ toolsPanel: null });
+    };
+  }, [pane.active, onPanelButton]);
+  // A web link in the conversation opens in this session's browser, here. A localhost link is on that computer, so
+  // the page won't load here (or shows this computer's own server): a toast says so.
+  const openLink = (event: ReactMouseEvent<HTMLElement>) => {
+    const href = (event.target as HTMLElement).closest('a[href]')?.getAttribute('href') ?? '';
+    const local = event.button === 0 && localPreviewUrl(href) !== null;
+    if (browserOn) openLinkInBrowser(event, rowId);
+    if (local) toast(`This page is on ${name}`, { body: 'localhost there isn’t reachable from this computer, so the page won’t load here.' });
+  };
+  // The rail's shortcuts: ⌘⇧D for Changes, ⌘⇧B for the browser, while this pane is the active one.
+  const onViewKey = useEffectEvent((event: globalThis.KeyboardEvent) => {
+    if (!pane.active || useSessions.getState().view !== 'session' || event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+    if (matches(event, 'changes.toggle')) {
+      event.preventDefault();
+      toggleChangesHere();
+    } else if (matches(event, 'web.toggle') && railAvailable.web) {
+      event.preventDefault();
+      toggleWebHere();
+    }
+  });
+  useEffect(() => {
+    window.addEventListener('keydown', onViewKey);
+    return () => window.removeEventListener('keydown', onViewKey);
+  }, []);
   // The catch-up over the conversation, as for a session here; its buttons act there.
   const collapsed = useCatchUp((s) => (catchUp ? (s.collapsed.get(turnKey(catchUp)) ?? null) : null));
   const catchUpEnabled = usePreferences((s) => s.prefs.catchUpSummaries);
@@ -357,8 +498,6 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
     onChanges: showChanges,
     onCommitted: refreshChanges,
   });
-  const rightWidth = useRightPanel((s) => s.width);
-  const setRightWidth = useRightPanel((s) => s.setWidth);
   const find = useRemoteFind(scroller, { active: pane.active, content: messages, resetKey: rowId });
   const remember = useRememberLayer({
     container: scroller,
@@ -380,10 +519,10 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
 
   return (
     <RemoteFileContext.Provider value={fileSession}>
-      <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
+      <div className="flex h-full min-h-0" style={computerTint(computer.color)} data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
+      {/* `@container`: the header compacts itself when the pane is narrow. The rail of tools sits beside it, as in a session here. */}
+      <div className="@container flex min-w-0 flex-1 flex-col">
         <header className={`${PANE_HEADER} ${remoteLine(pane)}`} data-scrolled={!edge.atTop || undefined} data-remote-header {...paneHeader(pane)}>
-          {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
-          {pane.leading && <SidebarToggle />}
           <span className="flex shrink-0 @max-[400px]:hidden">
             <ProjectIcon project={undefined} root={session.projectId} name={session.projectName} size={22} remote />
           </span>
@@ -393,6 +532,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
               {session.title}
             </h1>
             <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
+              {/* A session its orchestrator there started: the way back to it. */}
+              <RemoteOrchestratorCrumb computerId={id} sessionId={session.id} />
               <span className={`flex shrink-0 items-center gap-1.5 ${TEXT_TONE[line.tone]}`} data-session-status>
                 <span className={`inline-block size-2 shrink-0 rounded-full ${DOT_TONE[line.tone]}`} aria-hidden />
                 <span className="@max-[860px]:sr-only">{line.text}</span>
@@ -413,36 +554,6 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
           <ComputerChip name={name} size="header" offline={!connected} className="no-drag @max-[420px]:hidden" data-remote-chip data-tooltip={`Claude runs on ${name}. You follow it from here.`}>
             on {name}
           </ComputerChip>
-          {/* Changes | Terminal stay where they are in a local session, disabled: they only work on that computer. */}
-          <div className="no-drag flex shrink-0 items-center gap-0.5" role="group" aria-label="Panels">
-            <Button
-              variant="quiet"
-              size="sm"
-              iconOnly
-              icon={<FileDiff size={14} aria-hidden />}
-              aria-label={changesOpen ? 'Hide changed files' : `Show changed files on ${name}`}
-              aria-pressed={changesOpen}
-              selected={changesOpen}
-              data-tooltip={changesOpen ? 'Hide changed files' : `Show changed files on ${name}`}
-              onClick={() => showChanges(!changesOpen)}
-              data-remote-changes
-            />
-            <Button
-              variant="quiet"
-              size="sm"
-              iconOnly
-              icon={<MessageCircleQuestion size={14} aria-hidden />}
-              aria-label={ask.open ? 'Hide Ask' : `Ask about this session${ask.ready ? ', an answer is ready' : ''}`}
-              aria-pressed={ask.open}
-              selected={ask.open}
-              data-tooltip={ask.open ? 'Hide Ask' : `Ask about this session${ask.ready ? ' · An answer is ready' : ''}`}
-              onClick={() => (ask.open ? closeAsk(rowId) : void openAskThrough(connected ? askBackend : null, rowId))}
-              data-toggle-ask
-            />
-            <OnlyThere feature="Terminal" name={name}>
-              <Button variant="quiet" size="sm" iconOnly disabled icon={<SquareTerminal size={14} aria-hidden />} aria-label={onlyThereLine('Terminal', name)} data-remote-terminal />
-            </OnlyThere>
-          </div>
           <Button
             variant="quiet"
             iconOnly
@@ -461,13 +572,15 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
         {/* A trigger there started it: which, and the link to the CI run or the issue. */}
         <RemoteTriggerOriginBar origin={triggerOriginOf(session.trigger)} />
 
-        {/* The conversation and the message box, with Ask (or Changes) on the right. */}
-        <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col">
+        {/* The conversation and the message box, with the side panel (Changes, Browser, Ask) on the right. */}
+        <div ref={bodyRef} className="flex min-h-0 flex-1">
+        <div className={`min-w-0 flex-1 flex-col ${conversationHidden ? 'hidden' : 'flex'}`}>
         {/* The conversation, with Find over its top right corner. */}
         <div className="relative flex min-h-0 flex-1 flex-col">
         {!(catchUp && show) && <CatchUpPassBar rowId={rowId} active={pane.active} />}
         {catchUp && show && <CatchUpSlot card={catchUp} show={show} cwd={null} changes={null} active={pane.active} changesOpen={changesOpen} remote={{ actions: catchUpActions, rowId }} />}
+        {/* An orchestrator there: its sessions, by what needs you first. */}
+        <RemoteOrchestratorOverview computerId={id} sessionId={session.id} />
         {find.query !== null && <FindBar query={find.query} onQuery={find.setQuery} count={find.count} current={find.current} onStep={find.step} onClose={find.close} focusNonce={find.focusNonce} />}
         <div
           ref={scroller}
@@ -478,6 +591,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
             remember.handlers.onScroll();
           }}
           onContextMenu={remember.handlers.onContextMenu}
+          onClick={openLink}
           role="region"
           aria-label="Conversation"
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
@@ -653,7 +767,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
           )}
         </div>
         </div>
-        {panel === 'changes' && (
+        {showLauncher && <PanelLauncher rows={launcherRows} width={panelWidth} onWidth={setRightWidth} full={sharedFull} onFull={setSharedFull} quiet={launcherQuiet} onPick={pickFromLauncher} onClose={() => closePanelLauncher(rowId)} />}
+        {right.tab === 'changes' && (
           <RemoteChangesPanel
             client={client}
             computer={computer}
@@ -665,18 +780,20 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
               if (catchUp) useCatchUp.getState().markCommitted(catchUp);
               toast(`Committed on ${name}`);
             }}
-            onClose={() => setChangesOpen(false)}
-            width={rightWidth}
+            onClose={() => showChanges(false)}
+            width={panelWidth}
             onWidth={setRightWidth}
           />
         )}
-        {panel === 'ask' && (
+        {right.tab === 'ask' && (
           <AskPanel
             sessionId={rowId}
             state={ask}
             working={working}
-            width={rightWidth}
+            width={panelWidth}
             onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
             onAsk={(question) => askThrough(askBackend, rowId, question)}
             onRetry={(threadId, item) => void retryAskThrough(askBackend, rowId, threadId, item.id, item.question).catch((e: Error) => toast(`Could not ask: ${e.message}`))}
             onQuote={(answer) => useDrafts.getState().requestQuote(draftKey, answer)}
@@ -686,8 +803,12 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
             disabledReason={connected ? null : `${name} is not connected`}
           />
         )}
+        {/* Its pages run on this computer (webPreviewPages.ts), kept under the row's id, so they stay while another tab is in front. */}
+        {right.tab === 'web' && web && <WebPreviewPanel sessionId={rowId} web={web} offers={NO_OFFERS} width={panelWidth} onWidth={setRightWidth} />}
         </div>
         {menu && <Menu x={menu.x} y={menu.y} entries={menu.entries} width={240} label={`Session “${session.title}”`} onClose={() => setMenu(null)} />}
+      </div>
+      <ToolRail items={railItems} />
       </div>
     </RemoteFileContext.Provider>
   );
@@ -697,15 +818,6 @@ function Sep() {
   return (
     <span aria-hidden className="text-faint">
       ·
-    </span>
-  );
-}
-
-/** A control that only works on that computer: in its place, disabled, with the reason as its tooltip (a disabled button gets no hover). */
-function OnlyThere({ feature, name, children }: { feature: string; name: string; children: ReactNode }) {
-  return (
-    <span className="no-drag flex shrink-0" data-tooltip={onlyThereLine(feature, name)}>
-      {children}
     </span>
   );
 }
@@ -811,6 +923,8 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   // While Claude works there, Enter queues or steers (Settings › Conversation, this computer's), as for a local session.
   const whileWorking = usePreferences((p) => p.prefs.whileWorking);
   const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
+  // Esc stops Claude there, by default only when pressed twice (Settings › Conversation).
+  const escapeStop = useEscapeStop(working && connected, onStop);
   const send = (mode: SendMode = whileWorking) => {
     const sentFill = fillState;
     const text = savedPrompts.message();
@@ -821,13 +935,13 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     const { images, files } = attachments;
     void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode, images, ...(files.length ? { files } : {}) })
       .then(
-        ({ queued }) => {
+        () => {
           // Also when you went to another session while it was sending.
+          // A queued message needs no toast: it shows in Up next, right above the box (#372).
           clearRemoteDraft(draftKey);
           setDraft('');
           savedPrompts.sent(sentFill);
           attachments.clear();
-          if (queued) toast('Added to Up next', { icon: 'queue', body: `Claude is working on ${name}. It goes next.` });
         },
         (e: Error) => toast(e.message),
       )
@@ -842,7 +956,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
       send(mode);
     } else if (working && matches(event.nativeEvent, 'claude.stop') && !document.querySelector(OVERLAY_SELECTOR)) {
       event.preventDefault();
-      onStop();
+      escapeStop.press();
     }
   };
   const sendNow = formatKeys(keysFor('composer.send-now'));
@@ -936,7 +1050,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
           disabled={!connected}
           placeholder={fillState ? 'Add more context… (optional, sent after the prompt)' : placeholder}
           aria-label={`Message Claude on ${name}`}
-          aria-keyshortcuts={working ? formatKeys(keysFor('claude.stop')) : undefined}
+          aria-keyshortcuts={working ? ariaShortcut('escape') : undefined}
           className="block field-sizing-content max-h-[10lh] min-h-[3lh] w-full min-w-0 resize-none bg-transparent px-1 text-body leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60"
           data-computer-composer
         />
@@ -946,8 +1060,9 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
             <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+            <EscapeStopHint armed={escapeStop.armed} agent={agentName(session.provider)} />
             {working && (
-              <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow disabled={!connected} onClick={onStop} data-tooltip={`Stop Claude on ${name} (${formatKeys(keysFor('claude.stop'))})`} data-computer-stop>
+              <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} disabled={!connected} onClick={onStop} data-tooltip={`Stop ${agentName(session.provider)} on ${name} (${formatKeys(keysFor('claude.stop'))}${escapeStop.twice ? ' twice' : ''})`} data-computer-stop>
                 Stop
               </Button>
             )}

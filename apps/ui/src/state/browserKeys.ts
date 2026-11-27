@@ -3,7 +3,7 @@ import { previewPage } from '../components/webPreview/webPreviewPages.ts';
 import { matches } from '../lib/shortcuts.ts';
 import { bookmarkPage } from './browserBookmarksStore.ts';
 import { currentPageTab, newBrowserTab, openBrowserView } from './browserViewStore.ts';
-import { localSessionId } from './remoteSelection.ts';
+import { browserOwnerOf } from './remoteSelection.ts';
 import { useSessions } from './sessionsStore.ts';
 import { useWebPreview } from './webPreviewStore.ts';
 
@@ -17,10 +17,10 @@ export interface BrowserKeyScope {
   root: string | null;
 }
 
-/** In the main window: the Browser view, or the session on screen. */
+/** In the main window: the Browser view, or the session on screen (one on another computer too: its browser is here). */
 export function mainBrowserScope(): BrowserKeyScope {
   const { view, selectedId } = useSessions.getState();
-  const sessionId = view === 'session' ? localSessionId(selectedId) : null;
+  const sessionId = view === 'session' ? browserOwnerOf(selectedId) : null;
   return { browserView: view === 'browser', sessionId, root: sessionId ? `[data-current-session="${CSS.escape(sessionId)}"]` : null };
 }
 

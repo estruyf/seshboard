@@ -63,6 +63,23 @@ Screenshots and `result.json` go to `apps/desktop/.smoke`. Set `SESHBOARD_COLOR_
 
 `npm run smoke:demo` runs it in the made-up home folder the README screenshots are taken in (`scripts/screenshot-demo.ts`: a few git projects, their sessions, one of them running) instead of yours, so it finds the same things on every machine. It has no login: the usage band step is skipped there. Every pull request and push to `main` runs `npm run check` and then `npm run smoke:demo` on macOS, Windows and Linux (`.github/workflows/check.yml`, on Linux under Xvfb), since a runner's home folder has no `~/.claude`. The screenshots and `result.json` of each run are attached to it as an artifact.
 
+### Performance budgets
+
+Counts, not timings, so they do not flake on CI. A unit test that guards a cost has a name starting with `BUDGET:`; run them with `npx vitest run -t BUDGET`, and the render check with `npm run smoke:demo -- --only "render budget"`. A change that raises one of these numbers should say why.
+
+| What it guards | Where |
+|---|---|
+| A big transcript is read in full once, however many writes follow (`TranscriptCache` stats: one full read, one append per write) | `packages/engine/src/claude/transcriptCache.test.ts` |
+| During a turn this app runs, the transcript hub reads the file once at the end, not on every write | `packages/engine/src/sessions/sessions.test.ts` |
+| A busy session's writes send no `sessions.changed` and store no summary within the 15 s hold, and one change goes out after it (fake timers) | `packages/engine/src/sessions/sessions.test.ts` |
+| Search indexes a session being written only when it is quiet or its turn ended, and adds only the new messages of a transcript that grew | `packages/engine/src/sessions/search.test.ts` |
+| The plan-usage helper starts at most once a minute per profile for nudges, however often a turn ends | `packages/engine/src/host/usage.test.ts` |
+| The Dock animation's Light mode: a frame every 300 ms at 256 px | `apps/desktop/src/main/dockActivity.test.ts` |
+| A sidebar row is the same object while what it is built from is, and a host event for one session builds one row | `apps/ui/src/state/rowsStore.test.ts` |
+| While a session streams 30 deltas a second, the sidebar renders at most 3 times and its rows at most 5 (the conversation and the message box are counted and printed; their limits wait for the streaming change) | the `render budget` smoke step in `apps/desktop/src/main/index.ts` |
+
+The smoke step counts renders through `apps/ui/src/lib/renderCounts.ts`: `Sidebar`, `SessionRow`, `TranscriptView` and `Composer` call a counter, which exists only in a smoke build (`npm run smoke…` compiles `__RENDER_COUNTS__` in, see `electron.vite.config.ts`), so releases and development builds carry none of it. The step skips itself in a build without it (the packaged smoke).
+
 ### README screenshots
 
 ```bash
