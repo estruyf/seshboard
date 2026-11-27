@@ -188,6 +188,9 @@ export function resultOutcome(message: Extract<SDKMessage, { type: 'result' }>):
 }
 const STREAM_FLUSH_MS = 30;
 
+/** The longest suggested reply kept: a predicted next message is short, and a long one is no quick reply. */
+const SUGGESTION_MAX = 500;
+
 /** The tools of Seshboard's `visualize` server, as Claude Code names them: allowed without asking. */
 const VISUALIZE_TOOLS = ['mcp__visualize__read_me', 'mcp__visualize__show_widget'];
 
@@ -201,6 +204,9 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     settingSources: ['user', 'project', 'local'],
     includePartialMessages: true,
     enableFileCheckpointing: true,
+    // Claude Code predicts your next message after each turn ("go", "yes, run it"): the message box offers it to send.
+    // It reuses the turn's prompt cache, so it costs next to nothing. A read-only step has nobody to answer it.
+    ...(config.readOnly ? {} : { promptSuggestions: true }),
     permissionMode: config.permissionMode,
     canUseTool: config.canUseTool,
     stderr: (data) => log('debug', `[claude] ${data.trimEnd()}`),
@@ -519,7 +525,8 @@ export class SessionHost {
     const commands = this.commands.length ? this.commands : (this.events.knownCommands?.() ?? []);
     const echo = attachments.length === 0 && text ? { role: 'user' as const, content: [{ type: 'text' as const, text: commandEcho(text, commands.map((c) => c.name)) }] } : message.message;
     this.events.messages(this.sessionId, [{ type: 'user', uuid, message: echo, parent_tool_use_id: null, timestamp: new Date().toISOString() }], after !== undefined);
-    this.update({ promptedAt: this.lastActivity });
+    // You answered: the guess at your answer goes.
+    this.update({ promptedAt: this.lastActivity, suggestion: undefined });
     return uuid;
   }
 
@@ -790,7 +797,14 @@ export class SessionHost {
     // Background tasks die with the process.
     // A retry belongs to the turn it happened in: the next turn starts without it.
     const turnStarts = patch.state === 'running' && this.info.state !== 'running' && this.info.state !== 'needs-you';
-    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false } : {}), ...(ended || (turnStarts && !('apiRetry' in patch)) ? { apiRetry: undefined } : {}) };
+    this.info = {
+      ...this.info,
+      ...patch,
+      ...(ended ? { backgroundTasks: [], compacting: false } : {}),
+      ...(ended || (turnStarts && !('apiRetry' in patch)) ? { apiRetry: undefined } : {}),
+      // A suggestion answers the turn before: a new turn, or the end of the process, leaves nothing to answer.
+      ...(ended || turnStarts ? { suggestion: undefined } : {}),
+    };
     try {
       this.events.info(this.info);
     } catch (error) {
@@ -912,6 +926,11 @@ export class SessionHost {
         this.events.turnEnded?.(this.sessionId, { ...outcome, stopped, superseded: this.nowPhase !== null });
         return;
       }
+      case 'prompt_suggestion':
+        // It comes after the turn's result. If your next message has started a turn already, it answers nothing.
+        if (this.info.state === 'running' || this.info.state === 'needs-you' || !message.suggestion.trim()) return;
+        this.update({ suggestion: message.suggestion.trim().slice(0, SUGGESTION_MAX) });
+        return;
       case 'rate_limit_event':
         {
           const info = message.rate_limit_info;

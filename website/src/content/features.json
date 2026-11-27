@@ -1417,6 +1417,11 @@
       "page": "new-session/form"
     },
     {
+      "id": "shortcut:composer.take-reply",
+      "name": "Put the suggested reply in the box",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "shortcut:composer.next-blank",
       "name": "Next blank",
       "page": "sessions/saved-prompts"
@@ -2770,6 +2775,11 @@
       "id": "feature:archive-draft-confirm",
       "name": "Mark done and discard the unsent message",
       "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "feature:quick-replies",
+      "name": "Suggested replies: after a turn, send the reply Claude Code expects with one click, or press Tab to put it in the box",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:escape-twice-to-stop",

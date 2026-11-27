@@ -7,6 +7,7 @@ import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, SITE_AC
 import { SIDE_PANEL_DETAIL, SIDE_PANEL_HALF_DETAIL } from './transcript/sidePanelCopy.ts';
 import { useRightPanel } from '../state/rightPanelStore.ts';
 import { ESCAPE_TWICE_DETAIL } from './composer/escapeStop.ts';
+import { QUICK_REPLY_DETAIL } from './composer/quickReply.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -423,6 +424,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               checked={prefs.escapeTwiceToStop}
               attr="data-escape-twice-setting"
               onChange={(escapeTwiceToStop) => update({ escapeTwiceToStop })}
+            />
+            <Toggle
+              label="Suggested replies"
+              detail={QUICK_REPLY_DETAIL}
+              checked={prefs.quickReplies}
+              attr="data-quick-replies-setting"
+              onChange={(quickReplies) => update({ quickReplies })}
             />
           </Section>
           <Section title="Usage limits">

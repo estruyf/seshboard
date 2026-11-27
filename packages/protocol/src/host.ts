@@ -158,6 +158,11 @@ export const SessionHostInfo = z.object({
    * comes. Missing: it isn't.
    */
   apiRetry: ApiRetry.optional(),
+  /**
+   * Claude Code's guess at your next message, after a turn ("go", "yes, run the tests"): the message box offers it as
+   * a quick reply. Gone once the next turn starts. Missing: none (the first turn, plan mode, near a usage limit).
+   */
+  suggestion: z.string().optional(),
   /** Auto picked the model this session started on (null or missing: it didn't). */
   autoPick: AutoPick.nullable().optional(),
   /** Auto is still picking the model this session starts on; your first message waits for it. */

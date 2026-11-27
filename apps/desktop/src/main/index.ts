@@ -15403,7 +15403,7 @@ async function runComposerTrayStep(win: BrowserWindow): Promise<string> {
   };
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-tray-')));
   const standIn = `smoke-tray-${randomUUID()}`;
-  const host = (state: 'running' | 'closed') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state });
+  const host = (state: 'running' | 'idle' | 'closed', suggestion?: string) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(suggestion !== undefined ? { suggestion } : {}) });
   try {
     await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
     // 1. The tray hangs under the box, 16px narrower on each side and touching it, with the chips; no footer line.
@@ -15481,7 +15481,24 @@ async function runComposerTrayStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!!${card}.querySelector('[data-escape-stop-hint]')`, 3_000))) return 'one Esc while it works did not say to press Esc again';
     if (!(await js(`!!${card}.querySelector('[data-composer-stop]')`))) return 'one Esc stopped the session';
     if (!(await pictures('working'))) return 'the window did not switch between light and dark';
-    return `ok: the tray under the box (${look.chips} chips, 16px in, touching, no footer, ${look.lines} lines), folded to the profile and one chip in a narrow box, ${model}, Stop and Queue in the box while it works, one Esc asks for a second; pictures in light and dark`;
+    // 6. The turn ends with Claude Code's guess at the next message: a chip over the empty box and grey text, which Tab
+    // puts in the box. The chip is never clicked: the stand-in has no Claude Code to send to.
+    host('idle', 'go');
+    const box = `${card}.querySelector('[data-composer]')`;
+    if (!(await waitInPage(win, `${card}.querySelector('[data-quick-reply]')?.innerText.trim() === 'go'`, 5_000))) return `no suggested reply over the box after the turn (${String(await js(`${card}?.querySelector('[data-quick-reply-row]')?.innerText ?? 'none'`))})`;
+    if ((await js(`${box}.placeholder`)) !== 'go') return `the box does not show the suggested reply in grey (${String(await js(`${box}.placeholder`))})`;
+    await js(`${box}.focus()`);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+    if (!(await waitInPage(win, `${box}.value === 'go' && !${card}.querySelector('[data-quick-reply]')`, 3_000))) return `Tab did not put the suggested reply in the box (${String(await js(`${box}.value`))})`;
+    await shot(win, 'composer-quick-reply-taken.png');
+    for (let i = 0; i < 2; i++) {
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
+    }
+    if (!(await waitInPage(win, `${box}.value === '' && !!${card}.querySelector('[data-quick-reply]')`, 3_000))) return 'the suggested reply did not come back once the box was empty again';
+    await shot(win, 'composer-quick-reply.png');
+    return `ok: the tray under the box (${look.chips} chips, 16px in, touching, no footer, ${look.lines} lines), folded to the profile and one chip in a narrow box, ${model}, Stop and Queue in the box while it works, one Esc asks for a second, a suggested reply that Tab takes; pictures in light and dark`;
   } finally {
     nativeTheme.themeSource = scheme;
     host('closed');
@@ -16463,7 +16480,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('send now only while Claude works', () => runSendNowStep(win));
   await step('Ask about this session, nothing added to the conversation', () => runAskStep(win));
   await step('controls', () => runControlsStep(win));
-  await step('message box and its tray: the chips under the box, no footer, folds narrow, a model from the tray, Stop and Queue in the box, Esc twice to stop', () => runComposerTrayStep(win));
+  await step('message box and its tray: the chips under the box, no footer, folds narrow, a model from the tray, Stop and Queue in the box, Esc twice to stop, suggested reply', () => runComposerTrayStep(win));
   // The title bar, the nav rail and the panel beside it (navRailSmoke.ts).
   const navRail: NavRailSmoke = {
     shot: (name) => shot(win, name),

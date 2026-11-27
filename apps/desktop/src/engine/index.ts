@@ -162,9 +162,9 @@ process.parentPort.on('message', (event) => {
   }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
-    const { sessionId, cwd, state, outcome, compacting, apiRetry, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; apiRetry?: unknown; fast?: { blocked: string | null; on?: boolean } };
+    const { sessionId, cwd, state, outcome, compacting, apiRetry, fast, suggestion } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; apiRetry?: unknown; fast?: { blocked: string | null; on?: boolean }; suggestion?: unknown };
     if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'needs-you' || state === 'idle' || state === 'closed')) {
-      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(apiRetry === null ? { apiRetry: null } : ApiRetry.safeParse(apiRetry).success ? { apiRetry: apiRetry as ApiRetry } : {}), ...(fast ? { fast } : {}) });
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(apiRetry === null ? { apiRetry: null } : ApiRetry.safeParse(apiRetry).success ? { apiRetry: apiRetry as ApiRetry } : {}), ...(fast ? { fast } : {}), ...(typeof suggestion === 'string' || suggestion === null ? { suggestion } : {}) });
     }
     return;
   }

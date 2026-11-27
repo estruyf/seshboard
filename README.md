@@ -359,6 +359,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌥↩ | New session from it (on an issue or pull request in the # list) |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
 | ⌘⇧S | Take a screenshot and attach it (Pick an area of the screen) |
+| ⇥ | Put the suggested reply in the box (in an empty box, after Claude's turn; Turn suggested replies off in Settings › Conversation) |
 | ⇥ | Next blank (in a saved prompt; After the last blank, on to the text under the prompt) |
 | ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank takes it out of the prompt) |
 | ↑ or ↓ | Bring back an earlier message (at the start of your text; Esc goes back to what you were typing) |

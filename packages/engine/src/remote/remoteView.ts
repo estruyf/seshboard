@@ -119,6 +119,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     auto: autoOf(running.get(s.id)),
     background: running.get(s.id)?.backgroundTasks ?? [],
     ...(running.get(s.id)?.apiRetry ? { apiRetry: running.get(s.id)!.apiRetry } : {}),
+    ...(running.get(s.id)?.suggestion ? { suggestion: running.get(s.id)!.suggestion } : {}),
     parentId: flags.get(s.id)?.parentId ?? stepParent.get(s.id) ?? null,
   }));
   // Who started it: the device that did, or the one that started what it sits under (a pipeline's step, an agent).

@@ -10,6 +10,7 @@ import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../the
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import { SIDE_PANEL_DETAIL, SIDE_PANEL_HALF_DETAIL } from '../transcript/sidePanelCopy.ts';
 import { ESCAPE_TWICE_DETAIL } from '../composer/escapeStop.ts';
+import { QUICK_REPLY_DETAIL } from '../composer/quickReply.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
@@ -356,6 +357,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: ESCAPE_TWICE_DETAIL,
       keywords: 'escape esc stop interrupt cancel twice double accident accidental working',
       target: '[data-escape-twice-setting]',
+    },
+    {
+      id: 'quick-replies',
+      page: 'conversation',
+      label: 'Suggested replies',
+      detail: QUICK_REPLY_DETAIL,
+      keywords: 'suggestion suggested reply quick answer go yes continue tab chip predict next message',
+      target: '[data-quick-replies-setting]',
     },
     {
       id: 'resume-at-limit',

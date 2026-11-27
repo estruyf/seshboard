@@ -278,6 +278,7 @@ describe('the shortcut registry', () => {
       'composer.newline': [SESSION, at({ view: 'settings' })],
       'composer.commands': [at({ view: 'new-session' }), at({ view: 'projects' })],
       'composer.mention': [SESSION, HOME],
+      'composer.take-reply': [SESSION, HOME],
       'composer.next-blank': [SESSION, HOME],
       'composer.previous-blank': [at({ view: 'new-session' }), HOME],
       'composer.history': [SESSION, at({ view: 'new-session' })],
@@ -335,6 +336,7 @@ const INTENDED_OVERLAPS: Record<string, string> = {
   'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',
   'shift+tab': 'In the text of the message box ⇧⇥ switches the permission mode; on the blanks of a saved prompt (above that text) it goes to the previous blank.',
+  tab: 'In an empty message box after a turn ⇥ takes the suggested reply; on the blanks of a saved prompt (where no reply is offered) it goes to the next blank.',
   'alt+enter': 'In the # list ⌥↩ starts a new session from the highlighted issue or pull request; with the list closed, while Claude works, it queues or steers the other way.',
 };
 

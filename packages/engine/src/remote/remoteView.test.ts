@@ -201,6 +201,14 @@ describe('remoteSessions with runs', () => {
     expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [host] }, options).sessions[0]).not.toHaveProperty('apiRetry');
   });
 
+  it("sends Claude Code's suggested reply, and nothing for a session without one", () => {
+    const host = { sessionId: 'parent', cwd: ROOT, state: 'idle', model: 'opus', effort: null, permissionMode: 'default', profileId: 'work', backgroundTasks: [] } as unknown as SessionHostInfo;
+    const options = { archiveAfterDays: 7, scope: 'switchboard' as const, projectNames: new Map(), now: NOW };
+    const list = remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [{ ...host, suggestion: 'go' }] }, options);
+    expect(RemoteSessions.parse(list).sessions[0]!.suggestion).toBe('go');
+    expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [host] }, options).sessions[0]).not.toHaveProperty('suggestion');
+  });
+
   it('sends no runs from an engine without pipelines', () => {
     const list = remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW });
     expect(list).not.toHaveProperty('runs');

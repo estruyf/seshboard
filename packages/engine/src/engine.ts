@@ -444,7 +444,7 @@ export interface Engine {
    * a turn, `idle` ends it with `outcome`, `closed` takes it away. `needs-you` holds a made-up permission prompt, which
    * goes when the session moves on, or when Allow or Deny answers it (the menu bar's Allow).
    */
-  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; apiRetry?: ApiRetry | null; fast?: { blocked: string | null; on?: boolean } }): void;
+  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; apiRetry?: ApiRetry | null; fast?: { blocked: string | null; on?: boolean }; suggestion?: string | null }): void;
   /**
    * The smoke test (`stubQueueStarts` only): while on, `session.create` starts a stand-in session (`smokeQueueHost`)
    * instead of Claude Code, and records what it got. For the menu bar's new work.
@@ -2156,7 +2156,7 @@ export function createEngine(options: EngineOptions): Engine {
    * A stand-in session this app "runs" (`stubQueueStarts` only): the smoke test drives one through a turn, and the
    * screenshots' demo shows a session queued items start after (`DemoUsage.queueHosts`).
    */
-  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, apiRetry, fast }) => {
+  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, apiRetry, fast, suggestion }) => {
     if (!options.stubQueueStarts) return;
     const before = smokeHosts.get(sessionId);
     const info: HostInfo = {
@@ -2180,6 +2180,8 @@ export function createEngine(options: EngineOptions): Engine {
       state,
       ...(compacting !== undefined ? { compacting } : {}),
       ...(apiRetry !== undefined ? { apiRetry: apiRetry ?? undefined } : {}),
+      // Claude Code's guess at the next message, as a real host reports it after a turn.
+      ...(suggestion !== undefined ? { suggestion: suggestion ?? undefined } : {}),
       // A model that has fast mode, whatever this computer's Claude Code lists.
       ...(fast ? { model: SMOKE_FAST_MODEL.value, fastModeBlocked: fast.blocked, ...(fast.on ? { fastMode: 'on' as const } : {}) } : {}),
       promptedAt: state === 'running' ? Date.now() : (before?.promptedAt ?? null),

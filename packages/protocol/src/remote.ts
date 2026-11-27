@@ -90,6 +90,11 @@ export const RemoteSession = z.object({
   /** Claude Code is retrying a failed API call; the line under the conversation says so. Left out when it isn't, and by a Seshboard from before phones knew it. */
   apiRetry: ApiRetry.optional(),
   /**
+   * Claude Code's guess at your next message after its turn ("go"): the box offers it as a chip that sends it. Left
+   * out when there is none, and by a Seshboard from before phones knew it.
+   */
+  suggestion: z.string().optional(),
+  /**
    * The session or run row it sits under: a pipeline step's sub-session under the session the run started from, or
    * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Seshboard from before phones knew runs.
    */

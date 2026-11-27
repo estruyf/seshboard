@@ -662,6 +662,11 @@ export interface Preferences {
    * only says that a second one stops it, so a stray Esc never stops a turn. Off, one Esc stops it. On by default.
    */
   escapeTwiceToStop: boolean;
+  /**
+   * Settings › Conversation: "Suggested replies". On, the message box offers Claude Code's guess at your next message
+   * after a turn, as a chip that sends it and grey text that Tab takes. On by default.
+   */
+  quickReplies: boolean;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
   /**
@@ -810,6 +815,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   markReadAfter: DEFAULT_MARK_READ_AFTER,
   whileWorking: "queue",
   escapeTwiceToStop: true,
+  quickReplies: true,
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
   activitySummaries: true,
@@ -1042,6 +1048,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["queue", "steer"] as const, raw.whileWorking))
     out.whileWorking = raw.whileWorking;
   if (typeof raw.escapeTwiceToStop === "boolean") out.escapeTwiceToStop = raw.escapeTwiceToStop;
+  if (typeof raw.quickReplies === "boolean") out.quickReplies = raw.quickReplies;
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;

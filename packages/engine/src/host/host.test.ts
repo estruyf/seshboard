@@ -162,6 +162,8 @@ class FakeQuery {
       }
       this.out.push({ type: 'result', subtype: text === 'fail' ? 'error_during_execution' : 'success', is_error: text === 'fail', total_cost_usd: 0.01, session_id: sessionId });
       state('idle');
+      // Claude Code's guess at the next message comes after the result, when it has one.
+      if (text.startsWith('suggest:')) this.out.push({ type: 'prompt_suggestion', suggestion: text.slice(8), uuid: `s-${text}`, session_id: sessionId });
     }
     this.inputEnded = true;
   }
@@ -406,6 +408,19 @@ describe('HostManager', () => {
     // The Working list orders by when you last sent a message.
     expect(t.infos.at(-1)!.promptedAt).toBeGreaterThanOrEqual(t.infos.at(-1)!.startedAt);
     await expect(t.manager.commands(id, undefined, 'default')).resolves.toEqual([{ name: 'review', description: 'Review the diff', argumentHint: '' }]);
+    t.manager.closeAll();
+  });
+
+  it("offers Claude Code's guess at your next message until you send one", async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'suggest:go' });
+    expect(t.queries[0]!.options).toMatchObject({ promptSuggestions: true });
+    await until(() => t.infos.at(-1)!.suggestion === 'go');
+    await t.manager.send({ sessionId: id, text: 'go', attachments: [], fork: false });
+    // Sending takes it away at once, before Claude Code answers.
+    expect(t.infos.at(-1)!.suggestion).toBeUndefined();
+    await until(() => t.queries[0]!.received.length === 2 && lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)!.suggestion).toBeUndefined();
     t.manager.closeAll();
   });
 

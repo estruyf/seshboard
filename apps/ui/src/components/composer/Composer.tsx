@@ -1,4 +1,4 @@
-import { AtSign, Camera, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
+import { AtSign, Camera, ClipboardPaste, Copy, CornerDownLeft, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
 import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -46,6 +46,7 @@ import { GithubStateIcon } from '../github/GithubParts.tsx';
 import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
 import { EscapeStopHint } from './EscapeStopHint.tsx';
 import { useEscapeStop } from './useEscapeStop.ts';
+import { quickReplyLabel, quickReplyOf } from './quickReply.ts';
 import { startFromGithub } from '../../state/githubStartStore.ts';
 
 /**
@@ -154,6 +155,11 @@ export interface ComposerProps {
   onInterrupt?(): void;
   /** The agent that works in this session ("Claude", "GitHub Copilot"), named where Esc and Stop stop it. Claude when unset. */
   agent?: string;
+  /**
+   * Claude Code's guess at your next message after its turn ("go"): in an empty box, a chip that sends it and grey
+   * text that Tab takes (Settings › Conversation › Suggested replies).
+   */
+  reply?: string | null;
   onCycleMode?(): void;
   /**
    * Ask about this session: the Ask button before Send or Stop, and `/btw`. With text in the box, Ask asks it
@@ -660,6 +666,26 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   useEffect(() => {
     if (text) setSuggestion(null);
   }, [text]);
+  const quickRepliesOn = usePreferences((p) => p.prefs.quickReplies);
+  // A mod's suggestion is asked for there and then, so it goes before Claude Code's.
+  const reply = suggestion
+    ? null
+    : quickReplyOf({ reply: props.reply, enabled: quickRepliesOn, text, chips: chips.length, attachments: attachments.length, busyWith: !!fillState || sideToken, running: !!props.running, disabled: !!props.disabledReason });
+  /** The chip: sends the reply as it is, as if typed and sent. */
+  const sendReply = async (value: string) => {
+    if (sending) return;
+    setSending(true);
+    setNotice(null);
+    try {
+      await props.onSubmit(value, [], false, { typed: value, context: [] });
+      history.current!.reset();
+    } catch (error) {
+      setNotice(`Not sent: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSending(false);
+      ref.current?.focus();
+    }
+  };
   const openPicker = () => {
     if (draftKey !== undefined && cwd && !props.disabledReason) useComposerTargets.getState().openPicker({ key: draftKey, cwd });
   };
@@ -904,11 +930,17 @@ export const Composer = memo(function Composer(props: ComposerProps) {
       setMenuAt(contextMenuPoint(null, event.currentTarget.getBoundingClientRect(), window.innerHeight));
       return;
     }
-    // Tab takes a mod's suggestion into the empty box.
+    // Tab takes a mod's suggestion, or Claude Code's suggested reply, into the empty box.
     if (suggestion && event.key === 'Tab' && !event.shiftKey && !text) {
       event.preventDefault();
       setText(suggestion);
       setSuggestion(null);
+      return;
+    }
+    if (reply && matches(event.nativeEvent, 'composer.take-reply')) {
+      event.preventDefault();
+      setText(reply);
+      requestAnimationFrame(() => ref.current?.setSelectionRange(reply.length, reply.length));
       return;
     }
     if (event.nativeEvent.isComposing) return;
@@ -1284,6 +1316,23 @@ export const Composer = memo(function Composer(props: ComposerProps) {
             setLocalChips((current) => current.flatMap((chip) => (chip.id !== id ? [chip] : chip.kind !== 'text' ? [chip] : value.trim() ? [{ ...chip, text: value }] : [])));
           }}
         />
+        {reply && (
+          <div className="mb-2 flex min-w-0 items-center gap-1.5" data-quick-reply-row>
+            <Button
+              size="sm"
+              icon={<CornerDownLeft size={12} aria-hidden />}
+              disabled={sending}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void sendReply(reply)}
+              aria-label={`Send suggested reply: ${reply}`}
+              data-tooltip={`Send "${reply}". ${formatKeys(keysFor('composer.take-reply'))} puts it in the box.`}
+              className="min-w-0 max-w-full"
+              data-quick-reply
+            >
+              <span className="truncate">{quickReplyLabel(reply)}</span>
+            </Button>
+          </div>
+        )}
         {pasteOffer && (
           <div className="mb-2 flex items-center gap-1.5 text-meta text-muted" data-github-paste-offer>
             <Button size="sm" icon={<GithubStateIcon type={pasteOffer.type} state="open" size={12} />} onMouseDown={(e) => e.preventDefault()} onClick={() => void attachPasted()} data-github-paste-attach>
@@ -1328,7 +1377,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
             rows={1}
             disabled={disabled}
             // Under a saved prompt the placeholder is drawn over the box, in two shades.
-            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : fillState ? undefined : (suggestion ?? props.placeholder))}
+            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : fillState ? undefined : (suggestion ?? reply ?? props.placeholder))}
             aria-label={sideToken ? 'Question about this session' : fillState ? 'More context, sent after the prompt' : 'Message to Claude'}
             aria-describedby={`${ids}-hint`}
             aria-keyshortcuts={props.running && props.onInterrupt ? ariaShortcut('escape') : undefined}

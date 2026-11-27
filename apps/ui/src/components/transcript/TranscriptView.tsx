@@ -2515,6 +2515,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   submitControl={canSendNow ? queueControl : undefined}
                   onInterrupt={interrupt}
                   agent={agentName}
+                  reply={activeHost && !otherProvider ? activeHost.suggestion : null}
                   ask={boxAsk}
                   onEscape={escapeBox}
                   onCycleMode={canCycleMode ? cycleMode : undefined}

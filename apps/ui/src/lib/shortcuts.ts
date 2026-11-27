@@ -1450,6 +1450,16 @@ export const SHORTCUTS = [
     where: "composer",
   },
   {
+    id: "composer.take-reply",
+    keys: ["tab"],
+    action: "Put the suggested reply in the box",
+    section: "composer",
+    context: "In an empty box, after Claude's turn",
+    note: "Turn suggested replies off in Settings › Conversation",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
     id: "composer.next-blank",
     keys: ["tab"],
     action: "Next blank",
