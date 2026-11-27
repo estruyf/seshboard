@@ -68,6 +68,13 @@ const extensionOfPath = (path: string) => {
 const SEARCH_OWNER = (sessionId: string) => `files-search:${sessionId}`;
 
 /** The row of `node`'s line in the source, and its number; null outside a line. */
+/** The text selected inside `root`, or null when the selection is empty or lies outside it. */
+function selectedIn(root: Element | null): string | null {
+  const selection = window.getSelection();
+  if (!root || !selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+  return root.contains(selection.getRangeAt(0).commonAncestorContainer) ? selection.toString() : null;
+}
+
 function lineOf(node: Node | null): number | null {
   const el = node instanceof Element ? node : node?.parentElement;
   const row = el?.closest('[data-line]');
@@ -381,7 +388,11 @@ export function FileViewer({ sessionId, cwd, tab, tabs, changed, marks, onShowDi
   const openViewerMenu = (event: MouseEvent | null, element: Element) => {
     const lines = isEditing ? editPick : pickedLines();
     if (lines && !selection) readSelection();
-    onContextMenu({ kind: 'viewer', path: tab.path, lines: lines ? { start: lines.start, end: lines.end } : null }, event, element, { addLines: (focus) => (lines ? addPicked(lines, focus) : addFile()) });
+    // Read when the menu opens: the menu takes the focus, and the editor's selection goes with it.
+    const selectedText = (editorRef.current ? editorRef.current.selectedText() : selectedIn(bodyRef.current)) ?? '';
+    const href = ((event?.target ?? document.activeElement) as Element | null)?.closest?.('a[href]')?.getAttribute('href') ?? null;
+    const link = href && /^(https?|mailto):/i.test(href) ? href : null;
+    onContextMenu({ kind: 'viewer', path: tab.path, lines: lines ? { start: lines.start, end: lines.end } : null, copy: selectedText.length > 0, link }, event, element, { addLines: (focus) => (lines ? addPicked(lines, focus) : addFile()), selectedText });
   };
   /** Adds lines picked when the menu opened (the menu's focus may clear the toolbar's state). */
   const addPicked = (lines: { start: number; end: number }, focus: boolean) => {

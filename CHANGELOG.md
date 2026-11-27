@@ -66,6 +66,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Copy text and links in Files.** Right-click selected text in the Files viewer or editor and choose **Copy**. On a link in a Markdown file, **Copy link** copies its address.
 - **⌘R reloads the browser page, and ⌘⇧R hard reloads it.** ⌘R now reloads the page on screen in the Browser view or a session's Browser panel, wherever the focus is. ⌘⇧R, Shift-click on Reload, **Hard reload** in the page's ⋯ menu and right-click menu, and **Hard reload page** in the command palette load it without the cache, so changed scripts and styles come back fresh.
 - **Links to pages on the same site open in their own tabs.** Two links that differ only after the `?`, such as two Hacker News threads, now open two tabs in the session's browser. Before, the second click only showed the first page again.
 - **The window opens where you left it after a restart.** Seshboard can start before macOS connects your external displays. The window then opened small, in another place, and kept that place. It now waits for its display and goes back to its place and size, maximised too.

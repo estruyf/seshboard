@@ -227,6 +227,12 @@ export async function runFilesToMessageStep(win: BrowserWindow, pics?: FilesPict
   if (!(await waitInPage(win, `!!(${chip}) && document.activeElement?.closest('${S}') && document.activeElement.tagName === 'TEXTAREA'`, 3_000))) return 'Ask about lines put no chip in the box, or the box did not take focus';
   await js(win, `(${chip}).querySelector('[data-context-chip-remove]').click()`);
   if (!(await waitInPage(win, `!(${chip})`, 3_000))) return 'the Ask chip did not come out again';
+  // A right-click on selected text offers Copy first. Escape closes the menu, so the real clipboard stays as it was.
+  if (!(await selectLines())) return 'selecting lines for the menu did not show the toolbar';
+  await js(win, `(() => { const n = (${viewer(path)}).querySelector('[data-line="3"]'); const r = n.getBoundingClientRect(); n.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 5 })); })()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-files-menu-item=\"copy\"]')", 3_000))) return 'a right-click on selected text did not offer Copy';
+  press(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-files-menu-item]')", 3_000))) return 'Escape did not close the Files menu';
   // As the companion does from VS Code's explorer: a right-click on a file of the tree, Add file to message.
   await js(win, `${PANEL}.querySelector('[data-files-show-tree]')?.click()`);
   const node = `${PANEL}.querySelector('[data-files-node=${JSON.stringify(name)}]')`;
@@ -246,7 +252,7 @@ export async function runFilesToMessageStep(win: BrowserWindow, pics?: FilesPict
     await js(win, `window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(full)}, sessionId: document.querySelector('${S}').dataset.currentSession } }))`);
     if (await waitInPage(win, `(${viewer(full)})?.querySelector('[data-line-changed]')`, 5_000)) await pictures(win, pics, 'files-changed', 'full');
   }
-  return `ok: selecting lines 2 to 3 showed "${label}", Add to message and Ask about lines (real clicks) put the ${name}:2–3 chip in the box, a right-click on ${name} in the tree added the file, and both came out again`;
+  return `ok: selecting lines 2 to 3 showed "${label}", Add to message and Ask about lines (real clicks) put the ${name}:2–3 chip in the box, a right-click on the selection offered Copy, a right-click on ${name} in the tree added the file, and both came out again`;
 }
 
 /** A file link in a reply opens in Files, at its line, not in the old Preview panel. */
