@@ -15296,8 +15296,14 @@ async function runComposerTrayStep(win: BrowserWindow): Promise<string> {
       return `Stop and Queue are not in the box while it works (${String(await js(`${card}?.querySelector('[data-composer-footer-end]')?.innerText ?? 'no box'`))})`;
     }
     if (await js(`!!document.querySelector('[data-current-session="${standIn}"] [data-composer-tray] [data-composer-stop]')`)) return 'Stop is on the tray';
+    // 5. One Esc only asks for a second (Press Esc twice to stop is on by default): the stand-in keeps working. A second Esc is never sent.
+    await js(`${card}.querySelector('[data-composer]').focus()`);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    if (!(await waitInPage(win, `!!${card}.querySelector('[data-escape-stop-hint]')`, 3_000))) return 'one Esc while it works did not say to press Esc again';
+    if (!(await js(`!!${card}.querySelector('[data-composer-stop]')`))) return 'one Esc stopped the session';
     if (!(await pictures('working'))) return 'the window did not switch between light and dark';
-    return `ok: the tray under the box (${look.chips} chips, 16px in, touching, no footer, ${look.lines} lines), folded to the profile and one chip in a narrow box, ${model}, Stop and Queue in the box while it works; pictures in light and dark`;
+    return `ok: the tray under the box (${look.chips} chips, 16px in, touching, no footer, ${look.lines} lines), folded to the profile and one chip in a narrow box, ${model}, Stop and Queue in the box while it works, one Esc asks for a second; pictures in light and dark`;
   } finally {
     nativeTheme.themeSource = scheme;
     host('closed');
@@ -16279,7 +16285,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('send now only while Claude works', () => runSendNowStep(win));
   await step('Ask about this session, nothing added to the conversation', () => runAskStep(win));
   await step('controls', () => runControlsStep(win));
-  await step('message box and its tray: the chips under the box, no footer, folds narrow, a model from the tray, Stop and Queue in the box', () => runComposerTrayStep(win));
+  await step('message box and its tray: the chips under the box, no footer, folds narrow, a model from the tray, Stop and Queue in the box, Esc twice to stop', () => runComposerTrayStep(win));
   // The title bar, the nav rail and the panel beside it (navRailSmoke.ts).
   const navRail: NavRailSmoke = {
     shot: (name) => shot(win, name),

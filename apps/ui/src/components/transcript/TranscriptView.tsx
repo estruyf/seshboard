@@ -2536,6 +2536,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   onRecallQueued={recallQueued}
                   submitControl={canSendNow ? queueControl : undefined}
                   onInterrupt={interrupt}
+                  agent={agentName}
                   ask={boxAsk}
                   onEscape={escapeBox}
                   onCycleMode={canCycleMode ? cycleMode : undefined}

@@ -339,7 +339,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⇧L | Pull (when the branch is behind) |
 | ⌘↩ | Create the pull request (in Create pull request) |
 | ⌘O | Open the folder in your editor |
-| Esc | Stop Claude (while Claude is working) |
+| Esc then Esc | Stop Claude (while Claude is working; Press once if you turned that off in Settings › Conversation) |
 | ⌘⇧↩ | Send now (while Claude is working; Stops what Claude is doing so your message runs right away) |
 | ⌥↩ | Queue or steer, the other way (while Claude is working; Does what Enter doesn't: steers when Enter queues, queues when Enter steers) |
 | ⇧⇥ | Switch permission mode (in the message box) |

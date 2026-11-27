@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { ArrowDown, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
 import { agentName, apiRetryLine, triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
-import { ariaKeysFor, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
+import { ariaKeysFor, ariaShortcut, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { askThrough, closeAsk, newAskThread, openAskThrough, pickAskThread, retryAskThrough, useAsk, useSessionAsk, type AskBackend } from '../../state/askStore.ts';
@@ -45,6 +45,8 @@ import { Notice } from '../ui/Notice.tsx';
 import { RemoteLimitNotice } from './RemoteLimitNotice.tsx';
 import { RemoteUpNext } from './RemoteUpNext.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
+import { EscapeStopHint } from '../composer/EscapeStopHint.tsx';
+import { useEscapeStop } from '../composer/useEscapeStop.ts';
 import { queueButtonState, sendKeyMode } from '../composer/queueButton.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
@@ -813,6 +815,8 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   // While Claude works there, Enter queues or steers (Settings › Conversation, this computer's), as for a local session.
   const whileWorking = usePreferences((p) => p.prefs.whileWorking);
   const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
+  // Esc stops Claude there, by default only when pressed twice (Settings › Conversation).
+  const escapeStop = useEscapeStop(working && connected, onStop);
   const send = (mode: SendMode = whileWorking) => {
     const sentFill = fillState;
     const text = savedPrompts.message();
@@ -844,7 +848,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
       send(mode);
     } else if (working && matches(event.nativeEvent, 'claude.stop') && !document.querySelector(OVERLAY_SELECTOR)) {
       event.preventDefault();
-      onStop();
+      escapeStop.press();
     }
   };
   const sendNow = formatKeys(keysFor('composer.send-now'));
@@ -938,7 +942,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
           disabled={!connected}
           placeholder={fillState ? 'Add more context… (optional, sent after the prompt)' : placeholder}
           aria-label={`Message Claude on ${name}`}
-          aria-keyshortcuts={working ? formatKeys(keysFor('claude.stop')) : undefined}
+          aria-keyshortcuts={working ? ariaShortcut('escape') : undefined}
           className="block field-sizing-content max-h-[10lh] min-h-[3lh] w-full min-w-0 resize-none bg-transparent px-1 text-body leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60"
           data-computer-composer
         />
@@ -948,8 +952,9 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
             <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+            <EscapeStopHint armed={escapeStop.armed} agent={agentName(session.provider)} />
             {working && (
-              <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" disabled={!connected} onClick={onStop} data-tooltip={`Stop Claude on ${name} (${formatKeys(keysFor('claude.stop'))})`} data-computer-stop>
+              <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} disabled={!connected} onClick={onStop} data-tooltip={`Stop ${agentName(session.provider)} on ${name} (${formatKeys(keysFor('claude.stop'))}${escapeStop.twice ? ' twice' : ''})`} data-computer-stop>
                 Stop
               </Button>
             )}

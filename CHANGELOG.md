@@ -37,6 +37,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **Esc stops the agent only when you press it twice.** While Claude, Copilot or Codex is working, the first Esc in the message box says "Press Esc again to stop" and the agent's name, and a second one within two seconds stops it. A stray Esc no longer stops a turn. Turn off **Press Esc twice to stop** in **Settings › Conversation** to stop with one Esc again. The Stop button still stops at once.
 - **See an attached image full size.** Click an image you attached in the message box, Quick start or the palette to check it before you send. It opens in the same viewer as the conversation's images, where ← → go through the others, ⌘C copies and ⌘S saves.
 - **Esc in Quick start goes back one step at a time.** With a project picked, Esc clears the task first, then goes back to the list with the project's name still typed. The next Esc clears the field, and the one after closes the panel. The panel now opens empty each time, instead of keeping what you typed for five minutes.
 - **Quick start finds what you type, whatever it is.** While you type, the panel shows one list of the actions, projects and **Quick question** that match, with the best match first and selected. Type `scree` and ↩ takes a screenshot, or type `quick` for **Quick question**.

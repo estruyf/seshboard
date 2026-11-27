@@ -9,6 +9,7 @@ import { CODE_HIGHLIGHTING_DETAIL, FILE_ICONS_DETAIL, MINIMAL_MODE_DETAIL, PROJE
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
 import { GLOBAL_EFFORT_DETAIL, GLOBAL_FALLBACK_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import { SIDE_PANEL_DETAIL } from '../transcript/sidePanelCopy.ts';
+import { ESCAPE_TWICE_DETAIL } from '../composer/escapeStop.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_SCRIPTS_DETAIL, BROWSER_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from '../general/visualsCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
@@ -339,6 +340,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: `Queue holds your message in Up next until Claude finishes the turn. Steer gives it to Claude now, and Claude reads it at its next step. ${formatKeys(keysFor('composer.send-now'))} always stops Claude and sends at once.`,
       keywords: 'while working queue steer message send busy up next',
       target: '[data-while-working]',
+    },
+    {
+      id: 'escape-twice',
+      page: 'conversation',
+      label: 'Press Esc twice to stop',
+      detail: ESCAPE_TWICE_DETAIL,
+      keywords: 'escape esc stop interrupt cancel twice double accident accidental working',
+      target: '[data-escape-twice-setting]',
     },
     {
       id: 'resume-at-limit',

@@ -1325,10 +1325,11 @@ export const SHORTCUTS = [
   },
   {
     id: "claude.stop",
-    keys: ["escape"],
+    keys: ["escape escape"],
     action: "Stop Claude",
     section: "session",
     context: "While Claude is working",
+    note: "Press once if you turned that off in Settings › Conversation",
     when: (ctx) => inSession(ctx) && ctx.running,
     where: "composer",
   },

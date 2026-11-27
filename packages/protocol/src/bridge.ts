@@ -656,6 +656,11 @@ export interface Preferences {
   markReadAfter: MarkReadAfter;
   /** What Enter does in the message box while Claude is working (Settings › Conversation). */
   whileWorking: WhileWorking;
+  /**
+   * Settings › Conversation: "Press Esc twice to stop". On, the first Esc in the message box while the agent works
+   * only says that a second one stops it, so a stray Esc never stops a turn. Off, one Esc stops it. On by default.
+   */
+  escapeTwiceToStop: boolean;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
   /**
@@ -803,6 +808,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   doneOnMerge: true,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
   whileWorking: "queue",
+  escapeTwiceToStop: true,
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
   activitySummaries: true,
@@ -1034,6 +1040,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.markReadAfter = { enabled: reading.enabled, seconds };
   if (oneOf(["queue", "steer"] as const, raw.whileWorking))
     out.whileWorking = raw.whileWorking;
+  if (typeof raw.escapeTwiceToStop === "boolean") out.escapeTwiceToStop = raw.escapeTwiceToStop;
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;

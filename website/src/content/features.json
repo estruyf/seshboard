@@ -2737,6 +2737,11 @@
       "page": "sessions/unsent-drafts"
     },
     {
+      "id": "feature:escape-twice-to-stop",
+      "name": "Press Esc twice to stop the agent, or once with Settings › Conversation › Press Esc twice to stop turned off",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:archive-while-working",
       "name": "Mark done while working",
       "page": "sessions/archived"

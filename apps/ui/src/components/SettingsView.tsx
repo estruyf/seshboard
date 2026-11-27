@@ -5,6 +5,7 @@ import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, Qui
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { BROWSER_CONTROL_DETAIL, BROWSER_DETAIL, BROWSER_SCRIPTS_DETAIL, SITE_ACTIONS_DETAIL, VISUALS_DETAIL, WEB_PREVIEW_DETAIL } from './general/visualsCopy.ts';
 import { SIDE_PANEL_DETAIL } from './transcript/sidePanelCopy.ts';
+import { ESCAPE_TWICE_DETAIL } from './composer/escapeStop.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -405,6 +406,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 className="shrink-0"
               />
             </div>
+            <Toggle
+              label="Press Esc twice to stop"
+              detail={ESCAPE_TWICE_DETAIL}
+              checked={prefs.escapeTwiceToStop}
+              attr="data-escape-twice-setting"
+              onChange={(escapeTwiceToStop) => update({ escapeTwiceToStop })}
+            />
           </Section>
           <Section title="Usage limits">
             <div className="flex items-center justify-between gap-4" data-setting-row>

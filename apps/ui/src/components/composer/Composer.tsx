@@ -32,7 +32,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { shortAge } from '../../lib/format.ts';
 import { useAttachments } from './useAttachments.ts';
-import { ariaKeysFor, formatKeys, keysFor, matches, type ShortcutId } from '../../lib/shortcuts.ts';
+import { ariaShortcut, formatKeys, keysFor, matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { submitKey } from '../newSession/startMenu.ts';
 import { blanksLeft, fillMessage, scopeKey, slashScore, startFill, type FillState } from '../savedPrompts/fillModel.ts';
 import { PromptFiller, type PromptFillerHandle } from '../savedPrompts/PromptFiller.tsx';
@@ -44,6 +44,8 @@ import { chipItem, reasonLine } from '../github/githubText.ts';
 import { cachedSearch, forgetGithub, githubStatus, rememberSearch } from '../github/githubCache.ts';
 import { GithubStateIcon } from '../github/GithubParts.tsx';
 import { useMinimal, usePreferences } from '../../state/preferencesStore.ts';
+import { EscapeStopHint } from './EscapeStopHint.tsx';
+import { useEscapeStop } from './useEscapeStop.ts';
 import { startFromGithub } from '../../state/githubStartStore.ts';
 
 /**
@@ -150,6 +152,8 @@ export interface ComposerProps {
   /** Returning `false` means nothing was sent (the focus limit asked and you cancelled): the prompt stays as it is. */
   onSubmit(text: string, attachments: ImageAttachment[], requested?: boolean, parts?: SentParts): Promise<void | false> | void | false;
   onInterrupt?(): void;
+  /** The agent that works in this session ("Claude", "GitHub Copilot"), named where Esc and Stop stop it. Claude when unset. */
+  agent?: string;
   onCycleMode?(): void;
   /**
    * Ask about this session: the Ask button before Send or Stop, and `/btw`. With text in the box, Ask asks it
@@ -352,6 +356,8 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   const [pasteOffer, setPasteOffer] = useState<ReturnType<typeof pastedGithubLink>>(null);
   const githubRoot = props.github?.root ?? null;
   const ids = useId();
+  // Esc stops Claude, by default only when pressed twice, so a stray one never stops a turn.
+  const escapeStop = useEscapeStop(!!props.running && !!props.onInterrupt, props.onInterrupt);
   const history = useRef<PromptHistory | null>(null);
   history.current ??= new PromptHistory(props.history);
   /** Read out after ↑ or ↓ brings back a message (screen readers only). */
@@ -1001,7 +1007,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
       // With a dialog, menu or popover open, Escape closes that; it must never also stop Claude.
       if (document.querySelector('[role=dialog], [role=alertdialog], [role=menu], [role=listbox], [data-context-breakdown]')) return;
       event.preventDefault();
-      props.onInterrupt?.();
+      escapeStop.press();
     } else if (matches(event.nativeEvent, 'mode.cycle') && props.onCycleMode) {
       event.preventDefault();
       props.onCycleMode();
@@ -1325,7 +1331,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
             placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : fillState ? undefined : (suggestion ?? props.placeholder))}
             aria-label={sideToken ? 'Question about this session' : fillState ? 'More context, sent after the prompt' : 'Message to Claude'}
             aria-describedby={`${ids}-hint`}
-            aria-keyshortcuts={props.running && props.onInterrupt ? ariaKeysFor('claude.stop') : undefined}
+            aria-keyshortcuts={props.running && props.onInterrupt ? ariaShortcut('escape') : undefined}
             // While the / or @ list is open, ↑ ↓ move through it without leaving the box.
             aria-autocomplete="list"
             aria-controls={palette && !palette.github?.hint ? `${ids}-palette` : undefined}
@@ -1387,13 +1393,14 @@ export const Composer = memo(function Composer(props: ComposerProps) {
           </div>
           {/* The keys are read out with the message box; on screen the placeholder carries the hint. */}
           <span id={`${ids}-hint`} className="sr-only">
-            {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${githubRoot ? ', # for issues' : ''}${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
+            {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `${escapeStop.twice ? 'Esc twice stops' : 'Esc stops'} ${props.agent ?? 'Claude'}.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${githubRoot ? ', # for issues' : ''}${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
             {/* Said when it changes; empty (but there) once every required blank is filled. */}
             <span role="status" aria-live="polite" className={`text-meta text-caution ${left.length ? '' : 'sr-only'}`} data-blanks-left={left.length || undefined}>
               {left.length ? blanksLeftText(left.length) : ''}
             </span>
+            <EscapeStopHint armed={escapeStop.armed} agent={props.agent} />
             {props.status}
             {/* Minimal mode: the chips as one quiet line; a click opens them as they are, in a popover over the box. */}
             {minimal && (props.controls || props.info || props.meter || props.tools) && (
@@ -1433,7 +1440,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
             {sideToken ? null : (
               <>
                 {props.running && props.onInterrupt && (
-                  <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" onClick={props.onInterrupt} data-tooltip={`Stop Claude (${formatKeys(keysFor('claude.stop'))})`} data-composer-stop>
+                  <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} onClick={props.onInterrupt} data-tooltip={`Stop ${props.agent ?? 'Claude'} (${formatKeys(keysFor('claude.stop'))}${escapeStop.twice ? ' twice' : ''})`} data-composer-stop>
                     Stop
                   </Button>
                 )}
