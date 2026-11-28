@@ -928,6 +928,9 @@ export class HostManager {
           // Text before a tool call is Claude saying what it reads next; the answer comes after.
           if (event.parent_tool_use_id === null && event.message.content.some((block: { type: string }) => block.type === 'tool_use')) onText({ reset: true });
         } else if (event.type === 'result') {
+          // A session that left a background task behind gets its notification first, as a turn of its own that asks
+          // nothing of the model: that empty result isn't the answer, which comes in the next one.
+          if (event.subtype === 'success' && !event.is_error && event.num_turns === 0 && !event.result) continue;
           if (event.subtype === 'success' && !event.is_error) answer = event.result;
           else error = event.subtype === 'error_max_turns' ? 'Claude needed more steps than a side question gets. Ask something narrower.' : (('errors' in event && event.errors[0]) || 'Claude could not answer.');
           break;

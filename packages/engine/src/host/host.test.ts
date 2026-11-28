@@ -67,6 +67,8 @@ class FakeQuery {
   replyModel = 'fake';
   /** The folder Claude's shell is in, which `cd` moves; each turn's init reports it. */
   shellCwd: string | undefined;
+  /** The resumed session left a background task behind: Claude Code ends an empty turn for its notification first. */
+  leftoverTask = false;
   constructor(
     readonly prompt: AsyncIterable<SDKUserMessage>,
     readonly options: Options,
@@ -225,6 +227,7 @@ class FakeQuery {
    * next (text the answer drops), then streams its answer. Each response repeats its usage on every block.
    */
   private async answerSideQuestion(sessionId: string, text: string) {
+    if (this.leftoverTask) this.out.push({ type: 'result', subtype: 'success', is_error: false, result: '', num_turns: 0, total_cost_usd: 0, session_id: sessionId });
     const hook = this.options.hooks?.PreToolUse?.[0]?.hooks[0];
     for (const [tool, input] of [['Read', { file_path: '/work/app/README.md' }], ['Write', { file_path: '/work/app/x.txt', content: 'x' }]] as const) {
       const out = (await hook?.({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input } as never, undefined, { signal: new AbortController().signal })) as { hookSpecificOutput?: { permissionDecision?: string } } | undefined;
@@ -927,6 +930,14 @@ describe('HostManager', () => {
       await expect(q.options.canUseTool!('Bash', { command: 'git diff HEAD~1' }, {} as never)).resolves.toMatchObject({ behavior: 'allow' });
       expect(q.closed).toBe(true);
       expect(t.ephemeral.has(q.options.sessionId!)).toBe(true);
+      t.manager.closeAll();
+    });
+
+    it('answers a session that left a background task behind, past the empty turn for its notification', async () => {
+      const t = setup({ cwds: { 'old-1': '/work/app' }, openElsewhere: ['old-1'], onQuery: (q) => void (q.leftoverTask = true) });
+      const result = await t.manager.askAbout('old-1', '<side-question>\n</side-question>\n\nWhat changed?', () => {});
+      expect(result).toMatchObject({ answer: 'Answer to What changed?' });
+      expect(result.error).toBeUndefined();
       t.manager.closeAll();
     });
 
