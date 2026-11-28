@@ -18,9 +18,12 @@ export interface ButtonLook {
   round?: boolean;
   /** One half of a split button (`SplitButton`): `main` keeps its left corners, `menu` (the ▾) its right ones. */
   segment?: 'main' | 'menu';
+  /** A long label (a permission rule) wraps onto more lines in a narrow pane instead of being cut off: the height grows from the size's own. */
+  wrap?: boolean;
 }
 
 const HEIGHT: Record<ButtonSize, string> = { sm: 'h-6', md: 'h-7', lg: 'h-8' };
+const MIN_HEIGHT: Record<ButtonSize, string> = { sm: 'min-h-6', md: 'min-h-7', lg: 'min-h-8' };
 const SQUARE: Record<ButtonSize, string> = { sm: 'size-6', md: 'size-7', lg: 'size-8' };
 // Quiet buttons have no edge to keep clear of, so they sit a little tighter.
 const PAD: Record<ButtonSize, string> = { sm: 'px-2', md: 'px-3', lg: 'px-3' };
@@ -50,7 +53,7 @@ const MENU_WIDTH: Record<ButtonSize, string> = { sm: 'w-5', md: 'w-6', lg: 'w-7'
 const SEGMENT_DIVIDER: Record<ButtonVariant, string> = { primary: 'border-l border-on-accent/20', secondary: '', quiet: 'border-l border-border', danger: '', side: '', tint: '' };
 
 /** The classes for a button: shape, size and variant. Callers add layout (`ml-auto`, `w-full`) on top. */
-export function buttonClass({ variant, size, iconOnly, filled, selected, segment, round = false }: ButtonLook): string {
+export function buttonClass({ variant, size, iconOnly, filled, selected, segment, round = false, wrap = false }: ButtonLook): string {
   const tone =
     variant === 'danger' && filled
       ? DANGER_FILLED
@@ -63,9 +66,9 @@ export function buttonClass({ variant, size, iconOnly, filled, selected, segment
             : VARIANT[variant];
   // btn-secondary brings its own padding; an icon-only button is square instead.
   const box =
-    segment === 'menu' ? `${HEIGHT[size]} ${MENU_WIDTH[size]} px-0 ${SEGMENT_DIVIDER[variant]}` : iconOnly ? `${SQUARE[size]} px-0` : `${HEIGHT[size]} ${variant === 'quiet' ? QUIET_PAD[size] : PAD[size]}`;
+    segment === 'menu' ? `${HEIGHT[size]} ${MENU_WIDTH[size]} px-0 ${SEGMENT_DIVIDER[variant]}` : iconOnly ? `${SQUARE[size]} px-0` : `${wrap ? `h-auto ${MIN_HEIGHT[size]} py-1 text-left [overflow-wrap:anywhere]` : HEIGHT[size]} ${variant === 'quiet' ? QUIET_PAD[size] : PAD[size]}`;
   const corners = segment === 'main' ? 'rounded-l-md' : segment === 'menu' ? 'rounded-r-md' : round ? 'rounded-full' : 'rounded-md';
-  return `inline-flex items-center justify-center gap-1.5 ${corners} text-ui whitespace-nowrap disabled:opacity-50 ${box} ${tone}`;
+  return `inline-flex items-center justify-center gap-1.5 ${corners} text-ui ${wrap ? 'whitespace-normal' : 'whitespace-nowrap'} disabled:opacity-50 ${box} ${tone}`;
 }
 
 export type PillTone = 'default' | 'muted' | 'accent' | 'ok' | 'warn' | 'caution' | 'error' | 'link' | 'count';

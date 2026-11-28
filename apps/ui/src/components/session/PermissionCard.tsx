@@ -309,9 +309,10 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
             data-permission-always
             data-tooltip={alwaysText(request.alwaysLabel)}
             onClick={() => void respond({ behavior: 'allow', always: true })}
+            wrap
             className="max-w-80"
           >
-            <span className="truncate">{alwaysText(request.alwaysLabel)}</span>
+            {alwaysText(request.alwaysLabel)}
           </Button>
         )}
         <DenyButton label="Deny" busy={busy} onClick={deny} />

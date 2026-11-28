@@ -39,6 +39,12 @@ describe('buttonClass', () => {
     expect(square).toContain('size-7');
     expect(square).not.toContain('h-7');
   });
+  it('lets a wrapping button grow from its size instead of cutting its label', () => {
+    const c = classes(buttonClass(look({ size: 'lg', wrap: true })));
+    expect(c).toEqual(expect.arrayContaining(['h-auto', 'min-h-8', 'whitespace-normal']));
+    expect(c).not.toContain('h-8');
+    expect(c).not.toContain('whitespace-nowrap');
+  });
   it('shows a selected quiet button as a neutral fill, not yellow', () => {
     const c = classes(buttonClass(look({ variant: 'quiet', selected: true })));
     expect(c).toEqual(expect.arrayContaining(['bg-selected', 'text-text']));
