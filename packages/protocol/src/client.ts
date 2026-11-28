@@ -14,6 +14,7 @@ export type * from './branches.ts';
 export type * from './capabilities.ts';
 export type * from './terminal.ts';
 export type * from './actions.ts';
+export type * from './canvases.ts';
 export { ACTION_ICONS, type ActionIcon } from './actionIcons.ts';
 export type * from './usage.ts';
 export type * from './usageLimit.ts';

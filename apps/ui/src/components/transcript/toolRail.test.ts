@@ -35,6 +35,17 @@ describe('railEntries', () => {
   });
 });
 
+describe('canvases on the rail', () => {
+  it('puts the project\'s canvases in a group of their own, after the mods and before the apps', () => {
+    expect(short(railEntries({ ...ALL, canvases: ['frontmatter', 'notes'], apps: ['vscode'] }))).toBe('files changes terminal web | ask agents commands | mod:notes | canvas:frontmatter canvas:notes | app:vscode');
+  });
+  it('keeps them when the menu hid the mods, and never moves one', () => {
+    expect(short(railEntries({ ...ALL, canvases: ['notes'] }, ['mods']))).toBe('files changes terminal web | ask agents commands | canvas:notes');
+    expect(sameRailGroup('canvas:notes', 'canvas:frontmatter')).toBe(false);
+    expect(railLabel('canvas:notes', {}, { name: 'Notes' })).toBe('Notes');
+  });
+});
+
 describe('a click on a tool', () => {
   it('opens a closed tool, brings one behind to the front, and closes the one in front', () => {
     expect(railToolState('ask', ['changes'], 'changes')).toBe('closed');

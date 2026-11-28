@@ -338,6 +338,12 @@ const browserMcpServer = (scripts = false) => ({ command: process.execPath, args
 /** Seshboard's `orchestrator` MCP server (`src/orchestratorMcp/`), started the same way by an orchestrator's agent (docs/orchestrator.md). */
 const orchestratorMcpServer = () => ({ command: process.execPath, args: [join(here, 'orchestrator-mcp.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
 
+/**
+ * How the engine starts a project's canvas (docs/canvases.md): this app's binary as Node, the runner and the SDK the
+ * canvas imports as `@seshboard/canvas`. The engine adds the canvas's own file.
+ */
+const canvasRunner = () => ({ command: process.execPath, args: [join(here, 'canvas-runner.js'), join(here, 'canvas-sdk.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
+
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived, doneOnMerge: prefs.doneOnMerge });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
@@ -367,6 +373,7 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'browserControl', server: prefs.browserEnabled && prefs.browserControl ? browserMcpServer(prefs.browserScripts) : null });
   // The orchestrator's tools: a session started or resumed as an orchestrator gets its server, whatever its agent.
   engine?.sendStanding({ type: 'orchestratorServer', server: orchestratorMcpServer() });
+  engine?.sendStanding({ type: 'canvasRunner', runner: canvasRunner() });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
@@ -16324,6 +16331,130 @@ async function runModsStep(win: BrowserWindow): Promise<string> {
   return 'ok: band, pane, status, toast and header chip from the test mod; a press reached it; Show mods off removed all of it and on brought it back';
 }
 
+/**
+ * Canvases (docs/canvases.md): the fixture canvas, copied into the demo session's folder, shows on the rail, asks before
+ * its first run, shows its page in a partition of its own and closes. Only in the demo home: it writes into the
+ * session's folder, which there is made up.
+ */
+async function runCanvasStep(win: BrowserWindow): Promise<string> {
+  const fixture = process.env.SESHBOARD_SMOKE_CANVAS;
+  if (!process.env.SESHBOARD_SMOKE_DEMO || !fixture || !existsSync(fixture)) return 'ok: skipped, it writes a canvas into the session\'s folder, so only in the demo home (npm run smoke:demo)';
+  if (!smokeSessionId) return 'failed: no session to open';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  openSession(smokeSessionId);
+  if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(smokeSessionId)}`, 5_000))) return 'failed: the session did not open';
+  const cwd = (await js("document.querySelector('[data-current-session]')?.dataset.cwd ?? ''")) as string;
+  if (!isAbsolutePath(cwd) || !existsSync(cwd)) return `failed: the session's folder is not on this computer: ${cwd}`;
+  const dir = join(cwd, '.seshboard', 'canvases', 'smoke-canvas');
+  mkdirSync(dir, { recursive: true });
+  copyFileSync(fixture, join(dir, 'canvas.mjs'));
+  const button = '[data-current-session] [data-rail-tool="canvas:smoke-canvas"]';
+  const panel = '[data-current-session] [data-canvas-panel="smoke-canvas"]';
+  const guest = () => electronWebContents.getAllWebContents().find((contents) => contents.getType() === 'webview' && contents.hostWebContents === win.webContents && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(contents.getURL()) && contents.session.storagePath?.includes('canvas-'));
+  try {
+    // The window reads the folder's canvases again when it comes to the front.
+    await js("window.dispatchEvent(new Event('focus'))");
+    if (!(await waitInPage(win, `!!document.querySelector('${button}')`, 5_000))) return 'failed: the canvas has no button on the rail';
+    if (!(await js(`document.querySelector('${button}').getAttribute('aria-label') === 'Smoke canvas'`))) return 'failed: the rail button is not named after the canvas\'s folder';
+    await js(`document.querySelector('${button}').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${panel}')?.dataset.canvasView === 'trust'`, 5_000))) return 'failed: the panel did not ask before the canvas\'s first run';
+    if (!(await js(`document.querySelector('${panel} [data-canvas-dir]').innerText.trim() === ${JSON.stringify(dir)}`))) return 'failed: the question does not show the canvas\'s folder';
+    if (guest()) return 'failed: the canvas ran before it was trusted';
+    await js(`document.querySelector('${panel} [data-canvas-trust]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${panel}')?.dataset.canvasView === 'page' && !!document.querySelector('webview[data-canvas-page="smoke-canvas"]')`, 20_000))) {
+      return `failed: the canvas's page did not show (the panel shows ${await js(`document.querySelector('${panel}')?.dataset.canvasView + ': ' + (document.querySelector('${panel} [data-canvas-error]')?.innerText ?? '')`)})`;
+    }
+    if (!(await until(() => !!guest(), 10_000))) return 'failed: no page of the canvas attached in a canvas partition';
+    const page = guest()!;
+    let heading = '';
+    for (const end = Date.now() + 10_000; Date.now() < end && heading !== 'Smoke canvas page'; ) {
+      heading = (await page.executeJavaScript("document.querySelector('[data-smoke-canvas]')?.innerText ?? ''").catch(() => '')) as string;
+      if (heading !== 'Smoke canvas page') await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (heading !== 'Smoke canvas page') return 'failed: the page is not the canvas\'s';
+    if (page.session === win.webContents.session) return 'failed: the canvas\'s page shares a partition with the app';
+    if (!(await js(`document.querySelector('${button}').dataset.railState === 'front' && document.querySelector('${panel} h2').innerText === 'Smoke canvas'`))) return 'failed: the rail button is not in front, or the panel has no title';
+    await shot(win, 'canvas.png');
+    // A link to another site leaves the panel alone.
+    await page.executeJavaScript("document.getElementById('out').click()").catch(() => {});
+    // A fixed wait: this shows that the page did not leave.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (!/^http:\/\/127\.0\.0\.1:/.test(page.getURL())) return `failed: a link took the canvas's page to ${page.getURL()}`;
+    // Behind another panel the page stays as it is: the same page comes back, not a new load.
+    const pageId = page.id;
+    await page.executeJavaScript("window.smokeTyped = 'kept'").catch(() => {});
+    const other = '[data-current-session] [data-rail-tool="changes"]';
+    await js(`document.querySelector('${other}').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${panel}') && document.querySelector('${button}')?.dataset.railState === 'behind'`, 8_000))) return 'failed: Changes did not come in front of the canvas';
+    await js(`document.querySelector('${button}').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${panel}')?.dataset.canvasView === 'page'`, 5_000))) return 'failed: the canvas did not come back to the front';
+    if (guest()?.id !== pageId || (await page.executeJavaScript('window.smokeTyped').catch(() => null)) !== 'kept') return 'failed: the page loaded again when its panel came back to the front';
+    await js(`document.querySelector('${other}').click()`);
+    await js(`document.querySelector('${other}').dataset.railState === 'front' && document.querySelector('${other}').click()`);
+    // The log: what the canvas wrote and what Seshboard did, live.
+    await js(`document.querySelector('${panel} [data-canvas-log-toggle]').click()`);
+    const logText = `(document.querySelector('${panel} [data-canvas-log]')?.innerText ?? '')`;
+    if (!(await waitInPage(win, `${logText}.includes('Seshboard: Started smoke-canvas') && ${logText}.includes('serving on')`, 5_000))) return `failed: the log does not show the canvas's lines and Seshboard's: ${await js(logText)}`;
+    await shot(win, 'canvas-log.png');
+    // Stop: it stays stopped until Start, and its page goes.
+    await js(`document.querySelector('${panel} [data-canvas-stop]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${panel}')?.dataset.canvasView === 'stopped' && !!document.querySelector('${panel} [data-canvas-start]')`, 8_000))) return 'failed: Stop did not leave the canvas stopped with a Start button';
+    if (!(await until(() => !guest(), 5_000))) return 'failed: the page stayed after Stop';
+    if (!(await waitInPage(win, `${logText}.includes('Stopped by you')`, 3_000))) return 'failed: the log does not say you stopped it';
+    await js(`document.querySelector('${panel} [data-canvas-start]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${panel}')?.dataset.canvasView === 'page'`, 15_000)) || !(await until(() => !!guest(), 5_000))) return 'failed: Start did not bring the page back';
+    await js(`document.querySelector('${panel} [data-canvas-log-toggle]').click()`);
+    await js(`document.querySelector('${button}').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${panel}')`, 5_000))) return 'failed: a click on the rail button in front did not close the panel';
+    if (!(await until(() => !guest(), 5_000))) return 'failed: the page stayed after its canvas was closed';
+    // The agent's tools (the `seshboard` server), run as the session's agent would.
+    const logFile = join(app.getPath('userData'), 'smoke-session-tools.jsonl');
+    const sessionId = smokeSessionId;
+    const answers = (tool: string): Array<{ text: string; error?: boolean }> => {
+      try {
+        return readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as { sessionId: string; tool: string; result: { text: string; error?: boolean } }).filter((a) => a.sessionId === sessionId && a.tool === tool).map((a) => a.result);
+      } catch {
+        return [];
+      }
+    };
+    const call = async (tool: string, args: Record<string, unknown>): Promise<{ text: string; error?: boolean } | null> => {
+      const before = answers(tool).length;
+      engine.send({ type: 'smokeSessionTool', sessionId, tool, args });
+      return (await until(() => answers(tool).length > before, 10_000)) ? answers(tool).at(-1)! : null;
+    };
+    const listed = await call('list_canvases', {});
+    if (!listed) return 'ok: page checks passed; the tools were not checked (this run has no stand-in tool calls)';
+    if (!listed.text.includes('"id": "smoke-canvas"') || !listed.text.includes('"where"')) return `failed: list_canvases said: ${listed.text}`;
+    const opened = await call('open_canvas', { canvas: 'smoke-canvas' });
+    if (!opened || opened.error || !opened.text.includes('is open in the session')) return `failed: open_canvas said: ${opened?.text}`;
+    if (!(await waitInPage(win, `document.querySelector('${panel}')?.dataset.canvasView === 'page'`, 10_000))) return 'failed: open_canvas did not show the canvas in the session\'s panel';
+    // The canvas hears which session shows it.
+    let where = '';
+    for (const end = Date.now() + 8_000; Date.now() < end && !where.includes(sessionId); ) {
+      where = (await call('canvas_action', { canvas: 'smoke-canvas', action: 'where' }))?.text ?? '';
+      if (!where.includes(sessionId)) await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    if (!where.includes(sessionId) || !/"theme": "(light|dark)"/.test(where)) return `failed: the canvas did not hear its session and theme: ${where}`;
+    // host.compose fills the message box and sends nothing.
+    const asked = await call('canvas_action', { canvas: 'smoke-canvas', action: 'ask', input: { text: 'From the smoke canvas' } });
+    if (!asked || asked.error) return `failed: canvas_action ask said: ${asked?.text}`;
+    const box = `document.querySelector('[data-current-session] textarea[data-composer]')`;
+    if (!(await waitInPage(win, `(${box}?.value ?? '').includes('From the smoke canvas') && !!document.querySelector('[data-current-session] [data-context-chip="selection"]')`, 8_000))) return 'failed: host.compose did not put its text and chip in the message box';
+    await shot(win, 'canvas-compose.png');
+    // Leave the message box as it was.
+    await js(`(() => { document.querySelectorAll('[data-current-session] [data-context-chip-remove]').forEach((b) => b.click()); const t = ${box}; if (t) { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); } })()`);
+    await js(`document.querySelector('${button}').click()`);
+    const logged = await call('canvas_log', { canvas: 'smoke-canvas' });
+    if (!logged?.text.includes('seshboard Action ask ran')) return `failed: canvas_log said: ${logged?.text}`;
+    const guide = await call('canvas_guide', {});
+    if (!guide?.text.includes("import { canvas, serve } from '@seshboard/canvas';")) return 'failed: canvas_guide has no guide';
+    return 'ok: the canvas showed on the rail, asked before its first run, showed its page in a partition of its own, kept it on this computer and behind another panel, showed its log, stopped, started and closed; the agent listed it, opened it in the panel and ran its actions; it heard its session and filled the message box without sending';
+  } finally {
+    rmSync(join(cwd, '.seshboard', 'canvases', 'smoke-canvas'), { recursive: true, force: true });
+    await js("window.dispatchEvent(new Event('focus'))").catch(() => {});
+  }
+}
+
 let smokeFinished = false;
 
 /** The window's size when a scripted run starts, and the screen's, for result.json. */
@@ -16712,6 +16843,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
   await step('settings › theme › app icon: Show when Claude is working animates the Dock (Light, Smooth) and stops when off', () => runDockActivityStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
+  await step('canvas: rail button, trust, page, log, stop, the agent\'s tools, the message box', () => runCanvasStep(win), { timeoutMs: 60_000 });
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
   rendering = (await js(
     "({ diffs: document.querySelectorAll('[data-diff]').length, highlighted: document.querySelectorAll('.shiki').length, codeBlocks: document.querySelectorAll('.code-block').length, todos: document.querySelectorAll('[data-todos]').length, images: document.querySelectorAll('[data-transcript-image] img').length })",

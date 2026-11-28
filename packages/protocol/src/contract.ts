@@ -44,6 +44,7 @@ import { LimitsState } from './usageLimit.ts';
 import { SignInState } from './signIn.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
+import { CanvasListed, CanvasLogLine } from './canvases.ts';
 import { ChangesBase, CheckLog, ChecksFinished, DiffImage, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
 import { WorktreeFacts, WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
@@ -986,6 +987,22 @@ export const contract = {
       params: z.object({ sessionId: SessionId, projectRoot: AbsolutePath, cwd: AbsolutePath, id: z.string() }),
       result: ActionRunResult,
     },
+
+    // --- Canvases (docs/canvases.md) -------------------------------------------------------------
+    /** The canvases a session in `cwd` can open (`.seshboard/canvases` in its checkout), with what each is doing. Nothing is run. */
+    'canvases.list': { params: z.object({ cwd: AbsolutePath }), result: z.object({ folder: z.string().nullable(), canvases: z.array(CanvasListed) }) },
+    /** You said yes to running this canvas, as `hash` showed it: CHANGED when its file is no longer that. */
+    'canvases.trust': { params: z.object({ cwd: AbsolutePath, id: z.string().max(64), hash: z.string().max(128) }), result: z.object({}) },
+    /** Starts the canvas if it isn't running and returns its page. UNTRUSTED before you trusted it. */
+    'canvases.open': { params: z.object({ cwd: AbsolutePath, id: z.string().max(64) }), result: z.object({ url: z.string(), title: z.string().nullable() }) },
+    /** Stops the canvas's process; opening it again starts it fresh. `hold`: you stopped it, so no panel starts it again by itself. */
+    'canvases.stop': { params: z.object({ cwd: AbsolutePath, id: z.string().max(64), hold: z.boolean().optional() }), result: z.object({}) },
+    /** This window has the canvas open in a session's panel (or no longer): a canvas no window has open stops after a while. */
+    'canvases.view': { params: z.object({ cwd: AbsolutePath, id: z.string().max(64), viewing: z.boolean() }), result: z.object({}) },
+    /** This window shows the canvas in this session's panel, in this look: the canvas hears it (`host.context()`). */
+    'canvases.shown': { params: z.object({ cwd: AbsolutePath, id: z.string().max(64), sessionId: SessionId, title: z.string().max(300), theme: z.enum(['light', 'dark']) }), result: z.object({}) },
+    /** The end of the canvas's log: what it wrote (stdout, stderr, `host.log`) and what Seshboard did with it. */
+    'canvases.log': { params: z.object({ cwd: AbsolutePath, id: z.string().max(64) }), result: z.object({ lines: z.array(CanvasLogLine) }) },
 
     // --- Saved prompts ---------------------------------------------------------------------------
     /**
@@ -1936,6 +1953,14 @@ export const contract = {
     'actions.changed': z.object({ root: z.string().nullable() }),
     /** Saved prompts changed (saved, moved, deleted, or the shared file changed, as after a pull): `root` null for global ones. */
     'savedPrompts.changed': z.object({ root: z.string().nullable() }),
+    /** A canvas of this folder started, stopped, failed or was trusted. */
+    'canvases.changed': z.object({ folder: z.string() }),
+    /** The agent opened a canvas (`open_canvas`): the session's panel shows it. */
+    'canvases.show': z.object({ sessionId: z.string(), id: z.string(), cwd: z.string() }),
+    /** A canvas's log has new lines. */
+    'canvases.logged': z.object({ folder: z.string(), id: z.string() }),
+    /** A canvas asked for text and chips in the message box of the session that shows it (`host.compose`). Nothing is sent. */
+    'canvases.compose': z.object({ folder: z.string(), id: z.string(), text: z.string(), items: z.array(ContextItem).max(MAX_CONTEXT_ITEMS) }),
     /** Settings were imported: reload projects and actions. */
     'settings.imported': z.object({}),
     /** A clone (`projects.clone`) moved on: its progress, then done, failed or cancelled. */

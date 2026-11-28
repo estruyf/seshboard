@@ -10,6 +10,8 @@ export * from './host.ts';
 export * from './streamBlock.ts';
 export * from './terminal.ts';
 export * from './actions.ts';
+export * from './canvases.ts';
+export * from './canvasGuide.ts';
 export * from './git.ts';
 export * from './worktrees.ts';
 export * from './worktreeFacts.ts';

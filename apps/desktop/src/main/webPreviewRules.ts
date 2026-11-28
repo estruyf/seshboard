@@ -1,4 +1,4 @@
-import { browserNavigation, externalSchemeAllowed, isBrowserPartition, isProfilePartition, localPreviewUrl, webPageUrl, type BrowserProfileReset } from '@seshboard/protocol/client';
+import { browserNavigation, externalSchemeAllowed, isBrowserPartition, isCanvasPartition, isProfilePartition, localPreviewUrl, webPageUrl, type BrowserProfileReset } from '@seshboard/protocol/client';
 
 /**
  * What main does with a key typed in the web preview's page: hand it to the app (`forward`), reload the page, or go
@@ -101,9 +101,11 @@ export interface WebviewAttach {
  * Whether a `<webview>` may attach: only the web preview's, in its own partition (or, with the browser on, a browser
  * profile's: `persist:browser-<uuid>` exactly, so main needs no database), on a local address (any web address with
  * the browser on), or still blank, before its first load. None with both the browser and previews off. Main forces the
- * rest of its preferences itself.
+ * rest of its preferences itself. A canvas's `<webview>` attaches in a canvas partition, on a local address only.
  */
 export function webviewAllowed(params: WebviewAttach, browser = false, preview = true): boolean {
+  // A project's canvas (docs/canvases.md): its own partition, and a page on this computer, whatever the browser's settings.
+  if (isCanvasPartition(params.partition)) return !params.src || params.src === 'about:blank' || localPreviewUrl(params.src) !== null;
   if (!isBrowserPartition(params.partition) || (!browser && !preview)) return false;
   if (isProfilePartition(params.partition) && !browser) return false;
   if (!params.src || params.src === 'about:blank') return true;

@@ -128,6 +128,7 @@ import { FRESH_MS, GitStatusHub } from './git/gitStatusHub.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
+import { CanvasError, CanvasHost, type CanvasRunner } from './canvas/canvasHost.ts';
 import { SharedFileWatcher } from './actions/sharedFileWatcher.ts';
 import { SavedPromptStore } from './prompts/savedPromptStore.ts';
 import { GithubService } from './git/github.ts';
@@ -482,6 +483,8 @@ export interface Engine {
    * started or resumed as an orchestrator gets, whatever its agent (docs/orchestrator.md).
    */
   setOrchestratorServer(server: McpStdioServer | null): void;
+  /** How a canvas's process starts (Seshboard's binary as Node, its runner and SDK, from main): docs/canvases.md. */
+  setCanvasRunner(runner: CanvasRunner | null): void;
   /**
    * The smoke test (`stubQueueStarts` only): makes a stand-in session an orchestrator of a project, and runs one of its
    * tools as its agent would. Starts are stand-ins too, so no prompt reaches an agent.
@@ -1583,6 +1586,16 @@ export function createEngine(options: EngineOptions): Engine {
       return found.slice(0, limit).map((id) => ({ id, title: byId.get(id)!.title, updatedAt: byId.get(id)!.updatedAt }));
     },
     catchUp: (id) => catchUpStore.get(id),
+    canvases: {
+      list: (cwd) => canvases.list(cwd).canvases.map((c) => ({ id: c.id, name: c.name, description: c.description, trusted: c.trusted, state: c.state, actions: canvases.actions(cwd, c.id) })),
+      open: (sessionId, cwd, id, input) => {
+        // The panel shows first: an untrusted canvas asks there.
+        broadcast('canvases.show', { sessionId, id, cwd });
+        return canvases.open(cwd, id, input);
+      },
+      action: (cwd, id, name, input) => canvases.action(cwd, id, name, input),
+      log: (cwd, id) => canvases.log(cwd, id),
+    },
     brief: async (from, id, label) => {
       await links.warm(id);
       return links.expand(from, writeStub(label, id));
@@ -2020,6 +2033,27 @@ export function createEngine(options: EngineOptions): Engine {
 
   const actions = new ActionStore(cache.db);
   const savedPrompts = new SavedPromptStore(cache.db);
+  /** The projects' canvases (docs/canvases.md): one process per canvas and folder, trusted like a shared action. */
+  let canvasRunner: CanvasRunner | null = null;
+  const canvases = new CanvasHost({
+    runner: () => canvasRunner,
+    projectRoot: (folder) => resolver.resolve(folder).root,
+    isTrusted: (root, hash) => actions.isTrustedHash(root, hash),
+    trust: (root, hash) => actions.trustHash(root, hash),
+    changed: (folder) => broadcast('canvases.changed', { folder }),
+    compose: (folder, id, message) => broadcast('canvases.compose', { folder, id, ...message }),
+    branch: (folder) => resolver.branch(resolver.resolve(folder)),
+    logged: (folder, id) => broadcast('canvases.logged', { folder, id }),
+  });
+  /** A canvas's refusal as the window reads it (UNTRUSTED, CHANGED, NOT_FOUND), anything else as it is. */
+  const canvasViewers = new WeakSet<object>();
+  const canvasCall = async <T>(run: () => T | Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (error) {
+      throw error instanceof CanvasError ? new RpcError(error.code, error.message) : error;
+    }
+  };
   /** A pull (or anyone) changing a project's .seshboard.json updates its shared actions and prompts in every window. */
   const sharedFileWatcher = new SharedFileWatcher((root) => {
     broadcast('actions.changed', { root });
@@ -4463,6 +4497,22 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'actions.suggest': ({ projectRoot }) => ({ suggestions: suggestActions(projectRoot) }),
+
+    'canvases.list': ({ cwd }) => canvases.list(cwd),
+    'canvases.trust': ({ cwd, id, hash }) => canvasCall(() => (canvases.trust(cwd, id, hash), {})),
+    'canvases.open': ({ cwd, id }) => canvasCall(() => canvases.open(cwd, id)),
+    'canvases.stop': async ({ cwd, id, hold }) => (await canvases.stop(cwd, id, hold === true), {}),
+    'canvases.view': ({ cwd, id, viewing }, context) => {
+      // The window's connection is who has it open: when the window goes, so does its hold on the canvas.
+      if (!canvasViewers.has(context)) {
+        canvasViewers.add(context);
+        context.onDispose(() => canvases.dropViewer(context));
+      }
+      canvases.view(cwd, id, context, viewing);
+      return {};
+    },
+    'canvases.log': ({ cwd, id }) => ({ lines: canvases.log(cwd, id) }),
+    'canvases.shown': ({ cwd, id, sessionId, title, theme }) => (canvases.shown(cwd, id, { id: sessionId, title }, theme), {}),
     'actions.run': async ({ sessionId, projectRoot, cwd, id }) => {
       const action = findAction(projectRoot, id);
       const vars = actionVars(sessionId, projectRoot, cwd);
@@ -5521,6 +5571,9 @@ export function createEngine(options: EngineOptions): Engine {
     setOrchestratorServer: (server) => {
       orchestratorBase = server;
     },
+    setCanvasRunner: (runner) => {
+      canvasRunner = runner;
+    },
     smokeSessionTool: async ({ sessionId, tool, args }) => {
       if (!options.stubQueueStarts) return;
       const server = await orchestratorBridge.serverFor({ command: '', args: [], env: {} }, () => sessionId, 'session');
@@ -5578,6 +5631,7 @@ export function createEngine(options: EngineOptions): Engine {
       gitStatus.stop();
       browserBridge.close();
       orchestratorBridge.close();
+      canvases.dispose();
       clearInterval(providerLiveTimer);
       // Providers' runtimes (a headless `copilot`) stop with the engine.
       providerProfiles.dispose();

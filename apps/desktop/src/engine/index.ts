@@ -261,6 +261,13 @@ process.parentPort.on('message', (event) => {
     engine.setOrchestratorServer(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
     return;
   }
+  // How a canvas's process starts: this app's binary as Node, with the runner and the SDK (docs/canvases.md).
+  if (data?.type === 'canvasRunner') {
+    const runner = (data as { runner?: { command?: unknown; args?: unknown; env?: unknown } | null }).runner;
+    const valid = runner && typeof runner.command === 'string' && Array.isArray(runner.args) && runner.args.every((a) => typeof a === 'string') && runner.env && typeof runner.env === 'object';
+    engine.setCanvasRunner(valid ? { command: runner.command as string, args: runner.args as string[], env: runner.env as Record<string, string> } : null);
+    return;
+  }
   if (data?.type === 'browser-tool-result' && typeof data.id === 'number') {
     const result = (data as { result?: BrowserToolResult }).result;
     pendingBrowser.get(data.id)?.(result && typeof result.text === 'string' ? result : { text: 'The browser did not answer.', error: true });

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, shell, webContents, type DownloadItem, type Session, type WebContents } from 'electron';
 import { IpcChannel, type WebPreviewEvent, type WebPreviewKeys } from '@seshboard/protocol/bridge';
-import { isBrowserPartition, localPreviewUrl, siteActionsFor, webPageUrl, WEB_PREVIEW_PARTITION, type SiteAction, type StartFromPageRequest } from '@seshboard/protocol/client';
+import { isBrowserPartition, isCanvasPartition, localPreviewUrl, siteActionsFor, webPageUrl, WEB_PREVIEW_PARTITION, type SiteAction, type StartFromPageRequest } from '@seshboard/protocol/client';
 import { cancelPick, elementAt, pickElement, PICKER_WORLD } from './pagePicker.ts';
 import { acceptsLocalCertificate, audibleHold, cookieOfSite, downloadFileName, faviconCap, partitionClearing, iconTooLarge, keyForWindow, CANVAS_CSS, needsCanvas, pageMenuEntries, type PageMenuEntryId, pagePermissionAllowed, popupTarget, previewKeyAction, previewNavigation, webviewAllowed } from './webPreviewRules.ts';
 
@@ -76,8 +76,11 @@ export const isBrowserSession = (candidate: Session): boolean => [...guardedSess
  * The guards a partition's session needs before its first page (`installWebPreviewGuards`): a few harmless permissions
  * (`pagePermissionAllowed`), downloads into the Downloads folder, and Chromium's verdict on certificates except a dev server's on this computer.
  * Run once per partition: the Default profile's at start, a browser profile's the first time one of its pages attaches.
- * Only for a partition `isBrowserPartition` accepts.
+ * Only for a partition `isBrowserPartition` or `isCanvasPartition` accepts.
  */
+/** The sessions of canvases' partitions (docs/canvases.md), to tell a canvas's page from a browser tab's when it attaches. */
+const canvasSessions = new WeakSet<Session>();
+
 function guardPartition(partition: string, deps: WebPreviewGuardDeps): Session {
   const known = guardedSessions.get(partition);
   if (known) return known;
@@ -202,13 +205,15 @@ export function installWebPreviewGuards(deps: WebPreviewGuardDeps): void {
       preferences.nodeIntegrationInSubFrames = false;
       preferences.webSecurity = true;
       // The tab's browser profile, checked by `webviewAllowed`; its session is guarded before the page's first request.
-      const partition = isBrowserPartition(params.partition) ? params.partition : WEB_PREVIEW_PARTITION;
-      guardPartition(partition, deps);
+      const partition = isBrowserPartition(params.partition) || isCanvasPartition(params.partition) ? params.partition : WEB_PREVIEW_PARTITION;
+      const pageSession = guardPartition(partition, deps);
+      if (isCanvasPartition(partition)) canvasSessions.add(pageSession);
       preferences.partition = partition;
       // A video's full screen stays in the panel instead of taking the window.
       preferences.disableHtmlFullscreenWindowResize = true;
     });
-    contents.on('did-attach-webview', (_event, guest) => guardPage(contents, guest, deps));
+    // A canvas's page is guarded as a preview with the browser off: it stays on this computer, and other links open in the browser.
+    contents.on('did-attach-webview', (_event, guest) => guardPage(contents, guest, canvasSessions.has(guest.session) ? { ...deps, browser: () => false } : deps));
     const id = contents.id;
     contents.on('destroyed', () => addressFocus.delete(id));
     // A reload drops the window's state: the address bar that had the focus is gone too.

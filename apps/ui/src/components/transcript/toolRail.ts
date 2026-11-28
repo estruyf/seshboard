@@ -1,9 +1,9 @@
 import { RAIL_ORDER, RAIL_TOOLS, type RailTool } from '@seshboard/protocol/bridge';
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
-import { modPaneTab, type ModPaneTab, type RightTab } from '../ask/askWidth.ts';
+import { canvasTab, modPaneTab, type CanvasTab, type ModPaneTab, type RightTab } from '../ask/askWidth.ts';
 
-/** A button on the rail: one of the session's tools, or a mod's pane. */
-export type RailToolId = Exclude<RailTool, 'mods'> | ModPaneTab;
+/** A button on the rail: one of the session's tools, a mod's pane, or one of the project's canvases. */
+export type RailToolId = Exclude<RailTool, 'mods'> | ModPaneTab | CanvasTab;
 /** GitHub's id among the pinned apps: it opens the folder's page on GitHub, where the folder has a GitHub remote. */
 export const RAIL_GITHUB = 'github';
 
@@ -25,11 +25,13 @@ export interface RailAvailable {
   note: boolean;
   /** The ids of the mods' panes open in the session. */
   mods: readonly string[];
+  /** The ids of the canvases the session's folder has (docs/canvases.md). */
+  canvases?: readonly string[];
   /** The apps pinned to the rail that are installed, by editor id, while the session has a folder to open. */
   apps: readonly string[];
 }
 
-/** The rail's groups, top to bottom: what the session made, then questions about it, then the mods' panes, then the apps. */
+/** The rail's groups, top to bottom: what the session made, then questions about it, then the mods' panes, the project's canvases, then the apps. */
 const GROUPS: readonly (readonly Exclude<RailTool, 'mods'>[])[] = [
   ['files', 'changes', 'terminal', 'web'],
   ['ask', 'agents', 'commands', 'note'],
@@ -46,6 +48,7 @@ export function railEntries(available: RailAvailable, hidden: readonly RailTool[
   const groups: RailEntry[][] = [
     ...GROUPS.map((group) => [...group].sort((a, b) => place(a) - place(b)).filter((id) => available[id] && shown(id)).map(tool)),
     shown('mods') ? available.mods.map(modPaneTab).map(tool) : [],
+    (available.canvases ?? []).map(canvasTab).map(tool),
     available.apps.map((id): RailEntry => ({ kind: 'app', id: `app:${id}` })),
   ];
   return groups.filter((group) => group.length > 0).flatMap((group, i) => [...(i > 0 ? [{ kind: 'divider' as const }] : []), ...group]);
@@ -88,7 +91,7 @@ export function railCountText(id: RailToolId, counts: RailCounts): string | null
  * ("Changes, 3 files"). `name` overrides the tool's own (a mod's pane, Web while the browser is off).
  */
 export function railLabel(id: RailToolId, counts: RailCounts, options: { name?: string; separator?: string } = {}): string {
-  const name = options.name ?? (id.startsWith('mod:') ? id.slice(4) : NAMES[id as Exclude<RailTool, 'mods'>]);
+  const name = options.name ?? (id.startsWith('mod:') ? id.slice(4) : id.startsWith('canvas:') ? id.slice(7) : NAMES[id as Exclude<RailTool, 'mods'>]);
   const text = railCountText(id, counts);
   return text ? `${name}${options.separator ?? ' · '}${text}` : name;
 }
@@ -96,10 +99,10 @@ export function railLabel(id: RailToolId, counts: RailCounts, options: { name?: 
 /** The tools the rail's menu lists, each to show or hide. */
 export const RAIL_MENU: readonly { tool: RailTool; label: string }[] = RAIL_TOOLS.map((tool) => ({ tool, label: tool === 'mods' ? 'Mods' : NAMES[tool] }));
 
-/** Which group a button is in: it moves only among its own group. A mod's pane doesn't move (null). */
+/** Which group a button is in: it moves only among its own group. A mod's pane and a canvas don't move (null). */
 export function railGroup(id: RailToolId | RailAppId): string | null {
   if (id.startsWith('app:')) return 'apps';
-  if (id.startsWith('mod:')) return null;
+  if (id.startsWith('mod:') || id.startsWith('canvas:')) return null;
   return String(GROUPS.findIndex((group) => group.includes(id as Exclude<RailTool, 'mods'>)));
 }
 
