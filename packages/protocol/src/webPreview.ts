@@ -20,6 +20,16 @@ export const browserProfilePartition = (profileId: string | null | undefined): s
 /** A browser profile's partition as main accepts it: `persist:browser-` and a lowercase UUID, nothing else. */
 const PROFILE_PARTITION = /^persist:browser-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** A canvas's partition (docs/canvases.md): one per project and canvas, from a hash the engine makes, so main needs no database. */
+export const canvasPartition = (hash: string): string => `persist:canvas-${hash}`;
+
+const CANVAS_PARTITION = /^persist:canvas-[0-9a-f]{32}$/;
+
+/** Whether this is exactly a canvas's partition. Its page stays on this computer, whatever the browser's settings. */
+export function isCanvasPartition(partition: unknown): partition is string {
+  return typeof partition === 'string' && CANVAS_PARTITION.test(partition);
+}
+
 /** Whether a page may use this partition: the Default profile's, or exactly a browser profile's. */
 export function isBrowserPartition(partition: unknown): partition is string {
   return partition === WEB_PREVIEW_PARTITION || (typeof partition === 'string' && PROFILE_PARTITION.test(partition));

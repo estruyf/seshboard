@@ -30,6 +30,7 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@seshboard/canvas": "*",
     "@seshboard/engine": "*",
     "@seshboard/protocol": "*",
     "electron": "44.5.1",

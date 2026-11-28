@@ -158,6 +158,9 @@ cpSync(join(appDir, '..', '..', 'tests', 'fixtures', 'smoke-mod'), join(modsDir,
 for (const folder of ['config', 'project']) mkdirSync(join(modsDir, folder));
 childEnv.SESHBOARD_SMOKE_MODS = JSON.stringify({ pluginDir: join(modsDir, 'smoke-mod'), configDir: join(modsDir, 'config'), cwd: join(modsDir, 'project'), out: join(modsDir, 'started.json') });
 
+// Canvases: the fixture canvas the step copies into the demo session's folder (docs/canvases.md).
+childEnv.SESHBOARD_SMOKE_CANVAS = join(appDir, '..', '..', 'tests', 'fixtures', 'smoke-canvas', 'canvas.mjs');
+
 const child = spawn(command, packaged ? [] : [appDir], {
   env: { ...childEnv, SESHBOARD_SMOKE_OUT: outDir, ELECTRON_ENABLE_LOGGING: '0' },
   stdio: 'inherit',

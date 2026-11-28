@@ -7,7 +7,7 @@ import type { Plugin } from 'vite';
 
 const here = import.meta.dirname;
 // Workspace packages ship TypeScript source, so they must be bundled rather than required at runtime.
-const workspacePackages = ['@seshboard/engine', '@seshboard/protocol'];
+const workspacePackages = ['@seshboard/engine', '@seshboard/protocol', '@seshboard/canvas'];
 
 /** The commit being built, for Settings → About and the About panel. Empty when git isn't there. */
 function shortCommit(): string {
@@ -63,6 +63,9 @@ export default defineConfig({
           'browser-mcp': resolve(here, 'src/browserMcp/index.ts'),
           // The orchestrator MCP server an orchestrator's agent starts: its calls go to the engine the same way.
           'orchestrator-mcp': resolve(here, 'src/orchestratorMcp/index.ts'),
+          // What starts a project's canvas, and the SDK it imports as `@seshboard/canvas` (docs/canvases.md).
+          'canvas-runner': resolve(here, '../../packages/canvas/src/runner.ts'),
+          'canvas-sdk': resolve(here, '../../packages/canvas/src/index.ts'),
           // The browser extension's native messaging host: copied out of the app when installed, so it takes no shared chunks.
           'browser-host': resolve(here, 'src/browserHost/index.ts'),
         },

@@ -5830,6 +5830,11 @@
       "id": "feature:nav-rail-panels",
       "name": "Every nav rail item but Home and Computers has its list in the panel: Upcoming and Activity filter by project there, Settings shows its sections, Running what counts; Computers is a menu on hover or click",
       "page": "sessions/rail"
+    },
+    {
+      "id": "feature:canvases",
+      "name": "Canvases: a project's own web apps (.seshboard/canvases) on a session's rail, each in a side panel, run after you trust it; the agent lists, opens and uses them, and writes one when asked",
+      "page": "sessions/rail"
     }
   ]
 }

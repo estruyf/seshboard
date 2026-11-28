@@ -18,6 +18,7 @@ import { RemindDialog } from './components/notes/RemindDialog.tsx';
 import { UnsentList } from './components/drafts/UnsentList.tsx';
 import { useDraftsSync } from './state/useDraftsSync.ts';
 import { useCompanionSync } from './state/useCompanionSync.ts';
+import { useCanvasSync } from './state/useCanvasSync.ts';
 import { AddContextDialogHost } from './components/composer/AddContextDialog.tsx';
 import { CommandPalette } from './components/palette/CommandPalette.tsx';
 import { FilePreviewDialog } from './components/filePreview/FilePreviewDialog.tsx';
@@ -263,6 +264,7 @@ export function App() {
   useQueueToasts();
   useSidebarSectionsSync();
   useCompanionSync();
+  useCanvasSync();
   useWorktreesSync();
   useNavHistorySync();
   useBrowserTabsSync();

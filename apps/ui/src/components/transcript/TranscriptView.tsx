@@ -49,6 +49,10 @@ import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
 import { ModBands } from '../mods/ModBands.tsx';
 import { StartsAfterBand } from '../queue/StartsAfterBand.tsx';
 import { ModPanePanel } from '../mods/ModPanePanel.tsx';
+import { CanvasPanel } from '../canvas/CanvasPanel.tsx';
+import { canvasInitial } from '../canvas/canvasPanel.ts';
+import { useCanvases } from '../canvas/useCanvases.ts';
+import { useCanvasPanels, useOpenCanvases } from '../../state/canvasPanelStore.ts';
 import { ModFooterChips } from '../mods/ModFooterChips.tsx';
 import { ModsChip } from '../mods/ModsChip.tsx';
 import { shownMods } from '../mods/modVisibility.ts';
@@ -144,7 +148,7 @@ import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { ProviderSessionControls } from '../providers/ProviderSessionControls.tsx';
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
-import { modPaneTab, paneOfTab, rightPanel, type RightTab, panelWidthFor } from '../ask/askWidth.ts';
+import { canvasOfTab, canvasTab, modPaneTab, paneOfTab, rightPanel, type RightTab, panelWidthFor } from '../ask/askWidth.ts';
 import { useLayout } from '../../state/layoutStore.ts';
 import { ToolRail, useRailItems, type RailButton, type RailItem } from './ToolRail.tsx';
 import { PanelLauncher } from './PanelLauncher.tsx';
@@ -640,18 +644,24 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     () => (sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
     [sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
   );
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, note: showNote, files: showFiles, web: showWeb, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  // The project's canvases (docs/canvases.md): each has a button on the rail, and the open ones are tabs too.
+  const { canvases } = useCanvases(cwd);
+  const openCanvasIds = useOpenCanvases(sessionId);
+  const openCanvases = useMemo(() => openCanvasIds.filter((id) => canvases.some((c) => c.id === id)), [openCanvasIds, canvases]);
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, note: showNote, files: showFiles, web: showWeb, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id), openCanvases);
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
-  const panesOpen = modPanes.length > 0;
+  const canvasFront = canvasOfTab(right.tab);
+  const frontCanvas = canvasFront === null ? null : (canvases.find((c) => c.id === canvasFront) ?? null);
+  const panesOpen = modPanes.length > 0 || openCanvases.length > 0;
   // The side panel with nothing in it (the rail's Show panel): it lists the tools to open there, and gives way to one.
   const launcherRequested = usePanelLauncher((s) => s.open.has(sessionId));
   const showLauncher = launcherShown(launcherRequested, right.open.length, whyRequest !== null) && !terminalMaximized;
   const launcherQuiet = usePanelLauncher((s) => s.quiet.has(sessionId));
-  // Full for the panels without a Full of their own: the empty panel, Ask, Agents, Commands, Note and mods' panes.
+  // Full for the panels without a Full of their own: the empty panel, Ask, Agents, Commands, Note, mods' panes and canvases.
   const sharedFull = useSidePanelFull(sessionId);
   const setSharedFull = useCallback((full: boolean) => useRightPanel.getState().setFull(sessionId, full), [sessionId]);
-  const sharedFullShows = sharedFull && !whyRequest && !terminalMaximized && (showLauncher || frontPane !== null || right.tab === 'ask' || right.tab === 'agents' || right.tab === 'commands' || right.tab === 'note');
+  const sharedFullShows = sharedFull && !whyRequest && !terminalMaximized && (showLauncher || frontPane !== null || frontCanvas !== null || right.tab === 'ask' || right.tab === 'agents' || right.tab === 'commands' || right.tab === 'note');
   // Once a tool opens on the side, the empty panel is done: closing that tool closes the side, as before.
   useEffect(() => {
     if (launcherRequested && (right.open.length > 0 || whyRequest !== null)) closePanelLauncher(sessionId);
@@ -1642,17 +1652,29 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const railState = (id: RailToolId) => (id === 'terminal' && !terminalOnRight ? (panelOpen ? 'front' : 'closed') : railToolState(id, right.open, right.tab));
   const modTitles = new Map(modPanes.map((p) => [modPaneTab(p.id), p.title]));
   /** The tool's name where it isn't its own: Web while the browser is off, a mod's pane by its title. */
-  const railName = (id: RailToolId) => (id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : modTitles.get(id as `mod:${string}`));
+  const canvasNames = new Map(canvases.map((c) => [canvasTab(c.id), c.name]));
+  const railName = (id: RailToolId) => (id === 'web' && !browserPreview ? 'Web' : id === 'web' && browserAway ? 'Browser (own window)' : (modTitles.get(id as `mod:${string}`) ?? canvasNames.get(id as `canvas:${string}`)));
+  /** A click on a canvas's button: closed it opens in front, behind it comes to the front, in front it closes. */
+  const toggleCanvasHere = (canvasId: string, state: 'front' | 'behind' | 'closed') => {
+    if (state === 'front') return useCanvasPanels.getState().setOpen(sessionId, canvasId, false);
+    useCanvasPanels.getState().setOpen(sessionId, canvasId, true, cwd ?? undefined);
+    useRightPanel.getState().setTab(sessionId, canvasTab(canvasId));
+  };
   const railTool = (id: RailToolId): RailButton => {
     const name = railName(id);
     const shortcut = id === 'files' ? 'files.toggle' : id === 'changes' ? 'changes.toggle' : id === 'terminal' ? 'terminal.toggle' : id === 'web' ? 'web.toggle' : id === 'agents' ? 'agents.toggle' : id === 'commands' ? 'commands.toggle' : null;
     const state = railState(id);
     const ready = id === 'ask' && ask.ready && !ask.open;
     const pane = paneOfTab(id);
+    const canvasId = canvasOfTab(id);
     return {
       id,
       icon:
-        pane !== null ? (
+        canvasId !== null ? (
+          <span className="flex size-[17px] items-center justify-center rounded-full border-[1.5px] border-current text-[10px] leading-none font-bold" aria-hidden>
+            {canvasInitial(name ?? canvasId)}
+          </span>
+        ) : pane !== null ? (
           <span className="flex size-[17px] items-center justify-center rounded-[5px] border-[1.5px] border-current text-[10px] leading-none font-bold" aria-hidden>
             {(modTitles.get(id as `mod:${string}`) ?? pane).slice(0, 1).toUpperCase()}
           </span>
@@ -1666,8 +1688,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       // An answer in Ask, or a server running in the session for the browser to show.
       dot: ready || (id === 'web' && !showWeb && serverOffers.length > 0),
       state,
-      data: { [`data-toggle-${pane !== null ? 'mod-pane' : id}`]: true, ...(id === 'web' && browserAway ? { 'data-browser-away': true } : {}) },
+      data: { [`data-toggle-${canvasId !== null ? 'canvas' : pane !== null ? 'mod-pane' : id}`]: true, ...(id === 'web' && browserAway ? { 'data-browser-away': true } : {}) },
       onClick: () => {
+        if (canvasId !== null) return toggleCanvasHere(canvasId, state);
         if (pane !== null) return state === 'front' ? closeModPane(pane) : pickRightTab(id);
         if (id === 'changes') toggleChangesHere();
         else if (id === 'ask') toggleAskHere();
@@ -1719,6 +1742,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     commands: backgroundCommands.length > 0 || commandsState.open,
     note: note !== null || showNote,
     mods: modPanes.map((p) => p.id),
+    canvases: canvases.map((c) => c.id),
     apps: cwd ? railApps.filter((id) => (id === RAIL_GITHUB ? githubPage !== null : editors.some((e) => e.id === id))) : [],
   };
   const railItemsNow: RailItem[] = railEntries(railAvailable, railHidden, railOrder).map((entry) => (entry.kind === 'divider' ? 'divider' : entry.kind === 'app' ? railApp(entry.id) : railTool(entry.id)));
@@ -1738,6 +1762,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (showWeb) useWebPreview.getState().hide(sessionId);
     if (terminalOnRight) useTerminals.getState().togglePanel(sessionId, false);
     for (const pane of modPanes) closeModPane(pane.id);
+    useCanvasPanels.getState().closeAll(sessionId);
   });
   // The rail's panel button: Hide panel while the side shows something (the empty panel too), Show panel opens it empty.
   const sideShows = right.open.length > 0 || whyRequest !== null || showLauncher;
@@ -2582,6 +2607,21 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onFull={setSharedFull}
             onClose={() => closeModPane(frontPane.id)}
             focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
+          />
+        )}
+        {!whyRequest && frontCanvas && cwd && !terminalMaximized && (
+          <CanvasPanel
+            key={frontCanvas.id}
+            sessionId={sessionId}
+            sessionTitle={title}
+            active={active}
+            cwd={cwd}
+            canvas={frontCanvas}
+            width={panelWidth}
+            onWidth={setRightWidth}
+            full={sharedFull}
+            onFull={setSharedFull}
+            onClose={() => useCanvasPanels.getState().setOpen(sessionId, frontCanvas.id, false)}
           />
         )}
         {!whyRequest && right.tab === 'agents' && !terminalMaximized && (

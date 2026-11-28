@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ASK_DEFAULT_WIDTH, ASK_MIN_WIDTH, askWidthForKey, clampAskWidth, panelWidthFor, readTab, rightPanel } from './askWidth.ts';
+import { canvasOfTab, canvasTab, ASK_DEFAULT_WIDTH, ASK_MIN_WIDTH, askWidthForKey, clampAskWidth, panelWidthFor, readTab, rightPanel } from './askWidth.ts';
 
 describe('Ask panel width', () => {
   it('starts at 380px and stays between the minimum and 70% of the window', () => {
@@ -84,5 +84,23 @@ describe('Half', () => {
     expect(panelWidthFor('half', 480, null)).toBe(480);
     // A narrow area still gives the panel its minimum.
     expect(panelWidthFor('half', 480, 400)).toBe(ASK_MIN_WIDTH);
+  });
+});
+
+describe('canvases as tabs', () => {
+  const closed = { files: false, changes: false, ask: false, agents: false, commands: false, note: false, web: false, terminal: false };
+  it('puts the open canvases last, and shows the picked one in front', () => {
+    const right = rightPanel({ ...closed, changes: true }, canvasTab('notes'), ['pane'], ['frontmatter', 'notes']);
+    expect(right.open).toEqual(['changes', 'mod:pane', 'canvas:frontmatter', 'canvas:notes']);
+    expect(right.tab).toBe('canvas:notes');
+    expect(canvasOfTab(right.tab)).toBe('notes');
+    expect(canvasOfTab('changes')).toBeNull();
+  });
+  it('falls back to the first open panel when the canvas closed', () => {
+    expect(rightPanel({ ...closed, changes: true }, canvasTab('notes')).tab).toBe('changes');
+  });
+  it('reads a stored canvas tab, and nothing that is not an id', () => {
+    expect(readTab('canvas:post-workbench')).toBe('canvas:post-workbench');
+    expect(readTab('canvas:../x')).toBe('changes');
   });
 });

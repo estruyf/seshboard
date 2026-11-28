@@ -4,12 +4,13 @@ Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working o
 
 ## Architecture
 
-Seshboard is an Electron app in four npm workspaces, plus its VS Code companion extension, its website and the remote app for phones:
+Seshboard is an Electron app in five npm workspaces, plus its VS Code companion extension, its website and the remote app for phones:
 
 | Path | What it is | Rules |
 |---|---|---|
 | `packages/protocol` | zod contract and typed RPC over MessagePorts | The single source of truth for every request and event. Entry points: `.` (with zod, for the engine), `./client` (types and RPC client only, no zod, for the renderer), `./bridge` (IPC channels and preferences, plain TypeScript, for main and preload), `./companion-client` (the VS Code extension's client and socket transport, no zod). |
 | `packages/engine` | Plain Node; runs in an Electron `utilityProcess` | **No Electron imports.** Owns the SQLite cache, the session index and search, Claude Code processes (through the Agent SDK), git, terminals, project actions and usage. |
+| `packages/canvas` | The canvas SDK (`@seshboard/canvas`) and what the engine and a canvas's process say to each other | A project's canvas (`.seshboard/canvases/<name>/canvas.mjs`) imports it; the engine starts the canvas with the runner, which resolves the import. Plain TypeScript, no dependencies, no zod. Entry points: `.` (the SDK), `./wire` (the messages, for the engine). See [docs/canvases.md](docs/canvases.md). |
 | `apps/desktop` | Electron main process, preload, and the engine entry | Main does what needs Electron: windows, menus, dialogs, notifications, the Trash, preferences. The preload is sandboxed and exposes `window.seshboard`. |
 | `apps/ui` | React 19 renderer, Tailwind 4, zustand | Talks to the engine only through the RPC client, and to main only through `window.seshboard`. |
 | `website` | The website and docs (Astro + Starlight), published to GitHub Pages by `website.yml` | Pages are MDX in `website/src/content/docs/`. Colours come from the app's `--sb-*` tokens (`website/src/styles/switchboard.css`); keys use `<Kbd shortcut="…">` from the shortcuts registry, which renders them for macOS and Windows (the reader picks in the header), and `<Os>`/`<OnlyOn>` hold words and passages that differ by platform. Every feature is listed in `website/src/content/features.json`, which a test checks against the palette commands, shortcuts, Settings sections and project tabs. |

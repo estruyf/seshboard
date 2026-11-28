@@ -15,6 +15,8 @@ The same server serves Claude Code, Copilot, Codex and Antigravity: it is the or
 | `find_sessions`, `read_session` | No | This project's other sessions by words, and a brief of one. Same project only | search, catch-up, session linking |
 | `notify_me` | No | A push to the paired phone. At most one a minute and ten an hour per session | `RemoteHub.pushNote` |
 | `hand_off` | Yes | A fresh session in the same folder, with the agent's brief and a link to this one, under it | `createSession`, session linking |
+| `list_canvases`, `canvas_log`, `canvas_guide` | No | The project's canvases ([canvases.md](canvases.md)), the end of one's log, and how to write one | `CanvasHost.list`, `log`, `CANVAS_GUIDE` |
+| `open_canvas`, `canvas_action` | No | Shows a canvas in the session's side panel, and runs one of its actions. A canvas runs only after you trusted it in its panel, which is the gate here | `CanvasHost.open`, `action` |
 | `list_pipelines`, `get_run` | No | The pipelines the project can run (as `save_pipeline` takes them), and a run's state | `pipelines.list`, `runs.get` |
 | `check_pipeline`, `check_trigger` | No | The editor's checks on a draft, without saving | `PipelineSave`, `TriggerSave`, `triggerProblem`, `pipelineProblem` |
 | `save_pipeline` | Yes | A new pipeline or a change to one of yours. Built-ins are only copied | `pipelines.save` |

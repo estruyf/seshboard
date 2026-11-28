@@ -4,6 +4,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
+### Added
+
+- **Canvases.** A project can bring its own web apps: put one in `.seshboard/canvases/<name>/canvas.mjs` and it gets a button on the rail of every session in that folder. It opens in the side panel, next to the conversation. Seshboard asks before a canvas runs for the first time, and again when its file changes. The agent beside it can list the canvases, open one and run its actions, whatever agent it is (Claude Code, Copilot, Codex), and a canvas can put text and files in the message box for you to send. Ask the agent for a canvas and it writes one: it has a guide for it. A canvas keeps its page while another panel is in front, has a log you open from its header, and stops when you press Stop or when no session has had it open for five minutes.
+
 ### Fixed
 
 - **The whole rule on Always allow in a narrow pane.** On a permission card, the Always allow button now wraps its rule onto a second line instead of cutting it off.

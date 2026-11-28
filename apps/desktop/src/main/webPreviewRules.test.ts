@@ -29,6 +29,19 @@ describe('previewKeyAction', () => {
   });
 });
 
+describe('webviewAllowed for a canvas', () => {
+  const partition = `persist:canvas-${'ab12'.repeat(8)}`;
+  it('attaches on a page of this computer, with the browser and previews off too', () => {
+    expect(webviewAllowed({ partition, src: 'http://127.0.0.1:4100/' }, false, false)).toBe(true);
+    expect(webviewAllowed({ partition, src: 'about:blank' }, false, false)).toBe(true);
+    expect(webviewAllowed({ partition }, false, false)).toBe(true);
+  });
+  it('never on another site, even with the browser on', () => {
+    expect(webviewAllowed({ partition, src: 'https://example.com/' }, true, true)).toBe(false);
+    expect(webviewAllowed({ partition: 'persist:canvas-nope', src: 'http://127.0.0.1:4100/' }, true, true)).toBe(false);
+  });
+});
+
 describe('webviewAllowed', () => {
   it('lets only the preview partition attach, on a local or blank address', () => {
     expect(webviewAllowed({ partition: WEB_PREVIEW_PARTITION, src: 'http://localhost:5173/' })).toBe(true);

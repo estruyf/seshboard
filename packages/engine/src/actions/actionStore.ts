@@ -235,6 +235,15 @@ export class ActionStore {
     this.statements.trust.run(projectRoot, trustKey(action), Date.now());
   }
 
+  /** Whether you approved this exact thing of the project's before, by its hash (a canvas: `canvasTrustKey`). */
+  isTrustedHash(projectRoot: string, hash: string): boolean {
+    return this.statements.trusted.get(projectRoot, hash) !== undefined;
+  }
+
+  trustHash(projectRoot: string, hash: string): void {
+    this.statements.trust.run(projectRoot, hash, Date.now());
+  }
+
   /** Yours for this project win over shared, which win over your global ones (matched by id). */
   list(projectRoot: string): { actions: ListedAction[]; sharedFile: string | null; errors: string[] } {
     const shared = this.shared(projectRoot);
