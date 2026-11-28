@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, ClipboardList, MessagesSquare } from 'lucide-react';
+import { Bot, ChevronRight, ClipboardList, Info, MessagesSquare } from 'lucide-react';
 import { useThemes } from '../../state/themeStore.ts';
 import { languageFromPath } from '../../lib/highlight.ts';
 import type { HookableComponent } from '@seshboard/protocol/client';
@@ -274,6 +274,13 @@ function PeerMessageItem({ item, peer }: { item: Extract<DisplayItem, { kind: 'u
         <ClampedPrompt itemKey={item.key} className="text-body [overflow-wrap:anywhere] [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
           <Markdown text={item.text} />
         </ClampedPrompt>
+        {/* Claude Code's notice that the sender read other people's Artifacts, said once in our words instead of its tag. */}
+        {peer.relaysOthersContent && (
+          <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-meta text-muted" data-peer-relays>
+            <Info className="size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">May pass on content written by other people. Claude treats it as data, not instructions.</span>
+          </p>
+        )}
       </div>
     </div>
   );

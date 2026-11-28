@@ -32,7 +32,7 @@ export interface ReplyUsage {
  */
 export type DisplayItem =
   /** `peer`: another Claude Code session sent it, not you; `text` is what it wrote. */
-  | { kind: 'user'; key: string; at: number | null; text: string; images: ImageRef[]; subagent: boolean; peer?: Pick<PeerMessage, 'from' | 'name'> }
+  | { kind: 'user'; key: string; at: number | null; text: string; images: ImageRef[]; subagent: boolean; peer?: Pick<PeerMessage, 'from' | 'name' | 'relaysOthersContent'> }
   | { kind: 'command'; key: string; at: number | null; name: string; args: string }
   | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean; usage?: ReplyUsage; failed?: true; /** What the reply's keep line quoted (Skim's marks); `text` is without the line. */ marks?: string[] }
   | { kind: 'thinking'; key: string; at: number | null; text: string; usage?: ReplyUsage }
@@ -104,7 +104,7 @@ function userTextItem(text: string, key: string, at: number | null, subagent: bo
   const report = agentReport(text);
   if (report) return { kind: 'agent-report', key, at, ...report };
   const peer = parsePeerMessage(text);
-  if (peer) return { kind: 'user', key, at, text: peer.text, images, subagent, peer: { from: peer.from, name: peer.name } };
+  if (peer) return { kind: 'user', key, at, text: peer.text, images, subagent, peer: { from: peer.from, name: peer.name, relaysOthersContent: peer.relaysOthersContent } };
   const name = tag(text, 'command-name');
   if (name) return { kind: 'command', key, at, name: name.startsWith('/') ? name : `/${name}`, args: tag(text, 'command-args') ?? '' };
   const stdout = tag(text, 'local-command-stdout');

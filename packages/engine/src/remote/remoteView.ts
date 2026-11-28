@@ -294,7 +294,10 @@ function remoteTurn(role: RemoteMessage['role'], blocks: RemoteBlock[]): Pick<Re
   // The saved transcript puts a line before an agent's hand-back; the live stream sends the tag on its own.
   if (/^(Another Claude session sent a message:\s*)?<agent-message from="/.test(trimmed)) return notice('An agent reported back');
   const peer = parsePeerMessage(trimmed);
-  if (peer) return { role, blocks: [{ type: 'text', text: `From another session, ${peerName(peer)}:\n\n${peer.text}` }] };
+  if (peer) {
+    const relays = peer.relaysOthersContent ? '\n\n(May pass on content written by other people.)' : '';
+    return { role, blocks: [{ type: 'text', text: `From another session, ${peerName(peer)}:\n\n${peer.text}${relays}` }] };
+  }
   const command = tag(text, 'command-name');
   if (command) {
     const args = tag(text, 'command-args') ?? '';

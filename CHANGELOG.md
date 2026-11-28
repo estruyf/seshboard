@@ -7,6 +7,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 ### Fixed
 
 - **The whole rule on Always allow in a narrow pane.** On a permission card, the Always allow button now wraps its rule onto a second line instead of cutting it off.
+- **No raw tag in messages from another session.** When the other session had read Artifacts written by other people, its message showed Claude Code's `<artifact-content-authored-by-others/>` tag and notice. It now shows a short note under the message instead.
 - **Ask about this session answers again.** A question about a session that left a background agent unfinished got "Claude had nothing to answer." It now gets its answer.
 
 ## [1.5.0] - 2026-11-27
